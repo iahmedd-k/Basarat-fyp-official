@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from app.api.v1.health import router as health_router
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -94,3 +95,8 @@ app.include_router(assistant.router, prefix=settings.API_V1_PREFIX, tags=["Assis
 
 # System
 app.include_router(system.router, prefix=settings.API_V1_PREFIX, tags=["System"])
+app.include_router(
+    health_router,
+    prefix="/api/v1",
+    tags=["Health"]
+)
