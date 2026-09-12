@@ -5,14 +5,11 @@ from datetime import date, timedelta
 import pandas as pd
 import pypsx_toolkit
 
-MARKET_TTL_SECONDS = 60
+from app.services.market_service import MarketService
+
 QUOTE_TTL_SECONDS = 300
 FUND_TTL_SECONDS = 1800
 OHLCV_TTL_SECONDS = 600
-
-_market_frame = None
-_market_frame_time = 0.0
-_market_lock = threading.Lock()
 
 _quote_cache = {}
 _quote_cache_time = {}
@@ -36,21 +33,11 @@ def _now():
 
 
 class StockService:
-    # ---------------- shared market frame ----------------
+    def __init__(self, market_service: MarketService = None):
+        self._market = market_service or MarketService()
 
     def _get_market_frame(self):
-        global _market_frame, _market_frame_time
-        now = _now()
-        if _market_frame is None or now - _market_frame_time > MARKET_TTL_SECONDS:
-            with _market_lock:
-                if _market_frame is None or now - _market_frame_time > MARKET_TTL_SECONDS:
-                    _market_frame = pypsx_toolkit.market_watch()
-                    _market_frame_time = now
-        return _market_frame
-
-    def get_symbols(self):
-        frame = self._get_market_frame()
-        return sorted(str(s).upper() for s in frame.index) if frame is not None else []
+        return self._market._get_market_frame()
 
     def search_symbols(self, q: str, limit: int = 10):
         q = (q or "").strip().upper()
@@ -77,8 +64,6 @@ class StockService:
             return frame.loc[symbol, "Sector"]
         except Exception:
             return None
-
-    # ---------------- quotes (live snapshot) ----------------
 
     def get_quote(self, symbol: str):
         rows = self.get_quote_batch([symbol])
@@ -132,8 +117,6 @@ class StockService:
             "volume": 0,
         }
 
-    # ---------------- quote enrichment (P/E, yearly changes) ----------------
-
     def _get_quote_frame(self, symbol):
         symbol = str(symbol).upper()
         now = _now()
@@ -148,8 +131,6 @@ class StockService:
             _quote_cache[symbol] = frame
             _quote_cache_time[symbol] = now
             return frame
-
-    # ---------------- fundamentals (EPS, market cap, margins) ----------------
 
     def _get_fund_frame(self, symbol):
         symbol = str(symbol).upper()
@@ -198,8 +179,6 @@ class StockService:
             _div_cache_time[symbol] = now
             return frame
 
-    # ---------------- historical OHLCV ----------------
-
     def _get_ohlcv(self, symbol, start: date, end: date):
         symbol = str(symbol).upper()
         key = f"{symbol}:{start.isoformat()}:{end.isoformat()}"
@@ -217,8 +196,6 @@ class StockService:
             _ohlcv_cache[key] = df
             _ohlcv_cache_time[key] = now
             return df
-
-    # ---------------- overview ----------------
 
     def get_overview(self, symbol: str):
         symbol = str(symbol).upper()
@@ -256,8 +233,6 @@ class StockService:
         value = frame.iloc[0][column]
         return self._latest_number(value)
 
-    # ---------------- price history ----------------
-
     RANGE_MAP = {
         "1D": ("1D", timedelta(days=3)),
         "1W": ("1W", timedelta(days=8)),
@@ -288,15 +263,13 @@ class StockService:
             )
         return {"symbol": symbol, "range": label, "bars": bars}
 
-    # ---------------- technical indicators ----------------
-
     def technical_indicators(self, symbol: str, indicators: str = "RSI,MACD,BB,SMA,ADX", period: int = 14):
         symbol = str(symbol).upper()
         requested = [i.strip().upper() for i in indicators.split(",") if i.strip()]
         end = date.today()
         df = self._get_ohlcv(symbol, end - timedelta(days=370), end)
         if df is None or df.empty:
-            return {"symbol": symbol, "indicators": {}}
+            return {"symbol": symbol, "period": period, "indicators": {}}
 
         close = df["CLOSE"].astype(float)
         result = {"symbol": symbol, "period": period, "indicators": {}}
@@ -354,8 +327,6 @@ class StockService:
         adx = dx.ewm(alpha=1 / period, adjust=False).mean()
         return adx
 
-    # ---------------- fundamentals ----------------
-
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
         quote = self._get_quote_frame(symbol)
@@ -391,8 +362,6 @@ class StockService:
             return None
         value = div.iloc[0]["DIVIDEND YIELD"]
         return self._latest_number(value)
-
-    # ---------------- helpers ----------------
 
     @staticmethod
     def _num(value):
