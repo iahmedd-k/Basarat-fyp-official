@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: basarat-api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     env_file:
@@ -14,7 +15,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./app/ml/saved_models:/app/app/ml/saved_models
+      - .:/app
     restart: unless-stopped
 
   celery-worker:
@@ -55,8 +56,8 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ahmed
+      POSTGRES_PASSWORD: adminadmin
       POSTGRES_DB: basarat
     volumes:
       - postgres_data:/var/lib/postgresql/data

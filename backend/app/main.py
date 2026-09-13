@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from app.api.v1.health import router as health_router
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import get_settings
+from app.core.exceptions import register_error_handlers
 from app.core.logging import setup_logging
 from app.core.rate_limit import limiter
 from app.db.base import engine
@@ -99,4 +101,10 @@ app.include_router(shariah.router, prefix=settings.API_V1_PREFIX, tags=["Shariah
 app.include_router(assistant.router, prefix=settings.API_V1_PREFIX, tags=["Assistant"])
 
 # System
+# System
 app.include_router(system.router, prefix=settings.API_V1_PREFIX, tags=["System"])
+app.include_router(
+    health_router,
+    prefix="/api/v1",
+    tags=["Health"]
+)
