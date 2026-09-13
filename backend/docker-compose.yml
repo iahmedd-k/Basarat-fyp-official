@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: basarat-api
     container_name: basarat-api
     ports:
       - "8000:8000"
@@ -19,7 +18,9 @@ services:
     restart: unless-stopped
 
   celery-worker:
-    image: basarat-api
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: basarat-celery-worker
     command: celery -A app.celery_app worker --loglevel=info
     env_file:
@@ -34,7 +35,9 @@ services:
     restart: unless-stopped
 
   celery-beat:
-    image: basarat-api
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: basarat-celery-beat
     command: celery -A app.celery_app beat --loglevel=info
     env_file:
