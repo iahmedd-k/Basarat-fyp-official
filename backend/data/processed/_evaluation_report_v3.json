@@ -1,0 +1,48 @@
+{
+  "test_samples": 29373,
+  "test_accuracy": 0.405,
+  "per_class": {
+    "bullish": {
+      "precision": 0.3772,
+      "recall": 0.3119,
+      "f1": 0.3414,
+      "support": 9850
+    },
+    "bearish": {
+      "precision": 0.4138,
+      "recall": 0.5332,
+      "f1": 0.466,
+      "support": 11256
+    },
+    "sideways": {
+      "precision": 0.4199,
+      "recall": 0.3415,
+      "f1": 0.3767,
+      "support": 8267
+    }
+  },
+  "confusion_matrix": [
+    [
+      3072,
+      4972,
+      1806
+    ],
+    [
+      3160,
+      6002,
+      2094
+    ],
+    [
+      1913,
+      3531,
+      2823
+    ]
+  ],
+  "baseline": {
+    "strategy": "always_predict_bearish",
+    "majority_class_id": 1,
+    "majority_class_name": "bearish",
+    "accuracy": 0.3832
+  },
+  "improvement_over_baseline": 0.0218
+}

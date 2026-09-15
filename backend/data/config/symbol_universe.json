@@ -1,0 +1,790 @@
+[
+  {
+    "symbol": "ABL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "ABOT",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "AGP",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "AHCL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "AICL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "AIRLINK",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "AKBL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "APL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "ATLH",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "ATRL",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "BAFL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "BAHL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "BNWM",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "BOP",
+    "indices": [
+      "KSE100",
+      "KSE30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "BWCL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "CHCC",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "CNERGY",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "COLG",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "CPHL",
+    "indices": [
+      "KSE100",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "DCR",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "DGKC",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "EFERT",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "ENGROH",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "FABL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "FATIMA",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "FCCL",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "FFC",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "FFL",
+    "indices": [
+      "KSE100",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "FHAM",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "GADT",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "GAL",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "GHGL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "GHNI",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "GLAXO",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "HALEON",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15",
+    "excluded": true,
+    "excluded_reason": "insufficient history (<800 rows)"
+  },
+  {
+    "symbol": "HBL",
+    "indices": [
+      "KSE100",
+      "KSE30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "HCAR",
+    "indices": [
+      "KSE100",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "HGFA",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "HINOON",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "HMB",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "HUBC",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "HUMNL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "IBFL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "ILP",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "INDU",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "INIL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "ISL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "JDWS",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "JVDC",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "KAPCO",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "KEL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "KOHC",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "KTML",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "LCI",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "LOTCHEM",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "LUCK",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "MARI",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "MCB",
+    "indices": [
+      "KSE100",
+      "KSE30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "MEBL",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "MEHT",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15",
+    "excluded": true,
+    "excluded_reason": "insufficient history (<800 rows)"
+  },
+  {
+    "symbol": "MLCF",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "MTL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "MUREB",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "NATF",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "NBP",
+    "indices": [
+      "KSE100",
+      "KSE30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "NESTLE",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "NML",
+    "indices": [
+      "KSE100",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "NPL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "NRL",
+    "indices": [
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "OGDC",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PABC",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PAEL",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PAKT",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PGLC",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PIBTL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PIOC",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PKGS",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "POL",
+    "indices": [
+      "KSE100",
+      "KSE30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "POWER",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PPL",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PRL",
+    "indices": [
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PSEL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15",
+    "excluded": true,
+    "excluded_reason": "insufficient history (<800 rows)"
+  },
+  {
+    "symbol": "PSO",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PSX",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "PTC",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "RMPL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "SAZEW",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "SCBPL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "SEARL",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "SHFA",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "SNGP",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "SRVI",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "SSGC",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "SSOM",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "SYS",
+    "indices": [
+      "KSE100",
+      "KSE30",
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "TGL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "THALL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "TPLRF1",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15",
+    "excluded": true,
+    "excluded_reason": "insufficient history (<800 rows)"
+  },
+  {
+    "symbol": "TREET",
+    "indices": [
+      "KMI30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "TRG",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "UBL",
+    "indices": [
+      "KSE100",
+      "KSE30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "UPFL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15",
+    "excluded": true,
+    "excluded_reason": "insufficient history (<800 rows)"
+  },
+  {
+    "symbol": "YOUW",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  }
+]

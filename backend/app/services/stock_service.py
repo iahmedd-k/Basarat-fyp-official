@@ -37,7 +37,7 @@ class StockService:
         self._market = market_service or MarketService()
 
     def _get_market_frame(self):
-        return self._market._get_market_frame()
+        return self._market.get_market_data()
 
     def search_symbols(self, q: str, limit: int = 10):
         q = (q or "").strip().upper()

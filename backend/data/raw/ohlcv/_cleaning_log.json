@@ -1,0 +1,205 @@
+{
+  "total_dropped": 426,
+  "per_symbol": {
+    "ABL": {
+      "before": 1617,
+      "after": 1615,
+      "dropped": 2,
+      "pct_dropped": 0.1
+    },
+    "ABOT": {
+      "before": 1641,
+      "after": 1639,
+      "dropped": 2,
+      "pct_dropped": 0.1
+    },
+    "AHCL": {
+      "before": 1531,
+      "after": 1523,
+      "dropped": 8,
+      "pct_dropped": 0.5
+    },
+    "ATLH": {
+      "before": 1461,
+      "after": 1440,
+      "dropped": 21,
+      "pct_dropped": 1.4
+    },
+    "BNWM": {
+      "before": 1378,
+      "after": 1365,
+      "dropped": 13,
+      "pct_dropped": 0.9
+    },
+    "BWCL": {
+      "before": 1654,
+      "after": 1651,
+      "dropped": 3,
+      "pct_dropped": 0.2
+    },
+    "COLG": {
+      "before": 1479,
+      "after": 1466,
+      "dropped": 13,
+      "pct_dropped": 0.9
+    },
+    "FHAM": {
+      "before": 1584,
+      "after": 1577,
+      "dropped": 7,
+      "pct_dropped": 0.4
+    },
+    "GADT": {
+      "before": 1409,
+      "after": 1386,
+      "dropped": 23,
+      "pct_dropped": 1.6
+    },
+    "GHGL": {
+      "before": 1659,
+      "after": 1658,
+      "dropped": 1,
+      "pct_dropped": 0.1
+    },
+    "HALEON": {
+      "before": 888,
+      "after": 887,
+      "dropped": 1,
+      "pct_dropped": 0.1
+    },
+    "HGFA": {
+      "before": 1466,
+      "after": 1456,
+      "dropped": 10,
+      "pct_dropped": 0.7
+    },
+    "IBFL": {
+      "before": 1066,
+      "after": 1042,
+      "dropped": 24,
+      "pct_dropped": 2.3
+    },
+    "JDWS": {
+      "before": 1186,
+      "after": 1168,
+      "dropped": 18,
+      "pct_dropped": 1.5
+    },
+    "JVDC": {
+      "before": 1440,
+      "after": 1415,
+      "dropped": 25,
+      "pct_dropped": 1.7
+    },
+    "KOHC": {
+      "before": 1660,
+      "after": 1659,
+      "dropped": 1,
+      "pct_dropped": 0.1
+    },
+    "KTML": {
+      "before": 1622,
+      "after": 1610,
+      "dropped": 12,
+      "pct_dropped": 0.7
+    },
+    "LCI": {
+      "before": 1644,
+      "after": 1643,
+      "dropped": 1,
+      "pct_dropped": 0.1
+    },
+    "MEHT": {
+      "before": 890,
+      "after": 854,
+      "dropped": 36,
+      "pct_dropped": 4.0
+    },
+    "MUREB": {
+      "before": 1474,
+      "after": 1466,
+      "dropped": 8,
+      "pct_dropped": 0.5
+    },
+    "NESTLE": {
+      "before": 1421,
+      "after": 1408,
+      "dropped": 13,
+      "pct_dropped": 0.9
+    },
+    "NPL": {
+      "before": 1655,
+      "after": 1653,
+      "dropped": 2,
+      "pct_dropped": 0.1
+    },
+    "PAKT": {
+      "before": 1365,
+      "after": 1354,
+      "dropped": 11,
+      "pct_dropped": 0.8
+    },
+    "PGLC": {
+      "before": 1075,
+      "after": 1045,
+      "dropped": 30,
+      "pct_dropped": 2.8
+    },
+    "PKGS": {
+      "before": 1644,
+      "after": 1643,
+      "dropped": 1,
+      "pct_dropped": 0.1
+    },
+    "PSEL": {
+      "before": 908,
+      "after": 865,
+      "dropped": 43,
+      "pct_dropped": 4.7
+    },
+    "RMPL": {
+      "before": 1189,
+      "after": 1163,
+      "dropped": 26,
+      "pct_dropped": 2.2
+    },
+    "SCBPL": {
+      "before": 1579,
+      "after": 1571,
+      "dropped": 8,
+      "pct_dropped": 0.5
+    },
+    "SHFA": {
+      "before": 1598,
+      "after": 1591,
+      "dropped": 7,
+      "pct_dropped": 0.4
+    },
+    "SSOM": {
+      "before": 1215,
+      "after": 1192,
+      "dropped": 23,
+      "pct_dropped": 1.9
+    },
+    "THALL": {
+      "before": 1627,
+      "after": 1626,
+      "dropped": 1,
+      "pct_dropped": 0.1
+    },
+    "TPLRF1": {
+      "before": 570,
+      "after": 568,
+      "dropped": 2,
+      "pct_dropped": 0.4
+    },
+    "UPFL": {
+      "before": 1031,
+      "after": 1001,
+      "dropped": 30,
+      "pct_dropped": 2.9
+    }
+  },
+  "symbols_with_data": 0,
+  "symbols_without_data": 70
+}

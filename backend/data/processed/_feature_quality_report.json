@@ -1,0 +1,1609 @@
+{
+  "total_symbols": 98,
+  "total_rows_before_nan_drop": 150893,
+  "missing_symbols": [],
+  "extra_symbols": [],
+  "nan_count_before_drop": 0,
+  "total_rows_after_nan_drop": 150893,
+  "rows_dropped_for_nan": 0,
+  "pkr_usd_rate_coverage_pct": 100.0,
+  "policy_rate_coverage_pct": 100.0,
+  "per_symbol_row_count": {
+    "ABL": 1564,
+    "ABOT": 1588,
+    "AGP": 1609,
+    "AHCL": 1472,
+    "AICL": 1593,
+    "AIRLINK": 1182,
+    "AKBL": 1608,
+    "APL": 1608,
+    "ATLH": 1389,
+    "ATRL": 1609,
+    "BAFL": 1609,
+    "BAHL": 1609,
+    "BNWM": 1314,
+    "BOP": 1609,
+    "BWCL": 1600,
+    "CHCC": 1609,
+    "CNERGY": 1590,
+    "COLG": 1415,
+    "CPHL": 1231,
+    "DCR": 1609,
+    "DGKC": 1609,
+    "EFERT": 1609,
+    "ENGROH": 1592,
+    "FABL": 1609,
+    "FATIMA": 1608,
+    "FCCL": 1609,
+    "FFC": 1609,
+    "FFL": 1609,
+    "FHAM": 1526,
+    "GADT": 1335,
+    "GAL": 1608,
+    "GHGL": 1607,
+    "GHNI": 1609,
+    "GLAXO": 1607,
+    "HBL": 1609,
+    "HCAR": 1609,
+    "HGFA": 1405,
+    "HINOON": 1603,
+    "HMB": 1589,
+    "HUBC": 1609,
+    "HUMNL": 1609,
+    "IBFL": 991,
+    "ILP": 1609,
+    "INDU": 1608,
+    "INIL": 1609,
+    "ISL": 1609,
+    "JDWS": 1117,
+    "JVDC": 1364,
+    "KAPCO": 1589,
+    "KEL": 1609,
+    "KOHC": 1608,
+    "KTML": 1559,
+    "LCI": 1592,
+    "LOTCHEM": 1609,
+    "LUCK": 1604,
+    "MARI": 1609,
+    "MCB": 1590,
+    "MEBL": 1609,
+    "MLCF": 1609,
+    "MTL": 1609,
+    "MUREB": 1415,
+    "NATF": 1607,
+    "NBP": 1609,
+    "NESTLE": 1357,
+    "NML": 1609,
+    "NPL": 1602,
+    "NRL": 1609,
+    "OGDC": 1609,
+    "PABC": 1225,
+    "PAEL": 1609,
+    "PAKT": 1303,
+    "PGLC": 994,
+    "PIBTL": 1609,
+    "PIOC": 1609,
+    "PKGS": 1592,
+    "POL": 1609,
+    "POWER": 1609,
+    "PPL": 1609,
+    "PRL": 1609,
+    "PSO": 1609,
+    "PSX": 1609,
+    "PTC": 1609,
+    "RMPL": 1112,
+    "SAZEW": 1609,
+    "SCBPL": 1520,
+    "SEARL": 1609,
+    "SHFA": 1540,
+    "SNGP": 1609,
+    "SRVI": 1597,
+    "SSGC": 1609,
+    "SSOM": 1141,
+    "SYS": 1607,
+    "TGL": 1609,
+    "THALL": 1575,
+    "TREET": 1609,
+    "TRG": 1609,
+    "UBL": 1609,
+    "YOUW": 1609
+  },
+  "symbols_dropped_entirely": [],
+  "label_report": {
+    "threshold": 0.01,
+    "label_mapping": {
+      "bullish": 0,
+      "bearish": 1,
+      "sideways": 2
+    },
+    "total_rows": 150893,
+    "overall_distribution": {
+      "bullish": {
+        "count": 39394,
+        "pct": 26.11
+      },
+      "bearish": {
+        "count": 40887,
+        "pct": 27.1
+      },
+      "sideways": {
+        "count": 70612,
+        "pct": 46.8
+      }
+    },
+    "per_symbol_distribution": {
+      "ABL": {
+        "bullish": {
+          "count": 309,
+          "pct": 19.76
+        },
+        "bearish": {
+          "count": 303,
+          "pct": 19.37
+        },
+        "sideways": {
+          "count": 952,
+          "pct": 60.87
+        }
+      },
+      "ABOT": {
+        "bullish": {
+          "count": 343,
+          "pct": 21.6
+        },
+        "bearish": {
+          "count": 358,
+          "pct": 22.54
+        },
+        "sideways": {
+          "count": 887,
+          "pct": 55.86
+        }
+      },
+      "AGP": {
+        "bullish": {
+          "count": 412,
+          "pct": 25.61
+        },
+        "bearish": {
+          "count": 459,
+          "pct": 28.53
+        },
+        "sideways": {
+          "count": 738,
+          "pct": 45.87
+        }
+      },
+      "AHCL": {
+        "bullish": {
+          "count": 407,
+          "pct": 27.65
+        },
+        "bearish": {
+          "count": 436,
+          "pct": 29.62
+        },
+        "sideways": {
+          "count": 629,
+          "pct": 42.73
+        }
+      },
+      "AICL": {
+        "bullish": {
+          "count": 425,
+          "pct": 26.68
+        },
+        "bearish": {
+          "count": 464,
+          "pct": 29.13
+        },
+        "sideways": {
+          "count": 704,
+          "pct": 44.19
+        }
+      },
+      "AIRLINK": {
+        "bullish": {
+          "count": 355,
+          "pct": 30.03
+        },
+        "bearish": {
+          "count": 417,
+          "pct": 35.28
+        },
+        "sideways": {
+          "count": 410,
+          "pct": 34.69
+        }
+      },
+      "AKBL": {
+        "bullish": {
+          "count": 416,
+          "pct": 25.87
+        },
+        "bearish": {
+          "count": 378,
+          "pct": 23.51
+        },
+        "sideways": {
+          "count": 814,
+          "pct": 50.62
+        }
+      },
+      "APL": {
+        "bullish": {
+          "count": 330,
+          "pct": 20.52
+        },
+        "bearish": {
+          "count": 332,
+          "pct": 20.65
+        },
+        "sideways": {
+          "count": 946,
+          "pct": 58.83
+        }
+      },
+      "ATLH": {
+        "bullish": {
+          "count": 320,
+          "pct": 23.04
+        },
+        "bearish": {
+          "count": 316,
+          "pct": 22.75
+        },
+        "sideways": {
+          "count": 753,
+          "pct": 54.21
+        }
+      },
+      "ATRL": {
+        "bullish": {
+          "count": 508,
+          "pct": 31.57
+        },
+        "bearish": {
+          "count": 482,
+          "pct": 29.96
+        },
+        "sideways": {
+          "count": 619,
+          "pct": 38.47
+        }
+      },
+      "BAFL": {
+        "bullish": {
+          "count": 383,
+          "pct": 23.8
+        },
+        "bearish": {
+          "count": 381,
+          "pct": 23.68
+        },
+        "sideways": {
+          "count": 845,
+          "pct": 52.52
+        }
+      },
+      "BAHL": {
+        "bullish": {
+          "count": 365,
+          "pct": 22.68
+        },
+        "bearish": {
+          "count": 338,
+          "pct": 21.01
+        },
+        "sideways": {
+          "count": 906,
+          "pct": 56.31
+        }
+      },
+      "BNWM": {
+        "bullish": {
+          "count": 404,
+          "pct": 30.75
+        },
+        "bearish": {
+          "count": 490,
+          "pct": 37.29
+        },
+        "sideways": {
+          "count": 420,
+          "pct": 31.96
+        }
+      },
+      "BOP": {
+        "bullish": {
+          "count": 428,
+          "pct": 26.6
+        },
+        "bearish": {
+          "count": 431,
+          "pct": 26.79
+        },
+        "sideways": {
+          "count": 750,
+          "pct": 46.61
+        }
+      },
+      "BWCL": {
+        "bullish": {
+          "count": 367,
+          "pct": 22.94
+        },
+        "bearish": {
+          "count": 335,
+          "pct": 20.94
+        },
+        "sideways": {
+          "count": 898,
+          "pct": 56.12
+        }
+      },
+      "CHCC": {
+        "bullish": {
+          "count": 457,
+          "pct": 28.4
+        },
+        "bearish": {
+          "count": 527,
+          "pct": 32.75
+        },
+        "sideways": {
+          "count": 625,
+          "pct": 38.84
+        }
+      },
+      "CNERGY": {
+        "bullish": {
+          "count": 466,
+          "pct": 29.31
+        },
+        "bearish": {
+          "count": 567,
+          "pct": 35.66
+        },
+        "sideways": {
+          "count": 557,
+          "pct": 35.03
+        }
+      },
+      "COLG": {
+        "bullish": {
+          "count": 248,
+          "pct": 17.53
+        },
+        "bearish": {
+          "count": 240,
+          "pct": 16.96
+        },
+        "sideways": {
+          "count": 927,
+          "pct": 65.51
+        }
+      },
+      "CPHL": {
+        "bullish": {
+          "count": 353,
+          "pct": 28.68
+        },
+        "bearish": {
+          "count": 370,
+          "pct": 30.06
+        },
+        "sideways": {
+          "count": 508,
+          "pct": 41.27
+        }
+      },
+      "DCR": {
+        "bullish": {
+          "count": 206,
+          "pct": 12.8
+        },
+        "bearish": {
+          "count": 180,
+          "pct": 11.19
+        },
+        "sideways": {
+          "count": 1223,
+          "pct": 76.01
+        }
+      },
+      "DGKC": {
+        "bullish": {
+          "count": 484,
+          "pct": 30.08
+        },
+        "bearish": {
+          "count": 514,
+          "pct": 31.95
+        },
+        "sideways": {
+          "count": 611,
+          "pct": 37.97
+        }
+      },
+      "EFERT": {
+        "bullish": {
+          "count": 329,
+          "pct": 20.45
+        },
+        "bearish": {
+          "count": 275,
+          "pct": 17.09
+        },
+        "sideways": {
+          "count": 1005,
+          "pct": 62.46
+        }
+      },
+      "ENGROH": {
+        "bullish": {
+          "count": 394,
+          "pct": 24.75
+        },
+        "bearish": {
+          "count": 399,
+          "pct": 25.06
+        },
+        "sideways": {
+          "count": 799,
+          "pct": 50.19
+        }
+      },
+      "FABL": {
+        "bullish": {
+          "count": 430,
+          "pct": 26.72
+        },
+        "bearish": {
+          "count": 417,
+          "pct": 25.92
+        },
+        "sideways": {
+          "count": 762,
+          "pct": 47.36
+        }
+      },
+      "FATIMA": {
+        "bullish": {
+          "count": 397,
+          "pct": 24.69
+        },
+        "bearish": {
+          "count": 355,
+          "pct": 22.08
+        },
+        "sideways": {
+          "count": 856,
+          "pct": 53.23
+        }
+      },
+      "FCCL": {
+        "bullish": {
+          "count": 458,
+          "pct": 28.46
+        },
+        "bearish": {
+          "count": 501,
+          "pct": 31.14
+        },
+        "sideways": {
+          "count": 650,
+          "pct": 40.4
+        }
+      },
+      "FFC": {
+        "bullish": {
+          "count": 289,
+          "pct": 17.96
+        },
+        "bearish": {
+          "count": 245,
+          "pct": 15.23
+        },
+        "sideways": {
+          "count": 1075,
+          "pct": 66.81
+        }
+      },
+      "FFL": {
+        "bullish": {
+          "count": 468,
+          "pct": 29.09
+        },
+        "bearish": {
+          "count": 521,
+          "pct": 32.38
+        },
+        "sideways": {
+          "count": 620,
+          "pct": 38.53
+        }
+      },
+      "FHAM": {
+        "bullish": {
+          "count": 366,
+          "pct": 23.98
+        },
+        "bearish": {
+          "count": 308,
+          "pct": 20.18
+        },
+        "sideways": {
+          "count": 852,
+          "pct": 55.83
+        }
+      },
+      "GADT": {
+        "bullish": {
+          "count": 373,
+          "pct": 27.94
+        },
+        "bearish": {
+          "count": 413,
+          "pct": 30.94
+        },
+        "sideways": {
+          "count": 549,
+          "pct": 41.12
+        }
+      },
+      "GAL": {
+        "bullish": {
+          "count": 519,
+          "pct": 32.28
+        },
+        "bearish": {
+          "count": 567,
+          "pct": 35.26
+        },
+        "sideways": {
+          "count": 522,
+          "pct": 32.46
+        }
+      },
+      "GHGL": {
+        "bullish": {
+          "count": 365,
+          "pct": 22.71
+        },
+        "bearish": {
+          "count": 399,
+          "pct": 24.83
+        },
+        "sideways": {
+          "count": 843,
+          "pct": 52.46
+        }
+      },
+      "GHNI": {
+        "bullish": {
+          "count": 525,
+          "pct": 32.63
+        },
+        "bearish": {
+          "count": 542,
+          "pct": 33.69
+        },
+        "sideways": {
+          "count": 542,
+          "pct": 33.69
+        }
+      },
+      "GLAXO": {
+        "bullish": {
+          "count": 343,
+          "pct": 21.34
+        },
+        "bearish": {
+          "count": 390,
+          "pct": 24.27
+        },
+        "sideways": {
+          "count": 874,
+          "pct": 54.39
+        }
+      },
+      "HBL": {
+        "bullish": {
+          "count": 349,
+          "pct": 21.69
+        },
+        "bearish": {
+          "count": 386,
+          "pct": 23.99
+        },
+        "sideways": {
+          "count": 874,
+          "pct": 54.32
+        }
+      },
+      "HCAR": {
+        "bullish": {
+          "count": 426,
+          "pct": 26.48
+        },
+        "bearish": {
+          "count": 517,
+          "pct": 32.13
+        },
+        "sideways": {
+          "count": 666,
+          "pct": 41.39
+        }
+      },
+      "HGFA": {
+        "bullish": {
+          "count": 454,
+          "pct": 32.31
+        },
+        "bearish": {
+          "count": 416,
+          "pct": 29.61
+        },
+        "sideways": {
+          "count": 535,
+          "pct": 38.08
+        }
+      },
+      "HINOON": {
+        "bullish": {
+          "count": 318,
+          "pct": 19.84
+        },
+        "bearish": {
+          "count": 295,
+          "pct": 18.4
+        },
+        "sideways": {
+          "count": 990,
+          "pct": 61.76
+        }
+      },
+      "HMB": {
+        "bullish": {
+          "count": 397,
+          "pct": 24.98
+        },
+        "bearish": {
+          "count": 349,
+          "pct": 21.96
+        },
+        "sideways": {
+          "count": 843,
+          "pct": 53.05
+        }
+      },
+      "HUBC": {
+        "bullish": {
+          "count": 399,
+          "pct": 24.8
+        },
+        "bearish": {
+          "count": 362,
+          "pct": 22.5
+        },
+        "sideways": {
+          "count": 848,
+          "pct": 52.7
+        }
+      },
+      "HUMNL": {
+        "bullish": {
+          "count": 481,
+          "pct": 29.89
+        },
+        "bearish": {
+          "count": 550,
+          "pct": 34.18
+        },
+        "sideways": {
+          "count": 578,
+          "pct": 35.92
+        }
+      },
+      "IBFL": {
+        "bullish": {
+          "count": 237,
+          "pct": 23.92
+        },
+        "bearish": {
+          "count": 206,
+          "pct": 20.79
+        },
+        "sideways": {
+          "count": 548,
+          "pct": 55.3
+        }
+      },
+      "ILP": {
+        "bullish": {
+          "count": 402,
+          "pct": 24.98
+        },
+        "bearish": {
+          "count": 424,
+          "pct": 26.35
+        },
+        "sideways": {
+          "count": 783,
+          "pct": 48.66
+        }
+      },
+      "INDU": {
+        "bullish": {
+          "count": 277,
+          "pct": 17.23
+        },
+        "bearish": {
+          "count": 274,
+          "pct": 17.04
+        },
+        "sideways": {
+          "count": 1057,
+          "pct": 65.73
+        }
+      },
+      "INIL": {
+        "bullish": {
+          "count": 471,
+          "pct": 29.27
+        },
+        "bearish": {
+          "count": 525,
+          "pct": 32.63
+        },
+        "sideways": {
+          "count": 613,
+          "pct": 38.1
+        }
+      },
+      "ISL": {
+        "bullish": {
+          "count": 471,
+          "pct": 29.27
+        },
+        "bearish": {
+          "count": 511,
+          "pct": 31.76
+        },
+        "sideways": {
+          "count": 627,
+          "pct": 38.97
+        }
+      },
+      "JDWS": {
+        "bullish": {
+          "count": 310,
+          "pct": 27.75
+        },
+        "bearish": {
+          "count": 285,
+          "pct": 25.51
+        },
+        "sideways": {
+          "count": 522,
+          "pct": 46.73
+        }
+      },
+      "JVDC": {
+        "bullish": {
+          "count": 436,
+          "pct": 31.96
+        },
+        "bearish": {
+          "count": 426,
+          "pct": 31.23
+        },
+        "sideways": {
+          "count": 502,
+          "pct": 36.8
+        }
+      },
+      "KAPCO": {
+        "bullish": {
+          "count": 323,
+          "pct": 20.33
+        },
+        "bearish": {
+          "count": 321,
+          "pct": 20.2
+        },
+        "sideways": {
+          "count": 945,
+          "pct": 59.47
+        }
+      },
+      "KEL": {
+        "bullish": {
+          "count": 454,
+          "pct": 28.22
+        },
+        "bearish": {
+          "count": 558,
+          "pct": 34.68
+        },
+        "sideways": {
+          "count": 597,
+          "pct": 37.1
+        }
+      },
+      "KOHC": {
+        "bullish": {
+          "count": 474,
+          "pct": 29.48
+        },
+        "bearish": {
+          "count": 514,
+          "pct": 31.97
+        },
+        "sideways": {
+          "count": 620,
+          "pct": 38.56
+        }
+      },
+      "KTML": {
+        "bullish": {
+          "count": 516,
+          "pct": 33.1
+        },
+        "bearish": {
+          "count": 494,
+          "pct": 31.69
+        },
+        "sideways": {
+          "count": 549,
+          "pct": 35.21
+        }
+      },
+      "LCI": {
+        "bullish": {
+          "count": 336,
+          "pct": 21.11
+        },
+        "bearish": {
+          "count": 356,
+          "pct": 22.36
+        },
+        "sideways": {
+          "count": 900,
+          "pct": 56.53
+        }
+      },
+      "LOTCHEM": {
+        "bullish": {
+          "count": 424,
+          "pct": 26.35
+        },
+        "bearish": {
+          "count": 440,
+          "pct": 27.35
+        },
+        "sideways": {
+          "count": 745,
+          "pct": 46.3
+        }
+      },
+      "LUCK": {
+        "bullish": {
+          "count": 404,
+          "pct": 25.19
+        },
+        "bearish": {
+          "count": 394,
+          "pct": 24.56
+        },
+        "sideways": {
+          "count": 806,
+          "pct": 50.25
+        }
+      },
+      "MARI": {
+        "bullish": {
+          "count": 341,
+          "pct": 21.19
+        },
+        "bearish": {
+          "count": 314,
+          "pct": 19.52
+        },
+        "sideways": {
+          "count": 954,
+          "pct": 59.29
+        }
+      },
+      "MCB": {
+        "bullish": {
+          "count": 302,
+          "pct": 18.99
+        },
+        "bearish": {
+          "count": 275,
+          "pct": 17.3
+        },
+        "sideways": {
+          "count": 1013,
+          "pct": 63.71
+        }
+      },
+      "MEBL": {
+        "bullish": {
+          "count": 398,
+          "pct": 24.74
+        },
+        "bearish": {
+          "count": 342,
+          "pct": 21.26
+        },
+        "sideways": {
+          "count": 869,
+          "pct": 54.01
+        }
+      },
+      "MLCF": {
+        "bullish": {
+          "count": 499,
+          "pct": 31.01
+        },
+        "bearish": {
+          "count": 514,
+          "pct": 31.95
+        },
+        "sideways": {
+          "count": 596,
+          "pct": 37.04
+        }
+      },
+      "MTL": {
+        "bullish": {
+          "count": 307,
+          "pct": 19.08
+        },
+        "bearish": {
+          "count": 300,
+          "pct": 18.65
+        },
+        "sideways": {
+          "count": 1002,
+          "pct": 62.27
+        }
+      },
+      "MUREB": {
+        "bullish": {
+          "count": 334,
+          "pct": 23.6
+        },
+        "bearish": {
+          "count": 333,
+          "pct": 23.53
+        },
+        "sideways": {
+          "count": 748,
+          "pct": 52.86
+        }
+      },
+      "NATF": {
+        "bullish": {
+          "count": 361,
+          "pct": 22.46
+        },
+        "bearish": {
+          "count": 377,
+          "pct": 23.46
+        },
+        "sideways": {
+          "count": 869,
+          "pct": 54.08
+        }
+      },
+      "NBP": {
+        "bullish": {
+          "count": 425,
+          "pct": 26.41
+        },
+        "bearish": {
+          "count": 409,
+          "pct": 25.42
+        },
+        "sideways": {
+          "count": 775,
+          "pct": 48.17
+        }
+      },
+      "NESTLE": {
+        "bullish": {
+          "count": 255,
+          "pct": 18.79
+        },
+        "bearish": {
+          "count": 270,
+          "pct": 19.9
+        },
+        "sideways": {
+          "count": 832,
+          "pct": 61.31
+        }
+      },
+      "NML": {
+        "bullish": {
+          "count": 438,
+          "pct": 27.22
+        },
+        "bearish": {
+          "count": 459,
+          "pct": 28.53
+        },
+        "sideways": {
+          "count": 712,
+          "pct": 44.25
+        }
+      },
+      "NPL": {
+        "bullish": {
+          "count": 421,
+          "pct": 26.28
+        },
+        "bearish": {
+          "count": 418,
+          "pct": 26.09
+        },
+        "sideways": {
+          "count": 763,
+          "pct": 47.63
+        }
+      },
+      "NRL": {
+        "bullish": {
+          "count": 503,
+          "pct": 31.26
+        },
+        "bearish": {
+          "count": 515,
+          "pct": 32.01
+        },
+        "sideways": {
+          "count": 591,
+          "pct": 36.73
+        }
+      },
+      "OGDC": {
+        "bullish": {
+          "count": 415,
+          "pct": 25.79
+        },
+        "bearish": {
+          "count": 430,
+          "pct": 26.72
+        },
+        "sideways": {
+          "count": 764,
+          "pct": 47.48
+        }
+      },
+      "PABC": {
+        "bullish": {
+          "count": 320,
+          "pct": 26.12
+        },
+        "bearish": {
+          "count": 361,
+          "pct": 29.47
+        },
+        "sideways": {
+          "count": 544,
+          "pct": 44.41
+        }
+      },
+      "PAEL": {
+        "bullish": {
+          "count": 476,
+          "pct": 29.58
+        },
+        "bearish": {
+          "count": 548,
+          "pct": 34.06
+        },
+        "sideways": {
+          "count": 585,
+          "pct": 36.36
+        }
+      },
+      "PAKT": {
+        "bullish": {
+          "count": 336,
+          "pct": 25.79
+        },
+        "bearish": {
+          "count": 333,
+          "pct": 25.56
+        },
+        "sideways": {
+          "count": 634,
+          "pct": 48.66
+        }
+      },
+      "PGLC": {
+        "bullish": {
+          "count": 356,
+          "pct": 35.81
+        },
+        "bearish": {
+          "count": 372,
+          "pct": 37.42
+        },
+        "sideways": {
+          "count": 266,
+          "pct": 26.76
+        }
+      },
+      "PIBTL": {
+        "bullish": {
+          "count": 476,
+          "pct": 29.58
+        },
+        "bearish": {
+          "count": 560,
+          "pct": 34.8
+        },
+        "sideways": {
+          "count": 573,
+          "pct": 35.61
+        }
+      },
+      "PIOC": {
+        "bullish": {
+          "count": 508,
+          "pct": 31.57
+        },
+        "bearish": {
+          "count": 539,
+          "pct": 33.5
+        },
+        "sideways": {
+          "count": 562,
+          "pct": 34.93
+        }
+      },
+      "PKGS": {
+        "bullish": {
+          "count": 394,
+          "pct": 24.75
+        },
+        "bearish": {
+          "count": 402,
+          "pct": 25.25
+        },
+        "sideways": {
+          "count": 796,
+          "pct": 50.0
+        }
+      },
+      "POL": {
+        "bullish": {
+          "count": 284,
+          "pct": 17.65
+        },
+        "bearish": {
+          "count": 231,
+          "pct": 14.36
+        },
+        "sideways": {
+          "count": 1094,
+          "pct": 67.99
+        }
+      },
+      "POWER": {
+        "bullish": {
+          "count": 447,
+          "pct": 27.78
+        },
+        "bearish": {
+          "count": 519,
+          "pct": 32.26
+        },
+        "sideways": {
+          "count": 643,
+          "pct": 39.96
+        }
+      },
+      "PPL": {
+        "bullish": {
+          "count": 452,
+          "pct": 28.09
+        },
+        "bearish": {
+          "count": 481,
+          "pct": 29.89
+        },
+        "sideways": {
+          "count": 676,
+          "pct": 42.01
+        }
+      },
+      "PRL": {
+        "bullish": {
+          "count": 513,
+          "pct": 31.88
+        },
+        "bearish": {
+          "count": 549,
+          "pct": 34.12
+        },
+        "sideways": {
+          "count": 547,
+          "pct": 34.0
+        }
+      },
+      "PSO": {
+        "bullish": {
+          "count": 437,
+          "pct": 27.16
+        },
+        "bearish": {
+          "count": 437,
+          "pct": 27.16
+        },
+        "sideways": {
+          "count": 735,
+          "pct": 45.68
+        }
+      },
+      "PSX": {
+        "bullish": {
+          "count": 475,
+          "pct": 29.52
+        },
+        "bearish": {
+          "count": 514,
+          "pct": 31.95
+        },
+        "sideways": {
+          "count": 620,
+          "pct": 38.53
+        }
+      },
+      "PTC": {
+        "bullish": {
+          "count": 451,
+          "pct": 28.03
+        },
+        "bearish": {
+          "count": 527,
+          "pct": 32.75
+        },
+        "sideways": {
+          "count": 631,
+          "pct": 39.22
+        }
+      },
+      "RMPL": {
+        "bullish": {
+          "count": 245,
+          "pct": 22.03
+        },
+        "bearish": {
+          "count": 235,
+          "pct": 21.13
+        },
+        "sideways": {
+          "count": 632,
+          "pct": 56.83
+        }
+      },
+      "SAZEW": {
+        "bullish": {
+          "count": 478,
+          "pct": 29.71
+        },
+        "bearish": {
+          "count": 495,
+          "pct": 30.76
+        },
+        "sideways": {
+          "count": 636,
+          "pct": 39.53
+        }
+      },
+      "SCBPL": {
+        "bullish": {
+          "count": 433,
+          "pct": 28.49
+        },
+        "bearish": {
+          "count": 379,
+          "pct": 24.93
+        },
+        "sideways": {
+          "count": 708,
+          "pct": 46.58
+        }
+      },
+      "SEARL": {
+        "bullish": {
+          "count": 431,
+          "pct": 26.79
+        },
+        "bearish": {
+          "count": 498,
+          "pct": 30.95
+        },
+        "sideways": {
+          "count": 680,
+          "pct": 42.26
+        }
+      },
+      "SHFA": {
+        "bullish": {
+          "count": 381,
+          "pct": 24.74
+        },
+        "bearish": {
+          "count": 406,
+          "pct": 26.36
+        },
+        "sideways": {
+          "count": 753,
+          "pct": 48.9
+        }
+      },
+      "SNGP": {
+        "bullish": {
+          "count": 461,
+          "pct": 28.65
+        },
+        "bearish": {
+          "count": 488,
+          "pct": 30.33
+        },
+        "sideways": {
+          "count": 660,
+          "pct": 41.02
+        }
+      },
+      "SRVI": {
+        "bullish": {
+          "count": 449,
+          "pct": 28.12
+        },
+        "bearish": {
+          "count": 448,
+          "pct": 28.05
+        },
+        "sideways": {
+          "count": 700,
+          "pct": 43.83
+        }
+      },
+      "SSGC": {
+        "bullish": {
+          "count": 429,
+          "pct": 26.66
+        },
+        "bearish": {
+          "count": 547,
+          "pct": 34.0
+        },
+        "sideways": {
+          "count": 633,
+          "pct": 39.34
+        }
+      },
+      "SSOM": {
+        "bullish": {
+          "count": 400,
+          "pct": 35.06
+        },
+        "bearish": {
+          "count": 423,
+          "pct": 37.07
+        },
+        "sideways": {
+          "count": 318,
+          "pct": 27.87
+        }
+      },
+      "SYS": {
+        "bullish": {
+          "count": 411,
+          "pct": 25.58
+        },
+        "bearish": {
+          "count": 417,
+          "pct": 25.95
+        },
+        "sideways": {
+          "count": 779,
+          "pct": 48.48
+        }
+      },
+      "TGL": {
+        "bullish": {
+          "count": 436,
+          "pct": 27.1
+        },
+        "bearish": {
+          "count": 481,
+          "pct": 29.89
+        },
+        "sideways": {
+          "count": 692,
+          "pct": 43.01
+        }
+      },
+      "THALL": {
+        "bullish": {
+          "count": 417,
+          "pct": 26.48
+        },
+        "bearish": {
+          "count": 426,
+          "pct": 27.05
+        },
+        "sideways": {
+          "count": 732,
+          "pct": 46.48
+        }
+      },
+      "TREET": {
+        "bullish": {
+          "count": 487,
+          "pct": 30.27
+        },
+        "bearish": {
+          "count": 531,
+          "pct": 33.0
+        },
+        "sideways": {
+          "count": 591,
+          "pct": 36.73
+        }
+      },
+      "TRG": {
+        "bullish": {
+          "count": 526,
+          "pct": 32.69
+        },
+        "bearish": {
+          "count": 545,
+          "pct": 33.87
+        },
+        "sideways": {
+          "count": 538,
+          "pct": 33.44
+        }
+      },
+      "UBL": {
+        "bullish": {
+          "count": 391,
+          "pct": 24.3
+        },
+        "bearish": {
+          "count": 351,
+          "pct": 21.81
+        },
+        "sideways": {
+          "count": 867,
+          "pct": 53.88
+        }
+      },
+      "YOUW": {
+        "bullish": {
+          "count": 494,
+          "pct": 30.7
+        },
+        "bearish": {
+          "count": 635,
+          "pct": 39.47
+        },
+        "sideways": {
+          "count": 480,
+          "pct": 29.83
+        }
+      }
+    },
+    "per_symbol_row_count": {
+      "ABL": 1564,
+      "ABOT": 1588,
+      "AGP": 1609,
+      "AHCL": 1472,
+      "AICL": 1593,
+      "AIRLINK": 1182,
+      "AKBL": 1608,
+      "APL": 1608,
+      "ATLH": 1389,
+      "ATRL": 1609,
+      "BAFL": 1609,
+      "BAHL": 1609,
+      "BNWM": 1314,
+      "BOP": 1609,
+      "BWCL": 1600,
+      "CHCC": 1609,
+      "CNERGY": 1590,
+      "COLG": 1415,
+      "CPHL": 1231,
+      "DCR": 1609,
+      "DGKC": 1609,
+      "EFERT": 1609,
+      "ENGROH": 1592,
+      "FABL": 1609,
+      "FATIMA": 1608,
+      "FCCL": 1609,
+      "FFC": 1609,
+      "FFL": 1609,
+      "FHAM": 1526,
+      "GADT": 1335,
+      "GAL": 1608,
+      "GHGL": 1607,
+      "GHNI": 1609,
+      "GLAXO": 1607,
+      "HBL": 1609,
+      "HCAR": 1609,
+      "HGFA": 1405,
+      "HINOON": 1603,
+      "HMB": 1589,
+      "HUBC": 1609,
+      "HUMNL": 1609,
+      "IBFL": 991,
+      "ILP": 1609,
+      "INDU": 1608,
+      "INIL": 1609,
+      "ISL": 1609,
+      "JDWS": 1117,
+      "JVDC": 1364,
+      "KAPCO": 1589,
+      "KEL": 1609,
+      "KOHC": 1608,
+      "KTML": 1559,
+      "LCI": 1592,
+      "LOTCHEM": 1609,
+      "LUCK": 1604,
+      "MARI": 1609,
+      "MCB": 1590,
+      "MEBL": 1609,
+      "MLCF": 1609,
+      "MTL": 1609,
+      "MUREB": 1415,
+      "NATF": 1607,
+      "NBP": 1609,
+      "NESTLE": 1357,
+      "NML": 1609,
+      "NPL": 1602,
+      "NRL": 1609,
+      "OGDC": 1609,
+      "PABC": 1225,
+      "PAEL": 1609,
+      "PAKT": 1303,
+      "PGLC": 994,
+      "PIBTL": 1609,
+      "PIOC": 1609,
+      "PKGS": 1592,
+      "POL": 1609,
+      "POWER": 1609,
+      "PPL": 1609,
+      "PRL": 1609,
+      "PSO": 1609,
+      "PSX": 1609,
+      "PTC": 1609,
+      "RMPL": 1112,
+      "SAZEW": 1609,
+      "SCBPL": 1520,
+      "SEARL": 1609,
+      "SHFA": 1540,
+      "SNGP": 1609,
+      "SRVI": 1597,
+      "SSGC": 1609,
+      "SSOM": 1141,
+      "SYS": 1607,
+      "TGL": 1609,
+      "THALL": 1575,
+      "TREET": 1609,
+      "TRG": 1609,
+      "UBL": 1609,
+      "YOUW": 1609
+    }
+  }
+}

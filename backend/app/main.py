@@ -1,13 +1,15 @@
+import logging
 from contextlib import asynccontextmanager
-from app.api.v1.health import router as health_router
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.health import router as health_router
 from app.core.config import get_settings
 from app.core.exceptions import register_error_handlers
 from app.core.logging import setup_logging
-from app.db.base import engine
+from app.db.base import Base, engine
+
 from app.api.v1 import (
     alerts,
     assistant,
@@ -30,12 +32,24 @@ from app.api.v1 import (
 )
 
 settings = get_settings()
+log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+
+    # ── Create tables if they don't exist ──────────────────────────────
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    log.info("Database tables ensured")
+
+    # ── Load ML model + scaler + metadata ──────────────────────────────
+    from app.ml.serving.model_loader import load_artifacts
+    load_artifacts()
+
     yield
+
     await engine.dispose()
 
 
@@ -44,6 +58,8 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
     lifespan=lifespan,
 )
+
+register_error_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,

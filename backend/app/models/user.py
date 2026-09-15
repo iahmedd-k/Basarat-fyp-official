@@ -25,6 +25,7 @@ class User(Base):
     portfolios = relationship("Portfolio", back_populates="user", lazy="selectin")
     alerts = relationship("Alert", back_populates="user", lazy="selectin")
     devices = relationship("Device", back_populates="user", lazy="selectin")
+    posts = relationship("Post", back_populates="author", lazy="selectin")
 
 
 class Device(Base):

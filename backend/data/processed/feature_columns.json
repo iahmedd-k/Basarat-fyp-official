@@ -1,0 +1,22 @@
+[
+  "atr_14",
+  "bb_lower",
+  "bb_mid",
+  "bb_upper",
+  "close",
+  "ema_12",
+  "ema_26",
+  "high",
+  "low",
+  "macd",
+  "macd_hist",
+  "macd_signal",
+  "open",
+  "pkr_usd_rate",
+  "policy_rate",
+  "rsi_14",
+  "sma_20",
+  "sma_50",
+  "volume",
+  "volume_zscore_20"
+]

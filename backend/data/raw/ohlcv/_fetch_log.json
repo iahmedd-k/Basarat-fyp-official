@@ -1,0 +1,1746 @@
+{
+  "runs": [
+    {
+      "mode": "incremental",
+      "date_range": "2020-01-01 -> 2025-09-15",
+      "total_symbols": 103,
+      "ok": 12,
+      "skipped": 91,
+      "errors": 0,
+      "no_data": 0,
+      "results": [
+        {
+          "symbol": "ABL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "ABOT",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "AGP",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "AHCL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "AICL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "AIRLINK",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "AKBL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "APL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "ATLH",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "ATRL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "BAFL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "BAHL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "BNWM",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "BOP",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "BWCL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "CHCC",
+          "row_count": 1423,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "CNERGY",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "COLG",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "CPHL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "DCR",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "DGKC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "EFERT",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "ENGROH",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "FABL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "FATIMA",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "FCCL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "FFC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "FFL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "FHAM",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "GADT",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "GAL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "GHGL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "GHNI",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "GLAXO",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "HALEON",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "HBL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "HCAR",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "HGFA",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "HINOON",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "HMB",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "HUBC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "HUMNL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "IBFL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "ILP",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "INDU",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "INIL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "ISL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "JDWS",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "JVDC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "KAPCO",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "KEL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "KOHC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "KTML",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "LCI",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "LOTCHEM",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "LUCK",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "MARI",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "MCB",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "MEBL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "MEHT",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "MLCF",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "MTL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "MUREB",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "NATF",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "NBP",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "NESTLE",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "NML",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "NPL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "NRL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "OGDC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PABC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PAEL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PAKT",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PGLC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PIBTL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PIOC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PKGS",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "POL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "POWER",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PPL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PRL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PSEL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PSO",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PSX",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "PTC",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "RMPL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "SAZEW",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "SCBPL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "SEARL",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "SHFA",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "SNGP",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "SRVI",
+          "status": "skipped",
+          "reason": "up_to_date"
+        },
+        {
+          "symbol": "SSGC",
+          "row_count": 1423,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SSOM",
+          "row_count": 978,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 27,
+          "zero_negative_prices": 51,
+          "zero_negative_volume": 7,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SYS",
+          "row_count": 1421,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "TGL",
+          "row_count": 1423,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "THALL",
+          "row_count": 1390,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 2,
+          "zero_negative_prices": 1,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "TPLRF1",
+          "row_count": 333,
+          "date_min": "2024-05-20",
+          "date_max": "2025-09-30",
+          "large_gaps": 0,
+          "zero_negative_prices": 6,
+          "zero_negative_volume": 1,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "TREET",
+          "row_count": 1423,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "TRG",
+          "row_count": 1423,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "UBL",
+          "row_count": 1423,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "UPFL",
+          "row_count": 794,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 37,
+          "zero_negative_prices": 56,
+          "zero_negative_volume": 14,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "YOUW",
+          "row_count": 1423,
+          "date_min": "2020-01-01",
+          "date_max": "2025-09-30",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "mode": "incremental",
+      "date_range": "2000-01-01 -> 2026-09-15",
+      "total_symbols": 103,
+      "ok": 103,
+      "skipped": 0,
+      "errors": 0,
+      "no_data": 0,
+      "results": [
+        {
+          "symbol": "ABL",
+          "row_count": 1617,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 2,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "ABOT",
+          "row_count": 1641,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 4,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "AGP",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "AHCL",
+          "row_count": 1531,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 5,
+          "zero_negative_prices": 12,
+          "zero_negative_volume": 1,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "AICL",
+          "row_count": 1644,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "AIRLINK",
+          "row_count": 1233,
+          "date_min": "2021-09-22",
+          "date_max": "2026-09-14",
+          "large_gaps": 1,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "AKBL",
+          "row_count": 1659,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "APL",
+          "row_count": 1659,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "ATLH",
+          "row_count": 1461,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 5,
+          "zero_negative_prices": 25,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "ATRL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "BAFL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "BAHL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "BNWM",
+          "row_count": 1378,
+          "date_min": "2020-01-02",
+          "date_max": "2026-09-14",
+          "large_gaps": 11,
+          "zero_negative_prices": 31,
+          "zero_negative_volume": 3,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "BOP",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "BWCL",
+          "row_count": 1654,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 3,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "CHCC",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "CNERGY",
+          "row_count": 1641,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 3,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "COLG",
+          "row_count": 1479,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 5,
+          "zero_negative_prices": 13,
+          "zero_negative_volume": 4,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "CPHL",
+          "row_count": 1282,
+          "date_min": "2021-07-09",
+          "date_max": "2026-09-14",
+          "large_gaps": 1,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "DCR",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "DGKC",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "EFERT",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "ENGROH",
+          "row_count": 1643,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "FABL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "FATIMA",
+          "row_count": 1659,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "FCCL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "FFC",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "FFL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "FHAM",
+          "row_count": 1584,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 4,
+          "zero_negative_prices": 7,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "GADT",
+          "row_count": 1409,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 11,
+          "zero_negative_prices": 39,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "GAL",
+          "row_count": 1659,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "GHGL",
+          "row_count": 1659,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 1,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "GHNI",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "GLAXO",
+          "row_count": 1658,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "HALEON",
+          "row_count": 888,
+          "date_min": "2023-01-31",
+          "date_max": "2026-09-14",
+          "large_gaps": 0,
+          "zero_negative_prices": 3,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "HBL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "HCAR",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "HGFA",
+          "row_count": 1466,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 3,
+          "zero_negative_prices": 14,
+          "zero_negative_volume": 1,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "HINOON",
+          "row_count": 1654,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "HMB",
+          "row_count": 1640,
+          "date_min": "2020-01-02",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "HUBC",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "HUMNL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "IBFL",
+          "row_count": 1066,
+          "date_min": "2020-01-03",
+          "date_max": "2026-09-14",
+          "large_gaps": 38,
+          "zero_negative_prices": 50,
+          "zero_negative_volume": 12,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "ILP",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "INDU",
+          "row_count": 1659,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "INIL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "ISL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "JDWS",
+          "row_count": 1186,
+          "date_min": "2020-01-08",
+          "date_max": "2026-09-14",
+          "large_gaps": 30,
+          "zero_negative_prices": 32,
+          "zero_negative_volume": 6,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "JVDC",
+          "row_count": 1440,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 12,
+          "zero_negative_prices": 41,
+          "zero_negative_volume": 1,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "KAPCO",
+          "row_count": 1640,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 3,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "KEL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "KOHC",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 1,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "KTML",
+          "row_count": 1622,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 20,
+          "zero_negative_volume": 2,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "LCI",
+          "row_count": 1644,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 1,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "LOTCHEM",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "LUCK",
+          "row_count": 1655,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 3,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "MARI",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "MCB",
+          "row_count": 1641,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 3,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "MEBL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "MEHT",
+          "row_count": 890,
+          "date_min": "2020-01-09",
+          "date_max": "2026-09-14",
+          "large_gaps": 45,
+          "zero_negative_prices": 98,
+          "zero_negative_volume": 33,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "MLCF",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "MTL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "MUREB",
+          "row_count": 1474,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 5,
+          "zero_negative_prices": 10,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "NATF",
+          "row_count": 1658,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "NBP",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "NESTLE",
+          "row_count": 1421,
+          "date_min": "2020-01-02",
+          "date_max": "2026-09-14",
+          "large_gaps": 8,
+          "zero_negative_prices": 21,
+          "zero_negative_volume": 3,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "NML",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "NPL",
+          "row_count": 1655,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 4,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "NRL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "OGDC",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PABC",
+          "row_count": 1276,
+          "date_min": "2021-07-16",
+          "date_max": "2026-09-14",
+          "large_gaps": 1,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PAEL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PAKT",
+          "row_count": 1365,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 12,
+          "zero_negative_prices": 19,
+          "zero_negative_volume": 2,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PGLC",
+          "row_count": 1075,
+          "date_min": "2020-01-20",
+          "date_max": "2026-09-14",
+          "large_gaps": 33,
+          "zero_negative_prices": 46,
+          "zero_negative_volume": 22,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PIBTL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PIOC",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PKGS",
+          "row_count": 1644,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 3,
+          "zero_negative_prices": 1,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "POL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "POWER",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PPL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PRL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PSEL",
+          "row_count": 908,
+          "date_min": "2020-01-14",
+          "date_max": "2026-09-14",
+          "large_gaps": 31,
+          "zero_negative_prices": 99,
+          "zero_negative_volume": 35,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PSO",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PSX",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "PTC",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "RMPL",
+          "row_count": 1189,
+          "date_min": "2020-01-03",
+          "date_max": "2026-09-14",
+          "large_gaps": 27,
+          "zero_negative_prices": 52,
+          "zero_negative_volume": 12,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SAZEW",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SCBPL",
+          "row_count": 1579,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 8,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SEARL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SHFA",
+          "row_count": 1598,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 11,
+          "zero_negative_volume": 1,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SNGP",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SRVI",
+          "row_count": 1648,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SSGC",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SSOM",
+          "row_count": 1215,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 27,
+          "zero_negative_prices": 51,
+          "zero_negative_volume": 7,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "SYS",
+          "row_count": 1658,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "TGL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "THALL",
+          "row_count": 1627,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 1,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "TPLRF1",
+          "row_count": 570,
+          "date_min": "2024-05-20",
+          "date_max": "2026-09-14",
+          "large_gaps": 0,
+          "zero_negative_prices": 6,
+          "zero_negative_volume": 1,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "TREET",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "TRG",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "UBL",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "UPFL",
+          "row_count": 1031,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 37,
+          "zero_negative_prices": 56,
+          "zero_negative_volume": 14,
+          "duplicate_dates": 0,
+          "status": "ok"
+        },
+        {
+          "symbol": "YOUW",
+          "row_count": 1660,
+          "date_min": "2020-01-01",
+          "date_max": "2026-09-14",
+          "large_gaps": 2,
+          "zero_negative_prices": 0,
+          "zero_negative_volume": 0,
+          "duplicate_dates": 0,
+          "status": "ok"
+        }
+      ]
+    }
+  ]
+}

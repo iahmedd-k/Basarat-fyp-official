@@ -1,0 +1,26 @@
+{
+  "runs": [
+    {
+      "mode": "full",
+      "date_range": "2019-01-01 -> 2026-09-15",
+      "rows_fetched": 0,
+      "status": "no_data"
+    },
+    {
+      "mode": "full",
+      "date_range": "2019-01-01 -> 2026-09-15",
+      "rows_fetched": 1884,
+      "date_min": "2018-12-31",
+      "date_max": "2026-08-31",
+      "status": "ok"
+    },
+    {
+      "mode": "incremental",
+      "date_range": "2026-09-01 -> 2026-09-15",
+      "rows_fetched": 1884,
+      "date_min": "2018-12-31",
+      "date_max": "2026-08-31",
+      "status": "ok"
+    }
+  ]
+}
