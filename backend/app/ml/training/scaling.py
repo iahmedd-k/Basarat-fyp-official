@@ -23,7 +23,7 @@ from sklearn.preprocessing import StandardScaler
 
 log = logging.getLogger("training.scaling")
 
-SCALER_PATH = Path("data/processed/scaler.pkl")
+SCALER_PATH = Path("data/scalers/scaler.pkl")
 
 
 def fit_scaler(X_train: np.ndarray) -> StandardScaler:

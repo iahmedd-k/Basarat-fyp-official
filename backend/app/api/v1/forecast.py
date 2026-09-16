@@ -50,7 +50,7 @@ async def get_stock_forecast(
         if not artifacts.model_ready:
             raise ServiceUnavailableError("ML model is not loaded yet")
 
-        result = get_forecast(symbol)
+        result = get_forecast(symbol, horizon=horizon)
 
         await log_prediction(
             db,
@@ -60,7 +60,7 @@ async def get_stock_forecast(
             bullish_pct=result["bullish_pct"],
             bearish_pct=result["bearish_pct"],
             sideways_pct=result["sideways_pct"],
-            confidence=result["confidence"],
+            top_class_probability=result["top_class_probability"],
             as_of_date=result["as_of_date"],
             target_date=result["predicted_for_date"],
             model_version=result["model_version"],
@@ -116,7 +116,7 @@ async def get_forecast_history(
                 bullish_pct=row.bullish_pct,
                 bearish_pct=row.bearish_pct,
                 sideways_pct=row.sideways_pct,
-                confidence=row.confidence,
+                top_class_probability=row.top_class_probability,
                 target_date=row.target_date,
                 actual_direction=row.actual_direction,
                 was_correct=row.was_correct,

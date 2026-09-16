@@ -110,7 +110,7 @@ def save_label_mapping(
     filename: str = "label_mapping.json",
 ) -> Path:
     """Write label_mapping.json to disk."""
-    out_dir = output_dir or Path("data/processed")
+    out_dir = output_dir or Path("data/features")
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / filename
     path.write_text(json.dumps(LABEL_MAPPING, indent=2), encoding="utf-8")

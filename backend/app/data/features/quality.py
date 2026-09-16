@@ -21,7 +21,7 @@ def build_feature_quality_report(
     df: pd.DataFrame,
     label_report: Dict[str, Any],
     output_dir: Optional[Path] = None,
-    filename: str = "_feature_quality_report.json",
+    filename: str = "feature_quality.json",
 ) -> Dict[str, Any]:
     """Build and save the feature quality report.
 
@@ -84,7 +84,7 @@ def build_feature_quality_report(
     report["label_report"] = label_report
 
     # Save
-    out_dir = output_dir or Path("data/processed")
+    out_dir = output_dir or Path("data/reports")
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / filename
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")

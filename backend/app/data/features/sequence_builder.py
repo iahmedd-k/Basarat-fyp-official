@@ -119,7 +119,6 @@ def save_sequences(
     X: np.ndarray,
     y: np.ndarray,
     meta: pd.DataFrame,
-    feature_columns: List[str],
     output_dir: Optional[Path] = None,
     prefix: str = "",
 ) -> Dict[str, Path]:
@@ -131,7 +130,7 @@ def save_sequences(
         Optional prefix for file names (e.g. "thresh05" -> sequences_thresh05.npz).
         Empty string uses the default names (sequences.npz, etc.).
     """
-    out_dir = output_dir or Path("data/processed")
+    out_dir = output_dir or Path("data/sequences")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     suffix = f"_{prefix}" if prefix else ""
@@ -147,11 +146,5 @@ def save_sequences(
     meta.to_parquet(meta_path, index=False)
     paths["meta"] = meta_path
     log.info("Saved meta -> %s (%d rows)", meta_path, len(meta))
-
-    col_path = out_dir / "feature_columns.json"
-    import json
-    col_path.write_text(json.dumps(feature_columns, indent=2), encoding="utf-8")
-    paths["feature_columns"] = col_path
-    log.info("Saved feature columns -> %s (%d features)", col_path, len(feature_columns))
 
     return paths

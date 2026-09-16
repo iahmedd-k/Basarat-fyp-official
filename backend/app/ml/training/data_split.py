@@ -24,8 +24,8 @@ TRAIN_CUTOFF = pd.Timestamp("2024-07-01")   # train: before this date
 VAL_CUTOFF = pd.Timestamp("2025-07-01")     # val:   [TRAIN_CUTOFF, VAL_CUTOFF)
 # test:  >= VAL_CUTOFF
 
-DATA_DIR = Path("data/processed")
-REPORT_PATH = DATA_DIR / "_split_report.json"
+DATA_DIR = Path("data/sequences")
+REPORT_PATH = Path("data/reports/split.json")
 
 
 def time_split(

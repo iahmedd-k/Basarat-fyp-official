@@ -9,3 +9,5 @@ from app.models.alert import Alert, AlertRule
 from app.models.community import Post, Comment, Vote, Report
 from app.models.shariah import ShariahScreening
 from app.models.assistant import Conversation, Message
+from app.models.model_registry import ModelRegistry
+from app.models.training_run import TrainingRun

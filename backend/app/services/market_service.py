@@ -1,9 +1,12 @@
+import logging
 import threading
 import time
 
 from collections import defaultdict
 
 import pypsx_toolkit
+
+log = logging.getLogger(__name__)
 
 MARKET_DATA_TTL_SECONDS = 60
 
@@ -35,24 +38,55 @@ class MarketService:
             if code in self.MAIN_INDICES
         ]
 
+    @staticmethod
+    def _safe_float(value, default=0.0):
+        import math
+        if value is None:
+            return default
+        try:
+            v = float(value)
+            return default if math.isnan(v) or math.isinf(v) else v
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _safe_int(value, default=0):
+        import math
+        if value is None:
+            return default
+        try:
+            v = float(value)
+            return default if math.isnan(v) or math.isinf(v) else int(v)
+        except (TypeError, ValueError):
+            return default
+
     def get_index_constituents(self, index_code):
+        import pandas as pd
+
         constituents = pypsx_toolkit.index_constituents(index_code)
-        return [
-            {
-                "symbol": symbol,
-                "name": row["NAME"],
-                "ldcp": row["LDCP"],
-                "current": row["CURRENT"],
-                "change": row["CHANGE"],
-                "change_pct": row["CHANGE %"],
-                "weight_pct": row["IDX WTG %"],
-                "index_points": row["IDX POINT"],
-                "volume": row["VOLUME"],
-                "freefloat_m": row["FREEFLOAT (M)"],
-                "market_cap_m": row["MARKET CAP (M)"],
-            }
-            for symbol, row in constituents.iterrows()
-        ]
+        if constituents is None or (isinstance(constituents, pd.DataFrame) and constituents.empty):
+            return []
+
+        results = []
+        for symbol, row in constituents.iterrows():
+            try:
+                results.append({
+                    "symbol": str(symbol),
+                    "name": str(row.get("NAME", symbol)),
+                    "ldcp": self._safe_float(row.get("LDCP")),
+                    "current": self._safe_float(row.get("CURRENT")),
+                    "change": self._safe_float(row.get("CHANGE")),
+                    "change_pct": self._safe_float(row.get("CHANGE %")),
+                    "weight_pct": self._safe_float(row.get("IDX WTG %")),
+                    "index_points": self._safe_float(row.get("IDX POINT")),
+                    "volume": self._safe_int(row.get("VOLUME")),
+                    "freefloat_m": self._safe_float(row.get("FREEFLOAT (M)")),
+                    "market_cap_m": self._safe_float(row.get("MARKET CAP (M)")),
+                })
+            except Exception:
+                log.warning("Skipping malformed constituent row: %s", symbol, exc_info=True)
+                continue
+        return results
 
     def get_market_data(self, force_refresh=False):
         global _market_data_cache, _market_data_cache_time

@@ -14,7 +14,7 @@ import tensorflow as tf
 log = logging.getLogger("training.train")
 
 MODELS_DIR = Path("models")
-HISTORY_PATH = Path("data/processed/_training_history.json")
+HISTORY_PATH = Path("data/reports/training_history.json")
 
 
 def train_model(
@@ -26,7 +26,7 @@ def train_model(
     batch_size: int = 32,
     max_epochs: int = 50,
     patience: int = 5,
-    model_save_path: Path = MODELS_DIR / "gru_v1.keras",
+    model_save_path: Path = MODELS_DIR / "gru_v1" / "model.keras",
     history_path: Path = HISTORY_PATH,
     class_weight: dict | None = None,
     metadata_path: Path | None = None,
@@ -37,7 +37,7 @@ def train_model(
     -------
     dict with keys: history, best_val_accuracy, training_duration_sec, epochs_run.
     """
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    model_save_path.parent.mkdir(parents=True, exist_ok=True)
 
     callbacks = [
         tf.keras.callbacks.EarlyStopping(

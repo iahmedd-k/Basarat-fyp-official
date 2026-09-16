@@ -19,10 +19,10 @@ async def log_prediction(
     bullish_pct: float,
     bearish_pct: float,
     sideways_pct: float,
-    confidence: float,
+    top_class_probability: float,
     as_of_date,
     target_date,
-    model_version: str = "gru_v1",
+    model_version: str = "ensemble",
 ) -> Prediction:
     """Insert one row per served forecast — every call to GET /forecast."""
     row = Prediction(
@@ -33,7 +33,7 @@ async def log_prediction(
         bullish_pct=bullish_pct,
         bearish_pct=bearish_pct,
         sideways_pct=sideways_pct,
-        confidence=confidence,
+        top_class_probability=top_class_probability,
         as_of_date=as_of_date,
         target_date=target_date,
         model_version=model_version,
@@ -43,5 +43,5 @@ async def log_prediction(
     db.add(row)
     await db.flush()
     log.info("Logged prediction: %s %s -> %s (%.1f%%) target=%s",
-             symbol, horizon, predicted_direction, confidence, target_date)
+             symbol, horizon, predicted_direction, top_class_probability, target_date)
     return row

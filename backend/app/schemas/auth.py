@@ -145,7 +145,7 @@ class ForecastResponse(BaseModel):
     bullish_pct: float
     bearish_pct: float
     sideways_pct: float
-    confidence: float
+    top_class_probability: float
     horizon: str
 
 

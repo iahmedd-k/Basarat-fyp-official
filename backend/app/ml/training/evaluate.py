@@ -12,16 +12,18 @@ import tensorflow as tf
 
 log = logging.getLogger("training.evaluate")
 
-REPORT_PATH = Path("data/processed/_evaluation_report.json")
+REPORT_PATH = Path("data/reports/evaluation.json")
 
 
-def _load_label_names() -> dict:
-    """Load reverse label mapping from label_mapping.json (int -> name)."""
-    path = Path("data/processed/label_mapping.json")
-    if path.exists():
-        mapping = json.loads(path.read_text(encoding="utf-8"))
-        return {v: k for k, v in mapping.items()}
-    return {0: "bearish", 1: "sideways", 2: "bullish"}
+def _load_label_mapping() -> dict:
+    """Load label mapping from label_mapping.json (name -> int)."""
+    path = Path("data/features/label_mapping.json")
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Required label_mapping.json not found at {path}. "
+            "Cannot evaluate without a consistent label mapping."
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def evaluate(
@@ -30,7 +32,7 @@ def evaluate(
     y_test: np.ndarray,
     y_train: np.ndarray,
     report_path: Path = REPORT_PATH,
-    label_names: dict | None = None,
+    label_mapping: dict | None = None,
 ) -> dict:
     """Evaluate on the held-out test set and compare to a naive baseline.
 
@@ -40,13 +42,18 @@ def evaluate(
     X_test, y_test : test split
     y_train : training labels (to determine majority class)
     report_path : where to save the JSON report
+    label_mapping : {"bullish": 0, "bearish": 1, "sideways": 2} — if None,
+        loaded from data/features/label_mapping.json
 
     Returns
     -------
     dict with accuracy, per-class metrics, confusion matrix, baseline info.
     """
-    if label_names is None:
-        label_names = _load_label_names()
+    if label_mapping is None:
+        label_mapping = _load_label_mapping()
+
+    # Reverse mapping: int -> name, SORTED by class ID for consistent order
+    label_names = {v: k for k, v in label_mapping.items()}
 
     # ── Model predictions ───────────────────────────────────────────────
     y_proba = model.predict(X_test, verbose=0)
@@ -57,10 +64,11 @@ def evaluate(
     accuracy = float(correct / len(y_test))
     log.info("Test accuracy: %.4f (%d / %d)", accuracy, correct, len(y_test))
 
-    # ── Per-class metrics ───────────────────────────────────────────────
-    n_classes = max(label_names.keys()) + 1
+    # ── Per-class metrics (ordered by class ID, matching confusion matrix rows) ─
+    n_classes = len(label_mapping)
     per_class = {}
-    for cls_id, cls_name in label_names.items():
+    for cls_id in sorted(label_names.keys()):
+        cls_name = label_names[cls_id]
         tp = int(((y_pred == cls_id) & (y_test == cls_id)).sum())
         fp = int(((y_pred == cls_id) & (y_test != cls_id)).sum())
         fn = int(((y_pred != cls_id) & (y_test == cls_id)).sum())
@@ -81,15 +89,27 @@ def evaluate(
             cls_name, precision, recall, f1, support,
         )
 
-    # ── Confusion matrix ────────────────────────────────────────────────
+    # ── Confusion matrix (rows/cols ordered by class ID) ────────────────
     cm = np.zeros((n_classes, n_classes), dtype=int)
     for true, pred in zip(y_test, y_pred):
         cm[true][pred] += 1
 
     cm_list = cm.tolist()
-    log.info("Confusion matrix (rows=true, cols=pred):")
-    for i, name in label_names.items():
-        log.info("  %10s %s", name, cm_list[i])
+    log.info("Confusion matrix (rows=true, cols=pred, order=%s):",
+             "/".join(label_names[i] for i in sorted(label_names.keys())))
+    for i in sorted(label_names.keys()):
+        log.info("  %10s %s", label_names[i], cm_list[i])
+
+    # ── Verification: per_class support must match CM row sums ───────────
+    for cls_id in sorted(label_names.keys()):
+        cls_name = label_names[cls_id]
+        row_sum = sum(cm_list[cls_id])
+        if per_class[cls_name]["support"] != row_sum:
+            raise ValueError(
+                f"per_class['{cls_name}'].support={per_class[cls_name]['support']} "
+                f"!= CM row {cls_id} sum={row_sum}. "
+                f"label_mapping may not match the data used for y_test."
+            )
 
     # ── Majority-class baseline ─────────────────────────────────────────
     train_counts = Counter(y_train.tolist())
@@ -107,6 +127,7 @@ def evaluate(
 
     # ── Build report ────────────────────────────────────────────────────
     report = {
+        "label_mapping": label_mapping,
         "test_samples": len(y_test),
         "test_accuracy": round(accuracy, 4),
         "per_class": per_class,

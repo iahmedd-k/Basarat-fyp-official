@@ -69,12 +69,17 @@ def _bbands(series: pd.Series, length: int = 20, std_dev: float = 2.0):
     return upper, mid, lower
 
 
-def _atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> pd.Series:
+def _true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    """Compute True Range (shared by ATR and ADX)."""
     prev_close = close.shift(1)
     tr1 = high - low
     tr2 = (high - prev_close).abs()
     tr3 = (low - prev_close).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    return pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+
+def _atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> pd.Series:
+    tr = _true_range(high, low, close)
     # Wilder's smoothing: EMA with alpha=1/length, seeded with SMA of first `length` values
     # Matches pandas-ta's ATR with mamode="rma" and presma=True
     atr_values = tr.copy().astype(float)
@@ -83,6 +88,50 @@ def _atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) ->
     atr_values.iloc[length - 1] = sma_seed
     atr_result = atr_values.ewm(alpha=1 / length, adjust=False).mean()
     return atr_result
+
+
+def _adx(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> pd.Series:
+    """Average Directional Index (Wilder's smoothing, same convention as ATR/RSI).
+
+    Steps:
+      1. +DM / -DM from directional movement
+      2. Smooth with Wilder's (alpha=1/length)
+      3. +DI, -DI
+      4. DX, then ADX = smoothed DX
+    """
+    up_move = high - high.shift(1)
+    down_move = low.shift(1) - low
+
+    plus_dm = pd.Series(0.0, index=high.index)
+    minus_dm = pd.Series(0.0, index=high.index)
+
+    plus_mask = (up_move > down_move) & (up_move > 0)
+    minus_mask = (down_move > up_move) & (down_move > 0)
+    plus_dm[plus_mask] = up_move[plus_mask]
+    minus_dm[minus_mask] = down_move[minus_mask]
+
+    tr = _true_range(high, low, close)
+
+    # Wilder's smoothing (seed with SMA of first `length` values)
+    def _wilder_smooth(series: pd.Series, period: int) -> pd.Series:
+        out = series.copy().astype(float)
+        sma_seed = series.iloc[:period].mean()
+        out.iloc[:period - 1] = np.nan
+        out.iloc[period - 1] = sma_seed
+        return out.ewm(alpha=1 / period, adjust=False).mean()
+
+    atr_smooth = _wilder_smooth(tr, length)
+    plus_dm_smooth = _wilder_smooth(plus_dm, length)
+    minus_dm_smooth = _wilder_smooth(minus_dm, length)
+
+    plus_di = 100 * plus_dm_smooth / atr_smooth
+    minus_di = 100 * minus_dm_smooth / atr_smooth
+
+    di_sum = plus_di + minus_di
+    dx = 100 * (plus_di - minus_di).abs() / di_sum.replace(0, np.nan)
+
+    adx = _wilder_smooth(dx, length)
+    return adx
 
 
 def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -130,6 +179,25 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
             vol_mean = g["volume"].rolling(20, min_periods=1).mean()
             vol_std = g["volume"].rolling(20, min_periods=1).std().replace(0, 1)
             g["volume_zscore_20"] = (g["volume"] - vol_mean) / vol_std
+
+        # ── New: trend-persistence / regime-strength features ────────────
+        g["adx_14"] = _adx(g["high"], g["low"], g["close"], length=14)
+
+        daily_ret = g["close"].pct_change()
+        # consecutive_up_days: count of consecutive positive daily returns
+        up_groups = (daily_ret <= 0).cumsum()
+        g["consecutive_up_days"] = daily_ret.groupby(up_groups).cumcount() + 1
+        g.loc[daily_ret <= 0, "consecutive_up_days"] = 0
+        # consecutive_down_days: count of consecutive negative daily returns
+        down_groups = (daily_ret >= 0).cumsum()
+        g["consecutive_down_days"] = daily_ret.groupby(down_groups).cumcount() + 1
+        g.loc[daily_ret >= 0, "consecutive_down_days"] = 0
+
+        g["return_5d"] = g["close"].pct_change(5)
+        g["return_10d"] = g["close"].pct_change(10)
+
+        rsi = _rsi(g["close"], length=14)
+        g["rsi_roc"] = rsi - rsi.shift(5)
 
         return g
 

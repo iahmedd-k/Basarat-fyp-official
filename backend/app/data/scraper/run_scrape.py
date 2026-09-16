@@ -39,7 +39,7 @@ from app.data.scraper.writers import write_combined_parquet, write_symbol_parque
 log = logging.getLogger("psx_scraper")
 
 _DEFAULT_OUTPUT_DIR = Path("data/raw/ohlcv")
-_DEFAULT_LOG_DIR = Path("data/raw/ohlcv")
+_DEFAULT_LOG_DIR = Path("data/raw/ohlcv/logs")
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ _DEFAULT_LOG_DIR = Path("data/raw/ohlcv")
 # ---------------------------------------------------------------------------
 
 def _load_fetch_log(log_dir: Path) -> dict:
-    path = log_dir / "_fetch_log.json"
+    path = log_dir / "fetch_log.json"
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
     return {"runs": []}
@@ -55,7 +55,7 @@ def _load_fetch_log(log_dir: Path) -> dict:
 
 def _save_fetch_log(log_dir: Path, entry: dict) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
-    path = log_dir / "_fetch_log.json"
+    path = log_dir / "fetch_log.json"
     existing = _load_fetch_log(log_dir)
     existing["runs"].append(entry)
     path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -63,7 +63,7 @@ def _save_fetch_log(log_dir: Path, entry: dict) -> None:
 
 def _append_symbol_error(log_dir: Path, symbol: str, error: str) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
-    path = log_dir / "_fetch_log.json"
+    path = log_dir / "fetch_log.json"
     existing = _load_fetch_log(log_dir)
     if "symbol_errors" not in existing:
         existing["symbol_errors"] = []

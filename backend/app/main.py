@@ -10,6 +10,9 @@ from app.core.exceptions import register_error_handlers
 from app.core.logging import setup_logging
 from app.db.base import Base, engine
 
+# Import all models to ensure tables are created
+from app.models import prediction, model_registry, training_run  # noqa: F401
+
 from app.api.v1 import (
     alerts,
     assistant,

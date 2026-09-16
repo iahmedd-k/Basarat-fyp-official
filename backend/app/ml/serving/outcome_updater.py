@@ -8,6 +8,12 @@ looks up the actual close price for target_date from features_daily.parquet,
 computes the realized return vs the close price at the as_of_date,
 applies the same 1% threshold from labeling.py to classify actual_direction,
 sets was_correct = (actual_direction == predicted_direction).
+
+Convention for "uncertain" predictions:
+    - actual_direction is still resolved (the market moved, we record what happened)
+    - was_correct is set to NULL (not scored) — "uncertain" is an abstention,
+      not a wrong call. This keeps accuracy metrics meaningful: only directional
+      claims are scored.
 """
 
 import logging
@@ -23,7 +29,7 @@ from app.models.prediction import Prediction
 
 log = logging.getLogger("outcome_updater")
 
-FEATURES_PATH = "data/processed/features_daily.parquet"
+FEATURES_PATH = "data/features/features_daily.parquet"
 
 
 def _classify_return(forward_return: float, threshold: float = DEFAULT_THRESHOLD) -> str:
@@ -60,6 +66,7 @@ async def update_outcomes() -> None:
 
         updated = 0
         correct = 0
+        uncertain_excluded = 0
         total_resolved = 0
 
         for row in rows:
@@ -78,7 +85,13 @@ async def update_outcomes() -> None:
             forward_return = (target_price - as_of_price) / as_of_price
 
             actual_direction = _classify_return(forward_return)
-            was_correct = actual_direction == row.predicted_direction
+
+            # "uncertain" predictions: record actual but don't score
+            if row.predicted_direction == "uncertain":
+                was_correct = None
+                uncertain_excluded += 1
+            else:
+                was_correct = actual_direction == row.predicted_direction
 
             row.actual_direction = actual_direction
             row.was_correct = was_correct
@@ -94,20 +107,24 @@ async def update_outcomes() -> None:
 
         await db.commit()
 
-        # Overall accuracy summary
+        # Overall accuracy summary (exclude uncertain from accuracy calc)
         result = await db.execute(
-            select(Prediction).where(Prediction.was_correct.is_not(None))
+            select(Prediction).where(
+                Prediction.was_correct.is_not(None),
+                Prediction.predicted_direction != "uncertain",
+            )
         )
-        all_resolved = result.scalars().all()
-        total_resolved = len(all_resolved)
-        total_correct = sum(1 for r in all_resolved if r.was_correct)
+        all_scored = result.scalars().all()
+        total_resolved = len(all_scored)
+        total_correct = sum(1 for r in all_scored if r.was_correct)
 
         log.info("=" * 60)
         log.info("OUTCOME UPDATER COMPLETE")
         log.info("  Updated this run:    %d rows", updated)
         log.info("  Correct this run:    %d / %d (%.1f%%)", correct, updated,
                  correct / updated * 100 if updated else 0)
-        log.info("  Overall resolved:    %d total", total_resolved)
+        log.info("  Uncertain excluded:  %d rows (not scored)", uncertain_excluded)
+        log.info("  Overall scored:      %d total (excl uncertain)", total_resolved)
         log.info("  Overall accuracy:    %d / %d (%.1f%%)",
                  total_correct, total_resolved,
                  total_correct / total_resolved * 100 if total_resolved else 0)

@@ -21,3 +21,20 @@ env/
 htmlcov/
 *.db
 *.sqlite3
+
+# ML data artifacts
+backend/data/raw/
+backend/data/features/*.parquet
+backend/data/sequences/
+backend/data/processed/
+backend/data/scalers/
+backend/data/reports/
+
+# Model files
+backend/models/
+
+# Log files
+*.log
+
+# Temporary files
+*_tmp.*

@@ -23,7 +23,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: basarat-celery-worker
-    command: celery -A app.celery_app worker --loglevel=info
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
     env_file:
       - .env
     depends_on:
@@ -32,7 +32,9 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./app/ml/saved_models:/app/app/ml/saved_models
+      - .:/app
+      - ./models:/app/models
+      - ./data:/app/data
     restart: unless-stopped
 
   celery-beat:
@@ -48,6 +50,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - .:/app
     restart: unless-stopped
 
   db:
@@ -62,7 +66,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d basarat"]
+      test: ["CMD-SHELL", "pg_isready -U ahmed -d basarat"]
       interval: 5s
       timeout: 5s
       retries: 5

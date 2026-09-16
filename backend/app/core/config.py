@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/basarat"
+    DATABASE_URL_SYNC: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/basarat"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -31,7 +32,16 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
 
     # ML
-    GRU_MODEL_PATH: str = "app/ml/saved_models"
+    GRU_MODEL_PATH: str = "models/gru_v1"
+
+    # Training / Retraining
+    TRAINING_LOOKBACK_YEARS: int = 5
+    TRAINING_MIN_NEW_SAMPLES: int = 100
+    MIN_ACCURACY_IMPROVEMENT: float = 0.01
+    MIN_F1_IMPROVEMENT: float = 0.01
+    MAX_ABSTENTION_INCREASE: float = 0.05
+    LABEL_THRESHOLD: float = 0.01
+    WINDOW_SIZE: int = 30
 
     class Config:
         env_file = ".env"

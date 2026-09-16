@@ -21,8 +21,9 @@ import pandas as pd
 
 log = logging.getLogger("training")
 
-DATA_DIR = Path("data/processed")
-MODELS_DIR = Path("models")
+SEQUENCES_DIR = Path("data/sequences")
+FEATURES_DIR = Path("data/features")
+MODEL_DIR = Path("models/gru_v1")
 
 # Sample symbols for sanity-check inference
 SANITY_SYMBOLS = ["OGDC", "LUCK", "ABL"]
@@ -46,12 +47,12 @@ def run_training(
     log.info("TensorFlow version: %s", tf.__version__)
 
     # ── Load data ───────────────────────────────────────────────────────
-    log.info("Loading sequences from %s ...", DATA_DIR / "sequences.npz")
-    data = np.load(DATA_DIR / "sequences.npz")
+    log.info("Loading sequences from %s ...", SEQUENCES_DIR / "sequences.npz")
+    data = np.load(SEQUENCES_DIR / "sequences.npz")
     X, y = data["X"], data["y"]
-    meta = pd.read_parquet(DATA_DIR / "sequences_meta.parquet")
-    feature_columns = json.loads((DATA_DIR / "feature_columns.json").read_text(encoding="utf-8"))
-    label_mapping = json.loads((DATA_DIR / "label_mapping.json").read_text(encoding="utf-8"))
+    meta = pd.read_parquet(SEQUENCES_DIR / "sequences_meta.parquet")
+    feature_columns = json.loads((FEATURES_DIR / "feature_columns.json").read_text(encoding="utf-8"))
+    label_mapping = json.loads((FEATURES_DIR / "label_mapping.json").read_text(encoding="utf-8"))
 
     log.info("Loaded X=%s  y=%s  meta=%d rows", X.shape, y.shape, len(meta))
     log.info("Features (%d): %s", len(feature_columns), feature_columns)
@@ -84,7 +85,7 @@ def run_training(
 
     # ── Train ───────────────────────────────────────────────────────────
     log.info("Step 4: Training ...")
-    model_path = MODELS_DIR / "gru_v1.keras"
+    model_path = MODEL_DIR / "model.keras"
     train_result = train_model(
         model, X_train, y_train, X_val, y_val,
         batch_size=batch_size,
@@ -128,7 +129,7 @@ def _sanity_check(model, scaler, feature_columns, label_mapping):
     ohlcv["date"] = pd.to_datetime(ohlcv["date"])
 
     # Need macro features for pkr_usd_rate and policy_rate
-    macro_path = DATA_DIR / "features_daily.parquet"
+    macro_path = FEATURES_DIR / "features_daily.parquet"
     if not macro_path.exists():
         log.warning("Features parquet not found, skipping sanity check")
         return

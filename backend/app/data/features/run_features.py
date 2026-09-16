@@ -35,7 +35,9 @@ from app.data.scraper.symbol_universe import get_active_symbols
 log = logging.getLogger("features")
 
 OHLCV_PATH = Path("data/raw/ohlcv/all_symbols.parquet")
-OUTPUT_DIR = Path("data/processed")
+FEATURES_DIR = Path("data/features")
+SEQUENCES_DIR = Path("data/sequences")
+REPORTS_DIR = Path("data/reports")
 
 
 def _threshold_suffix(threshold: float) -> str:
@@ -58,7 +60,9 @@ def run_features(
     label_threshold: float = DEFAULT_THRESHOLD,
 ) -> None:
     """Full feature engineering pipeline."""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    FEATURES_DIR.mkdir(parents=True, exist_ok=True)
+    SEQUENCES_DIR.mkdir(parents=True, exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     suffix = _threshold_suffix(label_threshold)
     file_prefix = f"_{suffix}" if suffix else ""
@@ -96,7 +100,7 @@ def run_features(
     df["symbol_id"] = df["symbol"].map(sym_id_map)
 
     # Save mapping
-    sym_id_path = OUTPUT_DIR.parent / "config" / "symbol_id_mapping.json"
+    sym_id_path = Path("data/config/symbol_id_mapping.json")
     sym_id_path.parent.mkdir(parents=True, exist_ok=True)
     sym_id_path.write_text(json.dumps(sym_id_map, indent=2), encoding="utf-8")
     log.info("Saved symbol ID mapping -> %s (%d symbols)", sym_id_path, len(sym_id_map))
@@ -105,7 +109,7 @@ def run_features(
     log.info("Step 4: Labeling (threshold=%.3f) ...", label_threshold)
     df, label_report = assign_labels(df, threshold=label_threshold)
     label_map_filename = f"label_mapping{file_prefix}.json" if suffix else "label_mapping.json"
-    save_label_mapping(OUTPUT_DIR, filename=label_map_filename)
+    save_label_mapping(FEATURES_DIR, filename=label_map_filename)
 
     # ── Identify feature columns ───────────────────────────────────────
     exclude_cols = {"symbol", "date", "forward_return", "label", "symbol_id"}
@@ -119,28 +123,33 @@ def run_features(
 
     # ── Save features parquet ──────────────────────────────────────────
     features_filename = f"features_daily{file_prefix}.parquet" if suffix else "features_daily.parquet"
-    features_path = OUTPUT_DIR / features_filename
+    features_path = FEATURES_DIR / features_filename
     df.to_parquet(features_path, index=False)
     log.info("Saved features -> %s (%d rows, %d cols)", features_path, len(df), len(df.columns))
 
+    # ── Feature columns ────────────────────────────────────────────────
+    columns_path = FEATURES_DIR / "feature_columns.json"
+    columns_path.write_text(json.dumps(feature_columns, indent=2), encoding="utf-8")
+    log.info("Saved feature columns -> %s (%d features)", columns_path, len(feature_columns))
+
     # ── Quality Report ─────────────────────────────────────────────────
     log.info("Step 5: Quality report ...")
-    quality_filename = f"_feature_quality_report{file_prefix}.json" if suffix else "_feature_quality_report.json"
-    build_feature_quality_report(df, label_report, OUTPUT_DIR, filename=quality_filename)
+    quality_filename = f"feature_quality{file_prefix}.json" if suffix else "feature_quality.json"
+    build_feature_quality_report(df, label_report, REPORTS_DIR, filename=quality_filename)
 
     # ── Build sequences ────────────────────────────────────────────────
     log.info("Step 6: Building sequences (window_size=%d) ...", window_size)
     X, y, meta = build_sequences(df, feature_columns, label_report["label_mapping"], window_size)
-    save_sequences(X, y, meta, feature_columns, OUTPUT_DIR, prefix=suffix)
+    save_sequences(X, y, meta, SEQUENCES_DIR, prefix=suffix)
 
     log.info("=" * 60)
     log.info("Pipeline complete!")
     log.info("  Features parquet: %s", features_path)
-    log.info("  Sequences:        %s", OUTPUT_DIR / f"sequences{file_prefix}.npz")
+    log.info("  Sequences:        %s", SEQUENCES_DIR / f"sequences{file_prefix}.npz")
     log.info("  X shape:          %s", X.shape if X.size > 0 else "empty")
     log.info("  y shape:          %s", y.shape if y.size > 0 else "empty")
-    log.info("  Label mapping:    %s", OUTPUT_DIR / label_map_filename)
-    log.info("  Quality report:   %s", OUTPUT_DIR / quality_filename)
+    log.info("  Label mapping:    %s", FEATURES_DIR / label_map_filename)
+    log.info("  Quality report:   %s", REPORTS_DIR / quality_filename)
     log.info("=" * 60)
 
 

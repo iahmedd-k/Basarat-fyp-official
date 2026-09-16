@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 import pypsx_toolkit
+from fastapi import Depends
 
 from app.services.market_service import MarketService
 
@@ -33,11 +34,22 @@ def _now():
 
 
 class StockService:
-    def __init__(self, market_service: MarketService = None):
-        self._market = market_service or MarketService()
+    def __init__(self, market_service: MarketService = Depends(MarketService)):
+        self._market = market_service
 
     def _get_market_frame(self):
-        return self._market.get_market_data()
+        import pandas as pd
+
+        data = self._market.get_market_data()
+        if data is None:
+            return None
+        if isinstance(data, pd.DataFrame):
+            return data
+        if isinstance(data, list):
+            if not data:
+                return pd.DataFrame()
+            return pd.DataFrame(data).set_index("symbol")
+        return None
 
     def search_symbols(self, q: str, limit: int = 10):
         q = (q or "").strip().upper()
