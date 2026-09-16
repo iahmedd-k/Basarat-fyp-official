@@ -1,6 +1,10 @@
-"""Forecast API — GRU model inference endpoints."""
+"""Forecast API — ML inference endpoints.
+
+Returns clean, flat JSON optimized for frontend rendering.
+"""
 
 import logging
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -52,6 +56,7 @@ async def get_stock_forecast(
 
         result = get_forecast(symbol, horizon=horizon)
 
+        # Log prediction to database
         await log_prediction(
             db,
             symbol=result["symbol"],
@@ -66,7 +71,8 @@ async def get_stock_forecast(
             model_version=result["model_version"],
         )
 
-        return ForecastResponse(**result)
+        # Build optimized response
+        return _build_forecast_response(result, horizon)
 
     except SymbolNotFoundError as exc:
         raise NotFoundError(str(exc))
@@ -79,6 +85,56 @@ async def get_stock_forecast(
     except Exception as exc:
         log.exception("Forecast failed for %s", symbol)
         raise ServiceUnavailableError(f"Failed to generate forecast: {exc}")
+
+
+def _build_forecast_response(result: dict, horizon: str) -> ForecastResponse:
+    """Transform raw inference output into optimized response schema."""
+    direction = result["direction"]
+    top_prob = result["top_class_probability"]
+    confidence = round(top_prob / 100.0, 3)
+
+    probabilities = {
+        "bullish": result["bullish_pct"],
+        "bearish": result["bearish_pct"],
+        "sideways": result["sideways_pct"],
+    }
+
+    # Transform model_details into cleaner format
+    models = None
+    if result.get("model_details"):
+        models = {}
+        for model_name, detail in result["model_details"].items():
+            short_name = "gru" if "gru" in model_name else "xgb" if "xgb" in model_name else model_name
+            models[short_name] = {
+                "direction": detail["direction"],
+                "bullish_pct": detail["bullish_pct"],
+                "bearish_pct": detail["bearish_pct"],
+                "sideways_pct": detail["sideways_pct"],
+                "gap_pp": detail["gap_pp"],
+            }
+
+    # Get current price from market context
+    market_ctx = result.get("market_context")
+    current_price = None
+    if market_ctx:
+        stock_ret_20d = market_ctx.get("stock_return_20d")
+        # We don't have current_price directly, but we can estimate from context
+        # The actual price is available through stock_service, skip for now
+
+    return ForecastResponse(
+        symbol=result["symbol"],
+        horizon=horizon,
+        direction=direction,
+        confidence=confidence,
+        probabilities=probabilities,
+        as_of_date=result["as_of_date"],
+        target_date=result["predicted_for_date"],
+        current_price=current_price,
+        model_version=result["model_version"],
+        gate_reason=result.get("gate_reason", ""),
+        models=models,
+        market_context=market_ctx,
+    )
 
 
 @router.get(
@@ -109,22 +165,48 @@ async def get_forecast_history(
         if not rows:
             raise NotFoundError(f"No forecast history found for symbol '{symbol}'")
 
-        items = [
-            ForecastHistoryItem(
+        # Build optimized history items
+        items = []
+        scored_count = 0
+        correct_count = 0
+
+        for row in rows:
+            probs = {
+                "bullish": row.bullish_pct,
+                "bearish": row.bearish_pct,
+                "sideways": row.sideways_pct,
+            }
+            conf = round(row.top_class_probability / 100.0, 3) if row.top_class_probability else 0
+
+            actual = None
+            if row.actual_direction is not None:
+                actual = {
+                    "direction": row.actual_direction,
+                    "was_correct": row.was_correct,
+                }
+                if row.predicted_direction != "uncertain":
+                    scored_count += 1
+                    if row.was_correct:
+                        correct_count += 1
+
+            items.append(ForecastHistoryItem(
                 predicted_at=row.predicted_at,
                 predicted_direction=row.predicted_direction,
-                bullish_pct=row.bullish_pct,
-                bearish_pct=row.bearish_pct,
-                sideways_pct=row.sideways_pct,
-                top_class_probability=row.top_class_probability,
+                probabilities=probs,
+                confidence=conf,
                 target_date=row.target_date,
-                actual_direction=row.actual_direction,
-                was_correct=row.was_correct,
-            )
-            for row in rows
-        ]
+                actual=actual,
+            ))
 
-        return ForecastHistoryResponse(symbol=symbol, history=items)
+        accuracy = round(correct_count / scored_count, 4) if scored_count > 0 else None
+
+        return ForecastHistoryResponse(
+            symbol=symbol,
+            horizon="1D",
+            count=len(items),
+            accuracy=accuracy,
+            history=items,
+        )
 
     except NotFoundError:
         raise

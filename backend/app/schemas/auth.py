@@ -181,54 +181,6 @@ class NewsListResponse(BaseModel):
     has_more: bool
 
 
-class SentimentResponse(BaseModel):
-    symbol: str
-    score: float
-    label: str
-    article_count: int
-    trend: str
-
-
-class MarketSentimentResponse(BaseModel):
-    market_mood: str
-    advancing: int
-    declining: int
-    unchanged: int
-    advance_decline_ratio: float
-    overall_score: float
-
-
-class RiskVaRResponse(BaseModel):
-    confidence: int
-    horizon: str
-    var_value: float | None = None
-    cvar_value: float | None = None
-
-
-class MonteCarloRequest(BaseModel):
-    num_simulations: int = Field(1000, ge=100, le=10000)
-    horizon_days: int = Field(30, ge=1, le=365)
-
-
-class MonteCarloResponse(BaseModel):
-    job_id: str
-    status: str = "pending"
-
-
-class MonteCarloResultResponse(BaseModel):
-    job_id: str
-    status: str
-    distribution: list[float] | None = None
-    percentiles: dict[str, float] | None = None
-
-
-class StressTestResponse(BaseModel):
-    scenario: str
-    portfolio_impact: float
-    worst_case_loss: float
-    recovery_days: int | None = None
-
-
 class ShariahScreeningResponse(BaseModel):
     symbol: str
     is_shariah_compliant: bool
@@ -298,53 +250,6 @@ class QuickPromptResponse(BaseModel):
 
 class QuickPromptsResponse(BaseModel):
     prompts: list[QuickPromptResponse]
-
-
-class RecommendationResponse(BaseModel):
-    symbol: str
-    name: str | None = None
-    signal: str
-    confidence: float
-    target_price: float | None = None
-    stop_loss: float | None = None
-    reasoning: str | None = None
-
-
-class RecommendationsListResponse(BaseModel):
-    recommendations: list[RecommendationResponse]
-    risk_profile: str
-
-
-class RecommendationDetailResponse(BaseModel):
-    symbol: str
-    name: str | None = None
-    signal: str
-    confidence: float
-    target_price: float | None = None
-    stop_loss: float | None = None
-    reasoning: dict | None = None
-    technical_score: float | None = None
-    fundamental_score: float | None = None
-    sentiment_score: float | None = None
-
-
-class TargetStopResponse(BaseModel):
-    symbol: str
-    target_price: float | None = None
-    stop_loss: float | None = None
-    method: str
-
-
-class EngineWeightsRequest(BaseModel):
-    gru_weight: float = Field(0.33, ge=0.0, le=1.0)
-    technical_weight: float = Field(0.33, ge=0.0, le=1.0)
-    fundamental_weight: float = Field(0.34, ge=0.0, le=1.0)
-
-
-class EngineWeightsResponse(BaseModel):
-    gru_weight: float
-    technical_weight: float
-    fundamental_weight: float
 
 
 class EventResponse(BaseModel):

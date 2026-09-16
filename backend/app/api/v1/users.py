@@ -83,8 +83,26 @@ async def update_profile(
 async def update_risk_profile(
     data: UpdateRiskProfileRequest,
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    return {"message": "Risk profile updated"}
+    try:
+        if data.risk_tolerance is not None:
+            user.risk_tolerance = data.risk_tolerance
+        if data.sector_preferences is not None:
+            user.sector_preferences = data.sector_preferences
+        if data.investment_horizon is not None:
+            user.investment_horizon = data.investment_horizon
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return {
+            "message": "Risk profile updated",
+            "risk_tolerance": user.risk_tolerance,
+            "sector_preferences": user.sector_preferences,
+            "investment_horizon": user.investment_horizon,
+        }
+    except Exception as exc:
+        raise ServiceUnavailableError(f"Failed to update risk profile: {exc}")
 
 
 @router.patch(

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -19,6 +19,12 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Risk profile
+    risk_tolerance: Mapped[str | None] = mapped_column(String(20), default="moderate")  # conservative, moderate, aggressive
+    sector_preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # ["oil_gas", "banking", ...]
+    investment_horizon: Mapped[str | None] = mapped_column(String(20), nullable=True)  # short, medium, long
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

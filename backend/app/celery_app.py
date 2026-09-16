@@ -21,6 +21,12 @@ celery = Celery(
         "app.tasks.weekly_retraining",
         # New: Model monitoring
         "app.tasks.model_monitoring",
+        # New: Recommendation cache
+        "app.tasks.recommendation_cache",
+        # New: Risk tasks (Monte Carlo, threshold alerts)
+        "app.tasks.risk_tasks",
+        # New: Sentiment aggregation
+        "app.tasks.sentiment_tasks",
     ],
 )
 
@@ -67,6 +73,16 @@ celery.conf.update(
         "daily-drift-detection": {
             "task": "app.tasks.model_monitoring.detect_drift",
             "schedule": 86400.0,
+        },
+        # ── Recommendations: refresh every 4 hours ──
+        "refresh-recommendations": {
+            "task": "app.tasks.recommendation_cache.refresh_recommendations",
+            "schedule": 14400.0,  # 4 hours
+        },
+        # ── Sentiment: aggregate daily ──
+        "daily-sentiment-aggregation": {
+            "task": "app.tasks.sentiment_tasks.aggregate_sentiment",
+            "schedule": 86400.0,  # 24 hours
         },
     },
 )

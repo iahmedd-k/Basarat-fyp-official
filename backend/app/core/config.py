@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # LLM / Assistant
     OPENAI_API_KEY: str = ""
 
+    # HuggingFace (FinBERT sentiment via Inference API)
+    HF_API_TOKEN: str = ""
+
     # ML
     GRU_MODEL_PATH: str = "models/gru_v1"
 
