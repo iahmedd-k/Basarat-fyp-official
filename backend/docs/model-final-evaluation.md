@@ -6,6 +6,19 @@
 
 ---
 
+## Table of Contents
+
+1. [Executive Summary](#1-executive-summary)
+2. [Ensemble Gate Logic](#2-ensemble-gate-logic)
+3. [Step 1 — Symbol Verification](#3-step-1--symbol-verification)
+4. [Step 2 — Independent Trend Classification](#4-step-2--independent-trend-classification)
+5. [Step 3 — Production Ensemble Gate Results](#5-step-3--production-ensemble-gate-results)
+6. [Step 4 — Final Consolidated Report](#6-step-4--final-consolidated-report)
+7. [Thesis-Ready Summary](#7-thesis-ready-summary)
+8. [Files and Artifacts](#8-files-and-artifacts)
+
+---
+
 ## 1. Executive Summary
 
 | Metric | Value |
@@ -21,7 +34,38 @@
 
 ---
 
-## 2. Step 1 — Symbol Verification
+## 2. Ensemble Gate Logic
+
+The production `get_forecast()` applies a dual-model ensemble gate combining GRU v1 and XGBoost weighted:
+
+```mermaid
+flowchart TD
+    A[Stock Symbol] --> B[Run GRU v1<br/>prediction + gap]
+    A --> C[Run XGB weighted<br/>prediction + gap]
+    B --> D{GRU gap ≤ 5pp?}
+    C --> E{XGB gap ≤ 5pp?}
+    D -->|Yes| F[GRU near-tie<br/>model uncertain]
+    D -->|No| G{GRU & XGB<br/>predict same?}
+    E -->|Yes| H[XGB near-tie<br/>model uncertain]
+    E -->|No| G
+    G -->|Yes| I[Return agreed<br/>direction + confidence]
+    G -->|No| J[Models disagree<br/>uncertain]
+    F --> K[ABSTAIN<br/>uncertain]
+    H --> K
+    J --> K
+    I --> L{Confidence<br/>threshold met?}
+    L -->|Yes| M[Return directional<br/>forecast]
+    L -->|No| K
+```
+
+**Gate rules (evaluated in order):**
+1. Either model has a near-tie (gap ≤ 5pp) → `uncertain`
+2. Both non-near-tie AND agree → return that direction
+3. Both non-near-tie AND disagree → `uncertain`
+
+---
+
+## 3. Step 1 — Symbol Verification
 
 ### Candidate List and Disposition
 
@@ -49,7 +93,7 @@ All 12 valid symbols have fresh OHLCV data (latest date: 2026-09-14, 2 days old)
 
 ---
 
-## 3. Step 2 — Independent Trend Classification
+## 4. Step 2 — Independent Trend Classification
 
 Trend labels are computed directly from our own scraped OHLCV data. No external trend labels, no manual assertions.
 
@@ -83,7 +127,7 @@ Trend labels are computed directly from our own scraped OHLCV data. No external 
 
 ---
 
-## 4. Step 3 — Production Ensemble Gate Results
+## 5. Step 3 — Production Ensemble Gate Results
 
 The production `get_forecast()` ensemble logic is applied identically to each clear-trend symbol. Both GRU v1 and XGB weighted run on the same `as_of_date` (2026-09-14). The ensemble gate applies the rules:
 
@@ -117,7 +161,7 @@ The production `get_forecast()` ensemble logic is applied identically to each cl
 
 ---
 
-## 4b. Uptrend Evaluation — Independently Discovered Strongest Gainers
+## 5b. Uptrend Evaluation — Independently Discovered Strongest Gainers
 
 To complement the downtrend-only initial evaluation, we scanned the **entire 98-symbol active PSX universe** for the strongest 20-day returns and selected the top candidates above the +5% clear-uptrend threshold.
 
@@ -162,7 +206,7 @@ The next strongest (APL at +4.68%, AICL at +3.96%) fell below the +5% threshold.
 
 ---
 
-## 5. Step 4 — Final Consolidated Report
+## 6. Step 4 — Final Consolidated Report
 
 ### 5.1 Overall Numbers (Combined Uptrend + Downtrend)
 
@@ -222,13 +266,13 @@ The 100% abstention rate on both uptrends and downtrends is not a flaw of the ga
 
 ---
 
-## 6. Thesis-Ready Summary
+## 7. Thesis-Ready Summary
 
 The production ensemble gate, combining a sequential GRU model and a gradient-boosted tree classifier with a dual-model agreement rule (both models must be non-near-tie AND agree on direction), achieves **zero confident-wrong calls** across 14 independently-verified PSX stocks — 10 downtrend symbols with 20-day returns ranging from -5.11% to -21.21%, and 4 uptrend symbols with 20-day returns ranging from +6.53% to +11.30%. All 14 cases resolve to "uncertain": the gate abstains because neither model produces a confident, agreeing prediction in either direction. The abstention rate (100%) is consistent with the models' aggregate test-set performance (bearish recall ~12.5%, bullish recall ~12.6%), confirming that the gate accurately exposes a genuine model limitation rather than introducing artificial conservatism. Notably, the gate also correctly prevented XGB from making a confidently-wrong bearish call on PRL, which gained +11.30% over 20 days while XGB predicted bearish. For end users, this means the system will not assert a directional claim when it lacks the evidence to support one — a critical property for a financial prediction tool where confident wrong calls carry real cost. The tradeoff is a system that defaults to "uncertain" rather than "always has an answer," but this is the honest representation of what a single-layer GRU with 49% test accuracy and an XGBoost model with equivalent aggregate performance can actually deliver on out-of-sample PSX momentum data.
 
 ---
 
-## 7. Files and Artifacts
+## 8. Files and Artifacts
 
 | Artifact | Path |
 |----------|------|

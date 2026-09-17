@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,14 @@ class CommunityRepository:
         result = await self.db.execute(
             select(Post)
             .options(selectinload(Post.author), selectinload(Post.comments))
+            .where(Post.id == post_id)
+        )
+        return result.scalars().first()
+
+    async def get_post_for_feed(self, post_id: str) -> Post | None:
+        result = await self.db.execute(
+            select(Post)
+            .options(selectinload(Post.author))
             .where(Post.id == post_id)
         )
         return result.scalars().first()
@@ -73,6 +81,7 @@ class CommunityRepository:
     async def get_comments(self, post_id: str) -> list[Comment]:
         result = await self.db.execute(
             select(Comment)
+            .options(selectinload(Comment.author))
             .where(Comment.post_id == post_id)
             .order_by(Comment.created_at.desc())
         )
@@ -90,38 +99,55 @@ class CommunityRepository:
         if existing:
             if existing.direction == direction:
                 await self.db.delete(existing)
-                await self._adjust_vote_counts(post_id, direction, remove=True)
+                if direction == "up":
+                    await self.db.execute(
+                        update(Post).where(Post.id == post_id).values(upvotes=Post.upvotes - 1)
+                    )
+                else:
+                    await self.db.execute(
+                        update(Post).where(Post.id == post_id).values(downvotes=Post.downvotes - 1)
+                    )
                 await self.db.flush()
                 return None
             else:
                 old_dir = existing.direction
                 existing.direction = direction
-                await self._adjust_vote_counts(post_id, old_dir, remove=True)
-                await self._adjust_vote_counts(post_id, direction, remove=False)
+                if old_dir == "up":
+                    await self.db.execute(
+                        update(Post).where(Post.id == post_id).values(upvotes=Post.upvotes - 1)
+                    )
+                else:
+                    await self.db.execute(
+                        update(Post).where(Post.id == post_id).values(downvotes=Post.downvotes - 1)
+                    )
+                if direction == "up":
+                    await self.db.execute(
+                        update(Post).where(Post.id == post_id).values(upvotes=Post.upvotes + 1)
+                    )
+                else:
+                    await self.db.execute(
+                        update(Post).where(Post.id == post_id).values(downvotes=Post.downvotes + 1)
+                    )
                 await self.db.flush()
                 await self.db.refresh(existing)
                 return existing
         else:
             vote = Vote(post_id=post_id, user_id=user_id, direction=direction)
             self.db.add(vote)
-            await self._adjust_vote_counts(post_id, direction, remove=False)
+            if direction == "up":
+                await self.db.execute(
+                    update(Post).where(Post.id == post_id).values(upvotes=Post.upvotes + 1)
+                )
+            else:
+                await self.db.execute(
+                    update(Post).where(Post.id == post_id).values(downvotes=Post.downvotes + 1)
+                )
             await self.db.flush()
             await self.db.refresh(vote)
             return vote
 
-    async def _adjust_vote_counts(self, post_id: str, direction: str, remove: bool) -> None:
-        delta = -1 if remove else 1
-        if direction == "up":
-            await self.db.execute(
-                update(Post).where(Post.id == post_id).values(upvotes=Post.upvotes + delta)
-            )
-        else:
-            await self.db.execute(
-                update(Post).where(Post.id == post_id).values(downvotes=Post.downvotes + delta)
-            )
-
     async def get_leaderboard(
-        self, since: datetime | None = None
+        self, since: datetime | None = None, limit: int = 100
     ) -> list[dict]:
         query = (
             select(
@@ -137,14 +163,23 @@ class CommunityRepository:
             query = query.where(Post.created_at >= since)
 
         query = query.order_by(func.sum(Post.upvotes - Post.downvotes).desc())
+        query = query.limit(limit)
 
         result = await self.db.execute(query)
         rows = result.all()
 
+        if not rows:
+            return []
+
+        user_ids = [row.user_id for row in rows]
+        users_result = await self.db.execute(
+            select(User).where(User.id.in_(user_ids))
+        )
+        user_map = {u.id: u for u in users_result.scalars().all()}
+
         entries = []
         for i, row in enumerate(rows, start=1):
-            user_result = await self.db.execute(select(User).where(User.id == row.user_id))
-            user = user_result.scalars().first()
+            user = user_map.get(row.user_id)
             entries.append({
                 "user_id": row.user_id,
                 "username": user.username if user else None,
@@ -158,6 +193,12 @@ class CommunityRepository:
         return entries
 
     async def create_report(self, post_id: str, user_id: str, reason: str) -> Report:
+        existing = await self.db.execute(
+            select(Report).where(Report.post_id == post_id, Report.user_id == user_id)
+        )
+        if existing.scalars().first() is not None:
+            return None
+
         report = Report(post_id=post_id, user_id=user_id, reason=reason)
         self.db.add(report)
 

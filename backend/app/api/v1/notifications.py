@@ -25,22 +25,23 @@ async def get_notifications(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        query = select(Alert).where(Alert.user_id == user.id)
+        base_filter = Alert.user_id == user.id
         if unread_only:
-            query = query.where(Alert.is_read == False)
-
-        count_query = select(Alert).where(Alert.user_id == user.id)
-        if unread_only:
-            count_query = count_query.where(Alert.is_read == False)
+            base_filter = base_filter & (Alert.is_read == False)
 
         from sqlalchemy import func
         total_result = await db.execute(
-            select(func.count(Alert.id)).where(Alert.user_id == user.id)
+            select(func.count(Alert.id)).where(base_filter)
         )
         total = total_result.scalar() or 0
 
-        query = query.order_by(Alert.created_at.desc())
-        query = query.offset((page - 1) * limit).limit(limit)
+        query = (
+            select(Alert)
+            .where(base_filter)
+            .order_by(Alert.created_at.desc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+        )
 
         result = await db.execute(query)
         alerts = result.scalars().all()
@@ -66,7 +67,7 @@ async def get_notifications(
             has_more=(page * limit) < total,
         )
     except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch notifications: {exc}")
+        raise ServiceUnavailableError("Failed to fetch notifications")
 
 
 @router.patch(
@@ -95,4 +96,4 @@ async def mark_notification_read(
     except NotFoundError:
         raise
     except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to mark notification as read: {exc}")
+        raise ServiceUnavailableError("Failed to mark notification as read")

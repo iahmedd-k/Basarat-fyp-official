@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class StockSearchResult(BaseModel):
@@ -12,20 +12,20 @@ class StockSearchResponse(BaseModel):
 
 
 class DayRange(BaseModel):
-    low: float
-    high: float
+    low: float | None = None
+    high: float | None = None
 
 
 class StockOverview(BaseModel):
     symbol: str
     name: str
     sector: str | None = None
-    ltp: float
-    ldcp: float
-    change: float
-    change_pct: float
+    ltp: float | None = None
+    ldcp: float | None = None
+    change: float | None = None
+    change_pct: float | None = None
     day_range: DayRange
-    volume: int
+    volume: int | None = None
     market_cap_m: float | None = None
     market_cap: float | None = None
     pe_ratio: float | None = None
@@ -35,11 +35,11 @@ class StockOverview(BaseModel):
 
 class PriceBar(BaseModel):
     date: str
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
+    volume: int | None = None
 
 
 class PriceHistoryResponse(BaseModel):
@@ -50,7 +50,7 @@ class PriceHistoryResponse(BaseModel):
 
 class IndicatorSeries(BaseModel):
     date: str
-    value: float
+    value: float | None = None
 
 
 class TechnicalIndicatorsResponse(BaseModel):

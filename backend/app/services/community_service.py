@@ -1,6 +1,7 @@
+import logging
 from datetime import datetime, timedelta
 
-from app.core.exceptions import BadRequestError, NotFoundError, ForbiddenError
+from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from app.models.community import Post
 from app.repository.community_repository import CommunityRepository
 from app.schemas.community import (
@@ -16,6 +17,8 @@ from app.schemas.community import (
     ReportResponse,
     VoteResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 PERIOD_DELTAS = {
     "weekly": timedelta(days=7),
@@ -55,16 +58,16 @@ class CommunityService:
         )
 
     async def vote(self, user_id: str, post_id: str, direction: str) -> VoteResponse:
-        post = await self.repo.get_post(post_id)
+        post = await self.repo.get_post_for_feed(post_id)
         if post is None:
-            raise NotFoundError(f"Post '{post_id}' not found.")
+            raise NotFoundError("Post not found.")
 
         if post.user_id == user_id:
             raise BadRequestError("You cannot vote on your own post.")
 
         vote = await self.repo.upsert_vote(post_id, user_id, direction)
 
-        post = await self.repo.get_post(post_id)
+        post = await self.repo.get_post_for_feed(post_id)
         score = post.upvotes - post.downvotes
 
         return VoteResponse(
@@ -78,7 +81,7 @@ class CommunityService:
     async def get_comments(self, post_id: str) -> CommentsResponse:
         post = await self.repo.get_post(post_id)
         if post is None:
-            raise NotFoundError(f"Post '{post_id}' not found.")
+            raise NotFoundError("Post not found.")
 
         comments = await self.repo.get_comments(post_id)
         items = [self._to_comment_response(c) for c in comments]
@@ -87,14 +90,14 @@ class CommunityService:
     async def add_comment(self, user_id: str, post_id: str, data: CommentCreate) -> CommentResponse:
         post = await self.repo.get_post(post_id)
         if post is None:
-            raise NotFoundError(f"Post '{post_id}' not found.")
+            raise NotFoundError("Post not found.")
 
         comment = await self.repo.create_comment(post_id, user_id, data.text)
         return self._to_comment_response(comment)
 
     async def get_leaderboard(self, period: str = "all_time") -> LeaderboardResponse:
         if period not in PERIOD_DELTAS:
-            raise BadRequestError(f"Invalid period '{period}'. Must be one of: weekly, monthly, all_time")
+            raise BadRequestError("Invalid period. Must be one of: weekly, monthly, all_time.")
 
         since = None
         if PERIOD_DELTAS[period] is not None:
@@ -108,12 +111,15 @@ class CommunityService:
     async def report_post(self, user_id: str, post_id: str, data: ReportCreate) -> ReportResponse:
         post = await self.repo.get_post(post_id)
         if post is None:
-            raise NotFoundError(f"Post '{post_id}' not found.")
+            raise NotFoundError("Post not found.")
 
         if post.user_id == user_id:
             raise BadRequestError("You cannot report your own post.")
 
         report = await self.repo.create_report(post_id, user_id, data.reason)
+        if report is None:
+            raise ConflictError("You have already reported this post.")
+
         return ReportResponse(
             id=report.id,
             post_id=report.post_id,

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -23,6 +23,7 @@ class Portfolio(Base):
 
 class PortfolioHolding(Base):
     __tablename__ = "portfolio_holdings"
+    __table_args__ = (UniqueConstraint("portfolio_id", "stock_id", name="uq_portfolio_stock"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: uuid4().hex)
     portfolio_id: Mapped[str] = mapped_column(String(36), ForeignKey("portfolios.id"), index=True, nullable=False)

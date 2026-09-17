@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -103,3 +103,37 @@ class PortfolioRepository:
             .order_by(PortfolioHolding.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def upsert_holding(
+        self,
+        portfolio_id: str,
+        stock_id: str,
+        quantity: int,
+        avg_buy_price: float,
+        purchase_date: date | None = None,
+    ) -> PortfolioHolding:
+        existing = await self.get_holding_by_stock(portfolio_id, stock_id)
+        if existing is not None:
+            existing.quantity = quantity
+            existing.avg_buy_price = Decimal(str(avg_buy_price))
+            if purchase_date is not None:
+                existing.purchase_date = purchase_date
+            await self.db.flush()
+            await self.db.refresh(existing)
+            return existing
+        return await self.create_holding(
+            portfolio_id=portfolio_id,
+            stock_id=stock_id,
+            quantity=quantity,
+            avg_buy_price=avg_buy_price,
+            purchase_date=purchase_date,
+        )
+
+    async def get_holding_by_stock(self, portfolio_id: str, stock_id: str) -> PortfolioHolding | None:
+        result = await self.db.execute(
+            select(PortfolioHolding).where(
+                PortfolioHolding.portfolio_id == portfolio_id,
+                PortfolioHolding.stock_id == stock_id,
+            )
+        )
+        return result.scalars().first()

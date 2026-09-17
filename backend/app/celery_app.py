@@ -84,6 +84,11 @@ celery.conf.update(
             "task": "app.tasks.sentiment_tasks.aggregate_sentiment",
             "schedule": 86400.0,  # 24 hours
         },
+        # ── News ingestion: every 30 min, task gates on market hours ──
+        "news-ingestion-market-aware": {
+            "task": "app.tasks.scrape_news.run",
+            "schedule": 1800.0,  # 30 minutes
+        },
     },
 )
 

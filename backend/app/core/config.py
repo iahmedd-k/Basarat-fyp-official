@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -8,10 +9,13 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Auth
-    SECRET_KEY: str = "change-me-in-production"
+    SECRET_KEY: str = Field(..., min_length=32)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # CORS
+    CORS_ORIGINS: list[str] = []
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/basarat"
@@ -28,9 +32,6 @@ class Settings(BaseSettings):
     # Firebase (push notifications)
     FIREBASE_CREDENTIALS_PATH: str = "firebase_credentials.json"
 
-    # LLM / Assistant
-    OPENAI_API_KEY: str = ""
-
     # HuggingFace (FinBERT sentiment via Inference API)
     HF_API_TOKEN: str = ""
 
@@ -46,9 +47,34 @@ class Settings(BaseSettings):
     LABEL_THRESHOLD: float = 0.01
     WINDOW_SIZE: int = 30
 
+    # News ingestion — market-aware schedule (Asia/Karachi, UTC+5)
+    NEWS_TIMEZONE: str = "Asia/Karachi"
+    # PSX market session
+    MARKET_OPEN_HOUR: int = 9
+    MARKET_OPEN_MINUTE: int = 30
+    MARKET_CLOSE_HOUR: int = 15
+    MARKET_CLOSE_MINUTE: int = 30
+    # Post-market ingestion window
+    POST_MARKET_CLOSE_HOUR: int = 17
+    POST_MARKET_CLOSE_MINUTE: int = 0
+    # Ingestion interval during active windows (seconds)
+    NEWS_INGESTION_INTERVAL_MARKET: int = 1800      # 30 min during market
+    NEWS_INGESTION_INTERVAL_POST_MARKET: int = 3600  # 60 min post-market
+    # Manual refresh cooldown (seconds)
+    NEWS_REFRESH_COOLDOWN: int = 300  # 5 minutes
+
     class Config:
         env_file = ".env"
         case_sensitive = True
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        placeholder_values = {"change-me-in-production", "your-secret-key", "secret", "changeme", "dev-secret"}
+        if self.SECRET_KEY.lower() in placeholder_values:
+            raise ValueError(
+                "SECRET_KEY must be set to a strong random value (32+ chars) in production. "
+                "Generate with: openssl rand -hex 32"
+            )
 
 
 @lru_cache()

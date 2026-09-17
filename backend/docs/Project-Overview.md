@@ -117,7 +117,7 @@ flowchart LR
 | 5 | Recommendation Engine | Full-Stack | Explainable BUY/SELL/HOLD signals with target/stop-loss |
 | 6 | Portfolio Management | Backend | Holdings, P&L, sector allocation |
 | 7 | Risk & Sentiment Analytics | Shared | VaR/CVaR, Monte Carlo, stress tests, FinBERT sentiment |
-| 8 | News & Events Intelligence | Backend | Scraping pipeline, article dedup + tagging, sentiment |
+| 8 | News & Events Intelligence | Backend | PSX/SECP/SBP/BR/Dawn pipeline, content-hash dedup, symbol tagging, event classification, FinBERT sentiment, deterministic impact scoring, market-aware scheduling |
 | 9 | Alerts & Notifications | Shared | Alert rules, notification center, FCM push |
 | 10 | Community Trading Hub | Frontend/UX | Feed, posts, votes, comments, leaderboard |
 | 11 | Shariah Compliance Screener | Backend | AAOIFI/SECP screening, purification, KMI-30 |

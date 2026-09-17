@@ -5,6 +5,18 @@
 
 ---
 
+## Table of Contents
+
+1. [Design Philosophy](#1-design-philosophy)
+2. [Entity Overview](#2-entity-overview)
+3. [Data Flow Architecture](#3-data-flow-architecture)
+4. [Conceptual ERD](#4-conceptual-erd)
+5. [Logical Schema — Groups & Tables](#5-logical-schema--groups--tables)
+6. [Indexing & Performance Strategy](#6-indexing--performance-strategy)
+7. [Migrations & Evolution](#7-migrations--evolution)
+
+---
+
 ## 1. Design Philosophy
 
 The database is the single source of truth shared by all 12 modules. Three governing rules, from the project Execution Document (Section 9):
@@ -55,7 +67,74 @@ The schema is organized into **domain groups**. Each group maps to one or more m
 
 ---
 
-## 3. Conceptual ERD
+## 3. Data Flow Architecture
+
+```mermaid
+flowchart LR
+    subgraph External["External Sources"]
+        PSX[PSX API]
+        NEWS[News Sources]
+        SBP[SBP Data]
+    end
+
+    subgraph Celery["Celery Workers"]
+        SCRAPE[Scrapers]
+        ML[ML Inference]
+        SENT[Sentiment]
+    end
+
+    subgraph Cache["Redis Cache"]
+        RC[Response Cache<br/>30s-24h TTL]
+        BQ[Task Queue]
+    end
+
+    subgraph DB["PostgreSQL"]
+        PG[(Primary DB<br/>20+ tables)]
+    end
+
+    subgraph API["FastAPI Backend"]
+        REST[REST Routers<br/>18 modules]
+        WS[WebSocket<br/>live ticks]
+    end
+
+    subgraph Clients["Clients"]
+        WEB[React Web]
+        AND[Android App]
+    end
+
+    PSX --> SCRAPE
+    NEWS --> SCRAPE
+    SBP --> SCRAPE
+    SCRAPE --> PG
+    SCRAPE --> RC
+    ML --> PG
+    ML --> RC
+    SENT --> PG
+    SENT --> RC
+    REST --> RC
+    REST --> PG
+    WS --> RC
+    RC --> REST
+    RC --> WS
+    REST --> WEB
+    REST --> AND
+    WS --> WEB
+    WS --> AND
+```
+
+### Read/Write Patterns
+
+| Operation | Path | Cache Behavior |
+|-----------|------|---------------|
+| **Market data read** | Celery writes → PG + Redis | REST reads Redis (30s TTL) |
+| **Forecast read** | Celery writes → PG + Redis | REST reads Redis (1h TTL) |
+| **Portfolio write** | API → PG, invalidates Redis | Cache invalidates on write |
+| **Alert evaluation** | Celery reads rules + ticks | Push to FCM on match |
+| **News ingestion** | Celery writes → PG + Redis | 5-10min TTL |
+
+---
+
+## 4. Conceptual ERD
 
 ```mermaid
 erDiagram
@@ -81,6 +160,8 @@ erDiagram
     PORTFOLIO_HOLDINGS ||--o{ RISK_SNAPSHOTS : "feeds"
     MONTE_CARLO_JOBS ||--o{ RISK_SNAPSHOTS : "produces"
     NEWS_ARTICLES }o--o{ STOCKS : "related_symbols"
+    MARKET_EVENTS }o--o| STOCKS : "optionally targets"
+    MARKET_EVENTS }o--o| NEWS_ARTICLES : "linked article"
     PORTFOLIO_HOLDINGS }o--|| STOCKS : "references"
     ALERT_RULES }o--o| STOCKS : "optionally targets"
     COMMUNITY_POSTS ||--o{ COMMUNITY_VOTES : "receives"
@@ -192,13 +273,21 @@ erDiagram
     NEWS_ARTICLES {
         bigint id PK
         string title
-        string source
+        string source "human-readable source name"
+        enum source_type "psx/secp/sbp/financial_media/general_news"
         string summary
-        string url
+        string url UK
+        string content_hash UK "SHA-256 of normalised title+URL"
         timestamp published_at
-        enum sentiment "positive/negative/neutral"
-        float sentiment_score
-        json related_symbols "FK refs"
+        timestamp created_at
+        timestamp updated_at
+        json symbols "FK refs to stocks.symbol"
+        json company_names
+        string sector
+        enum event_type "earnings/dividend/corporate_action/monetary_policy/regulatory_action/market_commentary/general_news/interest_rate/inflation/gdp"
+        enum sentiment_label "positive/negative/neutral"
+        float sentiment_score "FinBERT confidence 0.0–1.0"
+        int impact_score "deterministic 0–100"
     }
     SENTIMENT_SCORES {
         bigint id PK
@@ -207,6 +296,24 @@ erDiagram
         string label
         int article_count
         timestamp window_start
+    }
+    MARKET_EVENTS {
+        bigint id PK
+        enum event_type "earnings/dividend/monetary_policy/regulatory_action/corporate_action/general_news"
+        varchar symbol "nullable"
+        string title
+        text description
+        date event_date
+        time event_time "nullable"
+        string source "human-readable source"
+        string source_url
+        enum source_type "psx/secp/sbp/financial_media/general_news"
+        enum sentiment_label "positive/negative/neutral"
+        float sentiment_score
+        int impact_score
+        bigint news_article_id FK "nullable, linked article"
+        timestamp created_at
+        timestamp updated_at
     }
     CALENDAR_EVENTS {
         bigint id PK
@@ -304,7 +411,7 @@ erDiagram
 
 ---
 
-## 4. Logical Schema — Groups & Tables
+## 5. Logical Schema — Groups & Tables
 
 ### 4.1 Users & Authentication (Module 1)
 
@@ -340,7 +447,8 @@ erDiagram
 | `risk_snapshots` | `user_id`, `var_95`, `cvar_95`, `sharpe`, `max_drawdown`, `as_of` | Portfolio-level risk metrics (M7) |
 | `monte_carlo_jobs` | `job_id (PK)`, `user_id`, `num_simulations`, `horizon_days`, `status`, `result` | Async simulation job state (M7) |
 | `sentiment_scores` | `symbol FK`, `score`, `label`, `article_count`, `window_start` | Aggregated sentiment (M7/M8) |
-| `news_articles` | `title`, `source`, `summary`, `url`, `published_at`, `sentiment`, `related_symbols` | Only summaries stored, not full bodies (copyright) |
+| `news_articles` | `title`, `source`, `source_type` (psx/secp/sbp/financial_media/general_news), `summary`, `url (unique)`, `content_hash (unique)`, `published_at`, `symbols (JSON)`, `company_names (JSON)`, `sector`, `event_type`, `sentiment_label`, `sentiment_score`, `impact_score`, `created_at`, `updated_at` | Only summaries stored, not full bodies (copyright). Content hash deduplicates across sources. |
+| `market_events` | `event_type`, `symbol?`, `title`, `description`, `event_date`, `event_time?`, `source`, `source_url`, `source_type`, `sentiment_label`, `sentiment_score`, `impact_score`, `news_article_id FK?`, `created_at`, `updated_at` | Extracted from news pipeline. Linked to source article when available. |
 | `calendar_events` | `event_type` (earnings/dividend/sbp), `symbol?`, `event_date`, `description` | Events calendar (M8) |
 
 ### 4.5 Alerts & Notifications (Module 9)
@@ -370,7 +478,7 @@ erDiagram
 
 ---
 
-## 5. Indexing & Performance Strategy
+## 6. Indexing & Performance Strategy
 
 | Table | Index | Why |
 |---|---|---|
@@ -394,7 +502,7 @@ erDiagram
 
 ---
 
-## 6. Migrations & Evolution
+## 7. Migrations & Evolution
 
 - **Alembic** manages all schema migrations; run via `docker compose exec api alembic upgrade head`.
 - Approved starting entities are locked in **Phase 0**; the ERD above is the authoritative contract going forward.

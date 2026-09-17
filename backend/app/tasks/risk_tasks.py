@@ -123,6 +123,7 @@ def run_monte_carlo_task(
         )
 
         result["job_id"] = job_id
+        result["user_id"] = user_id
         result["completed_at"] = datetime.utcnow().isoformat()
         save_monte_carlo_result(job_id, result)
 
@@ -209,7 +210,7 @@ def check_threshold_breaches_task(self, user_id: str):
                 loop.run_until_complete(_send_alerts(user_id, breaches))
                 loop.close()
                 log.info("Threshold alerts sent: user=%s count=%d", user_id, len(breaches))
-            except Exception as alert_exc:
+            except Exception:
                 log.exception("Failed to send threshold alerts: user=%s", user_id)
 
         return {

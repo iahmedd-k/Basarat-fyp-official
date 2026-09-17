@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
@@ -25,10 +25,10 @@ async def get_market_indices(
     _user=Depends(get_current_user),
 ):
     try:
-        indices = service.get_indices()
+        indices = await service.get_indices()
         return {"indices": indices}
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch market indices: {exc}")
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch market indices")
 
 
 @router.get(
@@ -41,14 +41,14 @@ async def get_kse_100_constituents(
     _user=Depends(get_current_user),
 ):
     try:
-        constituents = service.get_index_constituents("KSE100")
+        constituents = await service.get_index_constituents("KSE100")
         return {
             "index": "KSE-100",
             "code": "KSE100",
             "constituents": constituents,
         }
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch KSE-100 constituents: {exc}")
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch KSE-100 constituents")
 
 
 @router.get(
@@ -61,14 +61,14 @@ async def get_kse_30_constituents(
     _user=Depends(get_current_user),
 ):
     try:
-        constituents = service.get_index_constituents("KSE30")
+        constituents = await service.get_index_constituents("KSE30")
         return {
             "index": "KSE-30",
             "code": "KSE30",
             "constituents": constituents,
         }
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch KSE-30 constituents: {exc}")
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch KSE-30 constituents")
 
 
 @router.get(
@@ -81,15 +81,15 @@ async def get_kmi_30_constituents(
     _user=Depends(get_current_user),
 ):
     try:
-        constituents = service.get_index_constituents("KMI30")
+        constituents = await service.get_index_constituents("KMI30")
         return {
             "index": "KMI-30",
             "code": "KMI30",
             "shariah_compliant": True,
             "constituents": constituents,
         }
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch KMI-30 constituents: {exc}")
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch KMI-30 constituents")
 
 
 @router.get(
@@ -98,15 +98,15 @@ async def get_kmi_30_constituents(
     summary="Get top gaining stocks",
 )
 async def get_top_gainers(
-    limit: int = 10,
+    limit: int = Query(10, ge=1, le=100),
     service: MarketService = Depends(MarketService),
     _user=Depends(get_current_user),
 ):
     try:
-        gainers = service.get_top_gainers(limit)
+        gainers = await service.get_top_gainers(limit)
         return {"gainers": gainers}
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch gainers: {exc}")
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch gainers")
 
 
 @router.get(
@@ -115,15 +115,15 @@ async def get_top_gainers(
     summary="Get top losing stocks",
 )
 async def get_top_losers(
-    limit: int = 10,
+    limit: int = Query(10, ge=1, le=100),
     service: MarketService = Depends(MarketService),
     _user=Depends(get_current_user),
 ):
     try:
-        losers = service.get_top_losers(limit)
+        losers = await service.get_top_losers(limit)
         return {"losers": losers}
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch losers: {exc}")
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch losers")
 
 
 @router.get(
@@ -132,15 +132,15 @@ async def get_top_losers(
     summary="Get stocks with highest volume",
 )
 async def get_volume_spikes(
-    limit: int = 10,
+    limit: int = Query(10, ge=1, le=100),
     service: MarketService = Depends(MarketService),
     _user=Depends(get_current_user),
 ):
     try:
-        spikes = service.get_volume_spikes(limit)
+        spikes = await service.get_volume_spikes(limit)
         return {"volume_spikes": spikes}
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch volume spikes: {exc}")
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch volume spikes")
 
 
 @router.get(
@@ -153,6 +153,6 @@ async def get_sentiment_overview(
     _user=Depends(get_current_user),
 ):
     try:
-        return service.get_sentiment_overview()
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch sentiment overview: {exc}")
+        return await service.get_sentiment_overview()
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch sentiment overview")

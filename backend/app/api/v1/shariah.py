@@ -1,21 +1,44 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+import logging
+
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
-from app.core.exceptions import NotFoundError, ServiceUnavailableError
+from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError
+from app.core.rate_limiter import limiter
 from app.db.session import get_db
-from app.models.shariah import ShariahScreening
-from app.models.stock import Stock
 from app.models.user import User
-from app.schemas.auth import (
+from app.schemas.shariah import (
     ShariahCriteriaResponse,
     ShariahKMI30Response,
     ShariahPurificationResponse,
     ShariahScreeningResponse,
 )
+from app.services.shariah_service import ShariahService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_service(db: AsyncSession = Depends(get_db)) -> ShariahService:
+    return ShariahService(db)
+
+
+@router.get(
+    "/shariah/kmi30",
+    response_model=ShariahKMI30Response,
+    summary="Get KMI-30 Shariah compliant constituents (not yet implemented)",
+)
+@limiter.limit("10/minute")
+async def get_kmi30_shariah(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    return ShariahKMI30Response(
+        index="KMI-30",
+        constituents=[],
+    )
 
 
 @router.get(
@@ -23,28 +46,16 @@ router = APIRouter()
     response_model=ShariahScreeningResponse,
     summary="Get Shariah compliance screening for a stock",
 )
+@limiter.limit("30/minute")
 async def get_shariah_screening(
+    request: Request,
     symbol: str,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    service: ShariahService = Depends(_get_service),
 ):
     try:
         symbol = symbol.upper()
-
-        stock_result = await db.execute(
-            select(Stock).where(Stock.symbol == symbol)
-        )
-        stock = stock_result.scalars().first()
-        if stock is None:
-            raise NotFoundError(f"Stock '{symbol}' not found.")
-
-        result = await db.execute(
-            select(ShariahScreening)
-            .where(ShariahScreening.stock_id == stock.id)
-            .order_by(ShariahScreening.screened_at.desc())
-            .limit(1)
-        )
-        screening = result.scalars().first()
+        screening = await service.get_screening(symbol)
 
         if screening is None:
             return ShariahScreeningResponse(
@@ -60,12 +71,13 @@ async def get_shariah_screening(
             is_shariah_compliant=screening.is_shariah_compliant,
             overall_score=float(screening.debt_ratio) if screening.debt_ratio else None,
             screening_method=screening.screening_method,
-            screened_at=screening.screened_at.isoformat() if screening.screened_at else None,
+            screened_at=screening.screened_at,
         )
-    except NotFoundError:
+    except AppError:
         raise
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch Shariah screening: {exc}")
+    except Exception:
+        logger.exception("Failed to fetch Shariah screening")
+        raise ServiceUnavailableError("Shariah screening temporarily unavailable.")
 
 
 @router.get(
@@ -73,40 +85,28 @@ async def get_shariah_screening(
     response_model=ShariahCriteriaResponse,
     summary="Get detailed Shariah screening criteria",
 )
+@limiter.limit("30/minute")
 async def get_shariah_criteria(
+    request: Request,
     symbol: str,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    service: ShariahService = Depends(_get_service),
 ):
     try:
         symbol = symbol.upper()
-
-        stock_result = await db.execute(
-            select(Stock).where(Stock.symbol == symbol)
-        )
-        stock = stock_result.scalars().first()
+        stock = await service.get_stock_by_symbol(symbol)
         if stock is None:
-            raise NotFoundError(f"Stock '{symbol}' not found.")
+            raise NotFoundError("Stock not found.")
 
-        result = await db.execute(
-            select(ShariahScreening)
-            .where(ShariahScreening.stock_id == stock.id)
-            .order_by(ShariahScreening.screened_at.desc())
-            .limit(1)
-        )
-        screening = result.scalars().first()
-
-        criteria = [
-            {"name": "Debt Ratio", "threshold": 0.33, "value": float(screening.debt_ratio) if screening and screening.debt_ratio else None, "pass": bool(screening and screening.debt_ratio and float(screening.debt_ratio) < 0.33)},
-            {"name": "Interest Income Ratio", "threshold": 0.05, "value": float(screening.interest_income_ratio) if screening and screening.interest_income_ratio else None, "pass": bool(screening and screening.interest_income_ratio and float(screening.interest_income_ratio) < 0.05)},
-            {"name": "Non-Compliant Assets", "threshold": 0.05, "value": None, "pass": True},
-        ]
+        screening = await service.get_latest_screening(stock.id)
+        criteria = service.build_criteria(screening)
 
         return ShariahCriteriaResponse(symbol=symbol, criteria=criteria)
-    except NotFoundError:
+    except AppError:
         raise
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch Shariah criteria: {exc}")
+    except Exception:
+        logger.exception("Failed to fetch Shariah criteria")
+        raise ServiceUnavailableError("Shariah criteria temporarily unavailable.")
 
 
 @router.get(
@@ -114,42 +114,26 @@ async def get_shariah_criteria(
     response_model=ShariahPurificationResponse,
     summary="Calculate purification amount for a holding",
 )
+@limiter.limit("10/minute")
 async def get_shariah_purification(
+    request: Request,
     symbol: str,
     holding_qty: int = Query(..., gt=0),
     holding_value: float = Query(..., gt=0),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    service: ShariahService = Depends(_get_service),
 ):
     try:
         symbol = symbol.upper()
-
-        purification_rate = 0.025
-        purification_amount = holding_value * purification_rate
+        purification_amount = service.calculate_purification(holding_value)
 
         return ShariahPurificationResponse(
             symbol=symbol,
             holding_qty=holding_qty,
             holding_value=holding_value,
-            purification_amount=round(purification_amount, 2),
-            purification_rate=purification_rate,
+            purification_amount=purification_amount,
+            purification_rate=0.025,
         )
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to calculate purification: {exc}")
-
-
-@router.get(
-    "/shariah/kmi30",
-    response_model=ShariahKMI30Response,
-    summary="Get KMI-30 Shariah compliant constituents",
-)
-async def get_kmi30_shariah(
-    user: User = Depends(get_current_user),
-):
-    try:
-        return ShariahKMI30Response(
-            index="KMI-30",
-            constituents=[],
-        )
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch KMI-30 constituents: {exc}")
+    except Exception:
+        logger.exception("Failed to calculate purification")
+        raise ServiceUnavailableError("Purification calculation temporarily unavailable.")

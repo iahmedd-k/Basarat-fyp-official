@@ -65,4 +65,4 @@ async def register_device(
             created_at=device.created_at.isoformat() if device.created_at else "",
         )
     except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to register device: {exc}")
+        raise ServiceUnavailableError("Failed to register device")

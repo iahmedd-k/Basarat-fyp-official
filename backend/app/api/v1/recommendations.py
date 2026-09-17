@@ -67,7 +67,7 @@ def _summarize(r: dict) -> str:
 async def get_recommendations(
     risk_profile: str = Query("moderate", pattern="^(conservative|moderate|aggressive)$"),
     sector: str | None = Query(None),
-    limit: int = Query(20, ge=1, le=50),
+    limit: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

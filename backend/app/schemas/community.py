@@ -39,7 +39,7 @@ class VoteRequest(BaseModel):
 
 class VoteResponse(BaseModel):
     post_id: str
-    direction: str
+    direction: str | None = None
     upvotes: int
     downvotes: int
     score: int

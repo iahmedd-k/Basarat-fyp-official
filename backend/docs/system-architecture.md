@@ -208,11 +208,27 @@ flowchart TD
 | Job | Schedule (Celery beat) | Writes |
 |---|---|---|
 | `scrape_market` | every 30–60s (market hours) | OHLCV + indices → Postgres; ticks → Redis |
-| `scrape_news` | every 5–10 min | news_articles (summaries only), event calendar |
+| `scrape_news` | **market-aware**: every 30 min during PSX hours (09:30–17:00 PKT); skips outside hours and weekends | news_articles (summaries + symbols + impact), market_events |
 | `run_forecast_inference` | hourly | forecasts + prediction_history (predicted vs actual trust data) |
 | `compute_sentiment` | hourly | sentiment_scores (FinBERT over news/community) |
 | `evaluate_alert_rules` | continuous/on-event | notifications → FCM dispatch |
 | `retrain_gru_model` | weekly | model version artifacts |
+
+### News Pipeline (Module 8)
+
+The `scrape_news` task uses a modular pipeline (see `app/services/news_pipeline/`):
+
+1. **Source adapters** — 5 dedicated adapters (PSX, SECP, SBP, Business Recorder, Dawn Business) each normalize to `NormalizedArticle`
+2. **Deduplication** — SHA-256 hash of normalised title + URL prevents duplicate articles across sources
+3. **Symbol tagging** — Alias map loaded from `stocks` table + static aliases matches articles to PSX symbols
+4. **Event classification** — Rule-based classifier maps articles to 10 event types (earnings, monetary_policy, etc.)
+5. **Sentiment scoring** — Reuses existing FinBERT `score_text()` from `sentiment_service.py`
+6. **Impact scoring** — Deterministic 0–100 score from source weight + event weight + symbol specificity + sentiment strength + recency
+
+**Key endpoints:**
+- `GET /news` — database read only (never scrapes), supports filtering by symbol, sentiment, source, event_type
+- `POST /news/refresh` — manual refresh with 5-min cooldown, market-hours aware
+- `GET /news/market-status` — current PKT time and market window
 
 Monte Carlo (Module 7) is triggered as an **async job** — returns `job_id` immediately, UI polls `GET /risk/monte-carlo/{job_id}`. Heavy computation never blocks the request thread (NFR-2) nor the UI thread.
 

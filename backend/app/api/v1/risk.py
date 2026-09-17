@@ -1,18 +1,21 @@
-"""Risk API — VaR, CVaR, Monte Carlo, Stress Tests.
+"""Risk API — VaR/CVaR, Monte Carlo, Stress Tests.
 
 VaR/CVaR: Historical simulation (no distribution assumption).
 Monte Carlo: GBM-based, runs async via Celery, poll for result.
 Stress Tests: Pre-calibrated scenarios for PSX market.
 """
 
+import asyncio
 import logging
+from dataclasses import dataclass
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
-from app.core.exceptions import ServiceUnavailableError, NotFoundError
+from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError
+from app.core.rate_limiter import limiter
 from app.db.session import get_db
 from app.models.portfolio import Portfolio, PortfolioHolding
 from app.models.stock import Stock
@@ -20,6 +23,7 @@ from app.models.user import User
 from app.ml.serving.schemas import (
     MonteCarloRequest,
     MonteCarloResponse,
+    MonteCarloResultResponse,
     RiskVaRResponse,
     StressTestResponse,
 )
@@ -29,7 +33,15 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _get_holdings(db: AsyncSession, user_id: str) -> list:
+@dataclass
+class HoldingInfo:
+    symbol: str
+    sector: str
+    current_value: float
+    allocation_pct: float
+
+
+async def _get_holdings(db: AsyncSession, user_id: str) -> list[HoldingInfo]:
     """Fetch portfolio holdings with symbol/sector for risk calculations."""
     result = await db.execute(
         select(Portfolio).where(Portfolio.user_id == user_id).limit(1)
@@ -46,20 +58,25 @@ async def _get_holdings(db: AsyncSession, user_id: str) -> list:
     result = await db.execute(q)
     rows = result.all()
 
-    holdings = []
-    for holding, stock in rows:
-        holding.symbol = stock.symbol
-        holding.sector = getattr(stock, "sector", "default") or "default"
-        holdings.append(holding)
-    return holdings
+    return [
+        HoldingInfo(
+            symbol=stock.symbol,
+            sector=getattr(stock, "sector", "default") or "default",
+            current_value=float(holding.current_value or 0),
+            allocation_pct=float(getattr(holding, "allocation_pct", 0) or 0),
+        )
+        for holding, stock in rows
+    ]
 
 
 @router.get(
     "/risk/var",
     response_model=RiskVaRResponse,
-    summary="Calculate portfolio Value at Risk (Historical Simulation)",
+    summary="Calculate portfolio Value at Risk and CVaR (Historical Simulation)",
 )
+@limiter.limit("10/minute")
 async def get_var(
+    request: Request,
     confidence: int = Query(95, ge=90, le=99),
     horizon: str = Query("1D", pattern="^(1D|1W|1M)$"),
     user: User = Depends(get_current_user),
@@ -80,7 +97,9 @@ async def get_var(
                 annualized_volatility=None,
             )
 
-        result = calculate_var(holdings, confidence=confidence, horizon=horizon)
+        result = await asyncio.to_thread(
+            calculate_var, holdings, confidence=confidence, horizon=horizon
+        )
         return RiskVaRResponse(
             confidence=result["confidence"],
             horizon=result["horizon"],
@@ -90,49 +109,11 @@ async def get_var(
             num_observations=result["num_observations"],
             annualized_volatility=result["annualized_volatility"],
         )
-    except Exception as exc:
+    except AppError:
+        raise
+    except Exception:
         log.exception("VaR calculation failed")
-        raise ServiceUnavailableError(f"Failed to calculate VaR: {exc}")
-
-
-@router.get(
-    "/risk/cvar",
-    response_model=RiskVaRResponse,
-    summary="Calculate Conditional Value at Risk (Historical Simulation)",
-)
-async def get_cvar(
-    confidence: int = Query(95, ge=90, le=99),
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        from app.services.risk_service import calculate_var
-
-        holdings = await _get_holdings(db, user.id)
-        if not holdings:
-            return RiskVaRResponse(
-                confidence=confidence,
-                horizon="1D",
-                var_value=None,
-                cvar_value=None,
-                method="historical_simulation",
-                num_observations=0,
-                annualized_volatility=None,
-            )
-
-        result = calculate_var(holdings, confidence=confidence, horizon="1D")
-        return RiskVaRResponse(
-            confidence=result["confidence"],
-            horizon=result["horizon"],
-            var_value=result["var"],
-            cvar_value=result["cvar"],
-            method=result["method"],
-            num_observations=result["num_observations"],
-            annualized_volatility=result["annualized_volatility"],
-        )
-    except Exception as exc:
-        log.exception("CVaR calculation failed")
-        raise ServiceUnavailableError(f"Failed to calculate CVaR: {exc}")
+        raise ServiceUnavailableError("VaR calculation temporarily unavailable.")
 
 
 @router.post(
@@ -141,7 +122,9 @@ async def get_cvar(
     status_code=202,
     summary="Start async Monte Carlo simulation (GBM)",
 )
+@limiter.limit("3/minute")
 async def run_monte_carlo(
+    request: Request,
     data: MonteCarloRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -149,7 +132,7 @@ async def run_monte_carlo(
     try:
         holdings = await _get_holdings(db, user.id)
         if not holdings:
-            raise NotFoundError("No portfolio holdings found for Monte Carlo simulation")
+            raise NotFoundError("No portfolio holdings found for Monte Carlo simulation.")
 
         from app.tasks.risk_tasks import run_monte_carlo_task
 
@@ -167,19 +150,21 @@ async def run_monte_carlo(
             num_simulations=data.num_simulations,
             horizon_days=data.horizon_days,
         )
-    except NotFoundError:
+    except AppError:
         raise
-    except Exception as exc:
+    except Exception:
         log.exception("Monte Carlo start failed")
-        raise ServiceUnavailableError(f"Failed to start Monte Carlo: {exc}")
+        raise ServiceUnavailableError("Monte Carlo simulation temporarily unavailable.")
 
 
 @router.get(
     "/risk/monte-carlo/{task_id}",
-    response_model=dict,
+    response_model=MonteCarloResultResponse,
     summary="Poll Monte Carlo simulation result",
 )
+@limiter.limit("30/minute")
 async def get_monte_carlo_result(
+    request: Request,
     task_id: str,
     user: User = Depends(get_current_user),
 ):
@@ -190,32 +175,40 @@ async def get_monte_carlo_result(
         task_result = AsyncResult(task_id, app=run_monte_carlo_task.app)
 
         if task_result.state == "PENDING":
-            return {"job_id": task_id, "status": "pending", "message": "Simulation is queued"}
+            return MonteCarloResultResponse(
+                job_id=task_id, status="pending",
+            )
         elif task_result.state == "FAILURE":
-            return {
-                "job_id": task_id,
-                "status": "failed",
-                "error": str(task_result.info),
-            }
+            return MonteCarloResultResponse(
+                job_id=task_id, status="failed",
+                error=str(task_result.info),
+            )
         elif task_result.state == "SUCCESS":
             result = task_result.result
-            return {
-                "job_id": task_id,
-                "status": "completed",
-                "num_simulations": result.get("num_simulations"),
-                "horizon_days": result.get("horizon_days"),
-                "params": result.get("params"),
-                "percentiles": result.get("percentiles"),
-                "stats": result.get("stats"),
-                "paths_sample": result.get("paths_sample"),
-                "completed_at": result.get("completed_at"),
-            }
-        else:
-            return {"job_id": task_id, "status": task_result.state}
+            result_owner = result.get("user_id")
+            if result_owner and result_owner != user.id:
+                raise NotFoundError("Task not found.")
 
-    except Exception as exc:
+            return MonteCarloResultResponse(
+                job_id=task_id,
+                status="completed",
+                num_simulations=result.get("num_simulations"),
+                horizon_days=result.get("horizon_days"),
+                params=result.get("params"),
+                percentiles=result.get("percentiles"),
+                stats=result.get("stats"),
+                paths_sample=result.get("paths_sample"),
+                completed_at=result.get("completed_at"),
+            )
+        else:
+            return MonteCarloResultResponse(
+                job_id=task_id, status=task_result.state,
+            )
+    except AppError:
+        raise
+    except Exception:
         log.exception("Monte Carlo result fetch failed")
-        raise ServiceUnavailableError(f"Failed to fetch Monte Carlo result: {exc}")
+        raise ServiceUnavailableError("Monte Carlo result temporarily unavailable.")
 
 
 @router.get(
@@ -223,7 +216,9 @@ async def get_monte_carlo_result(
     response_model=StressTestResponse,
     summary="Run stress test scenario on portfolio",
 )
+@limiter.limit("10/minute")
 async def run_stress_test(
+    request: Request,
     scenario: str = Query(
         "2008_crash",
         pattern="^(2008_crash|pkr_devaluation|covid_crash|interest_rate_hike)$",
@@ -250,9 +245,8 @@ async def run_stress_test(
                 holding_impacts=[],
             )
 
-        result = run_stress(holdings, scenario)
+        result = await asyncio.to_thread(run_stress, holdings, scenario)
         return StressTestResponse(**result)
-
-    except Exception as exc:
+    except Exception:
         log.exception("Stress test failed")
-        raise ServiceUnavailableError(f"Failed to run stress test: {exc}")
+        raise ServiceUnavailableError("Stress test temporarily unavailable.")

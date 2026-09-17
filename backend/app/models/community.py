@@ -22,8 +22,8 @@ class Post(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     author = relationship("User", back_populates="posts", lazy="selectin")
-    comments = relationship("Comment", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
-    votes = relationship("Vote", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
+    comments = relationship("Comment", back_populates="post", lazy="noload", cascade="all, delete-orphan")
+    votes = relationship("Vote", back_populates="post", lazy="noload", cascade="all, delete-orphan")
 
 
 class Comment(Base):

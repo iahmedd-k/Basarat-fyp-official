@@ -1,5 +1,18 @@
 # Basarat - GRU Model Experiments & Final Decision
 
+## Table of Contents
+
+1. [Project Overview](#1-project-overview)
+2. [Models Tested](#2-models-tested)
+3. [Test Set Results Comparison](#3-test-set-results-comparison)
+4. [Calibration Diagnostic](#4-calibration-diagnostic-gru_v1)
+5. [Final Decision](#5-final-decision-keep-gru_v1)
+6. [API Changes Made](#6-api-changes-made)
+7. [Known Limitations](#7-known-limitations)
+8. [Files Reference](#8-files-reference)
+
+---
+
 ## 1. Project Overview
 
 **Goal:** Build an ML model to predict PSX (Pakistan Stock Exchange) stock direction as bullish, bearish, or sideways for the Basarat forecasting app.

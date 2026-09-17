@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
-from app.core.exceptions import ServiceUnavailableError
+from app.core.exceptions import NotFoundError, ServiceUnavailableError
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import (
@@ -28,20 +28,7 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> AuthService:
 async def get_profile(
     user: User = Depends(get_current_user),
 ):
-    try:
-        return UserProfileResponse(
-            id=user.id,
-            email=user.email,
-            username=user.username,
-            full_name=user.full_name,
-            avatar_url=user.avatar_url,
-            is_active=user.is_active,
-            is_verified=user.is_verified,
-            is_admin=user.is_admin,
-            created_at=user.created_at.isoformat() if user.created_at else "",
-        )
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to fetch profile: {exc}")
+    return user
 
 
 @router.patch(
@@ -60,19 +47,11 @@ async def update_profile(
             full_name=data.full_name,
             avatar_url=data.avatar_url,
         )
-        return UserProfileResponse(
-            id=updated.id,
-            email=updated.email,
-            username=updated.username,
-            full_name=updated.full_name,
-            avatar_url=updated.avatar_url,
-            is_active=updated.is_active,
-            is_verified=updated.is_verified,
-            is_admin=updated.is_admin,
-            created_at=updated.created_at.isoformat() if updated.created_at else "",
-        )
+        return updated
+    except NotFoundError:
+        raise
     except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to update profile: {exc}")
+        raise ServiceUnavailableError("Failed to update profile")
 
 
 @router.patch(
@@ -83,26 +62,25 @@ async def update_profile(
 async def update_risk_profile(
     data: UpdateRiskProfileRequest,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(_get_service),
 ):
     try:
-        if data.risk_tolerance is not None:
-            user.risk_tolerance = data.risk_tolerance
-        if data.sector_preferences is not None:
-            user.sector_preferences = data.sector_preferences
-        if data.investment_horizon is not None:
-            user.investment_horizon = data.investment_horizon
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
+        updated = await service.update_risk_profile(
+            user_id=user.id,
+            risk_tolerance=data.risk_tolerance,
+            sector_preferences=data.sector_preferences,
+            investment_horizon=data.investment_horizon,
+        )
         return {
             "message": "Risk profile updated",
-            "risk_tolerance": user.risk_tolerance,
-            "sector_preferences": user.sector_preferences,
-            "investment_horizon": user.investment_horizon,
+            "risk_tolerance": updated.risk_tolerance,
+            "sector_preferences": updated.sector_preferences,
+            "investment_horizon": updated.investment_horizon,
         }
+    except NotFoundError:
+        raise
     except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to update risk profile: {exc}")
+        raise ServiceUnavailableError("Failed to update risk profile")
 
 
 @router.patch(
@@ -113,5 +91,21 @@ async def update_risk_profile(
 async def update_notification_preferences(
     data: UpdateNotificationPrefsRequest,
     user: User = Depends(get_current_user),
+    service: AuthService = Depends(_get_service),
 ):
-    return {"message": "Notification preferences updated"}
+    try:
+        updated = await service.update_notification_preferences(
+            user_id=user.id,
+            channels=data.channels,
+            categories=data.categories,
+        )
+        prefs = updated.notification_preferences or {}
+        return {
+            "message": "Notification preferences updated",
+            "channels": prefs.get("channels", []),
+            "categories": prefs.get("categories", []),
+        }
+    except NotFoundError:
+        raise
+    except Exception as exc:
+        raise ServiceUnavailableError("Failed to update notification preferences")

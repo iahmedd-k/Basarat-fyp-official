@@ -1,4 +1,3 @@
-import threading
 import time
 from datetime import date, timedelta
 
@@ -12,21 +11,11 @@ QUOTE_TTL_SECONDS = 300
 FUND_TTL_SECONDS = 1800
 OHLCV_TTL_SECONDS = 600
 
-_quote_cache = {}
-_quote_cache_time = {}
-_quote_lock = threading.Lock()
-
-_fund_cache = {}
-_fund_cache_time = {}
-_fund_lock = threading.Lock()
-
-_div_cache = {}
-_div_cache_time = {}
-_div_lock = threading.Lock()
-
-_ohlcv_cache = {}
-_ohlcv_cache_time = {}
-_ohlcv_lock = threading.Lock()
+# Unified in-process TTL cache: key -> (value, timestamp).
+# NOTE: Per-process only. Not safe across multiple workers.
+# For multi-worker deployments, replace with Redis-backed caching.
+_cache: dict[str, tuple] = {}
+_cache_ttl: dict[str, float] = {}
 
 
 def _now():
@@ -40,7 +29,7 @@ class StockService:
     def _get_market_frame(self):
         import pandas as pd
 
-        data = self._market.get_market_data()
+        data = self._market.get_market_data_sync()
         if data is None:
             return None
         if isinstance(data, pd.DataFrame):
@@ -62,7 +51,7 @@ class StockService:
         return [
             {
                 "symbol": str(symbol),
-                "name": str(symbol),
+                "name": str(symbol),  # market_watch data lacks company names
                 "sector": self._sector_of(symbol),
             }
             for symbol in matches[:limit]
@@ -95,7 +84,8 @@ class StockService:
             ldcp = self._num(row["LDCP"])
             current = self._num(row["Current"])
             change = self._num(row["Change"])
-            change_pct = (change / ldcp * 100) if ldcp else 0.0
+            change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+            volume = self._safe_int(row["Volume"])
             rows.append(
                 {
                     "symbol": symbol,
@@ -107,8 +97,8 @@ class StockService:
                     "low": self._num(row["Low"]),
                     "current": current,
                     "change": change,
-                    "change_pct": round(change_pct, 2),
-                    "volume": int(row["Volume"]) if row["Volume"] == row["Volume"] else 0,
+                    "change_pct": change_pct,
+                    "volume": volume,
                 }
             )
         return rows
@@ -132,32 +122,32 @@ class StockService:
     def _get_quote_frame(self, symbol):
         symbol = str(symbol).upper()
         now = _now()
-        with _quote_lock:
-            cached_at = _quote_cache_time.get(symbol, 0.0)
-            if _quote_cache.get(symbol) is not None and now - cached_at <= QUOTE_TTL_SECONDS:
-                return _quote_cache[symbol]
-            try:
-                frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
-            except Exception:
-                frame = None
-            _quote_cache[symbol] = frame
-            _quote_cache_time[symbol] = now
-            return frame
+        cache_key = f"quote:{symbol}"
+        cached_at = _cache_ttl.get(cache_key, 0.0)
+        if cache_key in _cache and now - cached_at <= QUOTE_TTL_SECONDS:
+            return _cache[cache_key]
+        try:
+            frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
+        except Exception:
+            frame = None
+        _cache[cache_key] = frame
+        _cache_ttl[cache_key] = now
+        return frame
 
     def _get_fund_frame(self, symbol):
         symbol = str(symbol).upper()
         now = _now()
-        with _fund_lock:
-            cached_at = _fund_cache_time.get(symbol, 0.0)
-            if _fund_cache.get(symbol) is not None and now - cached_at <= FUND_TTL_SECONDS:
-                return _fund_cache[symbol]
-            try:
-                frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
-            except Exception:
-                frame = None
-            _fund_cache[symbol] = frame
-            _fund_cache_time[symbol] = now
-            return frame
+        cache_key = f"fund:{symbol}"
+        cached_at = _cache_ttl.get(cache_key, 0.0)
+        if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
+            return _cache[cache_key]
+        try:
+            frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
+        except Exception:
+            frame = None
+        _cache[cache_key] = frame
+        _cache_ttl[cache_key] = now
+        return frame
 
     def _fund_metric(self, symbol, category, metric):
         frame = self._get_fund_frame(symbol)
@@ -179,35 +169,34 @@ class StockService:
     def _get_dividend_frame(self, symbol):
         symbol = str(symbol).upper()
         now = _now()
-        with _div_lock:
-            cached_at = _div_cache_time.get(symbol, 0.0)
-            if _div_cache.get(symbol) is not None and now - cached_at <= FUND_TTL_SECONDS:
-                return _div_cache[symbol]
-            try:
-                frame = pypsx_toolkit.get_dividend_info(symbol, format="dataframe")
-            except Exception:
-                frame = None
-            _div_cache[symbol] = frame
-            _div_cache_time[symbol] = now
-            return frame
+        cache_key = f"div:{symbol}"
+        cached_at = _cache_ttl.get(cache_key, 0.0)
+        if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
+            return _cache[cache_key]
+        try:
+            frame = pypsx_toolkit.get_dividend_info(symbol, format="dataframe")
+        except Exception:
+            frame = None
+        _cache[cache_key] = frame
+        _cache_ttl[cache_key] = now
+        return frame
 
     def _get_ohlcv(self, symbol, start: date, end: date):
         symbol = str(symbol).upper()
-        key = f"{symbol}:{start.isoformat()}:{end.isoformat()}"
+        key = f"ohlcv:{symbol}:{start.isoformat()}:{end.isoformat()}"
         now = _now()
-        with _ohlcv_lock:
-            cached_at = _ohlcv_cache_time.get(key, 0.0)
-            if _ohlcv_cache.get(key) is not None and now - cached_at <= OHLCV_TTL_SECONDS:
-                return _ohlcv_cache[key]
-            try:
-                df = pypsx_toolkit.get_historical(
-                    symbol, start_date=start.isoformat(), end_date=end.isoformat()
-                )
-            except Exception:
-                df = None
-            _ohlcv_cache[key] = df
-            _ohlcv_cache_time[key] = now
-            return df
+        cached_at = _cache_ttl.get(key, 0.0)
+        if key in _cache and now - cached_at <= OHLCV_TTL_SECONDS:
+            return _cache[key]
+        try:
+            df = pypsx_toolkit.get_historical(
+                symbol, start_date=start.isoformat(), end_date=end.isoformat()
+            )
+        except Exception:
+            df = None
+        _cache[key] = df
+        _cache_ttl[key] = now
+        return df
 
     def get_overview(self, symbol: str):
         symbol = str(symbol).upper()
@@ -215,6 +204,9 @@ class StockService:
         if not batch:
             return {"symbol": symbol, "message": "no data"}
         q = batch[0]
+        # Validate that we got real data (not an empty/default quote)
+        if q.get("current") == 0.0 and q.get("volume") == 0:
+            return {"symbol": symbol, "message": "no data"}
         quote = self._get_quote_frame(symbol)
         return {
             "symbol": symbol,
@@ -270,7 +262,7 @@ class StockService:
                     "high": self._num(row["HIGH"]),
                     "low": self._num(row["LOW"]),
                     "close": self._num(row["CLOSE"]),
-                    "volume": int(row["VOLUME"]) if row["VOLUME"] == row["VOLUME"] else 0,
+                    "volume": self._safe_int(row["VOLUME"]),
                 }
             )
         return {"symbol": symbol, "range": label, "bars": bars}
@@ -342,7 +334,7 @@ class StockService:
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
         quote = self._get_quote_frame(symbol)
-        fund = self._get_fund_frame(symbol)
+        self._get_fund_frame(symbol)  # populate cache for _fund_metric
         div = self._get_dividend_frame(symbol)
 
         pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
@@ -377,10 +369,31 @@ class StockService:
 
     @staticmethod
     def _num(value):
+        import math
+
+        if value is None:
+            return None
         try:
-            return float(value)
+            v = float(value)
+            if math.isnan(v) or math.isinf(v):
+                return None
+            return v
         except (TypeError, ValueError):
-            return 0.0
+            return None
+
+    @staticmethod
+    def _safe_int(value, default=0):
+        import math
+
+        if value is None:
+            return default
+        try:
+            v = float(value)
+            if math.isnan(v) or math.isinf(v):
+                return default
+            return int(v)
+        except (TypeError, ValueError):
+            return default
 
     @staticmethod
     def _latest_number(value):

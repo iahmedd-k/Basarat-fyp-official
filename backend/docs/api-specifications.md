@@ -147,11 +147,47 @@ Query params `?page=1&limit=20` — response carries `meta: { page, limit, total
 
 ### 3.8 Module 8 — News & Events Intelligence
 
-| Method | Endpoint | Query | Notes |
+| Method | Endpoint | Query / Body | Notes |
 |---|---|---|---|
-| GET | `/news` | `symbol=, sentiment=, page, limit` | paginated feed |
-| GET | `/news/{id}` | — | summary + sentiment + impact |
-| GET | `/events/calendar` | `from=, to=` | earnings/dividend/SBP events |
+| GET | `/news` | `symbol=, sentiment=, source=, event_type=, page=, limit=` | Paginated feed with multi-filter. DB read only — never scrapes. |
+| GET | `/news/{id}` | — | Full article: symbols, event type, sentiment label + score, impact score |
+| POST | `/news/refresh` | — | Manual refresh with cooldown protection (5 min). Returns status, last_updated, refresh_available, next_refresh_at |
+| GET | `/news/market-status` | — | Current PKT time, market window (market_hours/post_market/closed), next ingestion window |
+| GET | `/events/calendar` | `from=, to=, event_type=, symbol=` | Earnings/dividend/SBP monetary policy events, filtered by date range |
+
+**News refresh behaviour:**
+- `POST /news/refresh` respects a configurable cooldown (default 5 min) — repeated clicks within the cooldown return `refresh_available: false` with `next_refresh_at`.
+- Outside PSX market hours (before 09:30, after 17:00 PKT, weekends), refresh returns `status: "skipped_outside_hours"` without scraping.
+- During market hours (09:30–15:30) and post-market (15:30–17:00), refresh triggers the full ingestion pipeline.
+- The same `run_pipeline()` function is used by both `POST /news/refresh` and the scheduled Celery task — single implementation, no duplication.
+
+**News response shape:**
+```json
+{
+  "items": [
+    {
+      "id": "abc123",
+      "title": "OGDC reports strong quarterly earnings",
+      "url": "https://brecorder.com/news/...",
+      "source": "Business Recorder",
+      "source_type": "financial_media",
+      "summary": "...",
+      "symbols": ["OGDC"],
+      "company_names": ["Oil and Gas Development Company"],
+      "event_type": "earnings",
+      "sentiment_label": "positive",
+      "sentiment_score": 0.91,
+      "impact_score": 78,
+      "published_at": "2026-09-16T10:30:00",
+      "created_at": "2026-09-16T10:35:00"
+    }
+  ],
+  "total": 150,
+  "page": 1,
+  "limit": 20,
+  "has_more": true
+}
+```
 
 ### 3.9 Module 9 — Alerts & Notifications
 

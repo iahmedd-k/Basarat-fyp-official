@@ -8,6 +8,7 @@ from app.api.v1.health import router as health_router
 from app.core.config import get_settings
 from app.core.exceptions import register_error_handlers
 from app.core.logging import setup_logging
+from app.core.rate_limiter import add_rate_limiting
 from app.db.base import Base, engine
 
 # Import all models to ensure tables are created
@@ -15,7 +16,6 @@ from app.models import prediction, model_registry, training_run  # noqa: F401
 
 from app.api.v1 import (
     alerts,
-    assistant,
     auth,
     community,
     devices,
@@ -63,12 +63,15 @@ app = FastAPI(
 )
 
 register_error_handlers(app)
+add_rate_limiting(app)
 
+# CORS configuration - explicit allowlist from settings
+cors_origins = settings.CORS_ORIGINS if settings.CORS_ORIGINS else ["http://localhost:3000", "http://localhost:5173"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -109,9 +112,6 @@ app.include_router(community.router, prefix=settings.API_V1_PREFIX, tags=["Commu
 
 # Module 11 — Shariah Screening
 app.include_router(shariah.router, prefix=settings.API_V1_PREFIX, tags=["Shariah"])
-
-# Module 12 — Assistant
-app.include_router(assistant.router, prefix=settings.API_V1_PREFIX, tags=["Assistant"])
 
 # System
 app.include_router(system.router, prefix=settings.API_V1_PREFIX, tags=["System"])

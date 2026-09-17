@@ -8,20 +8,21 @@
 ---
 
 ## Table of Contents
-0. Tech Stack Decisions & Rationale
-&nbsp;&nbsp;0.1 Docker & Local Development Environment
-&nbsp;&nbsp;0.2 Firebase Setup (Push Notifications)
-1. System Architecture & User Flow
-2. Global API & Data Standards (incl. Caching Strategy)
-3. Backend Project Structure & Core Routes
-4. Android App Architecture (for the Kotlin dev) + Screen Creation Rules
-5. React Web App Architecture
-6. Modules 1–12 (Tasks · Endpoints · Screens · DoD)
-7. Execution Phases & Order
-8. Consolidated Functional & Non-Functional Requirements
-9. Database Entity Overview
-10. Models & Libraries Used
-11. Role Ownership Map
+
+0. [Tech Stack Decisions & Rationale](#0-tech-stack-decisions--rationale)
+&nbsp;&nbsp;0.1 [Docker & Local Development Environment](#01-docker--local-development-environment)
+&nbsp;&nbsp;0.2 [Firebase Setup (Push Notifications)](#02-firebase-setup-push-notifications)
+1. [System Architecture & User Flow](#1-system-architecture--user-flow)
+2. [Global API & Data Standards](#2-global-api--data-standards)
+3. [Backend Project Structure & Core Routes](#3-backend-project-structure--core-routes)
+4. [Android App Architecture](#4-android-app-architecture)
+5. [React Web App Architecture](#5-react-web-app-architecture)
+6. [Modules 1–12](#6-modules)
+7. [Execution Phases & Order](#7-execution-phases--order)
+8. [Consolidated Functional & Non-Functional Requirements](#8-consolidated-functional--non-functional-requirements)
+9. [Database Entity Overview](#9-database-entity-overview-high-level)
+10. [Models & Libraries Used](#10-models--libraries-used)
+11. [Role Ownership Map](#11-role-ownership-map)
 
 ---
 

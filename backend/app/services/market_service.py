@@ -1,18 +1,23 @@
+import asyncio
 import logging
-import threading
+import math
 import time
-
 from collections import defaultdict
 
 import pypsx_toolkit
 
 log = logging.getLogger(__name__)
 
-MARKET_DATA_TTL_SECONDS = 60
+CACHE_TTL_SECONDS = 60
 
-_market_data_cache = None
-_market_data_cache_time = 0.0
-_market_data_lock = threading.Lock()
+_indices_cache: dict | None = None
+_indices_cache_time: float = 0.0
+
+_constituents_cache: dict[str, list] = {}
+_constituents_cache_time: dict[str, float] = {}
+
+_market_data_cache: list | None = None
+_market_data_cache_time: float = 0.0
 
 
 class MarketService:
@@ -22,25 +27,8 @@ class MarketService:
         "KMI30": "KMI-30",
     }
 
-    def get_indices(self):
-        indices = pypsx_toolkit.get_indices()
-        return [
-            {
-                "index": self.MAIN_INDICES.get(code, code),
-                "code": code,
-                "current": row["CURRENT"],
-                "change": row["CHANGE"],
-                "change_pct": row["PERCENTAGE_CHANGE"],
-                "high": row["HIGH"],
-                "low": row["LOW"],
-            }
-            for code, row in indices.iterrows()
-            if code in self.MAIN_INDICES
-        ]
-
     @staticmethod
     def _safe_float(value, default=0.0):
-        import math
         if value is None:
             return default
         try:
@@ -51,7 +39,6 @@ class MarketService:
 
     @staticmethod
     def _safe_int(value, default=0):
-        import math
         if value is None:
             return default
         try:
@@ -60,15 +47,62 @@ class MarketService:
         except (TypeError, ValueError):
             return default
 
-    def get_index_constituents(self, index_code):
-        import pandas as pd
+    async def get_indices(self) -> list[dict]:
+        global _indices_cache, _indices_cache_time
+        now = time.monotonic()
 
-        constituents = pypsx_toolkit.index_constituents(index_code)
-        if constituents is None or (isinstance(constituents, pd.DataFrame) and constituents.empty):
+        if _indices_cache is not None and now - _indices_cache_time < CACHE_TTL_SECONDS:
+            log.debug("Indices cache hit")
+            return _indices_cache
+
+        log.info("Fetching indices from external API")
+        raw = await asyncio.to_thread(pypsx_toolkit.get_indices)
+
+        dropped = [
+            code for code in raw.index
+            if code not in self.MAIN_INDICES
+        ]
+        if dropped:
+            log.warning("Dropping indices not in MAIN_INDICES: %s", dropped)
+
+        results = [
+            {
+                "index": self.MAIN_INDICES.get(code, code),
+                "code": code,
+                "current": self._safe_float(row["CURRENT"]),
+                "change": self._safe_float(row["CHANGE"]),
+                "change_pct": self._safe_float(row["PERCENTAGE_CHANGE"]),
+                "high": self._safe_float(row["HIGH"]),
+                "low": self._safe_float(row["LOW"]),
+            }
+            for code, row in raw.iterrows()
+            if code in self.MAIN_INDICES
+        ]
+
+        _indices_cache = results
+        _indices_cache_time = now
+        log.info("Fetched %d indices", len(results))
+        return results
+
+    async def get_index_constituents(self, index_code: str) -> list[dict]:
+        now = time.monotonic()
+        cached = _constituents_cache.get(index_code)
+        cached_time = _constituents_cache_time.get(index_code, 0.0)
+
+        if cached is not None and now - cached_time < CACHE_TTL_SECONDS:
+            log.debug("Constituents cache hit for %s", index_code)
+            return cached
+
+        log.info("Fetching constituents for %s from external API", index_code)
+        raw = await asyncio.to_thread(pypsx_toolkit.index_constituents, index_code)
+
+        import pandas as pd
+        if raw is None or (isinstance(raw, pd.DataFrame) and raw.empty):
+            log.warning("Empty constituents data for %s", index_code)
             return []
 
         results = []
-        for symbol, row in constituents.iterrows():
+        for symbol, row in raw.iterrows():
             try:
                 results.append({
                     "symbol": str(symbol),
@@ -86,80 +120,117 @@ class MarketService:
             except Exception:
                 log.warning("Skipping malformed constituent row: %s", symbol, exc_info=True)
                 continue
+
+        _constituents_cache[index_code] = results
+        _constituents_cache_time[index_code] = now
+        log.info("Fetched %d constituents for %s", len(results), index_code)
         return results
 
-    def get_market_data(self, force_refresh=False):
+    def get_market_data_sync(self, force_refresh: bool = False) -> list[dict]:
+        """Synchronous market data fetch with caching.
+
+        Used by StockService which operates synchronously. Bypasses asyncio
+        to avoid event-loop conflicts.
+        """
         global _market_data_cache, _market_data_cache_time
         now = time.monotonic()
-        if (
-            force_refresh
-            or _market_data_cache is None
-            or now - _market_data_cache_time > MARKET_DATA_TTL_SECONDS
-        ):
-            with _market_data_lock:
-                if (
-                    force_refresh
-                    or _market_data_cache is None
-                    or now - _market_data_cache_time > MARKET_DATA_TTL_SECONDS
-                ):
-                    _market_data_cache = self._fetch_market_data()
-                    _market_data_cache_time = now
-        return _market_data_cache
 
-    def _fetch_market_data(self):
-        market = pypsx_toolkit.market_watch()
+        if (
+            not force_refresh
+            and _market_data_cache is not None
+            and now - _market_data_cache_time < CACHE_TTL_SECONDS
+        ):
+            log.debug("Market data cache hit (sync)")
+            return _market_data_cache
+
+        log.info("Fetching market watch from external API (sync)")
+        raw = pypsx_toolkit.market_watch()
+
         rows = []
-        for symbol, row in market.iterrows():
-            ldcp = row["LDCP"]
-            change_pct = (row["Change"] / ldcp * 100) if ldcp else 0.0
-            rows.append(
-                {
-                    "symbol": symbol,
-                    "sector": row["Sector"],
-                    "ldcp": float(ldcp),
-                    "open": float(row["Open"]),
-                    "high": float(row["High"]),
-                    "low": float(row["Low"]),
-                    "current": float(row["Current"]),
-                    "change": float(row["Change"]),
-                    "change_pct": round(float(change_pct), 2),
-                    "volume": int(row["Volume"]),
-                }
-            )
+        for symbol, row in raw.iterrows():
+            ldcp = self._safe_float(row.get("LDCP"))
+            change = self._safe_float(row.get("Change"))
+            change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+            rows.append({
+                "symbol": symbol,
+                "sector": str(row.get("Sector", "")),
+                "ldcp": ldcp,
+                "open": self._safe_float(row.get("Open")),
+                "high": self._safe_float(row.get("High")),
+                "low": self._safe_float(row.get("Low")),
+                "current": self._safe_float(row.get("Current")),
+                "change": change,
+                "change_pct": change_pct,
+                "volume": self._safe_int(row.get("Volume")),
+            })
+
+        _market_data_cache = rows
+        _market_data_cache_time = now
+        log.info("Fetched %d market quotes (sync)", len(rows))
         return rows
 
-    @staticmethod
-    def sort_gainers(data):
-        return sorted(data, key=lambda d: d["change_pct"], reverse=True)
+    async def get_market_data(self, force_refresh: bool = False) -> list[dict]:
+        global _market_data_cache, _market_data_cache_time
+        now = time.monotonic()
 
-    @staticmethod
-    def sort_losers(data):
-        return sorted(data, key=lambda d: d["change_pct"])
+        if (
+            not force_refresh
+            and _market_data_cache is not None
+            and now - _market_data_cache_time < CACHE_TTL_SECONDS
+        ):
+            log.debug("Market data cache hit")
+            return _market_data_cache
 
-    @staticmethod
-    def sort_volume(data):
-        return sorted(data, key=lambda d: d["volume"], reverse=True)
+        log.info("Fetching market watch from external API")
+        raw = await asyncio.to_thread(pypsx_toolkit.market_watch)
 
-    def get_top_gainers(self, limit=10):
-        data = self.get_market_data()
-        return self.sort_gainers(data)[:limit]
+        rows = []
+        for symbol, row in raw.iterrows():
+            ldcp = self._safe_float(row.get("LDCP"))
+            change = self._safe_float(row.get("Change"))
+            change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+            rows.append({
+                "symbol": symbol,
+                "sector": str(row.get("Sector", "")),
+                "ldcp": ldcp,
+                "open": self._safe_float(row.get("Open")),
+                "high": self._safe_float(row.get("High")),
+                "low": self._safe_float(row.get("Low")),
+                "current": self._safe_float(row.get("Current")),
+                "change": change,
+                "change_pct": change_pct,
+                "volume": self._safe_int(row.get("Volume")),
+            })
 
-    def get_top_losers(self, limit=10):
-        data = self.get_market_data()
-        return self.sort_losers(data)[:limit]
+        _market_data_cache = rows
+        _market_data_cache_time = now
+        log.info("Fetched %d market quotes", len(rows))
+        return rows
 
-    def get_volume_spikes(self, limit=10):
-        data = self.get_market_data()
-        return self.sort_volume(data)[:limit]
+    async def get_top_gainers(self, limit: int = 10) -> list[dict]:
+        data = await self.get_market_data()
+        return sorted(data, key=lambda d: d["change_pct"], reverse=True)[:limit]
 
-    def get_sentiment_overview(self):
-        data = self.get_market_data()
+    async def get_top_losers(self, limit: int = 10) -> list[dict]:
+        data = await self.get_market_data()
+        return sorted(data, key=lambda d: d["change_pct"])[:limit]
+
+    async def get_volume_spikes(self, limit: int = 10) -> list[dict]:
+        data = await self.get_market_data()
+        return sorted(data, key=lambda d: d["volume"], reverse=True)[:limit]
+
+    async def get_sentiment_overview(self) -> dict:
+        data = await self.get_market_data()
         advancing = sum(1 for d in data if d["change_pct"] > 0)
         declining = sum(1 for d in data if d["change_pct"] < 0)
         unchanged = len(data) - advancing - declining
         total = len(data)
 
-        ratio = advancing / declining if declining else float("inf")
+        if declining == 0:
+            ratio = float(advancing) if advancing > 0 else 1.0
+        else:
+            ratio = advancing / declining
+
         if ratio >= 2:
             market_mood = "strongly_bullish"
         elif ratio >= 1.5:

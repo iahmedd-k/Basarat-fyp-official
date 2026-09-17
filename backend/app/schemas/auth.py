@@ -1,10 +1,41 @@
-from pydantic import BaseModel, EmailStr, Field
+import re
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+_PASSWORD_COMPLEXITY_RE = re.compile(
+    r"^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?])"
+)
+
+_URL_RE = re.compile(r"^https?://[^\s/$.?#].[^\s]*$", re.IGNORECASE)
+
+
+class UserSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    email: str
+    username: str
+    full_name: str | None = None
+    is_admin: bool = False
 
 
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
     full_name: str | None = Field(None, max_length=255)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if not _PASSWORD_COMPLEXITY_RE.match(v):
+            raise ValueError(
+                "Password must contain at least one uppercase letter, "
+                "one digit, and one special character."
+            )
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -16,11 +47,15 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
-    user: dict
+    user: UserSummary
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -31,10 +66,34 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(..., min_length=8, max_length=128)
 
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if not _PASSWORD_COMPLEXITY_RE.match(v):
+            raise ValueError(
+                "Password must contain at least one uppercase letter, "
+                "one digit, and one special character."
+            )
+        return v
+
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if not _PASSWORD_COMPLEXITY_RE.match(v):
+            raise ValueError(
+                "Password must contain at least one uppercase letter, "
+                "one digit, and one special character."
+            )
+        return v
+
+
+class MessageResponse(BaseModel):
+    message: str
 
 
 class UserProfileResponse(BaseModel):
@@ -46,7 +105,7 @@ class UserProfileResponse(BaseModel):
     is_active: bool
     is_verified: bool
     is_admin: bool
-    created_at: str
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -55,16 +114,23 @@ class UpdateProfileRequest(BaseModel):
     full_name: str | None = Field(None, max_length=255)
     avatar_url: str | None = Field(None, max_length=500)
 
+    @field_validator("avatar_url")
+    @classmethod
+    def validate_avatar_url(cls, v: str | None) -> str | None:
+        if v is not None and not _URL_RE.match(v):
+            raise ValueError("avatar_url must be a valid HTTP or HTTPS URL.")
+        return v
+
 
 class UpdateRiskProfileRequest(BaseModel):
     risk_tolerance: str | None = Field(None, pattern="^(conservative|moderate|aggressive)$")
-    sector_preferences: list[str] | None = None
+    sector_preferences: list[str] | None = Field(None, max_length=50)
     investment_horizon: str | None = None
 
 
 class UpdateNotificationPrefsRequest(BaseModel):
-    channels: list[str] | None = None
-    categories: list[str] | None = None
+    channels: list[str] | None = Field(None, max_length=20)
+    categories: list[str] | None = Field(None, max_length=50)
 
 
 class DeviceRegisterRequest(BaseModel):
@@ -179,77 +245,6 @@ class NewsListResponse(BaseModel):
     page: int
     limit: int
     has_more: bool
-
-
-class ShariahScreeningResponse(BaseModel):
-    symbol: str
-    is_shariah_compliant: bool
-    overall_score: float | None = None
-    screening_method: str | None = None
-    screened_at: str | None = None
-
-
-class ShariahCriteriaResponse(BaseModel):
-    symbol: str
-    criteria: list[dict]
-
-
-class ShariahPurificationResponse(BaseModel):
-    symbol: str
-    holding_qty: int
-    holding_value: float
-    purification_amount: float
-    purification_rate: float
-
-
-class ShariahKMI30Response(BaseModel):
-    index: str
-    constituents: list[dict]
-
-
-class AssistantChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=10000)
-    conversation_id: str | None = None
-
-
-class AssistantChatResponse(BaseModel):
-    conversation_id: str
-    message: str
-    role: str = "assistant"
-
-
-class ConversationResponse(BaseModel):
-    id: str
-    title: str | None = None
-    created_at: str
-
-
-class ConversationsListResponse(BaseModel):
-    conversations: list[ConversationResponse]
-
-
-class MessageResponse(BaseModel):
-    id: str
-    role: str
-    content: str
-    created_at: str
-
-
-class ConversationDetailResponse(BaseModel):
-    id: str
-    title: str | None = None
-    messages: list[MessageResponse]
-    created_at: str
-
-
-class QuickPromptResponse(BaseModel):
-    id: str
-    text: str
-    category: str
-
-
-class QuickPromptsResponse(BaseModel):
-    prompts: list[QuickPromptResponse]
 
 
 class EventResponse(BaseModel):
