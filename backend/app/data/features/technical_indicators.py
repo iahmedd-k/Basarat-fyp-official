@@ -199,12 +199,45 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
         rsi = _rsi(g["close"], length=14)
         g["rsi_roc"] = rsi - rsi.shift(5)
 
+        # ── Normalized / Relative Price Features (Task 11) ───────────────
+        g["close_to_sma20_ratio"] = (g["close"] / g["sma_20"].replace(0, np.nan)) - 1.0
+        g["close_to_sma50_ratio"] = (g["close"] / g["sma_50"].replace(0, np.nan)) - 1.0
+        g["ema_cross_ratio"] = (g["ema_12"] / g["ema_26"].replace(0, np.nan)) - 1.0
+        bb_width = (g["bb_upper"] - g["bb_lower"]).replace(0, np.nan)
+        g["bollinger_pos"] = ((g["close"] - g["bb_lower"]) / bb_width).clip(0, 1)
+        g["daily_range_pct"] = (g["high"] - g["low"]) / g["close"].replace(0, np.nan)
+        if "volume" in g.columns:
+            g["volume_change_1d"] = g["volume"].pct_change(1)
+        else:
+            g["volume_change_1d"] = 0.0
+
+        # ── Stock returns for market context (Task 12) ───────────────────
+        g["stock_return_20d"] = g["close"].pct_change(20)
+
         return g
 
     # Suppress FutureWarning about groupby.apply on grouping columns
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=FutureWarning)
         df = df.groupby("symbol", group_keys=False).apply(_apply_group)
+
+    # ── Market Context / Market-Relative Features (Task 12) ──────────────
+    # Compute point-in-time equal-weighted market returns across universe
+    df["daily_ret"] = df.groupby("symbol")["close"].pct_change(1)
+    market_daily = df.groupby("date")["daily_ret"].mean().reset_index()
+    market_daily = market_daily.sort_values("date").reset_index(drop=True)
+
+    # Compounded market returns: (1+r1)*(1+r2)... - 1
+    m_growth = 1.0 + market_daily["daily_ret"].fillna(0.0)
+    market_daily["index_return_5d"] = m_growth.rolling(5, min_periods=5).apply(np.prod, raw=True) - 1.0
+    market_daily["index_return_20d"] = m_growth.rolling(20, min_periods=20).apply(np.prod, raw=True) - 1.0
+    market_daily["market_return_5d"] = market_daily["index_return_5d"]
+    market_daily["market_return_20d"] = market_daily["index_return_20d"]
+
+    market_lookup = market_daily[["date", "index_return_5d", "index_return_20d", "market_return_5d", "market_return_20d"]]
+    df = pd.merge(df, market_lookup, on="date", how="left")
+    df["stock_relative_return_20d"] = df["stock_return_20d"] - df["index_return_20d"]
+    df = df.drop(columns=["daily_ret"])
 
     # Drop warm-up rows
     before = len(df)

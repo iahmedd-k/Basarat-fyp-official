@@ -15,6 +15,9 @@ _EVENT_RULES: list[tuple[str, list[str]]] = [
         r"\bnet income\b", r"\bgross margin\b", r"\beps\b",
         r"\bquarterly result\b", r"\bannual result\b", r"\bhalf.?year",
         r"\bfinancial result\b", r"\bfinancial statement",
+        r"\bsurprise\b", r"\bbeats?\b", r"\bmiss(es|ed)?\b",
+        r"\b(above|below|ahead of|behind)\s+(expectations|estimate|forecast)",
+        r"\bexceeded?\s+(expectations|estimate|forecast)", r"\bestimates?\b",
     ]),
     ("dividend", [
         r"\bdividend\b", r"\bfinal dividend\b", r"\binterim dividend\b",
@@ -29,6 +32,24 @@ _EVENT_RULES: list[tuple[str, list[str]]] = [
         r"\binterest rate\b", r"\bpolicy rate\b", r"\brate cut\b",
         r"\brate hike\b", r"\brate hold\b",
         r"\bsbp\b.*\brate\b", r"\bbasis point\b",
+    ]),
+    ("circular_debt", [
+        r"\bcircular debt\b", r"\binter.?corporate\s+debt\b",
+        r"\bpower\b.*\barrears\b", r"\benergy\b.*\barrears\b",
+        r"\bcapacity payments?\b", r"\btariff differential\b",
+        r"\bcede\b", r"\bpower\b.*\bdues?\b", r"\bgas\b.*\bdues?\b",
+    ]),
+    ("imf", [
+        r"\bimf\b", r"\bprogramme\b", r"\bstand.?by\b",
+        r"\breview\b", r"\btranche\b", r"\bextended fund\b",
+        r"\bdisburs", r"\bfund\s+board\b", r"\bdebt\s+sustainab",
+        r"\bprior action",
+    ]),
+    ("block_order", [
+        r"\bblock orders?\b", r"\binstitutional\s+(buy|sell|trading|interest)",
+        r"\bforeign\s+(buying|selling|inflow|outflow|participation)",
+        r"\blocal\s+(buying|selling)", r"\bcross\s+trade", r"\bbulk\s+(buy|sell)",
+        r"\bproprietary\s+trading", r"\bresource\s+flow",
     ]),
     ("acquisition", [
         r"\bacqui[sz]", r"\bacquire[sd]?\b", r"\btakeover\b",
@@ -53,10 +74,6 @@ _EVENT_RULES: list[tuple[str, list[str]]] = [
     ("currency", [
         r"\brupee\b", r"\bpkr\b", r"\bdollar\b", r"\bforex\b",
         r"\bexchange rate\b", r"\bcurrency\b", r"\bdevaluat",
-    ]),
-    ("imf", [
-        r"\bimf\b", r"\bprogramme\b", r"\bstand.?by\b",
-        r"\breview\b", r"\btranche\b", r"\bextended fund\b",
     ]),
     ("expansion", [
         r"\bexpansion\b", r"\bnew plant\b", r"\bcapacity\b",

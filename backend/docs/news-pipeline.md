@@ -28,6 +28,7 @@
 The News & Events Pipeline collects, processes, and stores financial news from PSX-relevant sources, providing:
 
 - **Multi-source ingestion** from 5 curated sources (PSX, SECP, SBP, Business Recorder, Dawn Business)
+- **Priority coverage** — guaranteed capture of IMF announcements, interest-rate decisions, quarterly earnings surprises, circular-debt developments, and institutional block orders
 - **Deduplication** via SHA-256 content hashing
 - **Symbol tagging** — automatic matching of articles to PSX-listed stocks
 - **Event classification** — rule-based categorization into 10 event types
@@ -188,13 +189,19 @@ tag_symbols(article) → tuple[list[str], list[str]]
 ```python
 # event_classifier.py
 EVENT_TYPES = [
-    "earnings",           # quarterly results, profit/loss
+    "earnings",           # quarterly results, profit/loss, beats/misses/surprises
     "dividend",           # dividend announcements
-    "corporate_action",   # splits, mergers, acquisitions
     "monetary_policy",    # SBP policy rate changes
+    "interest_rate",      # interest rate changes (non-SBP)
+    "circular_debt",      # energy/power sector circular-debt developments
+    "imf",                # IMF announcements, reviews, tranches, disbursements
+    "block_order",        # institutional/foreign block trades & participation
+    "acquisition",        # takeovers, bids, purchases
+    "merger",             # mergers, amalgamations
+    "contract",           # contracts, orders, joint ventures
+    "corporate_action",   # splits, mergers, acquisitions
     "regulatory_action",  # SECP regulations, compliance
     "market_commentary",  # analyst opinions, market outlook
-    "interest_rate",      # interest rate changes (non-SBP)
     "inflation",          # CPI, inflation data
     "gdp",                # GDP growth, economic data
     "general_news",       # default fallback
@@ -203,6 +210,8 @@ EVENT_TYPES = [
 
 **Priority rules:**
 - `monetary_policy` takes precedence over `interest_rate`
+- `block_order` is checked before `contract`/`acquisition` (overlapping "order"/"offer" keywords)
+- `circular_debt` is checked before `imf` (IMF reviews frequently discuss circular debt)
 - SBP source articles are excluded from `regulatory_action` rules
 - Most specific match wins (e.g., "earnings" over "general_news")
 
@@ -455,12 +464,12 @@ The impact score is a **deterministic, explainable** 0–100 integer. It is **no
 |---|---|---|
 | earnings | 25 | Direct company financials |
 | dividend | 24 | Direct shareholder impact |
-| monetary_policy | 23 | Market-wide rate impact |
+| monetary_policy | 20 | Market-wide rate impact |
+| block_order | 20 | Institutional/foreign participation signals |
+| interest_rate | 20 | Economic indicator |
+| circular_debt | 18 | Energy-sector systemic risk |
 | corporate_action | 20 | Splits, mergers, acquisitions |
 | regulatory_action | 18 | Compliance changes |
-| interest_rate | 16 | Economic indicator |
-| inflation | 14 | Economic indicator |
-| gdp | 12 | Economic indicator |
 | market_commentary | 10 | Analyst opinions |
 | general_news | 5 | Lowest priority |
 

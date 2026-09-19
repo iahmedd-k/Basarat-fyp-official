@@ -132,7 +132,7 @@
     ├── Portfolio tab ─► Holdings (Module 6) ─► Risk Dashboard (Module 7) ─► Monte Carlo (Module 7)
     │       └─ Add Holding ─► picks symbol via same search as Stock Analysis
     │
-    ├── Community tab ─► Feed (Module 10) ─► Post Detail/Thread ─► Leaderboard
+    ├── Community tab ─► Feed (Module 10) ─► Post Detail/Thread
     │
     ├── Assistant tab ─► Chat (Module 12), which can internally query any module's data on the user's behalf
     │
@@ -309,7 +309,7 @@ basarat-backend/
 | Charts | Vico or MPAndroidChart (candlestick + line, needed in Stock Analysis, Forecasting, Portfolio) |
 
 **Global navigation routes (all screens across modules, for the NavHost skeleton):**
-`splash → auth/login → auth/signup → onboarding/risk_profile → home(bottom nav: dashboard, portfolio, community, assistant, profile) → stock/{symbol} → forecast/{symbol} → recommendations → recommendations/{symbol} → risk/dashboard → risk/monte_carlo → news/feed → news/{id} → events/calendar → alerts/rules → alerts/create → notifications → community/feed → community/post/{id} → community/create → leaderboard → shariah/{symbol} → shariah/purification → shariah/kmi30 → assistant/chat → settings/profile → settings/notifications`
+`splash → auth/login → auth/signup → onboarding/risk_profile → home(bottom nav: dashboard, portfolio, community, assistant, profile) → stock/{symbol} → forecast/{symbol} → recommendations → recommendations/{symbol} → risk/dashboard → risk/monte_carlo → news/feed → news/{id} → events/calendar → alerts/rules → alerts/create → notifications → community/feed → community/post/{id} → community/create → shariah/{symbol} → shariah/purification → shariah/kmi30 → assistant/chat → settings/profile → settings/notifications`
 
 **Every screen spec below lists:** Purpose · Data fields shown · ViewModel state (`UiState` fields) · API calls it triggers · **Entry point** (how the user gets there) · **Exit actions** (where it can navigate to next). Build to this exactly — it's the contract between the Android dev and the module owner's backend work, and it should read as "here is everything that appears on this screen, in this order, and here is what happens when the user taps something."
 
@@ -319,7 +319,7 @@ This is the rule to apply every time a module spec below feels ambiguous:
 
 1. **New screen** if the content represents a distinct user goal reached via navigation (a route in the NavHost) — e.g. "view stock detail," "configure an alert," "read one article." If it has its own back-stack entry, it's a screen.
 2. **Component / section within a screen** if it's a sub-view of the same goal — e.g. the "Chart" and "Fundamentals" **tabs** inside Stock Detail are not two screens, they're one screen with a `TabRow` and two composable content blocks driven by one `selectedTab` state var.
-3. **Bottom sheet / dialog**, not a new screen, for short, interruptive actions that return to the same context — e.g. a filter picker, a confirm-delete dialog, a quick vote/report action on a community post.
+3. **Bottom sheet / dialog**, not a new screen, for short, interruptive actions that return to the same context — e.g. a filter picker, a confirm-delete dialog, a quick like/report action on a community post.
 4. **Reusable component** (not screen-specific) the moment the same visual pattern appears in 2+ modules — build it once in a shared `components/` package. Concretely, build these as shared components from day one: `StockRow` (symbol/name/ltp/change — used in search, watchlists, gainers/losers, KMI-30 list), `SignalBadge` (BUY/SELL/HOLD), `SentimentChip`, `LoadingState`/`ErrorState`/`EmptyState` (every `UiState` renders through the same three composables), `PriceChart` (candlestick, reused in Stock Detail, Forecast, Portfolio Holding Detail).
 5. If you're unsure, check the **End-to-End User Flow diagram** in Section 1 — if what you're building isn't a labeled stop on that map, it's probably a component of an existing stop, not a new screen.
 
@@ -718,40 +718,45 @@ Each module below gives the React page's data needs alongside the Android screen
 **Track:** Frontend/UX
 
 **Backend Tasks**
-- [ ] Post model: `author, symbol, stance (bullish/bearish), rationale_text, created_at, vote_count`
-- [ ] Voting (upvote/downvote, one vote per user per post)
-- [ ] Comment threads per post
-- [ ] Leaderboard computation: rank by prediction accuracy (needs a way to mark a post's stance as later correct/incorrect — e.g. auto-resolve after N days vs price movement) + engagement
-- [ ] Basic content moderation (profanity filter minimum; flag/report endpoint)
+- [x] Post model: `content, sentiment (bullish/bearish/neutral), media_url?, status, like_count, comment_count` + N `post_stock_tags` (1–3 symbols validated against real tickers)
+- [x] Like toggle (one row per `(post_id, user_id)`, denormalized count)
+- [x] Comment threads (parent_id, depth capped at 2; soft-delete)
+- [x] Basic content moderation (profanity blocklist + all-caps/repeat/URL ratchet at creation; report endpoint with auto-flag at threshold)
+- [x] Posting rate limit (one post per 30s per user, Redis fail-open)
+- [x] Share via short-code deep links (`GET /community/share/{short_code}` is public)
+- [ ] Leaderboard by prediction accuracy — deferred (needs stance-resolution vs later price movement)
 
 **Android/React Tasks**
-- [ ] Community feed, create post, post detail/thread, leaderboard
+- [ ] Community feed, create post, post detail/thread (leaderboard deferred — no accuracy resolution yet)
 
 **API Endpoints**
 | Method | Endpoint | Body/Query | Notes |
 |---|---|---|---|
-| GET | `/community/feed` | `page, limit, symbol filter` | |
-| POST | `/community/posts` | `symbol, stance, rationale_text` | |
-| POST | `/community/posts/{id}/vote` | `direction: up\|down` | |
-| GET | `/community/posts/{id}/comments` | — | |
-| POST | `/community/posts/{id}/comments` | `text` | |
-| GET | `/community/leaderboard` | `period=weekly\|monthly\|all_time` | |
-| POST | `/community/posts/{id}/report` | `reason` | moderation |
+| POST | `/community/posts` | `{content, symbols[1-3], sentiment?, mediaUrl?}` | 201; content filter; 429 on rate limit |
+| GET | `/community/feed` | `cursor?, limit, filter=all\|following` | `following` == `all` in v1 |
+| GET | `/community/stocks/{symbol}/posts` | `cursor?, limit` | per-symbol feed |
+| GET | `/community/posts/{postId}` | — | |
+| DELETE | `/community/posts/{postId}` | — | owner only |
+| POST | `/community/posts/{postId}/like` | — | toggle |
+| POST | `/community/posts/{postId}/comments` | `{content, parentCommentId?}` | depth 2 |
+| GET | `/community/posts/{postId}/comments` | `cursor?, limit` | |
+| POST | `/community/reports` | `{targetType, targetId, reason}` | idempotent |
+| POST | `/community/posts/{postId}/share` | — | returns shortCode |
+| GET | `/community/share/{shortCode}` | — | public, no auth |
 
 **Android Screens & Data**
 | Screen | Purpose | Data fields shown | ViewModel State | API calls |
 |---|---|---|---|---|
-| Community Feed | Browse ideas | post cards: `author_name, symbol, stance_badge(bullish/bearish), rationale_preview, vote_count, comment_count, timestamp` | `posts: List<Post> (paged), isLoading` | `GET /community/feed` |
-| Create Post | Share idea | form: `symbol (autocomplete), stance toggle, rationale_text (multiline)` | `form: PostForm, isSaving` | `POST /community/posts` |
-| Post Detail / Thread | Discuss | full post + `comments: List<Comment>`, comment input | `post: PostDetail?, comments, commentText` | `GET post + comments`, `POST comment/vote` |
-| Leaderboard | Top traders | rows: `rank, username, accuracy_pct, total_posts, badge` | `leaderboard: List<LeaderboardEntry>, period` | `GET /community/leaderboard` |
+| Community Feed | Browse ideas | post cards: `user{name,avatarUrl} (author_name), symbols[{symbol,price,changePercent}] (stance badge from sentiment), content (preview), like_count, comment_count, createdAt` | `posts: List<Post> (paged, cursor), isLoading` | `GET /community/feed` |
+| Create Post | Share idea | form: `symbols (1-3, autocomplete), sentiment toggle, content (multiline, ≤500)` | `form: PostForm, isSaving` | `POST /community/posts` |
+| Post Detail / Thread | Discuss | full post + `comments: List<Comment>` with one reply level, comment input | `post: PostDetail?, comments, commentText, isLiked` | `GET post`, `GET comments`, `POST comment/like/delete` |
 
-**Navigation flow:** Entry is the Home bottom nav's "Community" tab, landing on Feed. The "+" button opens Create Post (full screen — it needs the same symbol search as elsewhere). Tapping a post opens Post Detail/Thread. Leaderboard is a tab within the Community screen (Feed / Leaderboard), not a separate route — voting and reporting happen inline via a bottom sheet, never a full navigation.
+**Navigation flow:** Entry is the Home bottom nav's "Community" tab, landing on Feed. The "+" button opens Create Post (full screen — it needs the same symbol search as elsewhere). Tapping a post opens Post Detail/Thread. Voting is replaced by likes (`POST /posts/{id}/like`, optimistic toggle). Reporting happens inline via the post/comment overflow menu (bottom sheet), never a full navigation. Shares deep-link back into Post Detail.
 
 **Definition of Done**
-- [ ] Vote counts update optimistically in UI and reconcile with server truth
-- [ ] Leaderboard accuracy resolution logic is documented (what counts as "correct", after how long)
-- [ ] Basic abuse handling in place (report endpoint wired to at least a moderation queue/table, even if manually reviewed for FYP scope)
+- [ ] Like counts and liked state update optimistically in UI and reconcile with server truth
+- [ ] Create Post enforces 1–3 valid tickers + ≤500 chars and surfaces `CONTENT_REJECTED`/`RATE_LIMITED` errors from the shared error shape
+- [ ] Basic abuse handling in place (report endpoint wired to `reports` table; auto-flag at threshold, even if manually reviewed for FYP scope)
 
 ---
 ### Module 11 — Shariah Compliance Screener
@@ -867,7 +872,7 @@ This mapping keeps your existing Gantt chart largely intact but clarifies the *d
 | FR-13 | System shall aggregate Pakistani financial news with FinBERT-based sentiment scoring per stock |
 | FR-14 | System shall maintain an event calendar for earnings, dividends, and SBP policy dates |
 | FR-15 | System shall allow users to configure custom alert rules and receive push/in-app notifications |
-| FR-16 | System shall provide a community feed for posting and voting on trade ideas, with a leaderboard |
+| FR-16 | System shall provide a community feed for posting and liking trade ideas, with moderation (leaderboard deferred) |
 | FR-17 | System shall screen any KSE-100 stock against AAOIFI/SECP Shariah criteria with a compliance score and purification calculator |
 | FR-18 | System shall provide a conversational AI assistant answering natural-language queries grounded in the user's live data |
 | FR-19 | All modules shall be available with functional parity on both Android and Web clients |
@@ -891,7 +896,7 @@ This mapping keeps your existing Gantt chart largely intact but clarifies the *d
 
 ## 9. Database Entity Overview (high-level — refine into full ERD before Phase 0 ends)
 
-**Core entities:** `users, risk_profiles, notification_preferences, devices` · `stocks, price_history (OHLCV), fundamentals, technical_indicators_cache` · `forecasts, prediction_history` · `recommendations` · `portfolio_holdings` · `risk_snapshots, monte_carlo_jobs` · `sentiment_scores` · `news_articles, calendar_events` · `alert_rules, notifications` · `community_posts, community_votes, community_comments, leaderboard_snapshots` · `shariah_screenings, purification_records` · `assistant_conversations, assistant_messages`
+**Core entities:** `users, risk_profiles, notification_preferences, devices` · `stocks, price_history (OHLCV), fundamentals, technical_indicators_cache` · `forecasts, prediction_history` · `recommendations` · `portfolio_holdings` · `risk_snapshots, monte_carlo_jobs` · `sentiment_scores` · `news_articles, calendar_events` · `alert_rules, notifications` · `posts, post_stock_tags, post_likes, comments, reports, share_links, leaderboard_snapshots` · `shariah_screenings, purification_records` · `assistant_conversations, assistant_messages`
 
 **Cross-cutting keys:** every user-owned table carries `user_id`; every stock-related table carries `symbol` as a foreign key to a single `stocks` master table — keep this normalized from day one, it's what makes cross-module joins (e.g. portfolio risk using live prices) clean.
 

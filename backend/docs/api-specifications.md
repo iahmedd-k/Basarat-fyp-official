@@ -203,15 +203,23 @@ Query params `?page=1&limit=20` — response carries `meta: { page, limit, total
 
 ### 3.10 Module 10 — Community Trading Hub
 
+All `/community` endpoints except `GET /community/share/{short_code}` require a Bearer access token.
+Errors use the shared app error shape: `{error, message, field?, extras?}` (e.g. `INVALID_STOCK_TAG`,
+`CONTENT_REJECTED`, `RATE_LIMITED`, `POST_NOT_FOUND`, `FORBIDDEN`, `MAX_DEPTH_EXCEEDED`).
+
 | Method | Endpoint | Body/Query | Notes |
 |---|---|---|---|
-| GET | `/community/feed` | `page, limit, symbol` | — |
-| POST | `/community/posts` | `symbol, stance, rationale_text` | — |
-| POST | `/community/posts/{id}/vote` | `direction: up\|down` | — |
-| GET | `/community/posts/{id}/comments` | — | — |
-| POST | `/community/posts/{id}/comments` | `text` | — |
-| GET | `/community/leaderboard` | `period=weekly\|monthly\|all_time` | — |
-| POST | `/community/posts/{id}/report` | `reason` | moderation |
+| POST | `/community/posts` | `{content (1-500), symbols[1-3], sentiment?, mediaUrl?}` | 201; 1-3 real tickers; content filter; 30s/post Redis rate-limit → 429 |
+| GET | `/community/feed` | `cursor?, limit (≤50), filter=all\|following` | cursor-paginated; `following` behaves like `all` in v1 |
+| GET | `/community/stocks/{symbol}/posts` | `cursor?, limit` | posts tagged to one ticker |
+| GET | `/community/posts/{postId}` | — | single post |
+| DELETE | `/community/posts/{postId}` | — | owner only, soft delete → 204 |
+| POST | `/community/posts/{postId}/like` | — | toggle; returns `{postId, likedByMe, likeCount}` |
+| POST | `/community/posts/{postId}/comments` | `{content (1-300), parentCommentId?}` | depth 2 max; 201 |
+| GET | `/community/posts/{postId}/comments` | `cursor?, limit` | top-level + one level of replies |
+| POST | `/community/reports` | `{targetType: POST\|COMMENT, targetId, reason}` | idempotent; auto-flags post at threshold |
+| POST | `/community/posts/{postId}/share` | — | returns `{shortUrl, shortCode}` |
+| GET | `/community/share/{shortCode}` | — | **public**; teaser + `{deepLink, androidPackage, playStoreUrl}` only |
 
 ### 3.11 Module 11 — Shariah Compliance Screener
 

@@ -1,11 +1,13 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
+from typing import Optional
+from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.portfolio import Portfolio, PortfolioHolding
+from app.models.portfolio import Transaction, PriceCache, WatchlistItem, TransactionType
 from app.models.stock import Stock
 
 
@@ -13,127 +15,230 @@ class PortfolioRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_or_create_portfolio(self, user_id: str) -> Portfolio:
-        result = await self.db.execute(
-            select(Portfolio)
-            .options(selectinload(Portfolio.holdings))
-            .where(Portfolio.user_id == user_id)
-            .limit(1)
-        )
-        portfolio = result.scalars().first()
-        if portfolio is None:
-            portfolio = Portfolio(user_id=user_id, name="My Portfolio")
-            self.db.add(portfolio)
-            await self.db.flush()
-            await self.db.refresh(portfolio)
-        return portfolio
-
-    async def get_holding(self, holding_id: str, portfolio_id: str) -> PortfolioHolding | None:
-        result = await self.db.execute(
-            select(PortfolioHolding)
-            .where(
-                PortfolioHolding.id == holding_id,
-                PortfolioHolding.portfolio_id == portfolio_id,
-            )
-        )
-        return result.scalars().first()
-
-    async def get_holding_with_stock(self, holding_id: str, portfolio_id: str) -> PortfolioHolding | None:
-        result = await self.db.execute(
-            select(PortfolioHolding)
-            .options(selectinload(PortfolioHolding.portfolio))
-            .where(
-                PortfolioHolding.id == holding_id,
-                PortfolioHolding.portfolio_id == portfolio_id,
-            )
-        )
-        return result.scalars().first()
-
-    async def get_stock_by_symbol(self, symbol: str) -> Stock | None:
-        result = await self.db.execute(
-            select(Stock).where(Stock.symbol == symbol.upper())
-        )
-        return result.scalars().first()
-
-    async def create_holding(
+    # Transaction CRUD
+    async def create_transaction(
         self,
-        portfolio_id: str,
-        stock_id: str,
+        user_id: str,
+        symbol: str,
+        type: TransactionType,
         quantity: int,
-        avg_buy_price: float,
-        purchase_date: date | None = None,
-    ) -> PortfolioHolding:
-        holding = PortfolioHolding(
-            portfolio_id=portfolio_id,
-            stock_id=stock_id,
+        price: float,
+        fees: float,
+        transaction_date: date,
+    ) -> Transaction:
+        transaction = Transaction(
+            user_id=user_id,
+            symbol=symbol.upper(),
+            type=type,
             quantity=quantity,
-            avg_buy_price=Decimal(str(avg_buy_price)),
-            purchase_date=purchase_date,
+            price=Decimal(str(price)),
+            fees=Decimal(str(fees)),
+            transaction_date=transaction_date,
         )
-        self.db.add(holding)
+        self.db.add(transaction)
         await self.db.flush()
-        await self.db.refresh(holding)
-        return holding
+        await self.db.refresh(transaction)
+        return transaction
 
-    async def update_holding(
-        self,
-        holding: PortfolioHolding,
-        quantity: int | None = None,
-        avg_buy_price: float | None = None,
-        purchase_date: date | None = None,
-    ) -> PortfolioHolding:
-        if quantity is not None:
-            holding.quantity = quantity
-        if avg_buy_price is not None:
-            holding.avg_buy_price = Decimal(str(avg_buy_price))
-        if purchase_date is not None:
-            holding.purchase_date = purchase_date
-        await self.db.flush()
-        await self.db.refresh(holding)
-        return holding
-
-    async def delete_holding(self, holding: PortfolioHolding) -> None:
-        await self.db.delete(holding)
-        await self.db.flush()
-
-    async def get_all_holdings(self, portfolio_id: str) -> list[PortfolioHolding]:
+    async def get_transaction(self, transaction_id: str, user_id: str) -> Optional[Transaction]:
         result = await self.db.execute(
-            select(PortfolioHolding)
-            .where(PortfolioHolding.portfolio_id == portfolio_id)
-            .order_by(PortfolioHolding.created_at.desc())
+            select(Transaction).where(
+                Transaction.id == transaction_id,
+                Transaction.user_id == user_id,
+            )
+        )
+        return result.scalars().first()
+
+    async def list_transactions(
+        self,
+        user_id: str,
+        symbol: Optional[str] = None,
+        page: int = 1,
+        limit: int = 20,
+    ) -> tuple[list[Transaction], int]:
+        query = select(Transaction).where(Transaction.user_id == user_id)
+        if symbol:
+            query = query.where(Transaction.symbol == symbol.upper())
+        query = query.order_by(Transaction.transaction_date.desc(), Transaction.created_at.desc())
+
+        # Count total
+        count_query = select(func.count()).select_from(query.subquery())
+        total = (await self.db.execute(count_query)).scalar() or 0
+
+        # Paginate
+        query = query.offset((page - 1) * limit).limit(limit)
+        result = await self.db.execute(query)
+        transactions = list(result.scalars().all())
+
+        return transactions, total
+
+    async def update_transaction(
+        self,
+        transaction: Transaction,
+        quantity: Optional[int] = None,
+        price: Optional[float] = None,
+        fees: Optional[float] = None,
+        transaction_date: Optional[date] = None,
+    ) -> Transaction:
+        if quantity is not None:
+            transaction.quantity = quantity
+        if price is not None:
+            transaction.price = Decimal(str(price))
+        if fees is not None:
+            transaction.fees = Decimal(str(fees))
+        if transaction_date is not None:
+            transaction.transaction_date = transaction_date
+        await self.db.flush()
+        await self.db.refresh(transaction)
+        return transaction
+
+    async def delete_transaction(self, transaction: Transaction) -> None:
+        await self.db.delete(transaction)
+        await self.db.flush()
+
+    # Holdings computation (derived from transactions)
+    async def get_user_holdings(self, user_id: str) -> list[dict]:
+        """
+        Compute holdings from transactions using average-cost method.
+        Returns list of dicts with: symbol, quantity, avg_cost, total_invested, transactions
+        """
+        result = await self.db.execute(
+            select(Transaction)
+            .where(Transaction.user_id == user_id)
+            .order_by(Transaction.symbol, Transaction.transaction_date, Transaction.created_at)
+        )
+        transactions = list(result.scalars().all())
+
+        holdings = {}
+        for txn in transactions:
+            sym = txn.symbol
+            if sym not in holdings:
+                holdings[sym] = {
+                    "symbol": sym,
+                    "quantity": 0,
+                    "total_cost": Decimal("0"),
+                    "transactions": [],
+                }
+            h = holdings[sym]
+            if txn.type == TransactionType.BUY:
+                h["quantity"] += txn.quantity
+                h["total_cost"] += (txn.price * txn.quantity) + txn.fees
+            else:  # SELL
+                h["quantity"] -= txn.quantity
+                # For average cost, we don't reduce total_cost proportionally
+                # The average cost remains the same for remaining shares
+            h["transactions"].append(txn)
+
+        # Filter out zero-quantity holdings and compute avg_cost
+        result_holdings = []
+        for h in holdings.values():
+            if h["quantity"] > 0:
+                avg_cost = float(h["total_cost"] / h["quantity"]) if h["quantity"] > 0 else 0
+                result_holdings.append({
+                    "symbol": h["symbol"],
+                    "quantity": h["quantity"],
+                    "avg_cost": avg_cost,
+                    "invested_value": float(h["total_cost"]),
+                    "transactions": h["transactions"],
+                })
+
+        return result_holdings
+
+    async def get_holding_by_symbol(self, user_id: str, symbol: str) -> Optional[dict]:
+        holdings = await self.get_user_holdings(user_id)
+        for h in holdings:
+            if h["symbol"] == symbol.upper():
+                return h
+        return None
+
+    async def get_net_quantity(self, user_id: str, symbol: str) -> int:
+        """Get net quantity held for a symbol (for sell validation)"""
+        result = await self.db.execute(
+            select(
+                func.sum(
+                    func.case(
+                        (Transaction.type == TransactionType.BUY, Transaction.quantity),
+                        else_=-Transaction.quantity,
+                    )
+                )
+            ).where(
+                Transaction.user_id == user_id,
+                Transaction.symbol == symbol.upper(),
+            )
+        )
+        net_qty = result.scalar() or 0
+        return int(net_qty)
+
+    # PriceCache operations
+    async def get_price_cache(self, symbol: str) -> Optional[PriceCache]:
+        result = await self.db.execute(
+            select(PriceCache).where(PriceCache.symbol == symbol.upper())
+        )
+        return result.scalars().first()
+
+    async def upsert_price_cache(
+        self,
+        symbol: str,
+        ldcp: float,
+        current_price: float,
+        change: float,
+        change_percent: float,
+        market_status: str,
+    ) -> PriceCache:
+        cache = await self.get_price_cache(symbol)
+        if cache:
+            cache.ldcp = Decimal(str(ldcp))
+            cache.current_price = Decimal(str(current_price))
+            cache.change = Decimal(str(change))
+            cache.change_percent = Decimal(str(change_percent))
+            cache.market_status = market_status
+        else:
+            cache = PriceCache(
+                symbol=symbol.upper(),
+                ldcp=Decimal(str(ldcp)),
+                current_price=Decimal(str(current_price)),
+                change=Decimal(str(change)),
+                change_percent=Decimal(str(change_percent)),
+                market_status=market_status,
+            )
+            self.db.add(cache)
+        await self.db.flush()
+        await self.db.refresh(cache)
+        return cache
+
+    async def get_bulk_price_cache(self, symbols: list[str]) -> dict[str, PriceCache]:
+        if not symbols:
+            return {}
+        upper_symbols = [s.upper() for s in symbols]
+        result = await self.db.execute(
+            select(PriceCache).where(PriceCache.symbol.in_(upper_symbols))
+        )
+        return {p.symbol: p for p in result.scalars().all()}
+
+    # Watchlist operations (optional)
+    async def get_watchlist(self, user_id: str) -> list[WatchlistItem]:
+        result = await self.db.execute(
+            select(WatchlistItem).where(WatchlistItem.user_id == user_id)
         )
         return list(result.scalars().all())
 
-    async def upsert_holding(
-        self,
-        portfolio_id: str,
-        stock_id: str,
-        quantity: int,
-        avg_buy_price: float,
-        purchase_date: date | None = None,
-    ) -> PortfolioHolding:
-        existing = await self.get_holding_by_stock(portfolio_id, stock_id)
-        if existing is not None:
-            existing.quantity = quantity
-            existing.avg_buy_price = Decimal(str(avg_buy_price))
-            if purchase_date is not None:
-                existing.purchase_date = purchase_date
-            await self.db.flush()
-            await self.db.refresh(existing)
-            return existing
-        return await self.create_holding(
-            portfolio_id=portfolio_id,
-            stock_id=stock_id,
-            quantity=quantity,
-            avg_buy_price=avg_buy_price,
-            purchase_date=purchase_date,
-        )
+    async def add_to_watchlist(self, user_id: str, symbol: str) -> WatchlistItem:
+        item = WatchlistItem(user_id=user_id, symbol=symbol.upper())
+        self.db.add(item)
+        await self.db.flush()
+        await self.db.refresh(item)
+        return item
 
-    async def get_holding_by_stock(self, portfolio_id: str, stock_id: str) -> PortfolioHolding | None:
+    async def remove_from_watchlist(self, user_id: str, symbol: str) -> bool:
         result = await self.db.execute(
-            select(PortfolioHolding).where(
-                PortfolioHolding.portfolio_id == portfolio_id,
-                PortfolioHolding.stock_id == stock_id,
+            select(WatchlistItem).where(
+                WatchlistItem.user_id == user_id,
+                WatchlistItem.symbol == symbol.upper(),
             )
         )
-        return result.scalars().first()
+        item = result.scalars().first()
+        if item:
+            await self.db.delete(item)
+            await self.db.flush()
+            return True
+        return False

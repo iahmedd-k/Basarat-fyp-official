@@ -57,7 +57,49 @@ class ServiceUnavailableError(AppError):
     code = "SERVICE_UNAVAILABLE"
 
 
+class CommunityError(AppError):
+    """Error rendered in the Community module's own JSON contract shape.
+
+    Response body: ``{"error": <CODE>, "message": <detail>, ...}`` with
+    optional ``field`` and custom extras (e.g. ``retryAfterSeconds``).
+    """
+
+    status_code = 400
+    detail = "Community request failed"
+    code = "COMMUNITY_ERROR"
+    field: str | None = None
+    extras: dict | None = None
+
+    def __init__(
+        self,
+        status_code: int | None = None,
+        code: str | None = None,
+        detail: str | None = None,
+        field: str | None = None,
+        extras: dict | None = None,
+    ):
+        super().__init__(detail if detail is not None else self.detail, code)
+        if status_code is not None:
+            self.status_code = status_code
+        if field is not None:
+            self.field = field
+        self.extras = extras or {}
+
+
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(CommunityError)
+    async def handle_community_error(request: Request, exc: CommunityError) -> JSONResponse:
+        body: dict = {
+            "error": exc.code,
+            "message": exc.detail,
+        }
+        if exc.field is not None:
+            body["field"] = exc.field
+        body.update(exc.extras)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=body,
+        )
     @app.exception_handler(AppError)
     async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(

@@ -32,6 +32,8 @@ _EVENT_WEIGHTS: dict[str, int] = {
     "interest_rate": 20,
     "monetary_policy": 20,
     "contract": 18,
+    "circular_debt": 18,
+    "block_order": 20,
     "management_change": 17,
     "litigation": 15,
     "oil_price": 14,

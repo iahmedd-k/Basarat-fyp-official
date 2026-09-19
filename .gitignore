@@ -27,6 +27,8 @@ backend/data/raw/
 backend/data/features/*.parquet
 backend/data/sequences/
 backend/data/processed/
+backend/data/processed_v2/
+backend/data/processed_v3/
 backend/data/scalers/
 backend/data/reports/
 

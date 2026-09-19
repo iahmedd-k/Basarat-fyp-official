@@ -49,51 +49,51 @@ def build_sequences(
         log.warning("Empty DataFrame — returning empty arrays")
         return np.array([]), np.array([]), pd.DataFrame(columns=["symbol", "date"])
 
-    df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
+    # Pre-count total sequences to pre-allocate memory without np.stack spikes
+    total_seqs = 0
+    for _, grp in df.groupby("symbol"):
+        if len(grp) >= window_size:
+            total_seqs += len(grp) - window_size
 
-    X_list = []
-    y_list = []
-    meta_rows = []
+    if total_seqs == 0:
+        log.warning("No sequences built")
+        return np.array([]), np.array([]), pd.DataFrame(columns=["symbol", "date"])
 
     n_symbols = df["symbol"].nunique()
-    log.info("Building sequences: window_size=%d, symbols=%d, features=%d",
-             window_size, n_symbols, len(feature_columns))
+    log.info("Building sequences (pre-allocated): window_size=%d, symbols=%d, features=%d, total_seqs=%d",
+             window_size, n_symbols, len(feature_columns), total_seqs)
 
+    X = np.empty((total_seqs, window_size, len(feature_columns)), dtype=np.float32)
+    y = np.empty(total_seqs, dtype=np.int32)
+    meta_symbols = []
+    meta_dates = []
+
+    curr_idx = 0
     for sym, grp in df.groupby("symbol"):
         grp = grp.sort_values("date").reset_index(drop=True)
-        values = grp[feature_columns].values  # (T, F)
-        labels = grp["label"].map(label_mapping).values  # (T,)
-        dates = grp["date"].values
-
         if len(grp) < window_size:
             log.debug("  %s: only %d rows, skipping (need %d)", sym, len(grp), window_size)
             continue
 
-        # Slide window — one sequence per day after we have enough history
+        values = grp[feature_columns].values.astype(np.float32)  # (T, F) in float32
+        labels = grp["label"].map(label_mapping).values  # (T,)
+        dates = grp["date"].values
+
         for i in range(window_size, len(grp)):
-            window = values[i - window_size : i]
-            label = labels[i - 1]  # label at window's final date (i-1 because label is at index i-1)
-            # Actually: label is at the LAST row of the window, which is index i-1
-            # But forward_return already references t+1, so the label at row i-1
-            # is correct for the window ending at row i-1.
-            # Wait — let me re-check. The window is [i-w : i), so the last row is i-1.
-            # The label column at row i-1 already encodes forward_return[i-1].
-            # So we use labels[i-1].
-
+            label = labels[i - 1]
             if np.isnan(label):
-                continue
+                raise AssertionError(
+                    f"Missing target label at {sym} date {dates[i-1]} (index {i-1}). "
+                    f"All forward_return NaN rows should have been dropped in labeling.assign_labels()."
+                )
 
-            X_list.append(window)
-            y_list.append(int(label))
-            meta_rows.append({"symbol": sym, "date": dates[i - 1]})
+            X[curr_idx] = values[i - window_size : i]
+            y[curr_idx] = int(label)
+            meta_symbols.append(sym)
+            meta_dates.append(dates[i - 1])
+            curr_idx += 1
 
-    if not X_list:
-        log.warning("No sequences built")
-        return np.array([]), np.array([]), pd.DataFrame(columns=["symbol", "date"])
-
-    X = np.stack(X_list)
-    y = np.array(y_list, dtype=np.int32)
-    meta = pd.DataFrame(meta_rows)
+    meta = pd.DataFrame({"symbol": meta_symbols, "date": meta_dates})
 
     # ── Integrity assertion ────────────────────────────────────────────
     # Each sequence corresponds to one (symbol, date) pair.  The max number

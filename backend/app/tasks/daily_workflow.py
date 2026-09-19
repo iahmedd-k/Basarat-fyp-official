@@ -290,7 +290,7 @@ def evaluate_pending_predictions_task(self):
         import pandas as pd
         from sqlalchemy import text as sql_text
 
-        from app.data.features.labeling import DEFAULT_THRESHOLD
+        from app.data.features.labeling import DEFAULT_THRESHOLD, label_from_return
 
         features_path = Path("data/features/features_daily.parquet")
         if not features_path.exists():
@@ -322,7 +322,6 @@ def evaluate_pending_predictions_task(self):
             return {"status": "success", "updated": 0}
 
         log.info("[EVALUATION] Evaluating %d pending predictions", len(rows))
-        threshold = DEFAULT_THRESHOLD
         updated = 0
         correct = 0
         uncertain_excluded = 0
@@ -344,13 +343,7 @@ def evaluate_pending_predictions_task(self):
                 continue
 
             fwd_return = (c_target - c_as_of) / c_as_of
-
-            if fwd_return > threshold:
-                actual_direction = "bullish"
-            elif fwd_return < -threshold:
-                actual_direction = "bearish"
-            else:
-                actual_direction = "sideways"
+            actual_direction = label_from_return(fwd_return, DEFAULT_THRESHOLD)
 
             # "uncertain" predictions: record actual but don't score
             if predicted_direction == "uncertain":

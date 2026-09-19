@@ -129,7 +129,11 @@ def _load_returns_for_portfolio(holdings: list) -> pd.DataFrame | None:
 
     # Weighted portfolio returns
     w = np.array([weights[s] for s in available])
-    w = w / w.sum()  # normalize
+    w_sum = w.sum()
+    if w_sum == 0:
+        w = np.ones(len(w)) / len(w)
+    else:
+        w = w / w_sum
     portfolio_returns = returns.values @ w
 
     return pd.Series(portfolio_returns, index=returns.index, name="portfolio_return")

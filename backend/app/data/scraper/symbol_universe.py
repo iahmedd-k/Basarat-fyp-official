@@ -18,8 +18,9 @@ log = logging.getLogger(__name__)
 # Note: KMI100 is excluded — PSX returns 404 for that index code.
 _INDEX_NAMES: List[str] = ["KSE100", "KSE30", "KMI30"]
 
-# Default path relative to project root
-_DEFAULT_CONFIG_DIR = Path("data/config")
+# Default path relative to project root or backend
+_BACKEND_DIR = Path(__file__).resolve().parents[3]
+_DEFAULT_CONFIG_DIR = Path("data/config") if Path("data/config").exists() else _BACKEND_DIR / "data" / "config"
 _DEFAULT_UNIVERSE_FILE = _DEFAULT_CONFIG_DIR / "symbol_universe.json"
 
 

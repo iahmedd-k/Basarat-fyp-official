@@ -118,22 +118,21 @@ def build_xgb_features(
             axis=1,
         )
 
-    # ── Handle NaN in engineered features ────────────────────────────────
-    # Rolling/lag features will have NaN at the start of each symbol's
-    # history. Fill with column median (robust to outliers) or 0.
-    for col in ENGINEERED_FEATURES + ["symbol_id"]:
-        if col in df.columns:
-            n_nan = int(df[col].isna().sum())
-            if n_nan > 0:
-                median_val = df[col].median()
-                df[col] = df[col].fillna(median_val if not np.isnan(median_val) else 0)
-                log.info("  %s: filled %d NaN with median=%.4f", col, n_nan, median_val)
+    # NOTE: NaN in engineered features is intentionally NOT filled here.
+    # Filling with the global median (across all dates) would leak future
+    # data into early training rows.  Instead, NaN fill is deferred to
+    # time_split_xgb() which computes the fill median from the training
+    # split only.
 
-    # ── Verify output ────────────────────────────────────────────────────
-    output_features = [c for c in ALL_XGB_FEATURES if c in df.columns]
+    # ── Verify output (Task 13: Fail fast if any declared feature is missing) ─
     missing = set(ALL_XGB_FEATURES) - set(df.columns)
     if missing:
-        log.warning("Some expected features missing: %s", missing)
+        raise ValueError(
+            f"Missing required XGBoost features: {sorted(missing)}. "
+            f"All declared features in ALL_XGB_FEATURES must be generated before training."
+        )
+
+    output_features = [c for c in ALL_XGB_FEATURES if c in df.columns]
 
     log.info(
         "Final feature set: %d features, %d rows",

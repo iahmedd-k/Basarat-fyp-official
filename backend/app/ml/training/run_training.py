@@ -19,6 +19,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from app.data.features.gru_feature_list import GRU_FEATURE_VERSION
+
 log = logging.getLogger("training")
 
 SEQUENCES_DIR = Path("data/sequences")
@@ -34,17 +36,23 @@ def run_training(
     max_epochs: int = 50,
     train_cutoff: str = "2024-07-01",
     val_cutoff: str = "2025-07-01",
+    seed: int = 42,
 ) -> None:
     """Full training pipeline: split → scale → train → evaluate → sanity check."""
     import tensorflow as tf
 
+    from app.data.features.gru_feature_list import GRU_FEATURE_VERSION
     from app.ml.training.data_split import time_split
     from app.ml.training.evaluate import evaluate
+    from app.ml.training.leakage_checker import check_chronological_split_leakage, check_target_validity
     from app.ml.training.model import build_model
+    from app.ml.training.reproducibility import set_seed
     from app.ml.training.scaling import apply_scaler, fit_scaler, save_scaler
     from app.ml.training.train import train_model
 
-    log.info("TensorFlow version: %s", tf.__version__)
+    # ── Set deterministic seed (Task 20) ─────────────────────────────────
+    seed_info = set_seed(seed)
+    log.info("TensorFlow version: %s (seed=%d)", tf.__version__, seed)
 
     # ── Load data ───────────────────────────────────────────────────────
     log.info("Loading sequences from %s ...", SEQUENCES_DIR / "sequences.npz")
@@ -70,8 +78,15 @@ def run_training(
     X_val, y_val = splits["val"]["X"], splits["val"]["y"]
     X_test, y_test = splits["test"]["X"], splits["test"]["y"]
 
+    # ── Leakage checks (Task 8 & Task 1) ────────────────────────────────
+    log.info("Running automated leakage and target validation checks ...")
+    split_summary = check_chronological_split_leakage(
+        splits["train"]["meta"], splits["val"]["meta"], splits["test"]["meta"]
+    )
+    check_target_validity(y_train, y_val, y_test, expected_classes=set(label_mapping.values()))
+
     # ── Scale ───────────────────────────────────────────────────────────
-    log.info("Step 2: Feature scaling ...")
+    log.info("Step 2: Feature scaling (fitted on train split only) ...")
     scaler = fit_scaler(X_train)
     X_train = apply_scaler(X_train, scaler)
     X_val = apply_scaler(X_val, scaler)
@@ -83,29 +98,52 @@ def run_training(
     input_shape = (X_train.shape[1], X_train.shape[2])
     model = build_model(input_shape, n_classes=len(label_mapping))
 
+    # ── Compute balanced class weights strictly from y_train ────────────
+    from sklearn.utils.class_weight import compute_class_weight
+
+    classes = np.unique(y_train)
+    weights = compute_class_weight("balanced", classes=classes, y=y_train)
+    class_weight_dict = {int(c): float(w) for c, w in zip(classes, weights)}
+    log.info("Computed balanced class weights from y_train only: %s", class_weight_dict)
+
     # ── Train ───────────────────────────────────────────────────────────
-    log.info("Step 4: Training ...")
+    log.info("Step 4: Training with balanced class weights ...")
     model_path = MODEL_DIR / "model.keras"
     train_result = train_model(
         model, X_train, y_train, X_val, y_val,
         batch_size=batch_size,
         max_epochs=max_epochs,
         model_save_path=model_path,
+        class_weight=class_weight_dict,
     )
 
-    # Update metadata with split info and feature columns
+    # Update metadata with comprehensive details
     meta_path = model_path.parent / "metadata.json"
-    saved_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    saved_meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    saved_meta["model_version"] = MODEL_DIR.name
+    saved_meta["feature_version"] = GRU_FEATURE_VERSION
+    saved_meta["feature_columns"] = feature_columns
+    saved_meta["n_features"] = int(X_train.shape[2])
+    saved_meta["window_size"] = int(X_train.shape[1])
+    saved_meta["threshold"] = 0.01
+    saved_meta["label_mapping"] = label_mapping
+    saved_meta["class_weights"] = class_weight_dict
     saved_meta["train_cutoff"] = train_cutoff
     saved_meta["val_cutoff"] = val_cutoff
-    saved_meta["window_size"] = int(X_train.shape[1])
-    saved_meta["n_features"] = int(X_train.shape[2])
-    saved_meta["feature_columns"] = feature_columns
-    saved_meta["label_mapping"] = label_mapping
+    saved_meta["train_date_range"] = split_summary["train"]
+    saved_meta["val_date_range"] = split_summary["val"]
+    saved_meta["test_date_range"] = split_summary["test"]
     saved_meta["train_samples"] = len(X_train)
     saved_meta["val_samples"] = len(X_val)
     saved_meta["test_samples"] = len(X_test)
+    saved_meta["random_seed"] = seed
+    saved_meta["batch_size"] = batch_size
+    saved_meta["max_epochs"] = max_epochs
+    saved_meta["scaler_version"] = "StandardScaler_v1"
+    saved_meta["best_epoch"] = train_result.get("best_epoch")
+    saved_meta["best_val_loss"] = train_result.get("best_val_loss")
     meta_path.write_text(json.dumps(saved_meta, indent=2), encoding="utf-8")
+    log.info("Saved final GRU metadata -> %s", meta_path)
 
     # ── Evaluate ────────────────────────────────────────────────────────
     log.info("Step 5: Evaluating on test set ...")
@@ -158,7 +196,9 @@ def _sanity_check(model, scaler, feature_columns, label_mapping):
 
         proba = model.predict(window, verbose=0)[0]
         pred_class = int(np.argmax(proba))
-        confidence = float(proba[pred_class])
+        pct_map = {reverse_labels[i]: float(proba[i]) for i in range(len(proba))}
+        from app.ml.serving.inference import compute_confidence
+        confidence = compute_confidence(pct_map)
 
         last_date = sym_df["date"].iloc[-1].strftime("%Y-%m-%d")
 
@@ -169,7 +209,7 @@ def _sanity_check(model, scaler, feature_columns, label_mapping):
         for cls_id in sorted(label_mapping.values()):
             cls_name = reverse_labels[cls_id]
             bar_len = int(proba[cls_id] * 30)
-            bar = "█" * bar_len + "░" * (30 - bar_len)
+            bar = "#" * bar_len + "-" * (30 - bar_len)
             print(f"      {cls_name:>10s}  {proba[cls_id]:6.1%}  {bar}")
 
     print("\n" + "=" * 70 + "\n")

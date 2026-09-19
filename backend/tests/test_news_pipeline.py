@@ -142,6 +142,33 @@ class TestEventClassifier:
     def test_regulatory(self):
         assert classify_event("SECP issues new compliance notice") == "regulatory_action"
 
+    def test_earnings_surprise_beat(self):
+        assert classify_event("OGDC beats earnings estimates") == "earnings"
+
+    def test_earnings_surprise_miss(self):
+        assert classify_event("LUCK misses profit expectations") == "earnings"
+
+    def test_imf_announcement(self):
+        assert classify_event("IMF board approves new $7bn bailout programme") == "imf"
+
+    def test_imf_tranche_disbursement(self):
+        assert classify_event("IMF releases next tranche after review") == "imf"
+
+    def test_interest_rate_decision(self):
+        assert classify_event("SBP raises interest rate by 100bps") == "monetary_policy"
+
+    def test_circular_debt(self):
+        assert classify_event("Circular debt balloons to Rs 2.6 trillion") == "circular_debt"
+
+    def test_circular_debt_energy_arrears(self):
+        assert classify_event("Power sector arrears mount as gas dues rise") == "circular_debt"
+
+    def test_block_order(self):
+        assert classify_event("Block order of OGDC triggers institutional buying") == "block_order"
+
+    def test_block_order_foreign_selling(self):
+        assert classify_event("Foreign selling continues on PSX") == "block_order"
+
     def test_other(self):
         assert classify_event("Random news about weather") == "other"
 
@@ -209,6 +236,33 @@ class TestImpactScorer:
         result = score_articles(articles)
         assert "impact_score" in result[0]
         assert isinstance(result[0]["impact_score"], int)
+
+    def test_circular_debt_impact_weight(self):
+        score = compute_impact_score(
+            source="Business Recorder",
+            event_type="circular_debt",
+            symbols=[],
+            sentiment_score=0.5,
+            published_at=datetime.now(timezone.utc),
+        )
+        score_other = compute_impact_score(
+            source="Business Recorder",
+            event_type="other",
+            symbols=[],
+            sentiment_score=0.5,
+            published_at=datetime.now(timezone.utc),
+        )
+        assert score > score_other  # circular_debt must not fall back to default weight
+
+    def test_block_order_impact_weight(self):
+        score = compute_impact_score(
+            source="Business Recorder",
+            event_type="block_order",
+            symbols=["OGDC"],
+            sentiment_score=0.6,
+            published_at=datetime.now(timezone.utc),
+        )
+        assert score >= 20 + 18 + 20 + 12 + 10 - 0  # source+event+symbol+sentiment+recency floor
 
 
 # ── Multiple-Symbol Article Tests ──────────────────────────────────────────

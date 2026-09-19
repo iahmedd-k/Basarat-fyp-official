@@ -1,228 +1,203 @@
-# Basarat — ML Model Training & Experiments
+# Basarat — ML Model Architecture & Training Pipeline
 
-### Trade Recommendation & Assistance System for PSX
+### Trade Recommendation & Assistance System for PSX (Pakistan Stock Exchange)
 
-**Version:** 1.0 | **Module:** 4 (ML Forecasting) | **Status:** Final Decision
+**Version:** 2.0 (Frozen `final_v1`) | **Module:** 4 (ML Forecasting) | **Status:** Production Candidate Frozen
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#1-overview)
-2. [Training Pipeline](#2-training-pipeline)
-3. [GRU Experiments](#3-gru-experiments)
-4. [XGBoost Parallel Track](#4-xgboost-parallel-track)
-5. [Final Decision](#5-final-decision)
-6. [Known Limitations](#6-known-limitations)
-7. [Files Reference](#7-files-reference)
+1. [System Overview](#1-system-overview)
+2. [Target & Label Definition](#2-target--label-definition)
+3. [Chronological Data Splits](#3-chronological-data-splits)
+4. [Frozen Model Architecture (`final_v1`)](#4-frozen-model-architecture-final_v1)
+   - [4.1 GRU Sequence Model (45-Day Lookback)](#41-gru-sequence-model-45-day-lookback)
+   - [4.2 XGBoost Tabular Model (29 Volatility Features)](#42-xgboost-tabular-model-29-volatility-features)
+   - [4.3 Soft Probability Ensemble (50/50 Blending)](#43-soft-probability-ensemble-5050-blending)
+5. [Feature Engineering & Preprocessing](#5-feature-engineering--preprocessing)
+   - [5.1 GRU 36-Feature Set](#51-gru-36-feature-set)
+   - [5.2 XGBoost 29-Feature Set](#52-xgboost-29-feature-set)
+   - [5.3 Leakage Prevention & Scaling Protocol](#53-leakage-prevention--scaling-protocol)
+6. [Training Pipeline & Hyperparameters](#6-training-pipeline--hyperparameters)
+7. [Production Model Artifacts Reference](#7-production-model-artifacts-reference)
 
 ---
 
-## 1. Overview
+## 1. System Overview
 
-Basarat uses a **GRU (Gated Recurrent Unit)** neural network trained on 30-day sliding windows of daily technical indicators and macro features to predict PSX stock price direction.
-
-**Label Definition:**
-- Compute 1-day forward return: `(close[t+1] - close[t]) / close[t]`
-- **bullish** if return > +1%
-- **bearish** if return < -1%
-- **sideways** otherwise
-
-**Label Mapping:** `{"bullish": 0, "bearish": 1, "sideways": 2}`
-
-**Data Split (time-based, no leakage):**
-
-| Split | Date Range | Samples |
-|-------|-----------|---------|
-| Train | < 2024-07-01 | 94,422 |
-| Validation | 2024-07-01 to 2025-07-01 | 24,158 |
-| Test | >= 2025-07-01 | 29,373 |
-
-**Baseline:** Always predict the majority class (bullish) = 48.23% accuracy.
-
----
-
-## 2. Training Pipeline
+Basarat Module 4 implements a **dual-architecture hybrid ensemble** combining deep sequential modeling with gradient-boosted decision trees to forecast 5-trading-day direction for equities listed on the Pakistan Stock Exchange (PSX).
 
 ```mermaid
 flowchart TD
-    A[Raw OHLCV Data<br/>+ Macro Features] --> B[Feature Engineering<br/>20 technical indicators]
-    B --> C[Sliding Window<br/>30-day sequences]
-    C --> D[Time-based Split<br/>train / val / test]
-    D --> E[GRU Model<br/>training loop]
-    E --> F{Early Stopping<br/>patience=5}
-    F -->|val loss improve| E
-    F -->|no improve| G[Save Best Weights]
-    G --> H[Evaluation<br/>accuracy, recall, F1]
-    H --> I[Calibration Diagnostic<br/>ECE, Brier score]
-    I --> J[Shipped Model<br/>gru_v1]
-```
-
-### Feature Set (20 features)
-
-```
-atr_14, bb_lower, bb_mid, bb_upper, close, ema_12, ema_26, high, low,
-macd, macd_hist, macd_signal, open, pkr_usd_rate, policy_rate, rsi_14,
-sma_20, sma_50, volume, volume_zscore_20
+    A[Raw Daily PSX OHLCV + Macro Indicators] --> B[Feature Engineering Engine]
+    B --> C1[45-Day Rolling Sequences<br/>36 Technical & Macro Features]
+    B --> C2[Point-in-Time Tabular Row<br/>26 Baseline + 3 Volatility Features]
+    
+    C1 --> D1[GRU Deep Sequence Model<br/>45-day Temporal Dynamics]
+    C2 --> D2[XGBoost Volatility Classifier<br/>Tabular Feature Interactions]
+    
+    D1 --> E1[Softmax Probabilities<br/>P_bull, P_bear, P_side]
+    D2 --> E2[Softmax Probabilities<br/>P_bull, P_bear, P_side]
+    
+    E1 --> F[50/50 Soft Probability Ensemble Blending]
+    E2 --> F
+    
+    F --> G[Argmax Directional Signal<br/>+ Confidence-Bucket Classification]
 ```
 
 ---
 
-## 3. GRU Experiments
+## 2. Target & Label Definition
 
-### 3.1 gru_v1 (Shipped Model)
+The model is optimized for a **5-trading-day forward holding horizon** (1 trading week), aligning directly with practical swing trading execution and eliminating single-day market microstructure noise.
 
-**Architecture:**
+- **Forward Return Calculation:**
+  $$\text{return}_{5d} = \frac{\text{close}[t+5] - \text{close}[t]}{\text{close}[t]}$$
+- **Classification Thresholds ($\pm 1.0\%$):**
+  - **Bullish (`0`):** $\text{return}_{5d} > +1.0\%$
+  - **Bearish (`1`):** $\text{return}_{5d} < -1.0\%$
+  - **Sideways (`2`):** $-1.0\% \le \text{return}_{5d} \le +1.0\%$
+
+*Note: Class mapping index strictly follows `{"bullish": 0, "bearish": 1, "sideways": 2}` across all training scripts, scalers, models, and inference runtimes.*
+
+---
+
+## 3. Chronological Data Splits
+
+To prevent lookahead bias and temporal leakage, all datasets are split strictly chronologically:
+
+| Split | Date Range | Sample Count | Primary Purpose |
+| :--- | :--- | :---: | :--- |
+| **Train** | $< \text{2024-07-01}$ | 94,000+ | Model weight optimization & scaler fitting |
+| **Validation** | $\text{2024-07-01}$ to $\text{2025-07-01}$ | 24,000+ | Hyperparameter tuning, early stopping & model selection |
+| **Test (ML Test Set)** | $\ge \text{2025-07-01}$ | 29,863 | Unseen out-of-sample offline benchmarking |
+| **Real-Stock Walk-Forward** | $\text{2025-07-01}$ to $\text{2026-09-07}$ | 5,875 | Non-overlapping discrete weekly execution evaluation |
+
+---
+
+## 4. Frozen Model Architecture (`final_v1`)
+
+The production model package is frozen under `backend/models/final/final_v1/` and consists of two complementary models:
+
+### 4.1 GRU Sequence Model (45-Day Lookback)
+- **Role:** Captures medium-term temporal autocorrelation, moving average crossovers, and momentum trajectory over a 9-week trading window.
+- **Input Shape:** `(batch_size, 45, 36)`
+- **Architecture:**
+  ```
+  Input(shape=(45, 36))
+  GRU(units=64, return_sequences=False)
+  Dropout(rate=0.20)
+  Dense(units=32, activation='relu')
+  Dense(units=3, activation='softmax')
+  ```
+- **Loss Function:** `sparse_categorical_crossentropy`
+- **Class Balancing:** Sample weighting via inverse class frequencies during training.
+
+### 4.2 XGBoost Tabular Model (29 Volatility Features)
+- **Role:** Evaluates instantaneous technical conditions, volatility regimes across 20d/30d/60d horizons, and non-linear feature interactions without sequential overhead.
+- **Input Shape:** `(batch_size, 29)`
+- **Core Hyperparameters:**
+  - `max_depth`: 4
+  - `learning_rate` ($\eta$): 0.05
+  - `n_estimators`: 150
+  - `subsample`: 0.80
+  - `colsample_bytree`: 0.80
+  - `objective`: `multi:softprob` (num_class=3)
+  - `eval_metric`: `mlogloss`
+- **Class Balancing:** Balanced sample weights computed on training set.
+
+### 4.3 Soft Probability Ensemble (50/50 Blending)
+- **Probability Fusion:**
+  $$P(\text{class}_k) = 0.50 \times P_{\text{GRU}}(\text{class}_k) + 0.50 \times P_{\text{XGB}}(\text{class}_k)$$
+- **Predicted Class:**
+  $$\hat{y} = \arg\max_{k \in \{0, 1, 2\}} P(\text{class}_k)$$
+
+---
+
+## 5. Feature Engineering & Preprocessing
+
+### 5.1 GRU 36-Feature Set
+The 45-day sequential matrix uses 36 normalized features per timestep:
+
 ```
-Input(30, 20)
-GRU(64, return_sequences=False)
-Dropout(0.2)
-Dense(32, activation='relu')
-Dense(3, activation='softmax')
+1.  open                  13. macd_hist             25. return_5d
+2.  high                  14. atr_14                26. return_10d
+3.  low                   15. bb_upper              27. return_20d
+4.  close                 16. bb_mid                28. volume_change_5d
+5.  volume                17. bb_lower              29. volume_change_10d
+6.  volume_zscore_20      18. pkr_usd_rate          30. volume_change_20d
+7.  sma_20                19. policy_rate           31. index_return_5d
+8.  sma_50                20. log_return            32. index_return_10d
+9.  ema_12                21. return_1d             33. index_return_20d
+10. ema_26                22. return_2d             34. relative_to_index_5d
+11. rsi_14                23. return_3d             35. relative_to_index_10d
+12. macd                  24. return_4d             36. relative_to_index_20d
 ```
 
-**Hyperparameters:** batch_size=128, max_epochs=12, optimizer=Adam, early_stopping patience=5
+### 5.2 XGBoost 29-Feature Set
+The tabular model uses 26 baseline technical indicators plus 3 explicit multi-horizon volatility features:
 
-**Result:** 12 epochs, best_val_accuracy = 0.4738, training duration = 286s
+```
+[Baseline 26 Features]
+1.  open                  10. ema_26                19. policy_rate
+2.  high                  11. rsi_14                20. log_return
+3.  low                   12. macd                  21. return_1d
+4.  close                 13. macd_hist             22. return_5d
+5.  volume                14. atr_14                23. return_10d
+6.  volume_zscore_20      15. bb_upper              24. return_20d
+7.  sma_20                16. bb_mid                25. volume_change_5d
+8.  sma_50                17. bb_lower              26. symbol_id (categorical)
+9.  ema_12                18. pkr_usd_rate
 
-### 3.2 gru_v5 (Bidirectional GRU)
+[Volatility Feature Extension (+3 Features)]
+27. volatility_20d (20-day rolling std of daily log returns)
+28. volatility_30d (30-day rolling std of daily log returns)
+29. volatility_60d (60-day rolling std of daily log returns)
+```
 
-**Architecture:** Same as v1 but GRU layer reads sequence forward AND backward.
+### 5.3 Leakage Prevention & Scaling Protocol
+- **Imputation:** Training median values (`gru_train_medians.json`, `xgb_train_medians.json`) computed strictly on training rows ($t < 2024\text{-}07\text{-}01$) are used to impute missing values.
+- **Normalization:** A single `StandardScaler` (`gru_scaler.pkl`) is fitted strictly on training data and used to transform sequences. XGBoost utilizes invariant quantile splits with tree-based missing value handling.
+- **Point-in-Time Assurance:** All rolling volatilities, technical indicators, and moving averages use data strictly $\le T$.
 
-**Result:** 15 epochs, best_val_accuracy = 0.4662, training duration = 1051s
+---
 
-**Why it lost:** Flipped dominant class (predicted sideways instead of bullish), overfitted earlier, 3.7x slower training.
-
-### 3.3 gru_v1_1w (1-Week Horizon)
-
-**Architecture:** Identical to v1 but labels use 5-day forward return with 2.5% threshold.
-
-**Result:** 8 epochs, best_val_accuracy = 0.4581, training duration = 529s
-
-**Why it lost:** Severe overfitting (val accuracy collapsed from 0.4581 to 0.4067), doesn't beat baseline.
-
-### 3.4 Test Set Comparison
+## 6. Training Pipeline & Hyperparameters
 
 ```mermaid
-xychart-beta
-    title "Test Accuracy Comparison"
-    x-axis ["gru_v1", "gru_v5", "gru_v1_1w"]
-    y-axis "Accuracy" 0.48 --> 0.50
-    bar [0.4970, 0.4853, 0.4863]
-    line [0.4823, 0.4823, 0.4868]
+sequenceDiagram
+    participant DB as Postgres/Parquet Data
+    participant FE as Feature Engineer
+    participant SP as Chronological Splitter
+    participant GRU as GRU-45 Model
+    participant XGB as XGB-29 Model
+    participant PKG as Frozen Package (final_v1)
+
+    DB->>FE: Raw Daily OHLCV + KSE-100 + Macro
+    FE->>SP: Compute 36 Features + Target Labels
+    SP->>GRU: Train Split (< 2024-07-01) Sequence Matrices
+    SP->>XGB: Train Split (< 2024-07-01) Tabular Matrices
+    GRU->>GRU: Train 12 Epochs (Early Stopping patience=5)
+    XGB->>XGB: Fit 150 Estimators (Early Stopping patience=15)
+    GRU->>PKG: Export gru_model.keras, gru_scaler.pkl, gru_train_medians.json
+    XGB->>PKG: Export xgb_model.ubj, xgb_train_medians.json
+    PKG->>PKG: Verify Invariance & Generate Manifest
 ```
 
-| Model | Test Accuracy | Improvement | Overfitting | Training Time |
-|-------|:------------:|:-----------:|:-----------:|:-------------:|
-| **gru_v1** | **0.4970** | **+1.46%** | Mild | **286s** |
-| gru_v5 | 0.4853 | +0.30% | Moderate | 1051s |
-| gru_v1_1w | 0.4863 | -0.05% | Severe | 529s |
-
 ---
 
-## 4. XGBoost Parallel Track
+## 7. Production Model Artifacts Reference
 
-### Why XGBoost?
+All components of the frozen model package are maintained under `backend/models/final/final_v1/`:
 
-XGBoost was added to answer: **is the ~50% ceiling a model limitation or a data limitation?** If a tree-based model with engineered tabular features could significantly beat the GRU, it would suggest the sequence architecture was the bottleneck.
-
-### Key Differences
-
-| Aspect | GRU v1 | XGBoost |
-|--------|--------|---------|
-| Input format | 30-day sequences (3D) | Flat tabular rows (2D) |
-| Features | 20 raw features per timestep | 39 features (20 GRU + 14 engineered + symbol_id) |
-| Feature scaling | StandardScaler | None (tree-invariant) |
-
-### Results
-
-```
-metric                     | gru_v1   | xgb_unweighted | xgb_weighted
----------------------------|----------|----------------|-------------
-test accuracy              | 0.4970   | 0.5035         | 0.4554
-improvement over baseline  | 0.0146   | 0.0218         | -0.0263
-bearish recall             | 0.1273   | 0.1747         | 0.3148
-```
-
-Both models collapse to majority class — GRU predicts bullish for 88.8% of cases, XGBoost predicts sideways for 85.7%. The ~50% ceiling is a **data limitation**, not a model limitation.
-
-### Momentum Stress Test (7 symbols)
-
-| Symbol | Known Trend | GRU v1 | XGB Weighted |
-|--------|------------|--------|--------------|
-| AICL | uptrend | correct | correct |
-| IBFL | downtrend | wrong | correct |
-| CHCC | downtrend | wrong | wrong |
-| UBL | downtrend | wrong | wrong |
-| PABC | downtrend | wrong | wrong |
-| **Score** | | **2/7 (29%)** | **2/7 (29%)** |
-
----
-
-## 5. Final Decision
-
-```mermaid
-flowchart TD
-    A[5 Variants Tested] --> B{Beat v1?}
-    B -->|No| C[v2 class-weighted: -2.58pp]
-    B -->|No| D[v3 threshold: not comparable]
-    B -->|No| E[v4 +features: misleading]
-    B -->|No| F[v5 BiGRU: +0.30pp]
-    B -->|No| G[v1_1w 1W: -0.05pp]
-    B -->|No| H[XGBoost: same ceiling]
-    C --> I[Ship gru_v1]
-    D --> I
-    E --> I
-    F --> I
-    G --> I
-    H --> I
-    I --> J[100% Abstention Rate<br/>via Ensemble Gate]
-    J --> K[Zero Confident-Wrong Calls]
-```
-
-**Ship GRU v1 as the final model.** Five structurally different attempts — class weighting, threshold, features, architecture, horizon — none beat the original. This is a converging, consistent signal that this is the model family's genuine ceiling for this feature set.
-
-### Why v1 Wins
-
-1. **Highest test accuracy:** 49.70% vs 48.53% (v5) vs 48.63% (v1_1w)
-2. **Best improvement over baseline:** +1.46% vs +0.30% (v5) vs -0.05% (v1_1w)
-3. **Best training stability:** Converged cleanly in 12 epochs without severe overfitting
-4. **Reasonable calibration:** ECE = 2.03%, Brier = 0.6095
-5. **Strongest bullish recall:** 89.8%
-
----
-
-## 6. Known Limitations
-
-1. **Low overall accuracy:** 49.7% is only marginally better than random (33.3% for 3-class). Stock prediction is inherently noisy.
-2. **Class imbalance:** Bullish (48.2%) dominates, so the model learns to predict bullish most of the time.
-3. **Poor minority class recall:** Bearish and sideways recall are ~12% each.
-4. **Calibration gap at high confidence:** At 80-90% confidence, actual accuracy is 91.3% (gap of 8.4pp).
-5. **Data limitation:** Cross-family convergence (GRU + XGBoost) on the same ceiling confirms the predictive limitation is in feature information content, not model architecture.
-
----
-
-## 7. Files Reference
-
-| File | Description |
-|------|-------------|
-| `app/ml/training/model.py` | GRU model definition |
-| `app/ml/training/train.py` | Training loop |
-| `app/ml/training/run_training.py` | Training entry point |
-| `app/ml/training/evaluate.py` | Evaluation metrics |
-| `app/ml/training/data_split.py` | Time-based splitting |
-| `app/ml/training/scaling.py` | StandardScaler wrapper |
-| `app/ml/training_xgb/` | XGBoost training scripts |
-| `app/ml/serving/inference.py` | Production inference |
-| `app/ml/serving/model_loader.py` | Model loading at startup |
-| `app/ml/serving/schemas.py` | Pydantic response models |
-| `app/ml/serving/prediction_logger.py` | DB logging for predictions |
-| `app/tasks/run_forecast_inference.py` | Celery daily batch task |
-| `models/gru_v1/` | Shipped model weights + metadata |
-| `data/reports/evaluation.json` | v1 test evaluation |
-| `data/reports/calibration_diagnostic.json` | Calibration analysis |
-| `data/features/label_mapping.json` | Label encoding |
-
----
-
-*Document generated: 2026-09-16 | Model version: gru_v1 (shipped) | TensorFlow: 2.16.1*
+| Artifact File | Size / Format | Description |
+| :--- | :--- | :--- |
+| `gru_model.keras` | Keras v3 Native Format | Trained GRU-45 neural network weights and topology |
+| `gru_scaler.pkl` | Joblib / Pickle | `StandardScaler` fitted on training split for 36 features |
+| `gru_train_medians.json` | JSON Object | Feature medians for GRU missing-value imputation |
+| `gru_features.json` | JSON Array (36 items) | Canonical ordered feature names for GRU sequence input |
+| `xgb_model.ubj` | Universal Binary JSON | Trained XGBoost 29-feature gradient boosted tree ensemble |
+| `xgb_train_medians.json` | JSON Object | Feature medians for XGB missing-value imputation |
+| `xgb_features.json` | JSON Array (29 items) | Canonical ordered feature names for XGB tabular input |
+| `config.json` | JSON Object | Package metadata, class mappings, horizon (5D), thresholds ($\pm 1\%$) |

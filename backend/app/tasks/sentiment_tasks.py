@@ -47,7 +47,7 @@ def aggregate_sentiment_task(self, symbols: list[str] | None = None):
             if not symbols:
                 from sqlalchemy import text
                 result = await db.execute(
-                    text("SELECT DISTINCT symbol FROM posts LIMIT 50")
+                    text("SELECT DISTINCT symbol FROM post_stock_tags LIMIT 50")
                 )
                 symbols_to_process = [row[0] for row in result.fetchall()]
             else:

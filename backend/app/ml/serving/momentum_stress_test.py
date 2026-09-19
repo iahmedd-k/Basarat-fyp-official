@@ -91,7 +91,9 @@ def run_inference_at_date(sym_df: pd.DataFrame, as_of_date: date, artifacts) -> 
 
     pred_class = int(np.argmax(proba))
     direction = label_names.get(pred_class, "unknown")
-    top_class_probability = round(float(np.max(proba)) * 100, 1)
+    pct_map = {"bullish": bullish_pct, "bearish": bearish_pct, "sideways": sideways_pct}
+    from app.ml.serving.inference import compute_confidence
+    top_class_probability = round(compute_confidence(pct_map), 1)
 
     return {
         "as_of_date": as_of_date,

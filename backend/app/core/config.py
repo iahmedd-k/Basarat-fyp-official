@@ -63,6 +63,30 @@ class Settings(BaseSettings):
     # Manual refresh cooldown (seconds)
     NEWS_REFRESH_COOLDOWN: int = 300  # 5 minutes
 
+    # Community share links / deep links
+    SHARE_BASE_URL: str = "https://yourapp.link"
+    DEEP_LINK_SCHEME: str = "yourapp"
+    ANDROID_PACKAGE: str = "com.yourapp.android"
+    PLAY_STORE_URL: str = "https://play.google.com/store/apps/details?id=com.yourapp.android"
+    TEASER_IMAGE_URL: str = "https://yourapp.com/static/share-preview.png"
+    COMMUNITY_REPORT_THRESHOLD: int = 5
+
+    # Cloudinary (community media uploads) — leave empty keys to disable uploads
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+    CLOUDINARY_FOLDER: str = "basarat/community"
+    MAX_FILE_SIZE_MB: int = 10
+    LOCAL_TEMP_DIR: str = "./tmp"
+    CLOUDINARY_ALLOWED_MIMES: list[str] = [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "image/bmp",
+        "image/heic",
+    ]
+
     class Config:
         env_file = ".env"
         case_sensitive = True

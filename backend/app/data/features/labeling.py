@@ -7,12 +7,12 @@ Labels:
     sideways — otherwise (abs return <= threshold)
 
 The threshold is configurable (default 0.01 = 1%).
-Last row per symbol is dropped (no forward return available).
+Rows with missing forward_return (e.g. last row per symbol, data gaps) are
+explicitly dropped before labeling.
 """
 
 import json
 import logging
-import warnings
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -23,6 +23,36 @@ log = logging.getLogger(__name__)
 DEFAULT_THRESHOLD = 0.01
 
 LABEL_MAPPING = {"bullish": 0, "bearish": 1, "sideways": 2}
+
+
+def label_from_return(future_return: float, threshold: float = DEFAULT_THRESHOLD) -> str:
+    """Map a future return to a directional label.
+
+    Parameters
+    ----------
+    future_return : float
+        The forward return (e.g. close[t+1]/close[t] - 1).
+    threshold : float
+        Symmetric dead-zone half-width.  Values above +threshold are
+        bullish, below -threshold are bearish, everything else sideways.
+
+    Returns
+    -------
+    str : "bullish", "bearish", or "sideways"
+
+    Raises
+    ------
+    ValueError
+        If future_return is NaN.  Missing forward returns should be dropped
+        before calling this function.
+    """
+    if pd.isna(future_return):
+        raise ValueError("future_return is NaN; missing forward returns must be dropped before labeling")
+    if future_return > threshold:
+        return "bullish"
+    elif future_return < -threshold:
+        return "bearish"
+    return "sideways"
 
 
 def assign_labels(
@@ -45,27 +75,22 @@ def assign_labels(
         lambda s: s.shift(-1) / s - 1
     )
 
-    # Assign label
-    def _label(ret: float) -> str:
-        if pd.isna(ret):
-            return "sideways"
-        if ret > threshold:
-            return "bullish"
-        elif ret < -threshold:
-            return "bearish"
-        return "sideways"
-
-    df["label"] = df["forward_return"].apply(_label)
-
-    # Drop last row per symbol (no forward return)
+    # Drop rows with missing forward_return (last row per symbol, or any gaps)
     before = len(df)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=FutureWarning)
-        df = df.groupby("symbol", group_keys=False).apply(
-            lambda g: g.iloc[:-1] if len(g) > 1 else g
-        )
+    df = df.dropna(subset=["forward_return"])
     after = len(df)
-    log.info("Dropped %d last-row-per-symbol rows (%d -> %d)", before - after, before, after)
+    log.info("Dropped %d rows with missing forward_return (%d -> %d)", before - after, before, after)
+
+    # Explicit assertion: never proceed with NaN forward returns
+    if df["forward_return"].isna().any():
+        raise AssertionError("forward_return contains NaN values after dropna; missing targets must be eliminated")
+
+    # Assign label using the canonical function
+    df["label"] = df["forward_return"].apply(lambda r: label_from_return(r, threshold))
+
+    # Explicit assertion: every remaining row must have a valid label
+    if df["label"].isna().any():
+        raise AssertionError("label column contains NaN values; all samples must have a valid class label")
 
     # Build quality report
     report: Dict[str, Any] = {

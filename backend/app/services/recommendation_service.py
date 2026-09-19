@@ -60,6 +60,29 @@ BUY_THRESHOLD = 0.15
 SELL_THRESHOLD = -0.15
 
 
+PROD_MODEL_PATH = Path("models/final/final_v3/xgb_model.ubj")
+PROD_FEATURES_PATH = Path("models/final/final_v3/xgb_features.json")
+
+_cached_xgb_model = None
+_cached_xgb_features = None
+
+
+def _get_production_model():
+    global _cached_xgb_model, _cached_xgb_features
+    if _cached_xgb_model is None and PROD_MODEL_PATH.exists():
+        try:
+            import xgboost as xgb
+            model = xgb.XGBClassifier()
+            model.load_model(str(PROD_MODEL_PATH))
+            _cached_xgb_model = model
+            if PROD_FEATURES_PATH.exists():
+                _cached_xgb_features = json.loads(PROD_FEATURES_PATH.read_text(encoding="utf-8"))
+            log.info("Loaded Production XGBoost v3 model successfully")
+        except Exception as e:
+            log.warning("Could not load XGBoost production model: %s", e)
+    return _cached_xgb_model, _cached_xgb_features
+
+
 class RecommendationEngine:
     """Compute stock recommendations by synthesizing multiple signal sources."""
 
@@ -67,35 +90,58 @@ class RecommendationEngine:
         self.weights = weights or DEFAULT_WEIGHTS.copy()
 
     # ───────────────────────────────────────────────────────────────────
-    # ML Signal (from cached features)
+    # ML Signal (Production XGBoost v3 Alpha Model)
     # ───────────────────────────────────────────────────────────────────
 
     def _ml_signal(self, sym_df: pd.DataFrame) -> tuple[float, dict]:
-        """Derive a directional signal from the latest ML features.
+        """Derive a directional signal using the Production XGBoost v3 model.
 
-        Uses the feature columns available in features_daily.parquet to
-        estimate a directional bias without running the full model pipeline
-        (which requires the loaded model). The signal is derived from:
-        - RSI position (momentum)
-        - MACD histogram direction (trend)
-        - Price vs SMA-20 and SMA-50 (trend)
-
+        Evaluates the 30 clean normalized cross-sectional technical features.
         Returns (signal in [-1, 1], reasoning dict).
         """
         if sym_df.empty:
             return 0.0, {"reason": "no data"}
 
         latest = sym_df.iloc[-1]
-        signals = []
+        model, feat_names = _get_production_model()
 
-        # RSI signal: <30 oversold (bullish), >70 overbought (bearish)
+        if model is not None and feat_names:
+            try:
+                # Build feature vector in exact training order
+                feat_dict = {}
+                for fn in feat_names:
+                    # Match column name directly or fallback
+                    raw_fn = fn.replace("_csrank", "")
+                    val = latest.get(fn, latest.get(raw_fn, 0.50))
+                    feat_dict[fn] = float(val) if pd.notna(val) else 0.50
+
+                X_input = np.array([[feat_dict[fn] for fn in feat_names]])
+                probs = model.predict_proba(X_input)[0]
+                p_buy = float(probs[0]) # Class 0 = Buy
+                
+                # Scale [0, 1] to [-1, 1]
+                ml_signal = np.clip(2.0 * (p_buy - 0.50), -1.0, 1.0)
+                score_pct = round(p_buy * 100, 1)
+
+                reasoning = {
+                    "model": "XGBoost v3 Alpha Engine",
+                    "ai_score": f"{score_pct}/100",
+                    "signal_bias": "Bullish" if ml_signal > 0.1 else "Bearish" if ml_signal < -0.1 else "Neutral",
+                    "prob_buy": f"{p_buy:.3f}",
+                }
+                return float(ml_signal), reasoning
+            except Exception as e:
+                log.warning("XGBoost prediction error: %s, falling back to heuristic", e)
+
+        # Fallback heuristic if model file is not present
+        signals = []
         rsi = latest.get("rsi_14", 50)
         if pd.notna(rsi):
             rsi_signal = 0.0
             if rsi < 30:
-                rsi_signal = (30 - rsi) / 30  # 0 to 1
+                rsi_signal = (30 - rsi) / 30
             elif rsi > 70:
-                rsi_signal = -(rsi - 70) / 30  # 0 to -1
+                rsi_signal = -(rsi - 70) / 30
             signals.append(("rsi", rsi_signal, f"RSI={rsi:.1f}"))
 
         # MACD histogram signal
@@ -364,19 +410,24 @@ class RecommendationEngine:
         symbol: str,
         sym_df: pd.DataFrame,
         risk_tolerance: str = "moderate",
+        ml_direction: str | None = None,
+        horizon: str = "1D",
     ) -> dict:
-        """Compute target price and stop-loss using ATR-based method.
+        """Compute target price and stop-loss using ATR-based method scaled for horizon.
 
-        Method: ATR Band
-            target = current_price + (atr_14 * target_multiplier)
-            stop_loss = current_price - (atr_14 * stop_multiplier)
+        Method: ATR Band (direction-aware and horizon-scaled)
+            bullish:  target = current_price + (atr_14 * target_multiplier * horizon_scale)
+                      stop  = current_price - (atr_14 * stop_multiplier * horizon_scale)
+            bearish:  target = current_price - (atr_14 * target_multiplier * horizon_scale)
+                      stop  = current_price + (atr_14 * stop_multiplier * horizon_scale)
+            sideways: target = None (no directional target)
+                      stop  = current_price - (atr_14 * stop_multiplier * horizon_scale)
+                      expected_range = [current_price - atr*mult*scale, current_price + atr*mult*scale]
 
-        Multipliers depend on risk tolerance:
-            conservative: target=2x ATR, stop=1.5x ATR
-            moderate:     target=3x ATR, stop=2x ATR
-            aggressive:   target=4x ATR, stop=2.5x ATR
-
-        Returns dict with: target_price, stop_loss, method, multipliers, atr.
+        Horizon scale:
+            1D: 0.60x (intraday / 1-day move bounds)
+            1W: 1.00x (standard 5-day move bounds)
+            1M: 1.60x (monthly position bounds)
         """
         if sym_df.empty:
             return {
@@ -400,24 +451,66 @@ class RecommendationEngine:
                 "error": "insufficient data (no ATR or price)",
             }
 
-        mult = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])
+        mult = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"]).copy()
+        
+        # Scale multipliers based on horizon
+        HORIZON_SCALES = {"1D": 0.60, "1W": 1.00, "1M": 1.60}
+        h_scale = HORIZON_SCALES.get(horizon, 1.00)
+        
+        target_mult = mult["target"] * h_scale
+        stop_mult = mult["stop"] * h_scale
 
-        target_price = round(current_price + (atr * mult["target"]), 2)
-        stop_loss = round(current_price - (atr * mult["stop"]), 2)
+        # Normalize direction (default to bullish for backward compatibility)
+        direction = (ml_direction or "bullish").lower()
 
-        # Ensure stop_loss is positive
-        stop_loss = max(stop_loss, current_price * 0.85)  # max 15% loss floor
+        if direction == "bearish":
+            # Bearish: target is BELOW current price, stop is above
+            target_price = round(current_price - (atr * target_mult), 2)
+            stop_loss = round(current_price + (atr * stop_mult), 2)
+            expected_range = None
+            upside_pct = round(((target_price - current_price) / current_price) * 100, 2)
+            downside_pct = round(((stop_loss - current_price) / current_price) * 100, 2)
+            rr_ratio = round(abs(target_price - current_price) / (abs(stop_loss - current_price) + 1e-6), 2)
+        elif direction == "sideways":
+            target_price = None
+            stop_loss = round(current_price - (atr * stop_mult), 2)
+            range_width = atr * target_mult
+            expected_range = {
+                "low": round(current_price - range_width, 2),
+                "high": round(current_price + range_width, 2),
+                "method": "atr_range",
+            }
+            upside_pct = None
+            downside_pct = round(((stop_loss - current_price) / current_price) * 100, 2)
+            rr_ratio = None
+        else:
+            # Bullish (or unknown): target above, stop below
+            target_price = round(current_price + (atr * target_mult), 2)
+            stop_loss = round(current_price - (atr * stop_mult), 2)
+            expected_range = None
+            upside_pct = round(((target_price - current_price) / current_price) * 100, 2)
+            downside_pct = round(((stop_loss - current_price) / current_price) * 100, 2)
+            rr_ratio = round(abs(target_price - current_price) / (abs(current_price - stop_loss) + 1e-6), 2)
+
+        # Ensure stop_loss is positive (max 20% loss floor)
+        stop_loss = max(stop_loss, round(current_price * 0.80, 2))
 
         return {
             "symbol": symbol,
             "current_price": round(current_price, 2),
             "target_price": target_price,
             "stop_loss": stop_loss,
+            "expected_range": expected_range,
+            "upside_pct": upside_pct,
+            "downside_pct": downside_pct,
+            "risk_reward_ratio": rr_ratio,
             "method": "atr_band",
             "atr_14": round(atr, 4),
-            "target_multiplier": mult["target"],
-            "stop_multiplier": mult["stop"],
+            "target_multiplier": round(target_mult, 2),
+            "stop_multiplier": round(stop_mult, 2),
             "risk_tolerance": risk_tolerance,
+            "horizon": horizon,
+            "ml_direction_used": direction,
         }
 
     # ───────────────────────────────────────────────────────────────────
@@ -466,8 +559,9 @@ class RecommendationEngine:
         # Compute composite signal
         composite = self.compute_composite(symbol, sym_df, weights)
 
-        # Compute target/stop
-        target_stop = self.compute_target_stop(symbol, sym_df, risk_tolerance)
+        # Compute target/stop — pass composite verdict so target aligns with signal direction
+        target_stop = self.compute_target_stop(symbol, sym_df, risk_tolerance,
+                                               ml_direction=composite["verdict"])
 
         return {
             "symbol": symbol,
@@ -476,6 +570,7 @@ class RecommendationEngine:
             "confidence": composite["confidence"],
             "target_price": target_stop.get("target_price"),
             "stop_loss": target_stop.get("stop_loss"),
+            "expected_range": target_stop.get("expected_range"),
             "reasoning": composite["reasoning"],
             "technical_score": composite["technical_signal"],
             "fundamental_score": composite["fundamental_signal"],

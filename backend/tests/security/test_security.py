@@ -123,11 +123,11 @@ class TestInputValidation:
             resp = await client.post(
                 "/api/v1/community/posts",
                 headers=auth_headers,
-                json={"symbol": "HBL", "stance": "bullish", "rationale_text": payload},
+                json={"content": payload, "symbols": ["HBL"]},
             )
             if resp.status_code == 201:
                 body = resp.json()
-                assert "<script>" not in body.get("rationale_text", "") or resp.status_code == 201
+                assert "<script>" not in body.get("content", "") or resp.status_code == 201
 
     async def test_path_traversal_in_stock_symbol(self, client: AsyncClient, auth_headers):
         resp = await client.get(
@@ -140,7 +140,7 @@ class TestInputValidation:
         resp = await client.post(
             "/api/v1/community/posts",
             headers=auth_headers,
-            json={"symbol": "HBL", "stance": "bullish", "rationale_text": "A" * 1_000_000},
+            json={"content": "A" * 1_000_000, "symbols": ["HBL"]},
         )
         assert resp.status_code in (400, 413, 422)
 

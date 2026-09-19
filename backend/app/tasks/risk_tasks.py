@@ -4,7 +4,6 @@ Monte Carlo runs async (compute-heavy), result cached to disk.
 Threshold-breach alerts hook into Module 9 (alert_service).
 """
 
-import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -26,7 +25,7 @@ def _get_sync_db():
 
 
 def _get_user_holdings_sync(user_id: str, symbols: list[str] | None = None):
-    """Get portfolio holdings synchronously."""
+    """Get portfolio holdings synchronously with computed current_value and allocation_pct."""
     from app.models.portfolio import Portfolio, PortfolioHolding
     from app.models.stock import Stock
     from sqlalchemy import select
@@ -48,14 +47,37 @@ def _get_user_holdings_sync(user_id: str, symbols: list[str] | None = None):
         result = db.execute(q)
         rows = result.all()
 
-        holdings = []
+        from app.services.stock_service import StockService
+
+        stock_service = StockService()
+        filtered_rows = []
         for holding, stock in rows:
             if symbols and stock.symbol not in symbols:
                 continue
-            # Attach symbol and sector to holding for risk calculations
+            filtered_rows.append((holding, stock))
+
+        if not filtered_rows:
+            return []
+
+        stock_symbols = [stock.symbol for _, stock in filtered_rows]
+        quotes = stock_service.get_quote_batch(stock_symbols)
+        quote_map = {sym: q for sym, q in zip(stock_symbols, quotes)}
+
+        holdings = []
+        total_value = 0.0
+        for holding, stock in filtered_rows:
+            quote = quote_map.get(stock.symbol)
+            current_price = quote.get("current") if quote else None
+            current_value = (current_price * holding.quantity) if current_price else 0.0
             holding.symbol = stock.symbol
             holding.sector = getattr(stock, "sector", "default") or "default"
+            holding.current_value = current_value
+            total_value += current_value
             holdings.append(holding)
+
+        for h in holdings:
+            h.allocation_pct = round((h.current_value / total_value) * 100, 2) if total_value > 0 else 0.0
+
         return holdings
     finally:
         db.close()
@@ -66,6 +88,8 @@ def _get_user_holdings_sync(user_id: str, symbols: list[str] | None = None):
     bind=True,
     max_retries=2,
     acks_late=True,
+    soft_time_limit=120,
+    time_limit=180,
 )
 def run_monte_carlo_task(
     self,
@@ -203,12 +227,10 @@ def check_threshold_breaches_task(self, user_id: str):
                     "threshold": 0.30,
                 })
 
-        # Create alerts via Module 9 (async, so use event loop)
+        # Create alerts via Module 9 (sync DB)
         if breaches:
             try:
-                loop = asyncio.new_event_loop()
-                loop.run_until_complete(_send_alerts(user_id, breaches))
-                loop.close()
+                _send_alerts_sync(user_id, breaches)
                 log.info("Threshold alerts sent: user=%s count=%d", user_id, len(breaches))
             except Exception:
                 log.exception("Failed to send threshold alerts: user=%s", user_id)
@@ -224,13 +246,13 @@ def check_threshold_breaches_task(self, user_id: str):
         raise self.retry(exc=exc, countdown=120)
 
 
-async def _send_alerts(user_id: str, breaches: list[dict]):
-    """Send threshold breach alerts via AlertService (Module 9)."""
-    from app.db.session import async_session_factory
-    from app.models.alert import Alert
+def _send_alerts_sync(user_id: str, breaches: list[dict]):
+    """Send threshold breach alerts via sync DB session (Module 9)."""
     from uuid import uuid4
+    from app.models.alert import Alert
 
-    async with async_session_factory() as db:
+    db = _get_sync_db()
+    try:
         for b in breaches:
             alert = Alert(
                 id=uuid4().hex,
@@ -239,4 +261,6 @@ async def _send_alerts(user_id: str, breaches: list[dict]):
                 message=b["message"],
             )
             db.add(alert)
-        await db.commit()
+        db.commit()
+    finally:
+        db.close()

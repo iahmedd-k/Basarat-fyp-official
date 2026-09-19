@@ -462,10 +462,13 @@ erDiagram
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `community_posts` | `user_id`, `symbol FK`, `stance` (bullish/bearish), `rationale_text`, `vote_count` | Trade-idea posts (M10) |
-| `community_votes` | `user_id`, `post_id`, `direction` (up/down) | One vote per user per post |
-| `community_comments` | `user_id`, `post_id`, `parent_id?`, `text` | Threaded discussion |
-| `leaderboard_snapshots` | `user_id`, `accuracy_pct`, `engagement`, `period` | Weekly/monthly/all-time leaderboard (M10) |
+| `posts` | `content` (500), `sentiment`? (bullish/bearish/neutral), `media_url`?, `status` (PUBLISHED/REMOVED/FLAGGED), `like_count`, `comment_count` | Text posts — module 7 sentiment score |
+| `post_stock_tags` | `post_id` FK, `symbol` (≤10 chars, FK→stocks) | N post tags, 1–3 enforced in service |
+| `post_likes` | `post_id`, `user_id` — UNIQUE pair | Toggle like; denormalized into `posts.like_count` |
+| `comments` | `post_id`, `user_id`, `parent_id`, `content` (300), `status` (ACTIVE/REMOVED) | Depth capped at 2 (service) |
+| `reports` | `user_id`, `target_type` (POST/COMMENT), `target_id`, `reason` — UNIQUE (reporter,target_type,target_id) | Idempotent; auto-flags at threshold |
+| `share_links` | `post_id`, `short_code` (UNIQUE) | Deep-link share; resolve public endpoint |
+| `leaderboard_snapshots` | `user_id`, `accuracy_pct`, `engagement`, `period` | Weekly/monthly/all-time leaderboard (M10, future) |
 | `shariah_screenings` | `symbol FK`, per-criterion pass flags, `overall`, `overall_score` | AAOIFI/SECP screener (M11) |
 | `purification_records` | `user_id`, `symbol FK`, `holding_qty`, `holding_value`, `purification_amount`, `method_note` | Purification calculator (M11) |
 
@@ -487,7 +490,11 @@ erDiagram
 | `portfolio_holdings` | `(user_id, symbol)` | Holdings lookup + P&L aggregation |
 | `forecasts` | `(symbol, horizon)` | Fast forecast fetch |
 | `notification_preferences` / `alert_rules` | `user_id` | All user-scoped reads |
-| `community_posts` | `(created_at)`, `vote_count` | Feed ordering + leaderboard |
+| `posts` | `(created_at DESC, id DESC)` | Cursor feed ordering |
+| `post_stock_tags` | `symbol` | Per-symbol community feed + sentiment job |
+| `comments` | `post_id` | Thread loading + count |
+| `reports` | `(target_type, target_id)` | Moderation queue + threshold counting |
+| `share_links` | `short_code` | Public deep-link resolve (UNIQUE) |
 
 **Caching layer (Redis):** expensive computations are cached and invalidated per the Global API strategy (Section 2 of the Execution Document):
 - Market indices/heatmap/gainers/losers/spikes — TTL 30–60s, overwritten by Celery scheduler

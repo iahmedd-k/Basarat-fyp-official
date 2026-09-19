@@ -61,7 +61,7 @@ The 19 functional requirements constitute the complete feature set of the system
 
 ### 2.7 Community & Compliance (Modules 10–11)
 
-**FR-16 — Community.** The system shall provide a community feed for posting and voting on trade ideas, with a leaderboard.
+**FR-16 — Community.** The system shall provide a community feed for posting and liking trade ideas, with basic moderation (leaderboard deferred).
 
 **FR-17 — Shariah screener.** The system shall screen any KSE-100 stock against AAOIFI/SECP Shariah criteria with a compliance score and purification calculator.
 

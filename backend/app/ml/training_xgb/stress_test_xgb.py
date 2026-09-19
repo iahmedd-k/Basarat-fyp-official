@@ -85,12 +85,18 @@ def main():
         X_pred = np.array([feat_values], dtype=np.float32)
         proba = model.predict_proba(X_pred)[0]
         pred = int(np.argmax(proba))
+        pct_map = {
+            "bullish": round(float(proba[0]) * 100, 1),
+            "bearish": round(float(proba[1]) * 100, 1),
+            "sideways": round(float(proba[2]) * 100, 1),
+        }
+        from app.ml.serving.inference import compute_confidence
         return {
             "direction": xgb_label_names.get(pred, "unknown"),
-            "confidence": round(float(np.max(proba)) * 100, 1),
-            "bullish_pct": round(float(proba[0]) * 100, 1),
-            "bearish_pct": round(float(proba[1]) * 100, 1),
-            "sideways_pct": round(float(proba[2]) * 100, 1),
+            "confidence": round(compute_confidence(pct_map), 1),
+            "bullish_pct": pct_map["bullish"],
+            "bearish_pct": pct_map["bearish"],
+            "sideways_pct": pct_map["sideways"],
         }
 
     def compute_actual_return(symbol):

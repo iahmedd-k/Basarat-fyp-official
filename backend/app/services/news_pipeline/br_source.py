@@ -35,6 +35,9 @@ _PAK_KEYWORDS = {
     "k electric", "KEL", "HUBCO", "hub power", "LOTTE",
     "PRL", "NRL", "BYCO", "Attock", "mari", "PPL",
     "police", "serena", "systems", "netSol", "tech",
+    "circular debt", "interest rate", "block order",
+    "foreign buying", "foreign selling", "institutional",
+    "earnings surprise", "monetary policy",
 }
 
 

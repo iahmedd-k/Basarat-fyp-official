@@ -147,7 +147,7 @@ class TestCommunityJourney:
         post_resp = await client.post(
             "/api/v1/community/posts",
             headers=headers,
-            json={"symbol": "HBL", "stance": "bullish", "rationale_text": "What do you think about HBL at 150?"},
+            json={"content": "What do you think about HBL at 150?", "symbols": ["HBL"]},
         )
         assert post_resp.status_code == 201
         post_id = post_resp.json()["id"]
@@ -155,16 +155,16 @@ class TestCommunityJourney:
         comment_resp = await client.post(
             f"/api/v1/community/posts/{post_id}/comments",
             headers=headers,
-            json={"text": "Strong buy signal!"},
+            json={"content": "Strong buy signal!"},
         )
         assert comment_resp.status_code == 201
 
-        vote_resp = await client.post(
-            f"/api/v1/community/posts/{post_id}/vote",
+        like_resp = await client.post(
+            f"/api/v1/community/posts/{post_id}/like",
             headers=headers,
-            json={"direction": "up"},
         )
-        assert vote_resp.status_code == 200
+        assert like_resp.status_code == 200
+        assert like_resp.json()["likedByMe"] is True
 
         feed = await client.get("/api/v1/community/feed", headers=headers)
         assert feed.status_code == 200
@@ -174,10 +174,18 @@ class TestCommunityJourney:
             headers=headers,
         )
         assert comments.status_code == 200
-        assert len(comments.json()["comments"]) == 1
+        assert len(comments.json()["items"]) == 1
 
-        leaderboard = await client.get("/api/v1/community/leaderboard", headers=headers)
-        assert leaderboard.status_code == 200
+        share = await client.post(
+            f"/api/v1/community/posts/{post_id}/share",
+            headers=headers,
+        )
+        assert share.status_code == 201
+        short_code = share.json()["shortCode"]
+
+        resolve = await client.get(f"/api/v1/community/share/{short_code}")
+        assert resolve.status_code == 200
+        assert resolve.json()["postId"] == post_id
 
 
 @pytest.mark.e2e

@@ -61,9 +61,21 @@ def time_split_xgb(
     val_mask = (dates >= train_cutoff) & (dates < val_cutoff)
     test_mask = dates >= val_cutoff
 
-    # ── Identify feature columns ────────────────────────────────────────
-    exclude_cols = {"symbol", "date", "forward_return", "label"}
-    feature_names = sorted([c for c in df.columns if c not in exclude_cols])
+    # Assert no missing targets in the full dataset before splitting
+    # Check for NaN in label column before encoding
+    n_nan_labels = int(df["label"].isna().sum())
+    if n_nan_labels > 0:
+        raise AssertionError(
+            f"Found {n_nan_labels} NaN labels in dataframe before splitting. "
+            f"All missing forward_return rows should have been dropped in labeling."
+        )
+
+    # ── Identify feature columns (Task 2 / Task 13: Explicit versioned feature order) ──
+    from app.ml.training_xgb.feature_prep import ALL_XGB_FEATURES
+    feature_names = [c for c in ALL_XGB_FEATURES if c in df.columns]
+    missing = set(ALL_XGB_FEATURES) - set(feature_names)
+    if missing:
+        raise ValueError(f"Missing required XGBoost features in dataframe: {sorted(missing)}")
 
     # ── Encode labels ────────────────────────────────────────────────────
     y_full = df["label"].map(label_mapping).values
@@ -80,6 +92,43 @@ def time_split_xgb(
             "meta": meta.iloc[idx].reset_index(drop=True),
             "feature_names": feature_names,
         }
+
+    # Assert no missing targets in each split
+    for name in ("train", "val", "test"):
+        split_y = splits[name]["y"]
+        n_nan_split = int(np.isnan(split_y).sum()) if split_y.dtype.kind == 'f' else 0
+        if n_nan_split > 0:
+            raise AssertionError(
+                f"Found {n_nan_split} NaN targets in {name} split. "
+                f"All missing forward_return rows should have been dropped in labeling."
+            )
+
+    # ── NaN fill using training-set statistics only ─────────────────────
+    # Rolling/lag features have NaN at the start of each symbol's history.
+    # We compute the fill median from the TRAINING split only, then apply
+    # it to all splits.  This prevents future data from leaking into
+    # training rows via imputation.
+    X_train = splits["train"]["X"]
+    n_features = X_train.shape[1]
+
+    fill_medians = np.zeros(n_features, dtype=np.float32)
+    for f_idx in range(n_features):
+        col_train = X_train[:, f_idx]
+        valid = col_train[~np.isnan(col_train)]
+        fill_medians[f_idx] = float(np.median(valid)) if len(valid) > 0 else 0.0
+
+    for name in ("train", "val", "test"):
+        X_split = splits[name]["X"]
+        n_nan_before = int(np.isnan(X_split).sum())
+        for f_idx in range(n_features):
+            mask_nan = np.isnan(X_split[:, f_idx])
+            X_split[mask_nan, f_idx] = fill_medians[f_idx]
+        n_nan_after = int(np.isnan(X_split).sum())
+        if n_nan_before > 0:
+            log.info(
+                "  %s: filled %d NaN values using training-set medians (%d remaining)",
+                name.upper(), n_nan_before - n_nan_after, n_nan_after,
+            )
 
     # ── Logging & report ───────────────────────────────────────────────
     total = len(df)
@@ -109,6 +158,15 @@ def time_split_xgb(
             "%-5s  %7d samples (%5.1f%%)  dist=%s",
             name.upper(), n, pct, dist_pct,
         )
+
+        # Per-split class balance check
+        max_class = max(dist_pct.values()) if dist_pct else 0
+        if max_class > 60:
+            dominant = [cls for cls, p in dist_pct.items() if p == max_class][0]
+            warn_msg = f"Class imbalance in {name}: {dominant}={max_class:.1f}% (>60%)"
+            log.warning(warn_msg)
+            report.setdefault("class_balance_warnings", []).append(warn_msg)
+
         report["splits"][name] = {
             "n_samples": n,
             "pct_of_total": round(pct, 1),

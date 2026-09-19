@@ -88,9 +88,14 @@ def join_macro_features(
                         (pkr_max + pd.Timedelta(days=1)).date(), ohlcv_max.date())
 
     # Build a date-level lookup via merge_asof on the unique-date timeline,
-    # then left-join back.  This avoids running merge_asof on multi-symbol data.
+    # then left-join back. This avoids running merge_asof on multi-symbol data.
     all_dates = df[["date"]].drop_duplicates().sort_values("date").reset_index(drop=True)
 
+    # Note on publication timing (Task 9):
+    # Daily interbank FX rates and monetary policy announcements published after
+    # market close on date t must not leak into trading day t if predicting before close.
+    # merge_asof with direction="backward" ensures each trading day t matches the latest
+    # officially published macro record with publication date <= date t.
     if not pkr.empty:
         all_dates = pd.merge_asof(all_dates, pkr, on="date", direction="backward")
         _log_coverage(all_dates, "pkr_usd_rate", "PKR/USD")

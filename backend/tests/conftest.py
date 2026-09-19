@@ -2,21 +2,19 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
-from app.core.security import create_access_token, create_refresh_token, hash_password
+from app.core.security import create_access_token, hash_password
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -43,6 +41,19 @@ engine = create_async_engine(TEST_DB_URL, echo=False, future=True)
 TestSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _dispose_engine_at_session_end():
+    """Close the aiosqlite worker threads so the interpreter can exit on Windows."""
+    yield
+    import asyncio
+
+    try:
+        asyncio.get_event_loop().run_until_complete(engine.dispose())
+    except RuntimeError:
+        asyncio.run(engine.dispose())
+        asyncio.run(asyncio.sleep(0))
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -153,7 +164,7 @@ def expired_token_headers() -> dict:
 @pytest_asyncio.fixture
 async def refresh_token_fixture(test_user: User, db_session: AsyncSession) -> str:
     """Return a valid refresh token stored in the DB."""
-    from datetime import timedelta, timezone
+    from datetime import timezone
     from app.core.security import create_refresh_token, decode_token
     from app.models.user import RefreshToken
 

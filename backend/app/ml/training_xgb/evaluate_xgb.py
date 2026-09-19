@@ -2,10 +2,11 @@
 XGBoost Evaluation — test-set evaluation using the EXACT SAME report
 format as all previous GRU evaluation reports.
 
-Evaluates both xgb variants (unweighted and weighted) on the SAME test
-split, using identical metrics: test_accuracy, per-class precision/recall/
-f1/support, confusion_matrix, baseline comparison, and
-improvement_over_baseline.
+Now includes comprehensive metrics for imbalanced classes:
+  - Macro-averaged F1 (headline metric)
+  - Balanced accuracy
+  - Full classification report (precision, recall, F1 per class)
+  - Confusion matrix with proper formatting
 """
 
 import json
@@ -15,7 +16,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import confusion_matrix as sk_confusion_matrix
+from sklearn.metrics import (
+    balanced_accuracy_score,
+    classification_report,
+    confusion_matrix as sk_confusion_matrix,
+    f1_score,
+)
 
 log = logging.getLogger("training_xgb.evaluate")
 
@@ -118,18 +124,45 @@ def evaluate_xgb(
                 f"label_mapping may not match the data used for y_test."
             )
 
-    # ── Majority-class baseline ─────────────────────────────────────────
+    # ── Comprehensive metrics for imbalanced classes ────────────────────
+    labels_sorted = sorted(label_names.keys())
+    target_names = [label_names[i] for i in labels_sorted]
+
+    # Macro-averaged F1 (unweighted mean — treats all classes equally)
+    macro_f1 = float(f1_score(y_test, y_pred, labels=labels_sorted, average="macro", zero_division=0))
+
+    # Weighted F1 (weighted by class support)
+    weighted_f1 = float(f1_score(y_test, y_pred, labels=labels_sorted, average="weighted", zero_division=0))
+
+    # Balanced accuracy (recall averaged per class, then macro-averaged)
+    bal_acc = float(balanced_accuracy_score(y_test, y_pred))
+
+    # Full sklearn classification report string (for display)
+    sklearn_report_str = classification_report(
+        y_test, y_pred,
+        labels=labels_sorted,
+        target_names=target_names,
+        digits=4,
+        zero_division=0,
+    )
+
+    log.info("Macro F1: %.4f | Weighted F1: %.4f | Balanced Accuracy: %.4f", macro_f1, weighted_f1, bal_acc)
+
+    # ── Majority-class baseline (Task 15) ───────────────────────────────
     train_counts = Counter(y_train.tolist())
     majority_class = max(train_counts, key=train_counts.get)
+    baseline_preds = np.full_like(y_test, majority_class)
     baseline_acc = float((y_test == majority_class).sum() / len(y_test))
+    baseline_macro_f1 = float(f1_score(y_test, baseline_preds, labels=labels_sorted, average="macro", zero_division=0))
+    baseline_bal_acc = float(balanced_accuracy_score(y_test, baseline_preds))
+
     log.info(
-        "Baseline (always %s): accuracy=%.4f",
-        label_names[majority_class], baseline_acc,
+        "Baseline (always %s): accuracy=%.4f, macro_f1=%.4f, bal_acc=%.4f",
+        label_names[majority_class], baseline_acc, baseline_macro_f1, baseline_bal_acc,
     )
     log.info(
-        "Model improvement over baseline: %.4f (%.1f%%)",
-        accuracy - baseline_acc,
-        (accuracy - baseline_acc) * 100,
+        "Model improvement over baseline: acc=%+.4f, macro_f1=%+.4f, bal_acc=%+.4f",
+        accuracy - baseline_acc, macro_f1 - baseline_macro_f1, bal_acc - baseline_bal_acc,
     )
 
     # ── Build report (same format as GRU evaluation) ────────────────────
@@ -137,6 +170,9 @@ def evaluate_xgb(
         "label_mapping": label_mapping,
         "test_samples": len(y_test),
         "test_accuracy": round(accuracy, 4),
+        "balanced_accuracy": round(bal_acc, 4),
+        "macro_f1": round(macro_f1, 4),
+        "weighted_f1": round(weighted_f1, 4),
         "per_class": per_class,
         "confusion_matrix": cm_list,
         "baseline": {
@@ -144,8 +180,14 @@ def evaluate_xgb(
             "majority_class_id": int(majority_class),
             "majority_class_name": label_names[majority_class],
             "accuracy": round(baseline_acc, 4),
+            "macro_f1": round(baseline_macro_f1, 4),
+            "balanced_accuracy": round(baseline_bal_acc, 4),
         },
-        "improvement_over_baseline": round(accuracy - baseline_acc, 4),
+        "improvement_over_baseline": {
+            "accuracy": round(accuracy - baseline_acc, 4),
+            "macro_f1": round(macro_f1 - baseline_macro_f1, 4),
+            "balanced_accuracy": round(bal_acc - baseline_bal_acc, 4),
+        },
     }
 
     if report_path:
@@ -154,18 +196,27 @@ def evaluate_xgb(
         log.info("Evaluation report saved -> %s", report_path)
 
     # ── Console summary ─────────────────────────────────────────────────
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 64)
     print(f"  EVALUATION SUMMARY — XGBoost ({variant})")
-    print("=" * 60)
+    print("=" * 64)
     print(f"  Test samples:        {len(y_test)}")
-    print(f"  Test accuracy:       {accuracy:.4f}")
+    print(f"  Macro F1 (headline): {macro_f1:.4f}")
+    print(f"  Balanced Accuracy:   {bal_acc:.4f}")
+    print(f"  Plain Accuracy:      {accuracy:.4f}")
     print(f"  Baseline accuracy:   {baseline_acc:.4f}  (always {label_names[majority_class]})")
     print(f"  Improvement:         {accuracy - baseline_acc:+.4f}")
-    if accuracy > baseline_acc:
-        print("  Verdict:             Model BEATS baseline")
-    else:
-        print("  Verdict:             Model DOES NOT beat baseline")
-    print("=" * 60 + "\n")
+    print("-" * 64)
+    print("  Classification Report:")
+    for line in sklearn_report_str.splitlines():
+        print(f"    {line}")
+    print("-" * 64)
+    print("  Confusion Matrix (rows=true, cols=pred):")
+    header = f"    {'':>12}" + "".join(f"{target_names[i]:>12}" for i in range(len(target_names)))
+    print(header)
+    for i, row in enumerate(cm_list):
+        row_str = "".join(f"{v:>12}" for v in row)
+        print(f"    {target_names[i]:>12}{row_str}")
+    print("=" * 64 + "\n")
 
     return report
 
@@ -188,6 +239,8 @@ def print_comparison_table(
     xgb_weighted_report: dict,
 ) -> None:
     """Print a direct side-by-side comparison table.
+
+    Headline metric is Macro F1 (not plain accuracy).
 
     metric                     | gru_v1 | xgb_unweighted | xgb_weighted
     """
@@ -217,6 +270,8 @@ def print_comparison_table(
     print(sep)
 
     rows = [
+        ("macro f1 (headline)", "macro_f1"),
+        ("balanced accuracy", "balanced_accuracy"),
         ("test accuracy", "test_accuracy"),
         ("baseline accuracy", "baseline", "accuracy"),
         ("improvement over baseline", "improvement_over_baseline"),

@@ -229,7 +229,9 @@ def _run_sanity_check(
         proba = model.predict_proba(X_pred)[0]
         pred_class = int(np.argmax(proba))
         direction = label_names.get(pred_class, "unknown")
-        confidence = float(proba[pred_class]) * 100
+        pct_map = {"bullish": float(proba[0]) * 100, "bearish": float(proba[1]) * 100, "sideways": float(proba[2]) * 100}
+        from app.ml.serving.inference import compute_confidence
+        confidence = compute_confidence(pct_map)
 
         # Compute actual return over trend window (Aug 18 - Sep 15, 2026)
         from datetime import date as _date

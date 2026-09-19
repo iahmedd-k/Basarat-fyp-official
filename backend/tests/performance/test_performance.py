@@ -95,7 +95,7 @@ class TestRegression:
         resp = await client.post(
             "/api/v1/community/posts",
             headers=auth_headers,
-            json={"symbol": "HBL", "stance": "bullish", "rationale_text": "<script>alert('xss')</script>"},
+            json={"content": "<script>alert('xss')</script>", "symbols": ["HBL"]},
         )
         assert resp.status_code in (201, 422)
 
@@ -103,7 +103,7 @@ class TestRegression:
         resp = await client.post(
             "/api/v1/community/posts",
             headers=auth_headers,
-            json={"symbol": "HBL", "stance": "bullish", "rationale_text": "x" * 100000},
+            json={"content": "x" * 100000, "symbols": ["HBL"]},
         )
         assert resp.status_code in (400, 413, 422)
 

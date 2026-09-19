@@ -12,11 +12,21 @@ from pathlib import Path
 import joblib
 import numpy as np
 
+from app.data.features.gru_feature_list import (
+    EXPECTED_GRU_FEATURE_COUNT,
+    GRU_FEATURE_VERSION,
+    validate_feature_count,
+    validate_feature_list,
+)
+
 log = logging.getLogger(__name__)
 
-GRU_MODEL_DIR = Path("models/gru_v1")
-XGB_MODEL_DIR = Path("models/xgb_v1")
-DATA_DIR = Path("data/scalers")
+ROOT_DIR = Path(__file__).resolve().parents[3]
+
+GRU_MODEL_DIR = Path("models/gru_v1") if Path("models/gru_v1").exists() else ROOT_DIR / "models" / "gru_v1"
+PROD_XGB_DIR = Path("models/final/final_v3") if Path("models/final/final_v3").exists() else ROOT_DIR / "models" / "final" / "final_v3"
+XGB_MODEL_DIR = PROD_XGB_DIR if (PROD_XGB_DIR / "xgb_model.ubj").exists() else (Path("models/xgb_v1") if Path("models/xgb_v1").exists() else ROOT_DIR / "models" / "xgb_v1")
+DATA_DIR = Path("data/scalers") if Path("data/scalers").exists() else ROOT_DIR / "data" / "scalers"
 
 
 @dataclass
@@ -37,6 +47,7 @@ class ModelArtifacts:
     xgb_feature_names: list[str] = field(default_factory=list)
     xgb_data_path: Path = Path("data/processed/features_xgb.parquet")
     xgb_ready: bool = False
+    xgb_model_version: str = "xgb_v3_production"
 
 
 artifacts = ModelArtifacts()
@@ -47,26 +58,40 @@ def _load_xgb_artifacts() -> None:
     try:
         from xgboost import XGBClassifier
 
-        xgb_model_path = XGB_MODEL_DIR / "xgb_v1_weighted.xgb"
-        if not xgb_model_path.exists():
-            log.error("XGB model file not found: %s", xgb_model_path)
+        prod_model_path = PROD_XGB_DIR / "xgb_model.ubj"
+        legacy_model_path = Path("models/xgb_v1") / "xgb_v1_weighted.xgb"
+
+        if prod_model_path.exists():
+            artifacts.xgb_model = XGBClassifier()
+            artifacts.xgb_model.load_model(str(prod_model_path))
+            log.info("Loaded Production XGBoost v3 model <- %s", prod_model_path)
+
+            prod_meta_path = PROD_XGB_DIR / "xgb_features.json"
+            if prod_meta_path.exists():
+                artifacts.xgb_feature_names = json.loads(prod_meta_path.read_text(encoding="utf-8"))
+            log.info("Loaded XGB features <- %d features in exact training order", len(artifacts.xgb_feature_names))
+            artifacts.xgb_ready = True
+            artifacts.xgb_model_version = "xgb_v3_production"
+            log.info("XGB artifacts loaded successfully — xgb_ready=True (xgb_v3_production)")
             return
 
-        artifacts.xgb_model = XGBClassifier()
-        artifacts.xgb_model.load_model(str(xgb_model_path))
-        log.info("Loaded XGB model <- %s", xgb_model_path)
+        if legacy_model_path.exists():
+            artifacts.xgb_model = XGBClassifier()
+            artifacts.xgb_model.load_model(str(legacy_model_path))
+            log.info("Loaded legacy XGB model <- %s", legacy_model_path)
 
-        feat_imp_path = Path("data/reports/xgb_feature_importance_weighted.json")
-        if not feat_imp_path.exists():
-            log.error("XGB feature importance not found: %s", feat_imp_path)
-            return
+            xgb_meta_path = Path("models/xgb_v1") / "xgb_v1_weighted.json"
+            if xgb_meta_path.exists():
+                xgb_meta = json.loads(xgb_meta_path.read_text(encoding="utf-8"))
+                artifacts.xgb_feature_names = xgb_meta.get("feature_names", [])
+            else:
+                from app.ml.training_xgb.feature_prep import ALL_XGB_FEATURES
+                artifacts.xgb_feature_names = list(ALL_XGB_FEATURES)
 
-        feat_imp = json.loads(feat_imp_path.read_text(encoding="utf-8"))
-        artifacts.xgb_feature_names = list(feat_imp.keys())
-        log.info("Loaded XGB features <- %d features", len(artifacts.xgb_feature_names))
-
-        artifacts.xgb_ready = True
-        log.info("XGB artifacts loaded successfully — xgb_ready=True")
+            log.info("Loaded XGB features <- %d features in exact training order", len(artifacts.xgb_feature_names))
+            artifacts.xgb_ready = True
+            artifacts.xgb_model_version = "xgb_weighted"
+            log.info("XGB artifacts loaded successfully — xgb_ready=True")
 
     except ImportError:
         log.warning("xgboost not installed — XGB ensemble disabled")
@@ -110,8 +135,23 @@ def load_artifacts() -> None:
         artifacts.window_size = meta["window_size"]
         artifacts.n_features = meta["n_features"]
         artifacts.model_version = GRU_MODEL_DIR.name
-        log.info("Loaded metadata <- %s (window=%d, features=%d)",
-                 meta_path, artifacts.window_size, artifacts.n_features)
+        log.info("Loaded metadata <- %s (window=%d, features=%d, version=%s)",
+                 meta_path, artifacts.window_size, artifacts.n_features,
+                 meta.get("feature_version", "unknown"))
+
+        # ── Validate feature list matches explicit GRU feature list ─────────
+        is_valid, err = validate_feature_list(artifacts.feature_columns)
+        if not is_valid:
+            log.error("Feature list validation failed: %s", err)
+            log.error("Expected GRU feature version: %s, got: %s",
+                      GRU_FEATURE_VERSION, meta.get("feature_version", "unknown"))
+            return
+
+        # Validate feature count
+        is_valid, err = validate_feature_count(artifacts.n_features)
+        if not is_valid:
+            log.error("Feature count validation failed: %s", err)
+            return
 
         # ── Validate shapes ─────────────────────────────────────────────
         expected_shape = (None, artifacts.window_size, artifacts.n_features)
@@ -122,7 +162,8 @@ def load_artifacts() -> None:
             return
 
         artifacts.model_ready = True
-        log.info("GRU artifacts loaded successfully — model_ready=True")
+        log.info("GRU artifacts loaded successfully — model_ready=True (feature_version=%s)",
+                 GRU_FEATURE_VERSION)
 
     except Exception:
         log.exception("Failed to load GRU artifacts")

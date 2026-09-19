@@ -5,20 +5,16 @@ from pydantic import ValidationError
 
 from app.schemas.auth import (
     AlertRuleCreate,
-    AlertRuleUpdate,
     ChangePasswordRequest,
     DeviceRegisterRequest,
-    ForgotPasswordRequest,
     LoginRequest,
     RefreshRequest,
-    ResetPasswordRequest,
     SignupRequest,
-    UpdateNotificationPrefsRequest,
     UpdateProfileRequest,
     UpdateRiskProfileRequest,
 )
 from app.schemas.stock import StockSearchResult
-from app.schemas.community import PostCreate, VoteRequest, CommentCreate
+from app.schemas.community import CommentCreate, PostCreate, ReportCreate
 from app.schemas.market import (
     ConstituentItem,
     GainersResponse,
@@ -141,28 +137,77 @@ class TestStockSearchResult:
 
 class TestPostCreate:
     def test_valid_post(self):
-        s = PostCreate(symbol="HBL", stance="bullish", rationale_text="Strong fundamentals and growth")
-        assert s.symbol == "HBL"
+        s = PostCreate(
+            content="Banks look cheap right now",
+            symbols=["hbl", " ubl "],
+            sentiment="BULLISH",
+        )
+        assert s.content == "Banks look cheap right now"
+        assert s.symbols == ["HBL", "UBL"]
+        assert s.sentiment == "BULLISH"
 
-    def test_missing_fields(self):
+    def test_symbols_optional(self):
+        s = PostCreate(content="No ticker validation here")
+        assert s.symbols == []
+
+    def test_missing_content_rejected(self):
         with pytest.raises(ValidationError):
-            PostCreate(content="Hello world")
+            PostCreate(symbols=["HBL"])
 
-
-class TestVoteRequest:
-    def test_valid_vote(self):
-        s = VoteRequest(direction="up")
-        assert s.direction == "up"
-
-    def test_invalid_direction(self):
+    def test_blank_content_rejected(self):
         with pytest.raises(ValidationError):
-            VoteRequest(direction="sideways")
+            PostCreate(content="   ", symbols=["HBL"])
+
+    def test_empty_ticker_rejected(self):
+        with pytest.raises(ValidationError):
+            PostCreate(content="Hello", symbols=["   "])
+
+    def test_invalid_sentiment_rejected(self):
+        with pytest.raises(ValidationError):
+            PostCreate(content="Hello", symbols=["HBL"], sentiment="HOLD")
+
+    def test_media_url_must_be_cloudinary(self):
+        with pytest.raises(ValidationError):
+            PostCreate(content="Hello", symbols=["HBL"], mediaUrl="https://cdn.example.com/a.png")
+        with pytest.raises(ValidationError):
+            PostCreate(content="Hello", symbols=["HBL"], mediaUrl="https://yourapp.com/x.jpg")
+
+    def test_valid_media_url(self):
+        s = PostCreate(
+            content="Hello",
+            symbols=["HBL"],
+            mediaUrl="https://res.cloudinary.com/basarat/image/upload/v1720000000000/community/abc.jpg",
+        )
+        assert s.mediaUrl.startswith("https://res.cloudinary.com/")
+
+
+class TestReportCreate:
+    def test_valid_report(self):
+        r = ReportCreate(targetType="POST", targetId="post-1", reason="SPAM")
+        assert r.targetType == "POST"
+        assert r.reason == "SPAM"
+
+    def test_invalid_target_type(self):
+        with pytest.raises(ValidationError):
+            ReportCreate(targetType="USER", targetId="p", reason="SPAM")
+
+    def test_invalid_reason(self):
+        with pytest.raises(ValidationError):
+            ReportCreate(targetType="POST", targetId="p", reason="BAD")
 
 
 class TestCommentCreate:
     def test_valid_comment(self):
-        s = CommentCreate(text="Nice post!")
-        assert s.text == "Nice post!"
+        s = CommentCreate(content="Nice post!")
+        assert s.content == "Nice post!"
+
+    def test_blank_comment_rejected(self):
+        with pytest.raises(ValidationError):
+            CommentCreate(content="   ")
+
+    def test_reply_allows_parent(self):
+        s = CommentCreate(content="Reply", parentCommentId="abc")
+        assert s.parentCommentId == "abc"
 
 
 # ── Market schemas ──────────────────────────────────────────────────────────

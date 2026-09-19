@@ -31,6 +31,11 @@ from app.data.features.sequence_builder import (
 )
 from app.data.features.technical_indicators import compute_technical_indicators
 from app.data.scraper.symbol_universe import get_active_symbols
+from app.data.features.gru_feature_list import (
+    GRU_FEATURE_LIST,
+    GRU_FEATURE_VERSION,
+    validate_feature_list,
+)
 
 log = logging.getLogger("features")
 
@@ -111,15 +116,29 @@ def run_features(
     label_map_filename = f"label_mapping{file_prefix}.json" if suffix else "label_mapping.json"
     save_label_mapping(FEATURES_DIR, filename=label_map_filename)
 
-    # ── Identify feature columns ───────────────────────────────────────
-    exclude_cols = {"symbol", "date", "forward_return", "label", "symbol_id"}
-    feature_columns = sorted([c for c in df.columns if c not in exclude_cols])
+    # ── Explicit GRU feature list (versioned, NOT dynamic) ──────────────
+    # Use the versioned explicit feature list — do NOT auto-include all columns
+    feature_columns = GRU_FEATURE_LIST.copy()
+
+    # Verify all required features exist in the dataframe
+    missing = [c for c in feature_columns if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Required GRU features missing from dataframe: {missing}. "
+            f"Check technical_indicators.py and macro_features.py output."
+        )
+
+    # Validate feature list matches expected version
+    is_valid, err = validate_feature_list(feature_columns)
+    if not is_valid:
+        raise ValueError(f"Feature list validation failed: {err}")
+
+    log.info("GRU Feature version: %s (%d features)", GRU_FEATURE_VERSION, len(feature_columns))
+    log.info("Feature columns: %s", feature_columns)
 
     # Ensure numeric
     for col in feature_columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    log.info("Feature columns (%d): %s", len(feature_columns), feature_columns)
 
     # ── Save features parquet ──────────────────────────────────────────
     features_filename = f"features_daily{file_prefix}.parquet" if suffix else "features_daily.parquet"
@@ -131,6 +150,11 @@ def run_features(
     columns_path = FEATURES_DIR / "feature_columns.json"
     columns_path.write_text(json.dumps(feature_columns, indent=2), encoding="utf-8")
     log.info("Saved feature columns -> %s (%d features)", columns_path, len(feature_columns))
+
+    # Save feature version for traceability
+    version_path = FEATURES_DIR / "gru_feature_version.json"
+    version_path.write_text(json.dumps({"version": GRU_FEATURE_VERSION, "feature_count": len(feature_columns)}, indent=2), encoding="utf-8")
+    log.info("Saved feature version -> %s", version_path)
 
     # ── Quality Report ─────────────────────────────────────────────────
     log.info("Step 5: Quality report ...")

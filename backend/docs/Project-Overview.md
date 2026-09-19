@@ -63,7 +63,7 @@ Basarat consolidates these capabilities into **one shared backend** consumed ide
 - Risk analytics (VaR/CVaR, Monte Carlo, stress tests) + sentiment (FinBERT)
 - News & events intelligence (Pakistani sources, FinBERT sentiment, event calendar)
 - Alerts & notifications (rule-based, FCM push, deep-linking)
-- Community trading hub (posts, votes, comments, leaderboard)
+- Community trading hub (posts, likes, comments, shares, moderation)
 - Shariah compliance screener + KMI-30 + purification calculator
 - Personal AI assistant (LangChain agent grounded in live data)
 
@@ -119,7 +119,7 @@ flowchart LR
 | 7 | Risk & Sentiment Analytics | Shared | VaR/CVaR, Monte Carlo, stress tests, FinBERT sentiment |
 | 8 | News & Events Intelligence | Backend | PSX/SECP/SBP/BR/Dawn pipeline, content-hash dedup, symbol tagging, event classification, FinBERT sentiment, deterministic impact scoring, market-aware scheduling |
 | 9 | Alerts & Notifications | Shared | Alert rules, notification center, FCM push |
-| 10 | Community Trading Hub | Frontend/UX | Feed, posts, votes, comments, leaderboard |
+| 10 | Community Trading Hub | Frontend/UX | Feed, posts, likes, comments, shares |
 | 11 | Shariah Compliance Screener | Backend | AAOIFI/SECP screening, purification, KMI-30 |
 | 12 | Personal AI Assistant | Full-Stack | LangChain agent grounded in live module data |
 

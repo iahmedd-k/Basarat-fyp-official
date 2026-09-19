@@ -127,7 +127,9 @@ def run_single(
 
     pred_class = int(np.argmax(proba))
     predicted_direction = label_names.get(pred_class, "unknown")
-    confidence = round(float(np.max(proba)) * 100, 1)
+    pct_map = {"bullish": bullish_pct, "bearish": bearish_pct, "sideways": sideways_pct}
+    from app.ml.serving.inference import compute_confidence
+    confidence = round(compute_confidence(pct_map), 1)
 
     # ── Actual outcome ───────────────────────────────────────────────────
     as_of_price = float(sym_df.iloc[idx]["close"])

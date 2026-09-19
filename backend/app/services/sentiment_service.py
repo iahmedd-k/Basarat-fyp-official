@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.news import NewsArticle
-from app.models.community import Post
+from app.models.community import Post, PostStockTag
 
 log = logging.getLogger(__name__)
 
@@ -223,10 +223,13 @@ async def _fetch_news_for_symbol(db: AsyncSession, symbol: str, days: int = 7) -
 async def _fetch_community_for_symbol(db: AsyncSession, symbol: str, days: int = 7) -> list[dict]:
     """Fetch recent community posts about a symbol."""
     cutoff = datetime.utcnow() - timedelta(days=days)
+    # Only published posts, joined through the stock-tag table
     result = await db.execute(
         select(Post)
-        .where(Post.symbol == symbol)
+        .join(PostStockTag, PostStockTag.post_id == Post.id)
+        .where(PostStockTag.symbol == symbol.upper())
         .where(Post.created_at >= cutoff)
+        .where(Post.status == "PUBLISHED")
         .order_by(desc(Post.created_at))
         .limit(100)
     )
@@ -234,10 +237,10 @@ async def _fetch_community_for_symbol(db: AsyncSession, symbol: str, days: int =
 
     return [
         {
-            "text": f"{p.stance}: {p.rationale_text}",
-            "stance": p.stance,
-            "upvotes": p.upvotes,
-            "downvotes": p.downvotes,
+            "text": f"{p.sentiment}: {p.content}" if p.sentiment else p.content,
+            "stance": p.sentiment.lower() if p.sentiment else "neutral",
+            "upvotes": p.like_count,
+            "downvotes": 0,
             "created_at": p.created_at.isoformat() if p.created_at else None,
         }
         for p in posts
@@ -400,6 +403,7 @@ async def compute_market_sentiment(db: AsyncSession) -> dict[str, Any]:
     community_result = await db.execute(
         select(Post)
         .where(Post.created_at >= cutoff)
+        .where(Post.status == "PUBLISHED")
         .order_by(desc(Post.created_at))
         .limit(500)
     )
@@ -417,8 +421,8 @@ async def compute_market_sentiment(db: AsyncSession) -> dict[str, Any]:
     # Score all community posts (weighted by engagement)
     community_scores = []
     for p in posts:
-        result = score_text(f"{p.stance}: {p.rationale_text}")
-        weight = 1.0 + (p.upvotes - p.downvotes) * 0.1
+        result = score_text(p.content or "")
+        weight = 1.0 + p.like_count * 0.1
         community_scores.append(result["score"] * max(weight, 0.1))
 
     # Aggregate
@@ -458,7 +462,6 @@ async def compute_market_sentiment(db: AsyncSession) -> dict[str, Any]:
         except Exception as exc:
             log.warning("Failed to compute market breadth: %s", exc)
 
-    total = advancing + declining + unchanged
     ad_ratio = (advancing / declining) if declining > 0 else float(advancing)
 
     result = {

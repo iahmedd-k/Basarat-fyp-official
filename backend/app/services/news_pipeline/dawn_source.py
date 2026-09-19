@@ -28,6 +28,9 @@ _BUSINESS_KEYWORDS = {
     "economy", "gdp", "inflation", "interest rate", "monetary",
     "fiscal", "budget", "tax", "revenue", "profit", "loss",
     "business", "finance", "corporate", "company", "sector",
+    "circular debt", "block order", "foreign buying",
+    "foreign selling", "institutional", "interest rate",
+    "monetary", "earnings",
 }
 
 

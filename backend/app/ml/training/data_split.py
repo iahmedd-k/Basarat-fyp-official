@@ -49,6 +49,14 @@ def time_split(
     val_mask = (dates >= train_cutoff) & (dates < val_cutoff)
     test_mask = dates >= val_cutoff
 
+    # Assert no missing targets in the full dataset before splitting
+    n_nan_y = int(np.isnan(y).sum()) if y.dtype.kind == 'f' else 0
+    if n_nan_y > 0:
+        raise AssertionError(
+            f"Found {n_nan_y} NaN targets in y before splitting. "
+            f"All missing forward_return rows should have been dropped in labeling and sequence building."
+        )
+
     splits = {}
     for name, mask in [("train", train_mask), ("val", val_mask), ("test", test_mask)]:
         idx = np.where(mask)[0]
@@ -58,9 +66,19 @@ def time_split(
             "meta": meta.iloc[idx].reset_index(drop=True),
         }
 
+    # Assert no missing targets in each split
+    for name in ("train", "val", "test"):
+        split_y = splits[name]["y"]
+        n_nan_split = int(np.isnan(split_y).sum()) if split_y.dtype.kind == 'f' else 0
+        if n_nan_split > 0:
+            raise AssertionError(
+                f"Found {n_nan_split} NaN targets in {name} split. "
+                f"All missing forward_return rows should have been dropped in labeling and sequence building."
+            )
+
     # ── Logging & report ───────────────────────────────────────────────
     total = len(X)
-    label_names = {0: "bearish", 1: "sideways", 2: "bullish"}
+    label_names = {0: "bullish", 1: "bearish", 2: "sideways"}
     report: dict = {
         "cutoffs": {
             "train_before": str(train_cutoff.date()),
@@ -85,6 +103,15 @@ def time_split(
             "%-5s  %7d samples (%5.1f%%)  dist=%s",
             name.upper(), n, pct, dist_pct,
         )
+
+        # Per-split class balance check
+        max_class = max(dist_pct.values()) if dist_pct else 0
+        if max_class > 60:
+            dominant = [cls for cls, p in dist_pct.items() if p == max_class][0]
+            warn_msg = f"Class imbalance in {name}: {dominant}={max_class:.1f}% (>60%)"
+            log.warning(warn_msg)
+            report.setdefault("class_balance_warnings", []).append(warn_msg)
+
         report["splits"][name] = {
             "n_samples": n,
             "pct_of_total": round(pct, 1),

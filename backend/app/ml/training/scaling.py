@@ -27,20 +27,13 @@ SCALER_PATH = Path("data/scalers/scaler.pkl")
 
 
 def fit_scaler(X_train: np.ndarray) -> StandardScaler:
-    """Fit a StandardScaler on the training split.
-
-    Parameters
-    ----------
-    X_train : np.ndarray, shape (n, T, F)
-
-    Returns
-    -------
-    Fitted StandardScaler.
-    """
+    """Fit a StandardScaler on the training split using batching for memory efficiency."""
     n, T, F = X_train.shape
     flat = X_train.reshape(n * T, F)
     scaler = StandardScaler()
-    scaler.fit(flat)
+    batch_size = 50000
+    for i in range(0, len(flat), batch_size):
+        scaler.partial_fit(flat[i : i + batch_size].astype(np.float32, copy=False))
     log.info(
         "Scaler fitted on %d rows (reshaped from %d sequences x %d timesteps, %d features)",
         flat.shape[0], n, T, F,
@@ -49,11 +42,14 @@ def fit_scaler(X_train: np.ndarray) -> StandardScaler:
 
 
 def apply_scaler(X: np.ndarray, scaler: StandardScaler) -> np.ndarray:
-    """Transform a 3-D array using a fitted scaler."""
+    """Transform a 3-D array using a fitted scaler in memory-efficient batches."""
     n, T, F = X.shape
     flat = X.reshape(n * T, F)
-    transformed = scaler.transform(flat)
-    return transformed.reshape(n, T, F)
+    out = np.empty((flat.shape[0], F), dtype=np.float32)
+    batch_size = 50000
+    for i in range(0, len(flat), batch_size):
+        out[i : i + batch_size] = scaler.transform(flat[i : i + batch_size]).astype(np.float32)
+    return out.reshape(n, T, F)
 
 
 def save_scaler(scaler: StandardScaler, path: Path = SCALER_PATH) -> None:

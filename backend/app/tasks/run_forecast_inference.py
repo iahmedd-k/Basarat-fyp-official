@@ -174,6 +174,7 @@ def _backfill_actuals():
     """For predictions whose target_date has passed, compute actual direction and was_correct."""
     import pandas as pd
 
+    from app.data.features.labeling import DEFAULT_THRESHOLD, label_from_return
     from app.ml.serving.model_loader import artifacts
 
     if not artifacts.model_ready:
@@ -208,7 +209,6 @@ def _backfill_actuals():
         return
 
     log.info("Backfilling %d predictions", len(rows))
-    threshold = 0.01  # 1% threshold matching v1 training
     updated = 0
 
     for row in rows:
@@ -233,13 +233,7 @@ def _backfill_actuals():
             continue
 
         fwd_return = (c_target - c_as_of) / c_as_of
-
-        if fwd_return > threshold:
-            actual_direction = "bullish"
-        elif fwd_return < -threshold:
-            actual_direction = "bearish"
-        else:
-            actual_direction = "sideways"
+        actual_direction = label_from_return(fwd_return, DEFAULT_THRESHOLD)
 
         was_correct = predicted_direction == actual_direction
 

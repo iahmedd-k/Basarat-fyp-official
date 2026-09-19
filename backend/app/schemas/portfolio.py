@@ -1,76 +1,105 @@
 from datetime import date, datetime
-from pydantic import BaseModel, Field
+from decimal import Decimal
+from typing import Optional
+from pydantic import BaseModel, Field, ConfigDict
 
 
-class HoldingCreate(BaseModel):
-    symbol: str = Field(..., min_length=1, max_length=20, examples=["HBL"])
+class TransactionBase(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=20, examples=["OGDC"])
+    type: str = Field(..., pattern="^(BUY|SELL)$", examples=["BUY"])
     quantity: int = Field(..., gt=0, examples=[100])
-    avg_buy_price: float = Field(..., gt=0, examples=[85.50])
-    purchase_date: date = Field(..., examples=["2025-06-15"])
+    price: float = Field(..., gt=0, examples=[98.50])
+    fees: float = Field(default=0, ge=0, examples=[25.00])
+    transaction_date: date = Field(..., examples=["2026-09-15"])
 
 
-class HoldingUpdate(BaseModel):
-    symbol: str | None = Field(None, min_length=1, max_length=20)
-    quantity: int | None = Field(None, gt=0)
-    avg_buy_price: float | None = Field(None, gt=0)
-    purchase_date: date | None = None
+class TransactionCreate(TransactionBase):
+    pass
 
 
-class HoldingResponse(BaseModel):
+class TransactionUpdate(BaseModel):
+    quantity: Optional[int] = Field(None, gt=0)
+    price: Optional[float] = Field(None, gt=0)
+    fees: Optional[float] = Field(None, ge=0)
+    transaction_date: Optional[date] = None
+
+
+class TransactionResponse(TransactionBase):
     id: str
-    portfolio_id: str
-    stock_id: str
-    symbol: str
-    quantity: int
-    avg_buy_price: float
-    purchase_date: date | None = None
-    current_price: float | None = None
-    current_value: float | None = None
-    pnl: float | None = None
-    pnl_pct: float | None = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class PortfolioResponse(BaseModel):
-    id: str
-    name: str
-    holdings: list[HoldingResponse]
-    total_value: float
-    total_invested: float
-    total_pnl: float
-    total_pnl_pct: float
+    user_id: str
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
-class PnLSummary(BaseModel):
+class TransactionListResponse(BaseModel):
+    data: list[TransactionResponse]
+    pagination: dict
+
+
+class PriceResponse(BaseModel):
+    symbol: str
+    ldcp: float
+    current_price: float
+    change: float
+    change_percent: float
+    market_status: str
+    last_updated: datetime
+    stale: Optional[bool] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BulkPriceRequest(BaseModel):
+    symbols: list[str] = Field(..., min_length=1)
+
+
+class BulkPriceResponse(BaseModel):
+    prices: dict[str, dict]
+
+
+class HoldingDetail(BaseModel):
+    symbol: str
+    quantity: int
+    avg_cost: float
+    invested_value: float
+    current_price: float
+    current_value: float
+    unrealized_pnl: float
+    unrealized_pnl_percent: float
+    day_change_percent: float
+    weight_in_portfolio: float
+    market_status: str
+
+
+class PortfolioSummaryResponse(BaseModel):
     total_invested: float
     total_current_value: float
-    total_pnl: float
-    total_pnl_pct: float
-    holdings: list[HoldingResponse]
+    total_unrealized_pnl: float
+    total_unrealized_pnl_percent: float
+    day_change: float
+    day_change_percent: float
+    holdings: list[HoldingDetail]
+    generated_at: datetime
 
 
-class AllocationItem(BaseModel):
-    sector: str
-    value: float
-    weight_pct: float
-    holding_count: int
+class HoldingDetailResponse(BaseModel):
+    symbol: str
+    quantity: int
+    avg_cost: float
+    current_price: float
+    unrealized_pnl: float
+    unrealized_pnl_percent: float
+    transactions: list[TransactionResponse]
+    price_history_ref: Optional[str] = None
 
 
-class AllocationResponse(BaseModel):
-    allocations: list[AllocationItem]
-    total_value: float
+class ErrorResponse(BaseModel):
+    error: str
+    message: str
 
 
-class RiskMetricsResponse(BaseModel):
-    var_95: float | None = Field(None, description="Value at Risk at 95% confidence")
-    var_99: float | None = Field(None, description="Value at Risk at 99% confidence")
-    sharpe_ratio: float | None = Field(None, description="Annualized Sharpe ratio")
-    max_drawdown: float | None = Field(None, description="Maximum drawdown percentage")
-    beta: float | None = None
-    volatility: float | None = Field(None, description="Annualized volatility")
+class SuccessResponse(BaseModel):
+    success: bool
+    message: str

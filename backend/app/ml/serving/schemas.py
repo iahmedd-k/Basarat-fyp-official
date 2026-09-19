@@ -34,7 +34,7 @@ class ForecastResponse(BaseModel):
     confidence: float = Field(
         ...,
         ge=0, le=1,
-        description="Confidence in the direction (0 = no confidence, 1 = max confidence). Derived from top_class_probability normalized to [0,1].",
+        description="Top predicted class probability mass in range [0, 1]. Uncalibrated model probability mass (Task 4).",
         examples=[0.72],
     )
 
@@ -63,13 +63,38 @@ class ForecastResponse(BaseModel):
     )
     target_price: float | None = Field(
         default=None,
-        description="Projected target price (ensemble composite estimate)",
+        description="Projected directional target price (null for sideways or uncertain, Task 5)",
         examples=[148.00],
+    )
+    expected_range: dict | None = Field(
+        default=None,
+        description="Quantitative expected price range (low, high, method) for sideways direction (Task 5)",
+        examples=[{"low": 139.5, "high": 145.5, "method": "atr_range"}],
     )
     stop_loss: float | None = Field(
         default=None,
         description="Suggested stop-loss (ATR-based)",
         examples=[135.00],
+    )
+    signal_rating: str | None = Field(
+        default=None,
+        description="Institutional signal rating: 'Strong Buy', 'Buy', 'Hold / Neutral', 'Sell', 'Strong Sell'",
+        examples=["Strong Buy"],
+    )
+    upside_pct: float | None = Field(
+        default=None,
+        description="Target upside percentage relative to current price",
+        examples=[+5.2],
+    )
+    downside_pct: float | None = Field(
+        default=None,
+        description="Stop-loss risk downside percentage relative to current price",
+        examples=[-3.5],
+    )
+    risk_reward_ratio: float | None = Field(
+        default=None,
+        description="Risk-to-reward ratio (target upside / stop risk)",
+        examples=[1.49],
     )
 
     # Model source
@@ -80,14 +105,14 @@ class ForecastResponse(BaseModel):
     )
     gate_reason: str = Field(
         default="",
-        description="Why this direction: 'agree(bullish)', 'near_tie(...)', 'disagree(...)', 'single_model'",
+        description="Ensemble decision reason. 'agree(direction)' denotes matching categorical predicted direction (Task 17).",
         examples=["agree(bullish)"],
     )
 
     # Individual model breakdown (optional, for transparency)
     models: dict[str, dict] | None = Field(
         default=None,
-        description="Individual model predictions. Keys: 'gru', 'xgb'. Each has direction, probabilities, gap_pp.",
+        description="Individual model predictions. Keys: 'gru', 'xgb'. Each has direction, probabilities, gap_pp (Task 16: top-2 probability gap in percentage points).",
         examples=[{
             "gru": {"direction": "bullish", "bullish_pct": 45.0, "bearish_pct": 25.0, "sideways_pct": 30.0, "gap_pp": 20.0},
             "xgb": {"direction": "bullish", "bullish_pct": 39.6, "bearish_pct": 32.4, "sideways_pct": 28.0, "gap_pp": 7.2},
@@ -225,6 +250,10 @@ class RecommendationDetailResponse(BaseModel):
     stop_loss: float | None = Field(
         default=None, description="ATR-based stop-loss"
     )
+    expected_range: dict | None = Field(
+        default=None,
+        description="Expected price range for sideways markets: {low, high, method}",
+    )
     current_price: float | None = Field(
         default=None, description="Current closing price"
     )
@@ -257,6 +286,11 @@ class TargetStopResponse(BaseModel):
     current_price: float | None = None
     target_price: float | None = None
     stop_loss: float | None = None
+    expected_range: dict | None = Field(
+        default=None,
+        description="Expected price range for sideways markets: {low, high, method}",
+        examples=[{"low": 138.5, "high": 148.5, "method": "atr_range"}],
+    )
     method: str = Field(
         default="atr_band",
         description="Calculation method",

@@ -211,19 +211,25 @@ def train_gru_candidate_task(self):
         eval_report = evaluate(model, X_test, y_test, y_train,
                                report_path=REPORTS_DIR / "evaluation_gru_candidate.json")
 
-        log.info("[RETRAIN] GRU candidate: accuracy=%.4f", eval_report["test_accuracy"])
+        log.info("[RETRAIN] GRU candidate: accuracy=%.4f, macro_f1=%.4f",
+                 eval_report["test_accuracy"], eval_report.get("macro_f1", 0))
+
+        # Weighted F1 (support-weighted) for backward-compatible promotion logic
+        _w_f1 = sum(
+            v["f1"] * v["support"]
+            for v in eval_report["per_class"].values()
+        ) / max(sum(v["support"] for v in eval_report["per_class"].values()), 1)
 
         return {
             "status": "success",
             "model_version": MODEL_DIR.name,
             "metrics": {
                 "test_accuracy": eval_report["test_accuracy"],
+                "macro_f1": eval_report.get("macro_f1", 0),
+                "balanced_accuracy": eval_report.get("balanced_accuracy", 0),
                 "per_class": eval_report["per_class"],
                 "confusion_matrix": eval_report["confusion_matrix"],
-                "weighted_avg_f1": sum(
-                    v["f1"] * v["support"]
-                    for v in eval_report["per_class"].values()
-                ) / max(sum(v["support"] for v in eval_report["per_class"].values()), 1),
+                "weighted_avg_f1": _w_f1,
             },
             "model_path": str(model_path),
             "scaler_path": str(MODEL_DIR / "scaler.pkl"),
@@ -326,19 +332,25 @@ def train_xgb_candidate_task(self):
             variant="weighted",
         )
 
-        log.info("[RETRAIN] XGB candidate: accuracy=%.4f", eval_report["test_accuracy"])
+        log.info("[RETRAIN] XGB candidate: accuracy=%.4f, macro_f1=%.4f",
+                 eval_report["test_accuracy"], eval_report.get("macro_f1", 0))
+
+        # Weighted F1 (support-weighted) for backward-compatible promotion logic
+        _w_f1 = sum(
+            v["f1"] * v["support"]
+            for v in eval_report["per_class"].values()
+        ) / max(sum(v["support"] for v in eval_report["per_class"].values()), 1)
 
         return {
             "status": "success",
             "model_version": MODEL_DIR.name,
             "metrics": {
                 "test_accuracy": eval_report["test_accuracy"],
+                "macro_f1": eval_report.get("macro_f1", 0),
+                "balanced_accuracy": eval_report.get("balanced_accuracy", 0),
                 "per_class": eval_report["per_class"],
                 "confusion_matrix": eval_report["confusion_matrix"],
-                "weighted_avg_f1": sum(
-                    v["f1"] * v["support"]
-                    for v in eval_report["per_class"].values()
-                ) / max(sum(v["support"] for v in eval_report["per_class"].values()), 1),
+                "weighted_avg_f1": _w_f1,
             },
             "model_path": str(model_path),
         }

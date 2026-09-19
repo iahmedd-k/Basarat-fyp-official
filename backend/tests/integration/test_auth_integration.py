@@ -2,15 +2,6 @@
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    hash_password,
-    verify_password,
-)
-from app.models.user import User
 
 
 @pytest.mark.integration
@@ -190,11 +181,11 @@ class TestAlertIntegration:
 
 @pytest.mark.integration
 class TestCommunityIntegration:
-    async def test_post_comment_vote_flow(self, client: AsyncClient, auth_headers):
+    async def test_post_comment_like_flow(self, client: AsyncClient, auth_headers):
         post_resp = await client.post(
             "/api/v1/community/posts",
             headers=auth_headers,
-            json={"symbol": "HBL", "stance": "bullish", "rationale_text": "Integration test post about HBL"},
+            json={"content": "Integration test post about HBL", "symbols": ["HBL"]},
         )
         assert post_resp.status_code == 201
         post_id = post_resp.json()["id"]
@@ -202,16 +193,17 @@ class TestCommunityIntegration:
         comment_resp = await client.post(
             f"/api/v1/community/posts/{post_id}/comments",
             headers=auth_headers,
-            json={"text": "Test comment"},
+            json={"content": "Test comment"},
         )
         assert comment_resp.status_code == 201
 
-        vote_resp = await client.post(
-            f"/api/v1/community/posts/{post_id}/vote",
+        like_resp = await client.post(
+            f"/api/v1/community/posts/{post_id}/like",
             headers=auth_headers,
-            json={"direction": "up"},
         )
-        assert vote_resp.status_code == 200
+        assert like_resp.status_code == 200
+        assert like_resp.json()["likedByMe"] is True
 
         feed_resp = await client.get("/api/v1/community/feed", headers=auth_headers)
         assert feed_resp.status_code == 200
+        assert any(p["id"] == post_id for p in feed_resp.json()["items"])

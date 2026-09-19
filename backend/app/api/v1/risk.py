@@ -17,9 +17,10 @@ from app.core.authorization import get_current_user
 from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError
 from app.core.rate_limiter import limiter
 from app.db.session import get_db
-from app.models.portfolio import Portfolio, PortfolioHolding
+from app.models.portfolio import Transaction, PriceCache, WatchlistItem, TransactionType, MarketStatus
 from app.models.stock import Stock
 from app.models.user import User
+from app.repository.portfolio_repository import PortfolioRepository
 from app.ml.serving.schemas import (
     MonteCarloRequest,
     MonteCarloResponse,
@@ -42,31 +43,45 @@ class HoldingInfo:
 
 
 async def _get_holdings(db: AsyncSession, user_id: str) -> list[HoldingInfo]:
-    """Fetch portfolio holdings with symbol/sector for risk calculations."""
-    result = await db.execute(
-        select(Portfolio).where(Portfolio.user_id == user_id).limit(1)
-    )
-    portfolio = result.scalars().first()
-    if not portfolio:
+    """Fetch portfolio holdings with symbol/sector/value for risk calculations.
+
+    Computes current_value from quantity * live price and allocation_pct
+    from each holding's share of total portfolio value.
+    """
+    repo = PortfolioRepository(db)
+    holdings_data = await repo.get_user_holdings(user_id)
+
+    if not holdings_data:
         return []
 
-    q = (
-        select(PortfolioHolding, Stock)
-        .join(Stock, PortfolioHolding.stock_id == Stock.id)
-        .where(PortfolioHolding.portfolio_id == portfolio.id)
-    )
-    result = await db.execute(q)
-    rows = result.all()
+    from app.services.stock_service import StockService
 
-    return [
-        HoldingInfo(
-            symbol=stock.symbol,
-            sector=getattr(stock, "sector", "default") or "default",
-            current_value=float(holding.current_value or 0),
-            allocation_pct=float(getattr(holding, "allocation_pct", 0) or 0),
+    stock_service = StockService()
+    symbols = [h["symbol"] for h in holdings_data]
+    quotes = await asyncio.to_thread(stock_service.get_quote_batch, symbols)
+    quote_map = {sym: q for sym, q in zip(symbols, quotes)}
+
+    holdings: list[HoldingInfo] = []
+    for h in holdings_data:
+        quote = quote_map.get(h["symbol"])
+        current_price = quote.get("current") if quote else None
+        current_value = (current_price * h["quantity"]) if current_price else 0.0
+        sector = quote.get("sector") if quote else "default"
+        holdings.append(
+            HoldingInfo(
+                symbol=h["symbol"],
+                sector=sector or "default",
+                current_value=float(current_value),
+                allocation_pct=0.0,
+            )
         )
-        for holding, stock in rows
-    ]
+
+    total_value = sum(h.current_value for h in holdings)
+    if total_value > 0:
+        for h in holdings:
+            h.allocation_pct = round((h.current_value / total_value) * 100, 2)
+
+    return holdings
 
 
 @router.get(
@@ -179,14 +194,15 @@ async def get_monte_carlo_result(
                 job_id=task_id, status="pending",
             )
         elif task_result.state == "FAILURE":
+            log.warning("Monte Carlo task failed: task_id=%s user=%s", task_id, user.id)
             return MonteCarloResultResponse(
                 job_id=task_id, status="failed",
-                error=str(task_result.info),
+                error="Simulation failed. Please try again.",
             )
         elif task_result.state == "SUCCESS":
             result = task_result.result
             result_owner = result.get("user_id")
-            if result_owner and result_owner != user.id:
+            if not result_owner or result_owner != user.id:
                 raise NotFoundError("Task not found.")
 
             return MonteCarloResultResponse(

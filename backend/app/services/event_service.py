@@ -102,7 +102,10 @@ async def extract_events_from_news(db: AsyncSession) -> int:
 
     result = await db.execute(
         select(NewsArticle)
-        .where(NewsArticle.event_type.in_(["earnings", "dividend", "interest_rate", "monetary_policy"]))
+        .where(NewsArticle.event_type.in_([
+            "earnings", "dividend", "interest_rate", "monetary_policy",
+            "circular_debt", "block_order",
+        ]))
         .order_by(NewsArticle.published_at.desc())
         .limit(200)
     )
@@ -120,7 +123,7 @@ async def extract_events_from_news(db: AsyncSession) -> int:
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        if article.event_type in ("earnings", "dividend") and symbols:
+        if article.event_type in ("earnings", "dividend", "block_order") and symbols:
             for sym in symbols[:3]:  # cap at 3 symbols per article
                 await upsert_event(
                     db=db,
@@ -132,10 +135,12 @@ async def extract_events_from_news(db: AsyncSession) -> int:
                     source_url=article.url,
                 )
                 created += 1
-        elif article.event_type in ("interest_rate", "monetary_policy"):
+        elif article.event_type in ("interest_rate", "monetary_policy", "circular_debt"):
             await upsert_event(
                 db=db,
-                event_type="sbp_monetary_policy",
+                event_type="sbp_monetary_policy"
+                if article.event_type in ("interest_rate", "monetary_policy")
+                else "circular_debt",
                 event_date=event_date,
                 title=article.title[:500],
                 symbol=None,
