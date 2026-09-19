@@ -287,120 +287,120 @@ class TestMultipleSymbolArticles:
 class TestMarketSchedule:
     """Test market-hours logic using mocked times."""
 
-    def test_is_weekendSaturday(self):
+    async def test_is_weekendSaturday(self):
         from app.services.news_pipeline import market_schedule
         from datetime import time as dt_time
         # Patch _now_pkt to return a Saturday at 10:00 PKT
         from unittest.mock import patch
         fake_now = datetime(2026, 9, 19, 10, 0, 0, tzinfo=market_schedule.PKT)  # Saturday
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            assert market_schedule.is_weekend() is True
-            assert market_schedule.is_market_hours() is False
-            assert market_schedule.is_ingestion_allowed() is False
+            assert await market_schedule.is_weekend() is True
+            assert await market_schedule.is_market_hours() is False
+            assert await market_schedule.is_ingestion_allowed() is False
 
-    def test_is_weekendSunday(self):
+    async def test_is_weekendSunday(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         fake_now = datetime(2026, 9, 20, 10, 0, 0, tzinfo=market_schedule.PKT)  # Sunday
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            assert market_schedule.is_weekend() is True
-            assert market_schedule.is_ingestion_allowed() is False
+            assert await market_schedule.is_weekend() is True
+            assert await market_schedule.is_ingestion_allowed() is False
 
-    def test_market_hours_weekday(self):
+    async def test_market_hours_weekday(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         # Wednesday 10:00 PKT — inside market hours
         fake_now = datetime(2026, 9, 16, 10, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            assert market_schedule.is_weekend() is False
-            assert market_schedule.is_market_hours() is True
-            assert market_schedule.is_post_market() is False
-            assert market_schedule.is_ingestion_allowed() is True
+            assert await market_schedule.is_weekend() is False
+            assert await market_schedule.is_market_hours() is True
+            assert await market_schedule.is_post_market() is False
+            assert await market_schedule.is_ingestion_allowed() is True
 
-    def test_post_market_weekday(self):
+    async def test_post_market_weekday(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         # Wednesday 16:00 PKT — post-market
         fake_now = datetime(2026, 9, 16, 16, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            assert market_schedule.is_market_hours() is False
-            assert market_schedule.is_post_market() is True
-            assert market_schedule.is_ingestion_allowed() is True
+            assert await market_schedule.is_market_hours() is False
+            assert await market_schedule.is_post_market() is True
+            assert await market_schedule.is_ingestion_allowed() is True
 
-    def test_closed_after_post_market(self):
+    async def test_closed_after_post_market(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         # Wednesday 18:00 PKT — after post-market
         fake_now = datetime(2026, 9, 16, 18, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            assert market_schedule.is_market_hours() is False
-            assert market_schedule.is_post_market() is False
-            assert market_schedule.is_ingestion_allowed() is False
+            assert await market_schedule.is_market_hours() is False
+            assert await market_schedule.is_post_market() is False
+            assert await market_schedule.is_ingestion_allowed() is False
 
-    def test_closed_before_market_open(self):
+    async def test_closed_before_market_open(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         # Wednesday 08:00 PKT — before market
         fake_now = datetime(2026, 9, 16, 8, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            assert market_schedule.is_market_hours() is False
-            assert market_schedule.is_ingestion_allowed() is False
+            assert await market_schedule.is_market_hours() is False
+            assert await market_schedule.is_ingestion_allowed() is False
 
-    def test_ingestion_interval_market(self):
+    async def test_ingestion_interval_market(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         fake_now = datetime(2026, 9, 16, 10, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            assert market_schedule.get_ingestion_interval() == 1800  # 30 min
+            assert await market_schedule.get_ingestion_interval() == 1800  # 30 min
 
-    def test_ingestion_interval_post_market(self):
+    async def test_ingestion_interval_post_market(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         fake_now = datetime(2026, 9, 16, 16, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            assert market_schedule.get_ingestion_interval() == 3600  # 60 min
+            assert await market_schedule.get_ingestion_interval() == 3600  # 60 min
 
-    def test_ingestion_interval_closed(self):
+    async def test_ingestion_interval_closed(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         fake_now = datetime(2026, 9, 16, 18, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            assert market_schedule.get_ingestion_interval() == 0
+            assert await market_schedule.get_ingestion_interval() == 0
 
-    def test_next_window_before_open(self):
+    async def test_next_window_before_open(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         # Wednesday 08:00 PKT — next window is today at 09:30
         fake_now = datetime(2026, 9, 16, 8, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            nxt = market_schedule.next_ingestion_window()
+            nxt = await market_schedule.next_ingestion_window()
             assert nxt is not None
             assert nxt.hour == 9
             assert nxt.minute == 30
 
-    def test_next_window_after_post_market(self):
+    async def test_next_window_after_post_market(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         # Wednesday 18:00 PKT — next window is tomorrow at 09:30
         fake_now = datetime(2026, 9, 16, 18, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            nxt = market_schedule.next_ingestion_window()
+            nxt = await market_schedule.next_ingestion_window()
             assert nxt is not None
             assert nxt.day == 17  # Thursday
 
-    def test_next_window_friday_after_post_market(self):
+    async def test_next_window_friday_after_post_market(self):
         from app.services.news_pipeline import market_schedule
         from unittest.mock import patch
         # Friday 18:00 PKT — next window is Monday
         fake_now = datetime(2026, 9, 18, 18, 0, 0, tzinfo=market_schedule.PKT)
         with patch.object(market_schedule, "_now_pkt", return_value=fake_now):
-            nxt = market_schedule.next_ingestion_window()
+            nxt = await market_schedule.next_ingestion_window()
             assert nxt is not None
             assert nxt.weekday() == 0  # Monday
 
-    def test_market_status_structure(self):
+    async def test_market_status_structure(self):
         from app.services.news_pipeline.market_schedule import market_status
-        status = market_status()
+        status = await market_status()
         assert "timezone" in status
         assert status["timezone"] == "Asia/Karachi"
         assert "current_time_pkt" in status

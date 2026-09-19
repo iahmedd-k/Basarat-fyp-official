@@ -10,6 +10,8 @@ from app.schemas.auth import (
     UpdateRiskProfileRequest,
     UpdateNotificationPrefsRequest,
     UserProfileResponse,
+    VALID_SECTORS,
+    NO_PREFERENCE,
 )
 from app.services.auth_service import AuthService
 
@@ -109,3 +111,16 @@ async def update_notification_preferences(
         raise
     except Exception as exc:
         raise ServiceUnavailableError("Failed to update notification preferences")
+
+
+@router.get(
+    "/users/risk-profile/sectors",
+    summary="Get valid sector options for risk profile preferences",
+)
+async def get_risk_profile_sectors():
+    """Get list of valid sector options for risk profile sector preferences."""
+    return {
+        "sectors": VALID_SECTORS,
+        "no_preference": NO_PREFERENCE,
+        "description": "Select one or more sectors. Use 'All Sectors' for no preference.",
+    }

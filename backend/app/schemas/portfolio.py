@@ -1,105 +1,160 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
 
 
-class TransactionBase(BaseModel):
-    symbol: str = Field(..., min_length=1, max_length=20, examples=["OGDC"])
-    type: str = Field(..., pattern="^(BUY|SELL)$", examples=["BUY"])
-    quantity: int = Field(..., gt=0, examples=[100])
-    price: float = Field(..., gt=0, examples=[98.50])
-    fees: float = Field(default=0, ge=0, examples=[25.00])
-    transaction_date: date = Field(..., examples=["2026-09-15"])
+class TransactionCreate(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=20, description="Stock symbol (e.g., OGDC)")
+    transaction_type: Literal["BUY", "SELL"] = Field(..., description="Transaction type: BUY or SELL")
+    quantity: Decimal = Field(..., gt=0, description="Number of shares", max_digits=18, decimal_places=4)
+    price: Decimal = Field(..., ge=0, description="Price per share", max_digits=18, decimal_places=4)
+    fee: Decimal = Field(default=Decimal("0"), ge=0, description="Transaction fee", max_digits=18, decimal_places=4)
+    transaction_date: date = Field(..., description="Transaction date (YYYY-MM-DD)")
 
+    @field_validator("symbol")
+    @classmethod
+    def _normalize_symbol(cls, v: str) -> str:
+        return v.strip().upper()
 
-class TransactionCreate(TransactionBase):
-    pass
+    @field_validator("quantity", "price", "fee", mode="before")
+    @classmethod
+    def _to_decimal(cls, v):
+        if isinstance(v, Decimal):
+            return v
+        return Decimal(str(v))
+
+    @field_validator("transaction_type")
+    @classmethod
+    def _normalize_type(cls, v: str) -> str:
+        return v.strip().upper()
 
 
 class TransactionUpdate(BaseModel):
-    quantity: Optional[int] = Field(None, gt=0)
-    price: Optional[float] = Field(None, gt=0)
-    fees: Optional[float] = Field(None, ge=0)
-    transaction_date: Optional[date] = None
+    quantity: Decimal | None = Field(None, gt=0, description="Number of shares", max_digits=18, decimal_places=4)
+    price: Decimal | None = Field(None, ge=0, description="Price per share", max_digits=18, decimal_places=4)
+    fee: Decimal | None = Field(None, ge=0, description="Transaction fee", max_digits=18, decimal_places=4)
+    transaction_date: date | None = Field(None, description="Transaction date (YYYY-MM-DD)")
+
+    @field_validator("quantity", "price", "fee", mode="before")
+    @classmethod
+    def _to_decimal(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, Decimal):
+            return v
+        return Decimal(str(v))
 
 
-class TransactionResponse(TransactionBase):
+class TransactionResponse(BaseModel):
     id: str
-    user_id: str
+    symbol: str
+    transaction_type: str
+    quantity: Decimal
+    price: Decimal
+    fee: Decimal
+    transaction_date: date
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        from_attributes = True
 
 
 class TransactionListResponse(BaseModel):
-    data: list[TransactionResponse]
-    pagination: dict
+    items: list[TransactionResponse]
+    total: int
+    page: int
+    limit: int
 
 
-class PriceResponse(BaseModel):
+class HoldingItem(BaseModel):
     symbol: str
-    ldcp: float
-    current_price: float
-    change: float
-    change_percent: float
-    market_status: str
-    last_updated: datetime
-    stale: Optional[bool] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class BulkPriceRequest(BaseModel):
-    symbols: list[str] = Field(..., min_length=1)
+    company_name: str | None = None
+    sector: str | None = None
+    quantity: Decimal
+    average_cost: Decimal
+    current_price: Decimal | None = None
+    market_value: Decimal | None = None
+    unrealized_pnl: Decimal | None = None
+    unrealized_pnl_percent: float | None = None
+    portfolio_weight: float | None = None
+    price_updated_at: datetime | None = None
+    price_status: str = "AVAILABLE"
 
 
-class BulkPriceResponse(BaseModel):
-    prices: dict[str, dict]
+class PortfolioSummary(BaseModel):
+    total_invested: Decimal
+    current_value: Decimal
+    total_pnl: Decimal
+    total_pnl_percent: float
+    today_pnl: Decimal
 
 
-class HoldingDetail(BaseModel):
-    symbol: str
-    quantity: int
-    avg_cost: float
-    invested_value: float
-    current_price: float
-    current_value: float
-    unrealized_pnl: float
-    unrealized_pnl_percent: float
-    day_change_percent: float
-    weight_in_portfolio: float
-    market_status: str
-
-
-class PortfolioSummaryResponse(BaseModel):
-    total_invested: float
-    total_current_value: float
-    total_unrealized_pnl: float
-    total_unrealized_pnl_percent: float
-    day_change: float
-    day_change_percent: float
-    holdings: list[HoldingDetail]
-    generated_at: datetime
+class PortfolioResponse(BaseModel):
+    summary: PortfolioSummary
+    holdings: list[HoldingItem]
+    updated_at: datetime
 
 
 class HoldingDetailResponse(BaseModel):
     symbol: str
-    quantity: int
-    avg_cost: float
-    current_price: float
-    unrealized_pnl: float
-    unrealized_pnl_percent: float
+    company_name: str | None = None
+    sector: str | None = None
+    quantity: Decimal
+    average_cost: Decimal
+    current_price: Decimal | None = None
+    invested_value: Decimal
+    market_value: Decimal | None = None
+    unrealized_pnl: Decimal | None = None
+    unrealized_pnl_percent: float | None = None
+    realized_pnl: Decimal
+    portfolio_weight: float | None = None
     transactions: list[TransactionResponse]
-    price_history_ref: Optional[str] = None
+    price_updated_at: datetime | None = None
+    price_status: str = "AVAILABLE"
 
 
-class ErrorResponse(BaseModel):
-    error: str
-    message: str
+class PnLResponse(BaseModel):
+    realized_pnl: Decimal
+    unrealized_pnl: Decimal
+    total_pnl: Decimal
+    total_pnl_percent: float
+    today_pnl: Decimal
 
 
-class SuccessResponse(BaseModel):
-    success: bool
-    message: str
+class AllocationByStock(BaseModel):
+    symbol: str
+    market_value: Decimal
+    percentage: float
+
+
+class AllocationBySector(BaseModel):
+    sector: str
+    market_value: Decimal
+    percentage: float
+
+
+class AllocationResponse(BaseModel):
+    by_stock: list[AllocationByStock]
+    by_sector: list[AllocationBySector]
+
+
+class PerformancePoint(BaseModel):
+    date: str
+    value: Decimal
+
+
+class PerformanceResponse(BaseModel):
+    period: str
+    data: list[PerformancePoint]
+
+
+class PortfolioQueryParams(BaseModel):
+    page: int = Field(default=1, ge=1)
+    limit: int = Field(default=20, ge=1, le=100)
+    symbol: str | None = None
+    transaction_type: Literal["BUY", "SELL"] | None = None
+    from_date: date | None = None
+    to_date: date | None = None

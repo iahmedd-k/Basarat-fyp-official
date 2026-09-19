@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from datetime import datetime
 
@@ -10,6 +11,29 @@ _PASSWORD_COMPLEXITY_RE = re.compile(
 )
 
 _URL_RE = re.compile(r"^https?://[^\s/$.?#].[^\s]*$", re.IGNORECASE)
+
+
+# Valid sector preferences for risk profile
+VALID_SECTORS: list[str] = [
+    "Commercial Banks",
+    "Oil & Gas",
+    "Cement",
+    "Fertilizer",
+    "Technology",
+    "Pharmaceuticals",
+    "Automobile",
+    "Textile",
+    "Power & Energy",
+    "Chemicals",
+    "Food & Personal Care",
+    "Engineering",
+    "Insurance",
+    "Property / Real Estate",
+    "Telecommunications",
+]
+
+# Special value to indicate "No preference" / "All sectors"
+NO_PREFERENCE = "All Sectors"
 
 
 class UserSummary(BaseModel):
@@ -126,6 +150,29 @@ class UpdateRiskProfileRequest(BaseModel):
     risk_tolerance: str | None = Field(None, pattern="^(conservative|moderate|aggressive)$")
     sector_preferences: list[str] | None = Field(None, max_length=50)
     investment_horizon: str | None = None
+
+    @field_validator("sector_preferences")
+    @classmethod
+    def validate_sector_preferences(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        # Allow "All Sectors" as a special value (mutually exclusive with other sectors)
+        if NO_PREFERENCE in v:
+            if len(v) > 1:
+                raise ValueError(f'"{NO_PREFERENCE}" cannot be combined with other sectors')
+            return [NO_PREFERENCE]
+        # Validate each sector against the allowed list
+        for sector in v:
+            if sector not in VALID_SECTORS:
+                raise ValueError(f'Invalid sector: "{sector}". Valid sectors: {", ".join(VALID_SECTORS)}')
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_sectors = []
+        for sector in v:
+            if sector not in seen:
+                seen.add(sector)
+                unique_sectors.append(sector)
+        return unique_sectors
 
 
 class UpdateNotificationPrefsRequest(BaseModel):

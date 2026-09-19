@@ -14,7 +14,14 @@ from app.schemas.auth import (
     UpdateRiskProfileRequest,
 )
 from app.schemas.stock import StockSearchResult
-from app.schemas.community import CommentCreate, PostCreate, ReportCreate
+from app.schemas.community import (
+    CommunityPostCreate,
+    CommunityPostUpdate,
+    CommunityCommentCreate,
+    CommunityReportCreate,
+    PostType,
+    ReportReason,
+)
 from app.schemas.market import (
     ConstituentItem,
     GainersResponse,
@@ -23,7 +30,7 @@ from app.schemas.market import (
     MarketQuoteItem,
     VolumeSpikesResponse,
 )
-from app.schemas.portfolio import HoldingCreate, HoldingUpdate
+from app.schemas.portfolio import TransactionCreate, TransactionUpdate
 
 
 # ── Auth schemas ────────────────────────────────────────────────────────────
@@ -135,79 +142,92 @@ class TestStockSearchResult:
 
 # ── Community schemas ───────────────────────────────────────────────────────
 
-class TestPostCreate:
-    def test_valid_post(self):
-        s = PostCreate(
+
+class TestCommunityPostCreate:
+    def test_valid_stock_post(self):
+        s = CommunityPostCreate(
             content="Banks look cheap right now",
-            symbols=["hbl", " ubl "],
-            sentiment="BULLISH",
+            post_type=PostType.STOCK,
+            stock_symbol="HBL",
         )
         assert s.content == "Banks look cheap right now"
-        assert s.symbols == ["HBL", "UBL"]
-        assert s.sentiment == "BULLISH"
+        assert s.post_type == PostType.STOCK
+        assert s.stock_symbol == "HBL"
 
-    def test_symbols_optional(self):
-        s = PostCreate(content="No ticker validation here")
-        assert s.symbols == []
+    def test_valid_general_market_post(self):
+        s = CommunityPostCreate(
+            content="Market is bullish today",
+            post_type=PostType.GENERAL_MARKET,
+        )
+        assert s.content == "Market is bullish today"
+        assert s.post_type == PostType.GENERAL_MARKET
+        assert s.stock_symbol is None
 
     def test_missing_content_rejected(self):
         with pytest.raises(ValidationError):
-            PostCreate(symbols=["HBL"])
+            CommunityPostCreate(post_type=PostType.STOCK, stock_symbol="HBL")
 
     def test_blank_content_rejected(self):
         with pytest.raises(ValidationError):
-            PostCreate(content="   ", symbols=["HBL"])
+            CommunityPostCreate(content="   ", post_type=PostType.STOCK, stock_symbol="HBL")
 
-    def test_empty_ticker_rejected(self):
+    def test_stock_post_requires_stock_symbol(self):
         with pytest.raises(ValidationError):
-            PostCreate(content="Hello", symbols=["   "])
+            CommunityPostCreate(content="Hello", post_type=PostType.STOCK)
 
-    def test_invalid_sentiment_rejected(self):
+    def test_general_market_rejects_stock_symbol(self):
         with pytest.raises(ValidationError):
-            PostCreate(content="Hello", symbols=["HBL"], sentiment="HOLD")
+            CommunityPostCreate(content="Hello", post_type=PostType.GENERAL_MARKET, stock_symbol="HBL")
 
-    def test_media_url_must_be_cloudinary(self):
+    def test_stock_symbol_normalized_to_uppercase(self):
+        s = CommunityPostCreate(content="Hello", post_type=PostType.STOCK, stock_symbol="hbl")
+        assert s.stock_symbol == "HBL"
+
+
+class TestCommunityPostUpdate:
+    def test_valid_update(self):
+        s = CommunityPostUpdate(content="Updated content")
+        assert s.content == "Updated content"
+
+    def test_blank_content_rejected(self):
         with pytest.raises(ValidationError):
-            PostCreate(content="Hello", symbols=["HBL"], mediaUrl="https://cdn.example.com/a.png")
+            CommunityPostUpdate(content="   ")
+
+
+class TestCommunityReportCreate:
+    def test_valid_post_report(self):
+        r = CommunityReportCreate(reason=ReportReason.SPAM, post_id="post-1")
+        assert r.reason == ReportReason.SPAM
+        assert r.post_id == "post-1"
+        assert r.comment_id is None
+
+    def test_valid_comment_report(self):
+        r = CommunityReportCreate(reason=ReportReason.ABUSIVE, comment_id="comment-1")
+        assert r.reason == ReportReason.ABUSIVE
+        assert r.comment_id == "comment-1"
+        assert r.post_id is None
+
+    def test_exactly_one_target_required(self):
         with pytest.raises(ValidationError):
-            PostCreate(content="Hello", symbols=["HBL"], mediaUrl="https://yourapp.com/x.jpg")
+            CommunityReportCreate(reason=ReportReason.SPAM)
 
-    def test_valid_media_url(self):
-        s = PostCreate(
-            content="Hello",
-            symbols=["HBL"],
-            mediaUrl="https://res.cloudinary.com/basarat/image/upload/v1720000000000/community/abc.jpg",
-        )
-        assert s.mediaUrl.startswith("https://res.cloudinary.com/")
-
-
-class TestReportCreate:
-    def test_valid_report(self):
-        r = ReportCreate(targetType="POST", targetId="post-1", reason="SPAM")
-        assert r.targetType == "POST"
-        assert r.reason == "SPAM"
-
-    def test_invalid_target_type(self):
         with pytest.raises(ValidationError):
-            ReportCreate(targetType="USER", targetId="p", reason="SPAM")
-
-    def test_invalid_reason(self):
-        with pytest.raises(ValidationError):
-            ReportCreate(targetType="POST", targetId="p", reason="BAD")
+            CommunityReportCreate(reason=ReportReason.SPAM, post_id="p1", comment_id="c1")
 
 
-class TestCommentCreate:
+class TestCommunityCommentCreate:
     def test_valid_comment(self):
-        s = CommentCreate(content="Nice post!")
+        s = CommunityCommentCreate(content="Nice post!")
         assert s.content == "Nice post!"
+        assert s.parent_comment_id is None
 
     def test_blank_comment_rejected(self):
         with pytest.raises(ValidationError):
-            CommentCreate(content="   ")
+            CommunityCommentCreate(content="   ")
 
     def test_reply_allows_parent(self):
-        s = CommentCreate(content="Reply", parentCommentId="abc")
-        assert s.parentCommentId == "abc"
+        s = CommunityCommentCreate(content="Reply", parent_comment_id="abc")
+        assert s.parent_comment_id == "abc"
 
 
 # ── Market schemas ──────────────────────────────────────────────────────────
@@ -253,17 +273,18 @@ class TestMarketSchemas:
 # ── Portfolio schemas ───────────────────────────────────────────────────────
 
 class TestPortfolioSchemas:
-    def test_holding_create(self):
-        h = HoldingCreate(symbol="HBL", quantity=100, avg_buy_price=150.0, purchase_date="2025-01-01")
-        assert h.symbol == "HBL"
-        assert h.quantity == 100
+    def test_transaction_create(self):
+        t = TransactionCreate(symbol="HBL", transaction_type="BUY", quantity=100, price=150.0, transaction_date="2025-01-01")
+        assert t.symbol == "HBL"
+        assert t.transaction_type == "BUY"
+        assert t.quantity == 100
 
-    def test_holding_update_all_optional(self):
-        h = HoldingUpdate()
-        assert h.quantity is None
-        assert h.avg_buy_price is None
+    def test_transaction_update_all_optional(self):
+        t = TransactionUpdate()
+        assert t.quantity is None
+        assert t.price is None
 
-    def test_holding_update_partial(self):
-        h = HoldingUpdate(quantity=200)
-        assert h.quantity == 200
-        assert h.avg_buy_price is None
+    def test_transaction_update_partial(self):
+        t = TransactionUpdate(quantity=200)
+        assert t.quantity == 200
+        assert t.price is None

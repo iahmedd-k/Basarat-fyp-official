@@ -17,7 +17,6 @@ from app.models import prediction, model_registry, training_run  # noqa: F401
 from app.api.v1 import (
     alerts,
     auth,
-    community,
     devices,
     events,
     forecast,
@@ -33,6 +32,14 @@ from app.api.v1 import (
     system,
     users,
 )
+from app.api.v1.community import (
+    posts_router as community_posts_router,
+    comments_router as community_comments_router,
+    follows_router as community_follows_router,
+    profile_router as community_profile_router,
+    notifications_router as community_notifications_router,
+)
+from app.api.v1.admin import community_router as admin_community_router
 
 settings = get_settings()
 log = logging.getLogger(__name__)
@@ -107,11 +114,18 @@ app.include_router(events.router, prefix=settings.API_V1_PREFIX, tags=["Events"]
 app.include_router(alerts.router, prefix=settings.API_V1_PREFIX, tags=["Alerts"])
 app.include_router(notifications.router, prefix=settings.API_V1_PREFIX, tags=["Notifications"])
 
-# Module 10 — Community
-app.include_router(community.router, prefix=settings.API_V1_PREFIX, tags=["Community"])
-
-# Module 11 — Shariah Screening
+# Module 10 — Shariah Screening
 app.include_router(shariah.router, prefix=settings.API_V1_PREFIX, tags=["Shariah"])
+
+# Module 11 — Community
+app.include_router(community_posts_router, prefix=settings.API_V1_PREFIX, tags=["Community"])
+app.include_router(community_comments_router, prefix=settings.API_V1_PREFIX, tags=["Community"])
+app.include_router(community_follows_router, prefix=settings.API_V1_PREFIX, tags=["Community"])
+app.include_router(community_profile_router, prefix=settings.API_V1_PREFIX, tags=["Community"])
+app.include_router(community_notifications_router, prefix=settings.API_V1_PREFIX, tags=["Community"])
+
+# Admin Community
+app.include_router(admin_community_router, prefix=settings.API_V1_PREFIX, tags=["Admin Community"])
 
 # System
 app.include_router(system.router, prefix=settings.API_V1_PREFIX, tags=["System"])

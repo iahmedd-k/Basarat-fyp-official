@@ -1,191 +1,319 @@
-import re
-from datetime import datetime, timezone
-from typing import Literal
+from datetime import datetime
+from enum import Enum
+from typing import Optional, List
 
-from pydantic import BaseModel, Field, field_validator
-
-_CLOUDINARY_URL_RE = re.compile(
-    r"^https://res\.cloudinary\.com/[^/]+/image/upload/", re.IGNORECASE
-)
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-def to_iso_z(dt: datetime | None) -> str | None:
-    """Serialize a datetime to the contract's UTC 'Z' format."""
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt = dt.astimezone(timezone.utc)
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+class PostType(str, Enum):
+    STOCK = "STOCK"
+    GENERAL_MARKET = "GENERAL_MARKET"
 
 
-class PostCreate(BaseModel):
-    content: str = Field(..., max_length=500, description="Post text content (1-500 chars).")
-    symbols: list[str] = Field(
-        default_factory=list,
-        description="1-3 real stock tickers (validated against the stocks table).",
-    )
-    sentiment: Literal["BULLISH", "BEARISH", "NEUTRAL"] | None = None
-    mediaUrl: str | None = Field(
-        None,
-        description="Cloudinary image URL returned by POST /community/media.",
-    )
+class PostStatus(str, Enum):
+    PUBLISHED = "PUBLISHED"
+    TEMPORARILY_HIDDEN = "TEMPORARILY_HIDDEN"
+    DELETED = "DELETED"
 
-    @field_validator("content")
+
+class RemovedReason(str, Enum):
+    USER_DELETED = "USER_DELETED"
+    MODERATION = "MODERATION"
+
+
+class ReportReason(str, Enum):
+    SPAM = "SPAM"
+    OFF_TOPIC = "OFF_TOPIC"
+    MISLEADING = "MISLEADING"
+    ABUSIVE = "ABUSIVE"
+    OTHER = "OTHER"
+
+
+class ReportStatus(str, Enum):
+    PENDING = "PENDING"
+    DISMISSED = "DISMISSED"
+    REVIEWED = "REVIEWED"
+
+
+class CommentStatus(str, Enum):
+    PUBLISHED = "PUBLISHED"
+    DELETED = "DELETED"
+
+
+class ModerationActionType(str, Enum):
+    AUTO_HIDDEN = "AUTO_HIDDEN"
+    RESTORED = "RESTORED"
+    POST_DELETED = "POST_DELETED"
+    COMMENT_DELETED = "COMMENT_DELETED"
+    DIRECT_REMOVAL = "DIRECT_REMOVAL"
+
+
+class NotificationType(str, Enum):
+    POST_LIKED = "POST_LIKED"
+    POST_COMMENTED = "POST_COMMENTED"
+    COMMENT_REPLIED = "COMMENT_REPLIED"
+    USER_FOLLOWED = "USER_FOLLOWED"
+    POST_AUTO_HIDDEN = "POST_AUTO_HIDDEN"
+    POST_RESTORED = "POST_RESTORED"
+    POST_MODERATION_DELETED = "POST_MODERATION_DELETED"
+
+
+# Request/Response schemas
+class CommunityPostCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000)
+    post_type: PostType
+    stock_symbol: Optional[str] = Field(None, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_content_not_blank(self) -> "CommunityPostCreate":
+        if not self.content or not self.content.strip():
+            raise ValueError("content cannot be blank")
+        self.content = self.content.strip()
+        return self
+
+    @model_validator(mode="after")
+    def validate_stock_symbol(self) -> "CommunityPostCreate":
+        if self.post_type == PostType.STOCK and not self.stock_symbol:
+            raise ValueError("stock_symbol is required for STOCK posts")
+        if self.post_type == PostType.GENERAL_MARKET and self.stock_symbol:
+            raise ValueError("stock_symbol must not be provided for GENERAL_MARKET posts")
+        if self.stock_symbol:
+            self.stock_symbol = self.stock_symbol.upper()
+        return self
+
+
+class CommunityPostUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000)
+
+    @model_validator(mode="after")
+    def validate_content_not_blank(self) -> "CommunityPostUpdate":
+        if not self.content or not self.content.strip():
+            raise ValueError("content cannot be blank")
+        self.content = self.content.strip()
+        return self
+
+
+class CommunityPostResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    author_id: str
+    author_username: Optional[str] = None
+    author_full_name: Optional[str] = None
+    author_avatar_url: Optional[str] = None
+    post_type: PostType
+    stock_symbol: Optional[str] = None
+    stock_name: Optional[str] = None
+    content: str
+    image_url: Optional[str] = None
+    like_count: int
+    comment_count: int
+    report_count: int
+    status: PostStatus
+    removed_reason: Optional[RemovedReason] = None
+    liked_by_me: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class CommunityPostListResponse(BaseModel):
+    posts: List[CommunityPostResponse]
+    cursor: Optional[str] = None
+    has_more: bool
+
+
+class CommunityCommentCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+    parent_comment_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_content_not_blank(self) -> "CommunityCommentCreate":
+        if not self.content or not self.content.strip():
+            raise ValueError("content cannot be blank")
+        self.content = self.content.strip()
+        return self
+
+
+class CommunityCommentUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_content_not_blank(self) -> "CommunityCommentUpdate":
+        if not self.content or not self.content.strip():
+            raise ValueError("content cannot be blank")
+        self.content = self.content.strip()
+        return self
+
+
+class CommunityCommentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    post_id: str
+    author_id: str
+    author_username: Optional[str] = None
+    author_full_name: Optional[str] = None
+    author_avatar_url: Optional[str] = None
+    parent_comment_id: Optional[str] = None
+    content: str
+    status: CommentStatus
+    reply_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class CommunityCommentListResponse(BaseModel):
+    comments: List[CommunityCommentResponse]
+    cursor: Optional[str] = None
+    has_more: bool
+
+
+class CommunityFollowResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    follower_id: str
+    following_id: str
+    created_at: datetime
+
+
+class CommunityFollowStatusResponse(BaseModel):
+    is_following: bool
+    followers_count: int
+    following_count: int
+
+
+class CommunityFollowListResponse(BaseModel):
+    users: List["CommunityUserSummary"]
+    cursor: Optional[str] = None
+    has_more: bool
+
+
+class CommunityReportCreate(BaseModel):
+    reason: ReportReason
+    post_id: Optional[str] = None
+    comment_id: Optional[str] = None
+
+    @field_validator("post_id", "comment_id", mode="before")
     @classmethod
-    def _strip_content(cls, v: str) -> str:
-        v = (v or "").strip()
-        if not v:
-            raise ValueError("content must not be empty")
+    def validate_target(cls, v):
         return v
 
-    @field_validator("symbols")
-    @classmethod
-    def _normalize_symbols(cls, v: list[str]) -> list[str]:
-        normalized = []
-        for s in v or []:
-            s = (s or "").strip().upper()
-            if not s:
-                raise ValueError("symbols must contain non-empty tickers")
-            normalized.append(s)
-        return normalized
-
-    @field_validator("mediaUrl")
-    @classmethod
-    def _validate_media_url(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        v = v.strip()
-        if not _CLOUDINARY_URL_RE.match(v):
-            raise ValueError(
-                "mediaUrl must be a Cloudinary media URL returned by POST /community/media"
-            )
-        return v
+    def model_post_init(self, __context):
+        if (self.post_id is None) == (self.comment_id is None):
+            raise ValueError("Exactly one of post_id or comment_id must be provided")
 
 
-class FeedUser(BaseModel):
+class CommunityReportResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    reporter_id: str
+    post_id: Optional[str] = None
+    comment_id: Optional[str] = None
+    reason: ReportReason
+    status: ReportStatus
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class CommunityReportAdminResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    reporter_id: str
+    reporter_username: str
+    post_id: Optional[str] = None
+    comment_id: Optional[str] = None
+    post_content: Optional[str] = None
+    comment_content: Optional[str] = None
+    post_author_id: Optional[str] = None
+    post_author_username: Optional[str] = None
+    post_type: Optional[PostType] = None
+    stock_symbol: Optional[str] = None
+    reason: ReportReason
+    status: ReportStatus
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class CommunityReportStatusUpdate(BaseModel):
+    status: ReportStatus
+
+
+class CommunityModerationActionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    moderator_id: Optional[str] = None
+    moderator_username: Optional[str] = None
+    post_id: Optional[str] = None
+    comment_id: Optional[str] = None
+    action: ModerationActionType
+    note: Optional[str] = None
+    created_at: datetime
+
+
+class CommunityUserSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     username: str
-    avatarUrl: str | None = None
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
-class FeedSymbolQuote(BaseModel):
-    symbol: str
-    price: float
-    changePercent: float
-
-
-class PostCreatedResponse(BaseModel):
-    id: str
-    userId: str
-    content: str
-    symbols: list[str]
-    sentiment: str | None = None
-    mediaUrl: str | None = None
-    likeCount: int
-    commentCount: int
-    likedByMe: bool
-    createdAt: str
-
-
-class FeedItem(BaseModel):
-    id: str
-    user: FeedUser
-    content: str
-    symbols: list[FeedSymbolQuote]
-    sentiment: str | None = None
-    mediaUrl: str | None = None
-    likeCount: int
-    commentCount: int
-    likedByMe: bool
-    createdAt: str
-
-
-class FeedResponse(BaseModel):
-    items: list[FeedItem]
-    nextCursor: str | None = None
-
-
-class LikeResponse(BaseModel):
-    postId: str
-    likedByMe: bool
-    likeCount: int
-
-
-class MediaUploadResponse(BaseModel):
-    url: str
-    publicId: str
-
-
-class CommentCreate(BaseModel):
-    content: str = Field(..., max_length=300, description="Comment text (1-300 chars).")
-    parentCommentId: str | None = Field(None, description="Reply to a top-level comment.")
-
-    @field_validator("content")
-    @classmethod
-    def _strip_content(cls, v: str) -> str:
-        v = (v or "").strip()
-        if not v:
-            raise ValueError("content must not be empty")
-        return v
-
-
-class CommentResponse(BaseModel):
-    """Single comment (create-comment response)."""
+class CommunityProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
     id: str
-    postId: str
-    user: FeedUser
-    content: str
-    parentCommentId: str | None = None
-    likeCount: int
-    createdAt: str
+    username: str
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    followers_count: int
+    following_count: int
+    published_post_count: int
+    is_following: bool = False
+    is_own_profile: bool = False
 
 
-class CommentReplyResponse(BaseModel):
-    id: str
-    user: FeedUser
-    content: str
-    likeCount: int
-    createdAt: str
-
-
-class CommentItem(BaseModel):
-    """Comment item in the list response, with nested replies."""
+class CommunityNotificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
     id: str
-    user: FeedUser
-    content: str
-    likeCount: int
-    createdAt: str
-    replies: list[CommentReplyResponse] = []
+    recipient_id: str
+    actor_id: Optional[str] = None
+    actor_username: Optional[str] = None
+    post_id: Optional[str] = None
+    comment_id: Optional[str] = None
+    type: NotificationType
+    title: str
+    message: str
+    is_read: bool
+    created_at: datetime
 
 
-class CommentsResponse(BaseModel):
-    items: list[CommentItem]
-    nextCursor: str | None = None
+class CommunityNotificationsListResponse(BaseModel):
+    notifications: List[CommunityNotificationResponse]
+    total: int
+    page: int
+    limit: int
+    has_more: bool
 
 
-class ReportCreate(BaseModel):
-    targetType: Literal["POST", "COMMENT"]
-    targetId: str = Field(..., min_length=1)
-    reason: Literal["SPAM", "MISLEADING_INFO", "HARASSMENT", "OFF_TOPIC", "OTHER"]
+class FeedQueryParams(BaseModel):
+    stock_symbol: Optional[str] = None
+    post_type: Optional[PostType] = None
+    mine: bool = False
+    following: bool = False
+    cursor: Optional[str] = None
+    limit: int = Field(20, ge=1, le=50)
 
 
-class ReportResponse(BaseModel):
-    id: str
-    status: str
-
-
-class ShareLinkResponse(BaseModel):
-    shortUrl: str
-    shortCode: str
-
-
-class ShareResolveResponse(BaseModel):
-    postId: str
-    deepLink: str
-    androidPackage: str
-    playStoreUrl: str
-    teaser: dict
+class CommunityStatsResponse(BaseModel):
+    total_posts: int
+    total_comments: int
+    total_likes: int
+    total_follows: int
+    pending_reports: int

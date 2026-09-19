@@ -1,82 +1,127 @@
 from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, BackgroundTasks
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
-from app.db.session import get_db
+from app.db.session import get_db, async_session_factory
 from app.models.user import User
-from app.schemas.news import NewsArticleResponse, NewsListResponse, NewsRefreshResponse
+from app.schemas.news import (
+    NewsArticleResponse,
+    NewsListResponse,
+    NewsRefreshResponse,
+    NewsRefreshStatusResponse,
+    SourceHealthResponse,
+    SourcesResponse,
+)
 from app.services.news_service import NewsService
 from app.services.news_pipeline import ingestion_state
 from app.services.news_pipeline.market_schedule import (
     is_ingestion_allowed,
     market_status,
     next_ingestion_window,
+    ingestion_lock,
 )
+from app.services.news_pipeline.pipeline import run_pipeline
+from app.services.event_service import extract_events_from_news
 
 router = APIRouter()
 
 
-def _to_response(article, svc: NewsService) -> NewsArticleResponse:
-    return NewsArticleResponse(
-        id=article.id,
-        title=article.title,
-        url=article.url,
-        source=article.source,
-        source_type=article.source_type,
-        summary=article.summary,
-        symbols=svc.parse_symbols(article.symbols),
-        company_names=svc.parse_company_names(article.company_names),
-        sector=article.sector,
-        event_type=article.event_type,
-        sentiment_label=article.sentiment_label,
-        sentiment_score=float(article.sentiment_score) if article.sentiment_score else None,
-        impact_score=article.impact_score,
-        published_at=article.published_at.isoformat() if article.published_at else None,
-        created_at=article.created_at.isoformat() if article.created_at else "",
-    )
+def _encode_cursor(published_at: datetime, article_id: str) -> str:
+    """Encode cursor as published_at|id."""
+    return f"{published_at.isoformat()}|{article_id}"
+
+
+async def _run_pipeline_background(db_factory, limit_per_source: int = 50):
+    """Background task to run pipeline without blocking the request."""
+    from app.db.session import async_session_factory
+    async with async_session_factory() as db:
+        try:
+            await run_pipeline(db, limit_per_source=limit_per_source)
+            # Extract events
+            await extract_events_from_news(db)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("Background pipeline failed: %s", exc)
 
 
 @router.get(
     "/news",
     response_model=NewsListResponse,
-    summary="Get paginated news feed with filtering",
+    summary="Get paginated news feed with cursor pagination",
 )
 async def get_news(
-    symbol: str | None = Query(None, description="Filter by PSX symbol"),
-    sentiment: str | None = Query(None, description="positive|negative|neutral"),
-    source: str | None = Query(None, description="Filter by source name"),
-    event_type: str | None = Query(None, description="Filter by event type"),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    row: str = Query("news", description="Row type: 'news' or 'portfolio'"),
+    symbol: Optional[str] = Query(None, description="Filter by PSX symbol"),
+    sentiment: Optional[str] = Query(None, description="Filter by sentiment: bullish|bearish|neutral"),
+    source: Optional[str] = Query(None, description="Filter by source name"),
+    source_type: Optional[str] = Query(None, description="Filter by source_type: official|news"),
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    q: Optional[str] = Query(None, description="Text search (max 100 chars)", max_length=100),
+    limit: int = Query(20, ge=1, le=50),
+    cursor: Optional[str] = Query(None, description="Opaque cursor from previous page"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        if row not in ("news", "portfolio"):
+            raise HTTPException(status_code=400, detail="row must be 'news' or 'portfolio'")
+        if source_type and source_type not in ("official", "news"):
+            raise HTTPException(status_code=400, detail="source_type must be 'official' or 'news'")
+        if sentiment and sentiment not in ("bullish", "bearish", "neutral"):
+            raise HTTPException(status_code=400, detail="sentiment must be 'bullish', 'bearish', or 'neutral'")
+
         svc = NewsService(db)
-        offset = (page - 1) * limit
-        articles, total = await svc.get_articles(
+        user_id = user.id if row == "portfolio" else None
+
+        articles, total, next_cursor = await svc.get_articles(
             limit=limit,
-            offset=offset,
+            cursor=cursor,
             symbol=symbol,
             sentiment=sentiment,
             source=source,
             event_type=event_type,
+            source_type=source_type,
+            row=row,
+            user_id=user_id,
         )
 
-        items = [_to_response(a, svc) for a in articles]
+        items = [svc.to_response(a) for a in articles]
+
+        empty_reason = None
+        if not items and row == "portfolio":
+            if user_id:
+                user_symbols = await svc._get_user_symbols(user_id)
+                if not user_symbols:
+                    empty_reason = "no_holdings"
+                else:
+                    empty_reason = "no_results"
+            else:
+                empty_reason = "no_holdings"
+        elif not items:
+            empty_reason = "no_results"
+
+        # Get last updated time
+        last_updated = ingestion_state.get_last_ingestion_time()
 
         return NewsListResponse(
-            items=items,
-            total=total,
-            page=page,
-            limit=limit,
-            has_more=(page * limit) < total,
+            items=[NewsArticleResponse(**item) for item in items],
+            next_cursor=next_cursor,
+            has_more=next_cursor is not None,
+            row=row,
+            last_updated_at=last_updated.isoformat() if last_updated else None,
+            empty_reason=empty_reason,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("Get news failed: %s", exc)
         raise ServiceUnavailableError(f"Failed to fetch news: {exc}")
 
 
@@ -95,86 +140,196 @@ async def get_news_article(
         article = await svc.get_article_by_id(article_id)
         if article is None:
             raise NotFoundError(f"News article '{article_id}' not found.")
-        return _to_response(article, svc)
+        return NewsArticleResponse(**svc.to_response(article))
     except NotFoundError:
         raise
     except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("Get news article failed: %s", exc)
         raise ServiceUnavailableError(f"Failed to fetch news article: {exc}")
 
 
 @router.post(
     "/news/refresh",
     response_model=NewsRefreshResponse,
-    summary="Manually refresh news feed (cooldown-protected)",
+    summary="Manually refresh news feed (async, cooldown-protected)",
 )
 async def refresh_news(
+    background_tasks: BackgroundTasks,
+    force: bool = Query(False, description="Admin only: bypass cooldown"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger a manual news ingestion with cooldown protection.
 
-    - If last ingestion was within NEWS_REFRESH_COOLDOWN (5 min), returns cached status.
-    - If outside market hours and post-market, returns without scraping.
-    - Otherwise runs the full pipeline (same as the scheduled task).
+    - If last ingestion was within NEWS_REFRESH_COOLDOWN (5 min), returns cooldown status.
+    - Manual refresh IGNORES market hours (user-initiated, works any time).
+    - force=true (admin only) bypasses cooldown.
+    - Returns immediately with status; runs pipeline in background.
     """
     settings = get_settings()
     last_run = ingestion_state.get_last_ingestion_time()
     now = datetime.now(timezone.utc)
-    m_status = market_status()
+    m_status = await market_status()
+
+    # Check admin for force
+    is_admin = getattr(user, "is_admin", False)
 
     # ── Check 1: Cooldown ────────────────────────────────────────────────
-    if last_run:
+    if last_run and not (force and is_admin):
         elapsed = (now - last_run).total_seconds()
         if elapsed < settings.NEWS_REFRESH_COOLDOWN:
             remaining = int(settings.NEWS_REFRESH_COOLDOWN - elapsed)
-            next_at = last_run.timestamp() + settings.NEWS_REFRESH_COOLDOWN
             return NewsRefreshResponse(
-                status="skipped_cooldown",
+                status="cooldown",
                 last_updated=last_run.isoformat(),
                 refresh_available=False,
-                next_refresh_at=datetime.fromtimestamp(next_at, tz=timezone.utc).isoformat(),
+                next_refresh_at=(last_run.timestamp() + settings.NEWS_REFRESH_COOLDOWN),
+                retry_after_seconds=remaining,
                 market_status=m_status,
             )
 
-    # ── Check 2: Market hours gate ───────────────────────────────────────
-    if not is_ingestion_allowed():
-        nxt = next_ingestion_window()
-        return NewsRefreshResponse(
-            status="skipped_outside_hours",
-            last_updated=last_run.isoformat() if last_run else None,
-            refresh_available=False,
-            next_refresh_at=nxt.isoformat() if nxt else None,
-            market_status=m_status,
-        )
+    # ── Check 2: Already running? ────────────────────────────────────────
+    async with ingestion_lock() as acquired:
+        if not acquired:
+            return NewsRefreshResponse(
+                status="already_running",
+                last_updated=last_run.isoformat() if last_run else None,
+                refresh_available=False,
+                market_status=m_status,
+            )
 
-    # ── Run the pipeline (same as Celery task) ───────────────────────────
-    from app.services.news_pipeline.pipeline import run_pipeline
-    from app.services.event_service import extract_events_from_news
-
-    try:
-        pipeline_result = await run_pipeline(db, limit_per_source=50)
-
-        # Extract events
-        events_created = 0
-        if pipeline_result.total_inserted > 0:
-            events_created = await extract_events_from_news(db)
+        # ── Run pipeline in background ───────────────────────────────────
+        background_tasks.add_task(_run_pipeline_background, async_session_factory, 50)
 
         return NewsRefreshResponse(
-            status="completed",
-            last_updated=pipeline_result.completed_at,
+            status="started",
+            last_updated=now.isoformat(),
             refresh_available=True,
             next_refresh_at=None,
-            articles_inserted=pipeline_result.total_inserted,
             market_status=m_status,
         )
-    except Exception as exc:
-        raise ServiceUnavailableError(f"News refresh failed: {exc}")
+
+
+@router.get(
+    "/news/refresh/status",
+    response_model=NewsRefreshStatusResponse,
+    summary="Get refresh job status for polling",
+)
+async def refresh_status(
+    user: User = Depends(get_current_user),
+):
+    """Get current refresh job status for client polling after pull-to-refresh."""
+    last_run = ingestion_state.get_last_ingestion_time()
+    # We don't track running state persistently; assume done if not in cooldown
+    settings = get_settings()
+    state = "idle"
+    last_success = last_run.isoformat() if last_run else None
+    new_articles = 0
+
+    # If we had a way to track running state, we'd check it here
+    # For now, check if last run was recent
+    if last_run:
+        elapsed = (datetime.now(timezone.utc) - last_run).total_seconds()
+        if elapsed < 60:  # assume running if < 1 min ago
+            state = "running"
+
+    return NewsRefreshStatusResponse(
+        state=state,
+        last_success_at=last_success,
+        new_articles=new_articles,
+    )
 
 
 @router.get(
     "/news/market-status",
     summary="Get current market schedule and ingestion status",
 )
-async def get_market_status(user: User = Depends(get_current_user)):
+async def get_market_status_endpoint(user: User = Depends(get_current_user)):
     """Return current PKT time, market window, and next ingestion window."""
-    return market_status()
+    return await market_status()
+
+
+@router.get(
+    "/news/sources",
+    response_model=SourcesResponse,
+    summary="Get per-source health status (admin/ops)",
+)
+async def get_sources(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Per-source health status. Restrict to admin if available."""
+    is_admin = getattr(user, "is_admin", False)
+    # if not is_admin:
+    #     raise HTTPException(status_code=403, detail="Admin access required")
+
+    from app.models.news import NewsSourceState
+    result = await db.execute(select(NewsSourceState).order_by(NewsSourceState.source_key))
+    sources = result.scalars().all()
+
+    source_list = []
+    for s in sources:
+        source_list.append(SourceHealthResponse(
+            key=s.source_key,
+            name=s.source_key.replace("_", " ").title(),
+            type=s.source_key if s.source_key in ("psx", "secp", "sbp", "ogra", "fbr_mof") else "news",
+            last_success_at=s.last_success_at.isoformat() if s.last_success_at else None,
+            last_error=s.last_error,
+            consecutive_failures=s.consecutive_failures,
+            healthy=s.healthy,
+        ))
+
+    return SourcesResponse(sources=source_list)
+
+
+@router.get(
+    "/stocks/{symbol}/news",
+    response_model=NewsListResponse,
+    summary="Get news for a specific stock (stock page News tab)",
+)
+async def get_stock_news(
+    symbol: str,
+    sentiment: Optional[str] = Query(None, description="Filter by sentiment: bullish|bearish|neutral"),
+    source_type: Optional[str] = Query(None, description="Filter by source_type: official|news"),
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    limit: int = Query(20, ge=1, le=50),
+    cursor: Optional[str] = Query(None, description="Opaque cursor from previous page"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stock page News tab - same as /news but filtered by symbol via link table."""
+    try:
+        if source_type and source_type not in ("official", "news"):
+            raise HTTPException(status_code=400, detail="source_type must be 'official' or 'news'")
+        if sentiment and sentiment not in ("bullish", "bearish", "neutral"):
+            raise HTTPException(status_code=400, detail="sentiment must be 'bullish', 'bearish', or 'neutral'")
+
+        svc = NewsService(db)
+        articles, total, next_cursor = await svc.get_articles(
+            limit=limit,
+            cursor=cursor,
+            symbol=symbol.upper(),
+            sentiment=sentiment,
+            source_type=source_type,
+            event_type=event_type,
+            row="news",  # Stock tab shows all news for that symbol, not just portfolio
+            user_id=None,
+        )
+
+        items = [svc.to_response(a) for a in articles]
+
+        return NewsListResponse(
+            items=[NewsArticleResponse(**item) for item in items],
+            next_cursor=next_cursor,
+            has_more=next_cursor is not None,
+            row="news",
+            last_updated_at=ingestion_state.get_last_ingestion_time().isoformat() if ingestion_state.get_last_ingestion_time() else None,
+            empty_reason="no_results" if not items else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("Get stock news failed: %s", exc)
+        raise ServiceUnavailableError(f"Failed to fetch stock news: {exc}")

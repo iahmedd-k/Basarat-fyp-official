@@ -543,3 +543,49 @@ class MarketSentimentResponse(BaseModel):
         default=None,
         description="Distribution: {positive: N, neutral: M, negative: K}",
     )
+
+
+class SentimentHistoryPoint(BaseModel):
+    """Single point in sentiment history time series."""
+
+    date: str = Field(..., examples=["2026-09-15"])
+    score: float = Field(..., examples=[0.35])
+    label: str = Field(..., examples=["positive"])
+    article_count: int = Field(default=0)
+    positive_ratio: float | None = None
+    neutral_ratio: float | None = None
+    negative_ratio: float | None = None
+    trend: str | None = None
+    daily_scores: list[dict] | None = None
+    source_breakdown: dict | None = None
+
+
+class SentimentHistoryResponse(BaseModel):
+    """Historical sentiment time series for a symbol."""
+
+    symbol: str = Field(..., examples=["OGDC"])
+    period: str = Field(..., examples=["1M"])
+    data: list[SentimentHistoryPoint]
+
+
+class SentimentNewsItem(BaseModel):
+    """News article with sentiment."""
+
+    id: str
+    title: str
+    source: str | None = None
+    published_at: str | None = None
+    url: str | None = None
+    sentiment: str | None = None
+    sentiment_score: float | None = None
+    sentiment_model: str | None = None
+
+
+class SentimentNewsResponse(BaseModel):
+    """Paginated news with sentiment for a symbol."""
+
+    symbol: str = Field(..., examples=["OGDC"])
+    items: list[SentimentNewsItem]
+    total: int
+    page: int
+    limit: int

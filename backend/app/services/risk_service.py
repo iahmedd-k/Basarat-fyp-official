@@ -30,8 +30,6 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.portfolio import Portfolio, PortfolioHolding
-
 log = logging.getLogger(__name__)
 
 DATA_DIR = Path("data")

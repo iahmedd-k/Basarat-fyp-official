@@ -17,7 +17,7 @@ from app.core.authorization import get_current_user
 from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError
 from app.core.rate_limiter import limiter
 from app.db.session import get_db
-from app.models.portfolio import Transaction, PriceCache, WatchlistItem, TransactionType, MarketStatus
+from app.models.portfolio import PortfolioTransaction, TransactionType
 from app.models.stock import Stock
 from app.models.user import User
 from app.repository.portfolio_repository import PortfolioRepository
@@ -48,40 +48,34 @@ async def _get_holdings(db: AsyncSession, user_id: str) -> list[HoldingInfo]:
     Computes current_value from quantity * live price and allocation_pct
     from each holding's share of total portfolio value.
     """
-    repo = PortfolioRepository(db)
-    holdings_data = await repo.get_user_holdings(user_id)
+    from app.services.portfolio_service import PortfolioService
+    from app.repository.portfolio_repository import PortfolioRepository
 
-    if not holdings_data:
+    portfolio_service = PortfolioService(db, repo=PortfolioRepository(db))
+    holdings = await portfolio_service.get_holdings(user_id)
+
+    if not holdings:
         return []
 
-    from app.services.stock_service import StockService
-
-    stock_service = StockService()
-    symbols = [h["symbol"] for h in holdings_data]
-    quotes = await asyncio.to_thread(stock_service.get_quote_batch, symbols)
-    quote_map = {sym: q for sym, q in zip(symbols, quotes)}
-
-    holdings: list[HoldingInfo] = []
-    for h in holdings_data:
-        quote = quote_map.get(h["symbol"])
-        current_price = quote.get("current") if quote else None
-        current_value = (current_price * h["quantity"]) if current_price else 0.0
-        sector = quote.get("sector") if quote else "default"
-        holdings.append(
+    holdings_info: list[HoldingInfo] = []
+    for h in holdings:
+        # h already has symbol, sector, current_value from portfolio_service
+        current_value = float(h.get("market_value") or h.get("current_value") or 0)
+        holdings_info.append(
             HoldingInfo(
                 symbol=h["symbol"],
-                sector=sector or "default",
-                current_value=float(current_value),
+                sector=h.get("sector") or "default",
+                current_value=current_value,
                 allocation_pct=0.0,
             )
         )
 
-    total_value = sum(h.current_value for h in holdings)
+    total_value = sum(h.current_value for h in holdings_info)
     if total_value > 0:
-        for h in holdings:
+        for h in holdings_info:
             h.allocation_pct = round((h.current_value / total_value) * 100, 2)
 
-    return holdings
+    return holdings_info
 
 
 @router.get(

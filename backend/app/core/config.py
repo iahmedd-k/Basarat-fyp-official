@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     NEWS_TIMEZONE: str = "Asia/Karachi"
     # PSX market session
     MARKET_OPEN_HOUR: int = 9
-    MARKET_OPEN_MINUTE: int = 30
+    MARKET_OPEN_MINUTE: int = 15
     MARKET_CLOSE_HOUR: int = 15
     MARKET_CLOSE_MINUTE: int = 30
     # Post-market ingestion window
@@ -63,33 +63,30 @@ class Settings(BaseSettings):
     # Manual refresh cooldown (seconds)
     NEWS_REFRESH_COOLDOWN: int = 300  # 5 minutes
 
-    # Community share links / deep links
-    SHARE_BASE_URL: str = "https://yourapp.link"
-    DEEP_LINK_SCHEME: str = "yourapp"
-    ANDROID_PACKAGE: str = "com.yourapp.android"
-    PLAY_STORE_URL: str = "https://play.google.com/store/apps/details?id=com.yourapp.android"
-    TEASER_IMAGE_URL: str = "https://yourapp.com/static/share-preview.png"
-    COMMUNITY_REPORT_THRESHOLD: int = 5
+    # News config flags (Section 12)
+    NEWS_SCHEDULE_MINUTES: int = 30
+    NEWS_MARKET_GATING_ENABLED: bool = True
+    NEWS_POST_CLOSE_MINUTES: int = 0
+    NEWS_MARKET_HOURS_CONFIG: str = ""  # path or DB table
+    NEWS_REFRESH_COOLDOWN_SECONDS: int = 300
+    PSX_FETCH_ENABLED: bool = True
+    PSX_MAX_PAGES_PER_RUN: int = 5
+    PSX_MIN_REQUEST_INTERVAL_SECONDS: int = 2
+    PSX_BACKFILL_DAYS: int = 30
+    PSX_EPS_RULE_ENABLED: bool = False
+    FINBERT_ENABLED: bool = True
+    SENTIMENT_MIN_CONFIDENCE: float = 0.6
+    METTIS_FETCH_ENABLED: bool = True
+    OGRA_FETCH_ENABLED: bool = True
+    FBR_MOF_FETCH_ENABLED: bool = True
 
-    # Cloudinary (community media uploads) — leave empty keys to disable uploads
-    CLOUDINARY_CLOUD_NAME: str = ""
-    CLOUDINARY_API_KEY: str = ""
-    CLOUDINARY_API_SECRET: str = ""
-    CLOUDINARY_FOLDER: str = "basarat/community"
     MAX_FILE_SIZE_MB: int = 10
     LOCAL_TEMP_DIR: str = "./tmp"
-    CLOUDINARY_ALLOWED_MIMES: list[str] = [
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-        "image/gif",
-        "image/bmp",
-        "image/heic",
-    ]
 
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "allow"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

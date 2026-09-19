@@ -1,7 +1,7 @@
 """FinBERT sentiment pipeline — per-stock and market-level sentiment.
 
 Pipeline:
-  1. Ingest Module 8 (news) + Module 10 (community posts)
+  1. Ingest Module 8 (news)
   2. Run FinBERT via HuggingFace Inference API → score [-1, 1]
   3. Aggregate per-stock: rolling 7-day decay-weighted average
   4. Aggregate market-level: equal-weight across all scored stocks
@@ -30,7 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.news import NewsArticle
-from app.models.community import Post, PostStockTag
+from app.models.sentiment import SentimentAggregate, SentimentResult
+from app.repository.sentiment_repository import SentimentRepository
 
 log = logging.getLogger(__name__)
 
@@ -123,9 +124,9 @@ def _call_hf_api_batch(texts: list[str]) -> list[dict[str, Any] | None]:
         return [None] * len(texts)
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 # Sentiment Scoring
-# ═══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 
 # Positive/negative keyword lists for heuristic fallback
 _POSITIVE_WORDS = {
@@ -190,22 +191,19 @@ def score_batch(texts: list[str]) -> list[dict[str, Any]]:
     return output
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Data Ingestion — News + Community Posts
-# ═══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
+# Data Ingestion — News
+# ════════════════════════════════════════════════════════════════════════
 
-async def _fetch_news_for_symbol(db: AsyncSession, symbol: str, days: int = 7) -> list[dict]:
-    """Fetch recent news articles mentioning a symbol."""
+async def _fetch_news_for_symbol(
+    repo: SentimentRepository,
+    symbol: str,
+    days: int = 7,
+) -> list[dict]:
+    """Fetch recent news articles mentioning a symbol with sentiment results."""
     cutoff = datetime.utcnow() - timedelta(days=days)
-    result = await db.execute(
-        select(NewsArticle)
-        .where(NewsArticle.published_at >= cutoff)
-        .order_by(desc(NewsArticle.published_at))
-        .limit(100)
-    )
-    articles = result.scalars().all()
+    articles, _ = await repo.get_recent_news(symbol=symbol, days=days, limit=100)
 
-    # Filter by symbol mention in title/summary
     matched = []
     symbol_lower = symbol.lower()
     for a in articles:
@@ -216,40 +214,14 @@ async def _fetch_news_for_symbol(db: AsyncSession, symbol: str, days: int = 7) -
                 "source": a.source or "unknown",
                 "published_at": a.published_at.isoformat() if a.published_at else None,
                 "existing_score": float(a.sentiment_score) if a.sentiment_score else None,
+                "news_article_id": a.id,
             })
     return matched
 
 
-async def _fetch_community_for_symbol(db: AsyncSession, symbol: str, days: int = 7) -> list[dict]:
-    """Fetch recent community posts about a symbol."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
-    # Only published posts, joined through the stock-tag table
-    result = await db.execute(
-        select(Post)
-        .join(PostStockTag, PostStockTag.post_id == Post.id)
-        .where(PostStockTag.symbol == symbol.upper())
-        .where(Post.created_at >= cutoff)
-        .where(Post.status == "PUBLISHED")
-        .order_by(desc(Post.created_at))
-        .limit(100)
-    )
-    posts = result.scalars().all()
-
-    return [
-        {
-            "text": f"{p.sentiment}: {p.content}" if p.sentiment else p.content,
-            "stance": p.sentiment.lower() if p.sentiment else "neutral",
-            "upvotes": p.like_count,
-            "downvotes": 0,
-            "created_at": p.created_at.isoformat() if p.created_at else None,
-        }
-        for p in posts
-    ]
-
-
-# ═══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 # Per-Stock Sentiment
-# ═══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 
 async def compute_stock_sentiment(
     db: AsyncSession,
@@ -263,17 +235,17 @@ async def compute_stock_sentiment(
          trend, daily_scores, details}
     """
     symbol = symbol.upper()
+    repo = SentimentRepository(db)
 
-    news = await _fetch_news_for_symbol(db, symbol, days)
-    community = await _fetch_community_for_symbol(db, symbol, days)
+    news = await _fetch_news_for_symbol(repo, symbol, days)
 
-    if not news and not community:
+    if not news:
         return {
             "symbol": symbol,
             "score": 0.0,
             "label": "neutral",
             "article_count": 0,
-            "source_breakdown": {"news": 0, "community": 0},
+            "source_breakdown": {"news": 0},
             "trend": "stable",
             "daily_scores": [],
             "details": [],
@@ -291,6 +263,19 @@ async def compute_stock_sentiment(
             result = score_text(item["text"])
             score = result["score"]
             model = result["model"]
+
+            # Persist sentiment result
+            await repo.create_sentiment_result(
+                news_article_id=item["news_article_id"],
+                symbol=symbol,
+                model_name=model,
+                label=result["label"],
+                score=score,
+                positive_score=result.get("positive_score"),
+                neutral_score=result.get("neutral_score"),
+                negative_score=result.get("negative_score"),
+            )
+
         all_scores.append(score)
         details.append({
             "source": "news",
@@ -298,21 +283,6 @@ async def compute_stock_sentiment(
             "score": score,
             "model": model,
             "published_at": item["published_at"],
-        })
-
-    for item in community:
-        result = score_text(item["text"])
-        weight = 1.0 + (item["upvotes"] - item["downvotes"]) * 0.1
-        weighted_score = result["score"] * max(weight, 0.1)
-        all_scores.append(weighted_score)
-        details.append({
-            "source": "community",
-            "text_preview": item["text"][:120],
-            "score": result["score"],
-            "weighted_score": weighted_score,
-            "stance": item["stance"],
-            "upvotes": item["upvotes"],
-            "downvotes": item["downvotes"],
         })
 
     # Decay-weighted average (recent items weighted more)
@@ -346,7 +316,7 @@ async def compute_stock_sentiment(
     # Daily scores for chart
     daily = {}
     for d in details:
-        dt = d.get("published_at") or d.get("created_at")
+        dt = d.get("published_at")
         if dt:
             day = dt[:10]
             daily.setdefault(day, []).append(d["score"])
@@ -362,7 +332,6 @@ async def compute_stock_sentiment(
         "article_count": len(details),
         "source_breakdown": {
             "news": len(news),
-            "community": len(community),
         },
         "trend": trend,
         "daily_scores": daily_scores,
@@ -374,19 +343,41 @@ async def compute_stock_sentiment(
     with open(cache_path, "w") as f:
         json.dump(result, f, default=str, indent=2)
 
+    # Persist aggregate
+    period_end = datetime.utcnow()
+    period_start = period_end - timedelta(days=days)
+    pos_ratio = sum(1 for s in all_scores if s > 0.15) / len(all_scores) if all_scores else None
+    neu_ratio = sum(1 for s in all_scores if -0.15 <= s <= 0.15) / len(all_scores) if all_scores else None
+    neg_ratio = sum(1 for s in all_scores if s < -0.15) / len(all_scores) if all_scores else None
+
+    await repo.upsert_sentiment_aggregate(
+        symbol=symbol,
+        period=f"{days}D",
+        period_start=period_start,
+        period_end=period_end,
+        overall_score=result["score"],
+        label=label,
+        article_count=result["article_count"],
+        positive_ratio=pos_ratio,
+        neutral_ratio=neu_ratio,
+        negative_ratio=neg_ratio,
+        trend=trend,
+        daily_scores=json.dumps(daily_scores),
+        source_breakdown=json.dumps(result["source_breakdown"]),
+    )
+
     return result
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 # Market-Level Sentiment
-# ═══════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════
 
 async def compute_market_sentiment(db: AsyncSession) -> dict[str, Any]:
     """Compute overall market sentiment across all PSX stocks.
 
     Aggregates:
       - News sentiment (weighted by recency)
-      - Community sentiment (weighted by engagement)
       - Market breadth (advance/decline ratio from price data)
     """
     # Get distinct symbols with recent news
@@ -399,16 +390,6 @@ async def compute_market_sentiment(db: AsyncSession) -> dict[str, Any]:
     )
     articles = news_result.scalars().all()
 
-    # Get all community posts
-    community_result = await db.execute(
-        select(Post)
-        .where(Post.created_at >= cutoff)
-        .where(Post.status == "PUBLISHED")
-        .order_by(desc(Post.created_at))
-        .limit(500)
-    )
-    posts = community_result.scalars().all()
-
     # Score all news
     news_scores = []
     for a in articles:
@@ -418,15 +399,8 @@ async def compute_market_sentiment(db: AsyncSession) -> dict[str, Any]:
             result = score_text(f"{a.title}. {a.summary or ''}")
             news_scores.append(result["score"])
 
-    # Score all community posts (weighted by engagement)
-    community_scores = []
-    for p in posts:
-        result = score_text(p.content or "")
-        weight = 1.0 + p.like_count * 0.1
-        community_scores.append(result["score"] * max(weight, 0.1))
-
     # Aggregate
-    all_scores = news_scores + community_scores
+    all_scores = news_scores
     if all_scores:
         overall_score = float(np.mean(all_scores))
     else:
@@ -468,13 +442,11 @@ async def compute_market_sentiment(db: AsyncSession) -> dict[str, Any]:
         "market_mood": mood,
         "overall_score": round(overall_score, 4),
         "article_count": len(articles),
-        "community_post_count": len(posts),
         "advancing": advancing,
         "declining": declining,
         "unchanged": unchanged,
         "advance_decline_ratio": round(ad_ratio, 2),
         "news_sentiment_avg": round(float(np.mean(news_scores)), 4) if news_scores else 0.0,
-        "community_sentiment_avg": round(float(np.mean(community_scores)), 4) if community_scores else 0.0,
         "score_distribution": {
             "positive": sum(1 for s in all_scores if s > 0.15),
             "neutral": sum(1 for s in all_scores if -0.15 <= s <= 0.15),
@@ -489,6 +461,133 @@ async def compute_market_sentiment(db: AsyncSession) -> dict[str, Any]:
 
     return result
 
+
+# ════════════════════════════════════════════════════════════════════════
+# Sentiment History & News API
+# ════════════════════════════════════════════════════════════════════════
+
+async def get_sentiment_history(
+    db: AsyncSession,
+    symbol: str,
+    period: str = "1M",
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Get historical sentiment aggregates for a symbol."""
+    repo = SentimentRepository(db)
+    aggregates = await repo.get_sentiment_history(symbol, period, limit)
+
+    if not aggregates:
+        return {
+            "symbol": symbol.upper(),
+            "period": period,
+            "data": [],
+        }
+
+    data = []
+    for agg in aggregates:
+        daily_scores = []
+        if agg.daily_scores:
+            try:
+                daily_scores = json.loads(agg.daily_scores)
+            except Exception:
+                daily_scores = []
+
+        source_breakdown = {}
+        if agg.source_breakdown:
+            try:
+                source_breakdown = json.loads(agg.source_breakdown)
+            except Exception:
+                source_breakdown = {}
+
+        data.append({
+            "date": agg.period_end.isoformat()[:10],
+            "score": float(agg.overall_score) if agg.overall_score else 0.0,
+            "label": agg.label,
+            "article_count": agg.article_count,
+            "positive_ratio": float(agg.positive_ratio) if agg.positive_ratio else None,
+            "neutral_ratio": float(agg.neutral_ratio) if agg.neutral_ratio else None,
+            "negative_ratio": float(agg.negative_ratio) if agg.negative_ratio else None,
+            "trend": agg.trend,
+            "daily_scores": daily_scores,
+            "source_breakdown": source_breakdown,
+        })
+
+    return {
+        "symbol": symbol.upper(),
+        "period": period,
+        "data": data,
+    }
+
+
+async def get_sentiment_news(
+    db: AsyncSession,
+    symbol: str,
+    page: int = 1,
+    limit: int = 20,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
+    sentiment: str | None = None,
+) -> tuple[list[dict], int]:
+    """Get paginated news articles with sentiment for a symbol."""
+    repo = SentimentRepository(db)
+
+    # Get news articles (fetch more than needed to account for filtering)
+    articles, _ = await repo.get_recent_news(
+        symbol=symbol,
+        days=365,  # Look back up to a year
+        limit=limit * 5,  # Get more to filter
+        page=1,
+    )
+
+    # Apply date filters
+    if from_date:
+        articles = [a for a in articles if a.published_at and a.published_at >= from_date]
+    if to_date:
+        articles = [a for a in articles if a.published_at and a.published_at <= to_date]
+
+    # Get sentiment results for these articles
+    article_ids = [a.id for a in articles]
+    sentiment_results = {}
+    if article_ids:
+        result = await db.execute(
+            select(SentimentResult).where(
+                SentimentResult.news_article_id.in_(article_ids),
+                SentimentResult.symbol == symbol.upper(),
+            )
+        )
+        for sr in result.scalars().all():
+            sentiment_results[sr.news_article_id] = sr
+
+    news_items = []
+    for a in articles:
+        sr = sentiment_results.get(a.id)
+        news_items.append({
+            "id": a.id,
+            "title": a.title,
+            "source": a.source,
+            "published_at": a.published_at.isoformat() if a.published_at else None,
+            "url": a.url,
+            "sentiment": sr.label if sr else None,
+            "sentiment_score": float(sr.score) if sr else None,
+            "sentiment_model": sr.model_name if sr else None,
+        })
+
+    if sentiment:
+        news_items = [n for n in news_items if n.get("sentiment") == sentiment.upper()]
+
+    total = len(news_items)
+
+    # Apply pagination
+    start = (page - 1) * limit
+    end = start + limit
+    paginated = news_items[start:end]
+
+    return paginated, total
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Cache Helpers
+# ════════════════════════════════════════════════════════════════════════
 
 def get_cached_sentiment(symbol: str) -> dict | None:
     """Load cached sentiment for a symbol."""
