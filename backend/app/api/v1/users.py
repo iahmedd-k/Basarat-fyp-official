@@ -6,12 +6,14 @@ from app.core.exceptions import NotFoundError, ServiceUnavailableError
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import (
-    UpdateProfileRequest,
-    UpdateRiskProfileRequest,
+    InvestmentHorizon,
+    NO_PREFERENCE,
+    RiskTolerance,
+    SectorPreference,
     UpdateNotificationPrefsRequest,
+    UpdateProfileRequest,
     UserProfileResponse,
     VALID_SECTORS,
-    NO_PREFERENCE,
 )
 from app.services.auth_service import AuthService
 
@@ -25,64 +27,87 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> AuthService:
 @router.get(
     "/users/me",
     response_model=UserProfileResponse,
-    summary="Get current user profile",
+    summary="Get current user profile & investment preferences",
+)
+@router.get(
+    "/users/me/investment-profile",
+    response_model=UserProfileResponse,
+    summary="Get current user investment profile",
+    include_in_schema=False,
+)
+@router.get(
+    "/users/me/risk-profile",
+    response_model=UserProfileResponse,
+    summary="Get current user risk profile (alias)",
+    include_in_schema=False,
 )
 async def get_profile(
     user: User = Depends(get_current_user),
 ):
+    """Retrieve full profile including contact details and investment preferences."""
     return user
 
 
 @router.patch(
     "/users/me",
     response_model=UserProfileResponse,
-    summary="Update current user profile",
+    summary="Update current user profile and investment preferences",
+)
+@router.post(
+    "/users/me",
+    response_model=UserProfileResponse,
+    summary="Set current user profile and investment preferences",
+)
+@router.patch(
+    "/users/me/investment-profile",
+    response_model=UserProfileResponse,
+    summary="Update investment profile preferences",
+    include_in_schema=False,
+)
+@router.post(
+    "/users/me/investment-profile",
+    response_model=UserProfileResponse,
+    summary="Set investment profile preferences",
+    include_in_schema=False,
+)
+@router.patch(
+    "/users/me/risk-profile",
+    response_model=UserProfileResponse,
+    summary="Update risk profile preferences (alias)",
+    include_in_schema=False,
+)
+@router.post(
+    "/users/me/risk-profile",
+    response_model=UserProfileResponse,
+    summary="Set risk profile preferences (alias)",
+    include_in_schema=False,
 )
 async def update_profile(
     data: UpdateProfileRequest,
     user: User = Depends(get_current_user),
     service: AuthService = Depends(_get_service),
 ):
+    """
+    Unified endpoint to update personal details (full_name, avatar_url)
+    and/or investment profile (risk_tolerance, sector_preferences, investment_horizon).
+    """
     try:
+        risk_tol = data.risk_tolerance.value if data.risk_tolerance else None
+        inv_horiz = data.investment_horizon.value if data.investment_horizon else None
+
         updated = await service.update_profile(
             user_id=user.id,
             full_name=data.full_name,
             avatar_url=data.avatar_url,
+            risk_tolerance=risk_tol,
+            sector_preferences=data.sector_preferences,
+            investment_horizon=inv_horiz,
         )
         return updated
     except NotFoundError:
         raise
     except Exception as exc:
         raise ServiceUnavailableError("Failed to update profile")
-
-
-@router.patch(
-    "/users/me/risk-profile",
-    response_model=dict,
-    summary="Update user risk profile preferences",
-)
-async def update_risk_profile(
-    data: UpdateRiskProfileRequest,
-    user: User = Depends(get_current_user),
-    service: AuthService = Depends(_get_service),
-):
-    try:
-        updated = await service.update_risk_profile(
-            user_id=user.id,
-            risk_tolerance=data.risk_tolerance,
-            sector_preferences=data.sector_preferences,
-            investment_horizon=data.investment_horizon,
-        )
-        return {
-            "message": "Risk profile updated",
-            "risk_tolerance": updated.risk_tolerance,
-            "sector_preferences": updated.sector_preferences,
-            "investment_horizon": updated.investment_horizon,
-        }
-    except NotFoundError:
-        raise
-    except Exception as exc:
-        raise ServiceUnavailableError("Failed to update risk profile")
 
 
 @router.patch(
@@ -114,13 +139,30 @@ async def update_notification_preferences(
 
 
 @router.get(
-    "/users/risk-profile/sectors",
-    summary="Get valid sector options for risk profile preferences",
+    "/users/investment-profile/options",
+    summary="Get valid options for risk tolerance, investment horizon, and sector preferences",
 )
-async def get_risk_profile_sectors():
-    """Get list of valid sector options for risk profile sector preferences."""
+@router.get(
+    "/users/risk-profile/options",
+    summary="Get valid options for risk tolerance, investment horizon, and sector preferences (alias)",
+    include_in_schema=False,
+)
+@router.get(
+    "/users/risk-profile/sectors",
+    summary="Get valid sector options (alias)",
+    include_in_schema=False,
+)
+@router.get(
+    "/users/sectors",
+    summary="Get valid sector options (alias)",
+    include_in_schema=False,
+)
+async def get_investment_profile_options():
+    """Get all allowed enum options for user investment profile configuration."""
     return {
-        "sectors": VALID_SECTORS,
+        "risk_tolerances": [rt.value for rt in RiskTolerance],
+        "investment_horizons": [ih.value for ih in InvestmentHorizon],
+        "sectors": [s.value for s in SectorPreference],
         "no_preference": NO_PREFERENCE,
-        "description": "Select one or more sectors. Use 'All Sectors' for no preference.",
+        "description": "Select allowed risk tolerances, investment horizons, and sector preferences.",
     }

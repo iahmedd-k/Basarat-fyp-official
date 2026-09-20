@@ -1,6 +1,5 @@
-"""Tests for Sentiment API."""
-
 import pytest
+import pytest_asyncio
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -15,35 +14,39 @@ from app.models.user import User
 from app.core.security import create_access_token
 
 
-@pytest.fixture
-def auth_headers(db_session: AsyncSession):
+@pytest_asyncio.fixture
+async def auth_headers(db_session: AsyncSession):
     """Create a test user and return auth headers."""
+    from sqlalchemy import select
+
     user = User(
         id=uuid4().hex,
-        email="test@example.com",
-        username="testuser",
+        email=f"test_{uuid4().hex[:8]}@example.com",
+        username=f"user_{uuid4().hex[:8]}",
         hashed_password="hashed",
         is_active=True,
     )
     db_session.add(user)
     
-    # Add test stocks
-    stocks = [
-        Stock(id="stock-hbl", symbol="HBL", name="Habib Bank Limited", sector="Banking"),
-        Stock(id="stock-ogdc", symbol="OGDC", name="Oil & Gas Development Company", sector="Oil & Gas"),
-        Stock(id="stock-luck", symbol="LUCK", name="Lucky Cement", sector="Cement"),
+    # Add test stocks if not already present
+    test_stocks = [
+        ("stock-hbl", "HBL", "Habib Bank Limited", "Banking"),
+        ("stock-ogdc", "OGDC", "Oil & Gas Development Company", "Oil & Gas"),
+        ("stock-luck", "LUCK", "Lucky Cement", "Cement"),
     ]
-    for stock in stocks:
-        db_session.add(stock)
+    for sid, sym, name, sec in test_stocks:
+        existing = await db_session.execute(select(Stock).where(Stock.symbol == sym))
+        if not existing.scalars().first():
+            db_session.add(Stock(id=sid, symbol=sym, name=name, sector=sec))
     
-    db_session.commit()
+    await db_session.flush()
     
     token = create_access_token({"sub": user.id})
     return {"Authorization": f"Bearer {token}"}, user.id
 
 
-@pytest.fixture
-def sample_news_with_sentiment(db_session: AsyncSession):
+@pytest_asyncio.fixture
+async def sample_news_with_sentiment(db_session: AsyncSession):
     """Create sample news articles with sentiment."""
     # Create news articles
     articles = [
@@ -94,7 +97,7 @@ def sample_news_with_sentiment(db_session: AsyncSession):
     for article in articles:
         db_session.add(article)
     
-    db_session.commit()
+    await db_session.flush()
     
     # Create sentiment results
     sentiment_results = [
@@ -155,7 +158,7 @@ def sample_news_with_sentiment(db_session: AsyncSession):
     )
     db_session.add(aggregate)
     
-    db_session.commit()
+    await db_session.flush()
     
     return articles
 
@@ -206,12 +209,12 @@ class TestSentimentHistory:
     async def test_get_sentiment_history(self, client: AsyncClient, auth_headers, sample_news_with_sentiment):
         headers, user_id = auth_headers
         
-        resp = await client.get("/api/v1/sentiment/HBL/history?period=7D", headers=headers)
+        resp = await client.get("/api/v1/sentiment/HBL/history?period=1W", headers=headers)
         
         assert resp.status_code == 200
         data = resp.json()
         assert data["symbol"] == "HBL"
-        assert data["period"] == "7D"
+        assert data["period"] == "1W"
         assert "data" in data
         assert isinstance(data["data"], list)
 
@@ -311,8 +314,8 @@ class TestMarketSentiment:
         
         assert resp.status_code == 200
         data = resp.json()
-        assert "market_mood" in data
-        assert "overall_score" in data
+        assert "score" in data
+        assert "label" in data
         assert "article_count" in data
 
     async def test_get_market_sentiment_requires_auth(self, client: AsyncClient):

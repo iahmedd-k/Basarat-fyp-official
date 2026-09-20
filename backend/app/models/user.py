@@ -35,6 +35,7 @@ class User(Base):
     alerts = relationship("Alert", back_populates="user", lazy="selectin")
     devices = relationship("Device", back_populates="user", lazy="selectin")
     community_posts = relationship("CommunityPost", back_populates="author", lazy="selectin")
+    assistant_conversations = relationship("AssistantConversation", back_populates="user", lazy="selectin")
     refresh_tokens = relationship("RefreshToken", back_populates="user", lazy="selectin")
     password_reset_tokens = relationship("PasswordResetToken", back_populates="user", lazy="selectin")
 

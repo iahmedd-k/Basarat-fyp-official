@@ -1,11 +1,17 @@
 from functools import lru_cache
-from pydantic_settings import BaseSettings
+from pathlib import Path
+from typing import Literal
+
 from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
+
     PROJECT_NAME: str = "Basarat"
     API_V1_PREFIX: str = "/api/v1"
+    ENVIRONMENT: Literal["development", "staging", "production", "test"] = "development"
     DEBUG: bool = False
 
     # Auth
@@ -16,6 +22,7 @@ class Settings(BaseSettings):
 
     # CORS
     CORS_ORIGINS: list[str] = []
+    TRUSTED_PROXY_IPS: list[str] = []
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/basarat"
@@ -30,10 +37,29 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
     # Firebase (push notifications)
-    FIREBASE_CREDENTIALS_PATH: str = "firebase_credentials.json"
+    FIREBASE_ENABLED: bool = False
+    FIREBASE_CREDENTIALS_PATH: str = ""
+    FIREBASE_PROJECT_ID: str = ""
+
+    # Transactional email / password reset
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_USE_TLS: bool = True
+    PASSWORD_RESET_URL: str = ""
+
+    # Clerk Auth Webhook
+    CLERK_WEBHOOK_SECRET: str = ""
+    CLERK_SECRET_KEY: str = ""
 
     # HuggingFace (FinBERT sentiment via Inference API)
     HF_API_TOKEN: str = ""
+
+    # Groq (LLM for Stock AI Assistant)
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # ML
     GRU_MODEL_PATH: str = "models/gru_v1"
@@ -83,11 +109,6 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 10
     LOCAL_TEMP_DIR: str = "./tmp"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = "allow"
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         placeholder_values = {"change-me-in-production", "your-secret-key", "secret", "changeme", "dev-secret"}
@@ -96,6 +117,20 @@ class Settings(BaseSettings):
                 "SECRET_KEY must be set to a strong random value (32+ chars) in production. "
                 "Generate with: openssl rand -hex 32"
             )
+        if self.ENVIRONMENT in {"staging", "production"}:
+            if self.DEBUG:
+                raise ValueError("DEBUG must be false outside development")
+            if not self.CORS_ORIGINS:
+                raise ValueError("CORS_ORIGINS must be explicitly configured outside development")
+            if "postgres:postgres@" in self.DATABASE_URL or "adminadmin" in self.DATABASE_URL:
+                raise ValueError("DATABASE_URL must not use development credentials outside development")
+            if self.FIREBASE_ENABLED and (
+                not self.FIREBASE_CREDENTIALS_PATH
+                or not Path(self.FIREBASE_CREDENTIALS_PATH).is_file()
+            ):
+                raise ValueError("FIREBASE_CREDENTIALS_PATH must point to a readable service-account file")
+            if not all((self.SMTP_HOST, self.SMTP_FROM_EMAIL, self.PASSWORD_RESET_URL)):
+                raise ValueError("SMTP_HOST, SMTP_FROM_EMAIL, and PASSWORD_RESET_URL are required outside development")
 
 
 @lru_cache()

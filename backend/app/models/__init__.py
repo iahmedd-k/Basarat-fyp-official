@@ -12,3 +12,21 @@ from app.models.alert import Alert, AlertRule
 from app.models.shariah import ShariahScreening
 from app.models.model_registry import ModelRegistry
 from app.models.training_run import TrainingRun
+from app.models.assistant import AssistantConversation, AssistantMessage
+from app.models.community import (
+    CommunityPost,
+    CommunityPostLike,
+    CommunityComment,
+    CommunityFollow,
+    CommunityReport,
+    CommunityModerationAction,
+    CommunityNotification,
+    PostType,
+    PostStatus,
+    RemovedReason,
+    ReportStatus,
+    ReportReason,
+    CommentStatus,
+    ModerationActionType,
+    NotificationType,
+)

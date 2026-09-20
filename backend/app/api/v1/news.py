@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, ServiceUnavailableError
+from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError, AppError
 from app.db.session import get_db, async_session_factory
 from app.models.user import User
 from app.schemas.news import (
@@ -70,41 +70,36 @@ async def get_news(
 ):
     try:
         if row not in ("news", "portfolio"):
-            raise HTTPException(status_code=400, detail="row must be 'news' or 'portfolio'")
+            raise BadRequestError("row must be 'news' or 'portfolio'")
         if source_type and source_type not in ("official", "news"):
-            raise HTTPException(status_code=400, detail="source_type must be 'official' or 'news'")
+            raise BadRequestError("source_type must be 'official' or 'news'")
         if sentiment and sentiment not in ("bullish", "bearish", "neutral"):
-            raise HTTPException(status_code=400, detail="sentiment must be 'bullish', 'bearish', or 'neutral'")
+            raise BadRequestError("sentiment must be 'bullish', 'bearish', or 'neutral'")
 
-        svc = NewsService(db)
         user_id = user.id if row == "portfolio" else None
-
-        articles, total, next_cursor = await svc.get_articles(
-            limit=limit,
-            cursor=cursor,
-            symbol=symbol,
-            sentiment=sentiment,
-            source=source,
-            event_type=event_type,
-            source_type=source_type,
-            row=row,
-            user_id=user_id,
-        )
-
-        items = [svc.to_response(a) for a in articles]
-
         empty_reason = None
-        if not items and row == "portfolio":
-            if user_id:
-                user_symbols = await svc._get_user_symbols(user_id)
-                if not user_symbols:
-                    empty_reason = "no_holdings"
-                else:
-                    empty_reason = "no_results"
-            else:
-                empty_reason = "no_holdings"
-        elif not items:
-            empty_reason = "no_results"
+
+        if row == "portfolio":
+            from app.services.psx_announcement_service import PSXAnnouncementService
+            psx_svc = PSXAnnouncementService(db)
+            items, empty_reason = await psx_svc.get_portfolio_announcements(user_id=user_id, limit=limit)
+            next_cursor = None
+        else:
+            svc = NewsService(db)
+            articles, total, next_cursor = await svc.get_articles(
+                limit=limit,
+                cursor=cursor,
+                symbol=symbol,
+                sentiment=sentiment,
+                source=source,
+                event_type=event_type,
+                source_type=source_type,
+                row=row,
+                user_id=user_id,
+            )
+            items = [svc.to_response(a) for a in articles]
+            if not items:
+                empty_reason = "no_results"
 
         # Get last updated time
         last_updated = ingestion_state.get_last_ingestion_time()
@@ -117,36 +112,12 @@ async def get_news(
             last_updated_at=last_updated.isoformat() if last_updated else None,
             empty_reason=empty_reason,
         )
-    except HTTPException:
+    except AppError:
         raise
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("Get news failed: %s", exc)
         raise ServiceUnavailableError(f"Failed to fetch news: {exc}")
-
-
-@router.get(
-    "/news/{article_id}",
-    response_model=NewsArticleResponse,
-    summary="Get a single news article",
-)
-async def get_news_article(
-    article_id: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        svc = NewsService(db)
-        article = await svc.get_article_by_id(article_id)
-        if article is None:
-            raise NotFoundError(f"News article '{article_id}' not found.")
-        return NewsArticleResponse(**svc.to_response(article))
-    except NotFoundError:
-        raise
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).exception("Get news article failed: %s", exc)
-        raise ServiceUnavailableError(f"Failed to fetch news article: {exc}")
 
 
 @router.post(
@@ -250,6 +221,18 @@ async def get_market_status_endpoint(user: User = Depends(get_current_user)):
     return await market_status()
 
 
+REGISTERED_SOURCES = [
+    {"key": "psx", "name": "PSX Official Announcements", "type": "official"},
+    {"key": "secp", "name": "SECP Regulatory Notices", "type": "official"},
+    {"key": "sbp", "name": "State Bank of Pakistan", "type": "official"},
+    {"key": "ogra", "name": "OGRA Petroleum & Gas", "type": "official"},
+    {"key": "fbr_mof", "name": "FBR & Ministry of Finance", "type": "official"},
+    {"key": "business_recorder", "name": "Business Recorder", "type": "news"},
+    {"key": "dawn_business", "name": "Dawn Business", "type": "news"},
+    {"key": "mettis_global", "name": "Mettis Global", "type": "news"},
+]
+
+
 @router.get(
     "/news/sources",
     response_model=SourcesResponse,
@@ -259,28 +242,60 @@ async def get_sources(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Per-source health status. Restrict to admin if available."""
-    is_admin = getattr(user, "is_admin", False)
-    # if not is_admin:
-    #     raise HTTPException(status_code=403, detail="Admin access required")
-
+    """Per-source health status for all configured data sources."""
     from app.models.news import NewsSourceState
     result = await db.execute(select(NewsSourceState).order_by(NewsSourceState.source_key))
-    sources = result.scalars().all()
+    db_sources = {s.source_key: s for s in result.scalars().all()}
 
     source_list = []
-    for s in sources:
-        source_list.append(SourceHealthResponse(
-            key=s.source_key,
-            name=s.source_key.replace("_", " ").title(),
-            type=s.source_key if s.source_key in ("psx", "secp", "sbp", "ogra", "fbr_mof") else "news",
-            last_success_at=s.last_success_at.isoformat() if s.last_success_at else None,
-            last_error=s.last_error,
-            consecutive_failures=s.consecutive_failures,
-            healthy=s.healthy,
-        ))
+    for reg in REGISTERED_SOURCES:
+        s = db_sources.get(reg["key"])
+        if s:
+            source_list.append(SourceHealthResponse(
+                key=s.source_key,
+                name=reg["name"],
+                type=reg["type"],
+                last_success_at=s.last_success_at.isoformat() if s.last_success_at else None,
+                last_error=s.last_error,
+                consecutive_failures=s.consecutive_failures,
+                healthy=s.healthy,
+            ))
+        else:
+            source_list.append(SourceHealthResponse(
+                key=reg["key"],
+                name=reg["name"],
+                type=reg["type"],
+                last_success_at=None,
+                last_error=None,
+                consecutive_failures=0,
+                healthy=True,
+            ))
 
     return SourcesResponse(sources=source_list)
+
+
+@router.get(
+    "/news/{article_id}",
+    response_model=NewsArticleResponse,
+    summary="Get a single news article",
+)
+async def get_news_article(
+    article_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        svc = NewsService(db)
+        article = await svc.get_article_by_id(article_id)
+        if article is None:
+            raise NotFoundError(f"News article '{article_id}' not found.")
+        return NewsArticleResponse(**svc.to_response(article))
+    except NotFoundError:
+        raise
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("Get news article failed: %s", exc)
+        raise ServiceUnavailableError(f"Failed to fetch news article: {exc}")
 
 
 @router.get(
@@ -298,31 +313,29 @@ async def get_stock_news(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Stock page News tab - same as /news but filtered by symbol via link table."""
+    """Stock page News tab - retrieves live official announcements from PSX with Redis cache & DB fallback."""
     try:
         if source_type and source_type not in ("official", "news"):
             raise HTTPException(status_code=400, detail="source_type must be 'official' or 'news'")
         if sentiment and sentiment not in ("bullish", "bearish", "neutral"):
             raise HTTPException(status_code=400, detail="sentiment must be 'bullish', 'bearish', or 'neutral'")
 
-        svc = NewsService(db)
-        articles, total, next_cursor = await svc.get_articles(
-            limit=limit,
-            cursor=cursor,
-            symbol=symbol.upper(),
-            sentiment=sentiment,
-            source_type=source_type,
-            event_type=event_type,
-            row="news",  # Stock tab shows all news for that symbol, not just portfolio
-            user_id=None,
-        )
+        from app.services.psx_announcement_service import PSXAnnouncementService
+        psx_svc = PSXAnnouncementService(db)
+        items = await psx_svc.get_stock_announcements(symbol=symbol.upper(), limit=limit)
 
-        items = [svc.to_response(a) for a in articles]
+        # Apply optional filters
+        if sentiment:
+            items = [item for item in items if item.get("sentiment", {}).get("label") == sentiment.lower()]
+        if event_type:
+            items = [item for item in items if item.get("event_type") == event_type]
+        if source_type:
+            items = [item for item in items if item.get("source", {}).get("type") == source_type]
 
         return NewsListResponse(
             items=[NewsArticleResponse(**item) for item in items],
-            next_cursor=next_cursor,
-            has_more=next_cursor is not None,
+            next_cursor=None,
+            has_more=False,
             row="news",
             last_updated_at=ingestion_state.get_last_ingestion_time().isoformat() if ingestion_state.get_last_ingestion_time() else None,
             empty_reason="no_results" if not items else None,

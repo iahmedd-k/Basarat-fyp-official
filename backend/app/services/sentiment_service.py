@@ -561,15 +561,18 @@ async def get_sentiment_news(
     news_items = []
     for a in articles:
         sr = sentiment_results.get(a.id)
+        label = (sr.label if sr else a.sentiment_label) or "NEUTRAL"
+        score = float(sr.score) if (sr and sr.score is not None) else (float(a.sentiment_score) if a.sentiment_score is not None else 0.0)
+        model = (sr.model_name if sr else a.sentiment_method) or "keyword_heuristic"
         news_items.append({
             "id": a.id,
             "title": a.title,
-            "source": a.source,
-            "published_at": a.published_at.isoformat() if a.published_at else None,
-            "url": a.url,
-            "sentiment": sr.label if sr else None,
-            "sentiment_score": float(sr.score) if sr else None,
-            "sentiment_model": sr.model_name if sr else None,
+            "source": a.source or "Market News",
+            "published_at": a.published_at.isoformat() if a.published_at else (a.created_at.isoformat() if a.created_at else None),
+            "url": a.external_url or a.url,
+            "sentiment": label.upper(),
+            "sentiment_score": score,
+            "sentiment_model": model,
         })
 
     if sentiment:

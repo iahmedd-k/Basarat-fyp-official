@@ -6,12 +6,15 @@ class AppError(Exception):
     status_code: int = 500
     detail: str = "Internal server error"
     code: str = "INTERNAL_ERROR"
+    field: str | None = None
 
-    def __init__(self, detail: str | None = None, code: str | None = None):
+    def __init__(self, detail: str | None = None, code: str | None = None, field: str | None = None, **kwargs):
         if detail is not None:
             self.detail = detail
         if code is not None:
             self.code = code
+        if field is not None:
+            self.field = field
         super().__init__(self.detail)
 
 

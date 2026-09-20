@@ -7,6 +7,7 @@ from app.core.rate_limiter import limiter
 from app.core.exceptions import (
     BadRequestError,
     ConflictError,
+    ForbiddenError,
     NotFoundError,
     ServiceUnavailableError,
     ValidationFailedError,

@@ -58,14 +58,26 @@ class NewsService:
             if not user_symbols:
                 return [], 0, None  # no_holdings
 
-            # Join with link table
-            query = query.join(NewsArticleSymbol, NewsArticle.id == NewsArticleSymbol.article_id)
-            count_query = count_query.join(NewsArticleSymbol, NewsArticle.id == NewsArticleSymbol.article_id)
-            conditions.append(NewsArticleSymbol.symbol.in_(user_symbols))
+            # Join with link table or check symbols
+            sym_subq = select(NewsArticleSymbol.article_id).where(NewsArticleSymbol.symbol.in_(user_symbols))
+            or_filters = [NewsArticle.id.in_(sym_subq)]
+            for s in user_symbols:
+                or_filters.append(NewsArticle.symbols.ilike(f'%"{s}"%'))
+                or_filters.append(NewsArticle.title.ilike(f'%{s}%'))
+            conditions.append(or_(*or_filters))
+        elif symbol:
+            sym_clean = symbol.strip().upper()
+            sym_subq = select(NewsArticleSymbol.article_id).where(NewsArticleSymbol.symbol == sym_clean)
+            conditions.append(
+                or_(
+                    NewsArticle.id.in_(sym_subq),
+                    NewsArticle.symbols.ilike(f'%"{sym_clean}"%'),
+                    NewsArticle.symbols.ilike(f'%{sym_clean}%'),
+                    NewsArticle.title.ilike(f'%{sym_clean}%'),
+                )
+            )
 
         # Filters
-        if symbol:
-            conditions.append(NewsArticleSymbol.symbol == symbol.upper())
         if sentiment:
             conditions.append(NewsArticle.sentiment_label == sentiment.lower())
         if source:
@@ -101,7 +113,7 @@ class NewsService:
                 log.warning("Invalid cursor format: %s", cursor)
                 pass
 
-        query = query.order_by(NewsArticle.published_at.desc(), NewsArticle.id.desc())
+        query = query.order_by(NewsArticle.published_at.desc().nulls_last(), NewsArticle.created_at.desc(), NewsArticle.id.desc())
         query = query.limit(limit + 1)  # +1 to check has_more
 
         result = await self.db.execute(query)
@@ -127,10 +139,7 @@ class NewsService:
 
     async def _get_user_symbols(self, user_id: str) -> list[str]:
         """Get symbols from user's portfolio holdings."""
-        # Use the existing portfolio/holdings table through a function
-        # Find the existing get_user_symbols function or query holdings
         try:
-            # Try to find portfolio holdings
             from app.repository.portfolio_repository import PortfolioRepository
             repo = PortfolioRepository(self.db)
             holdings = await repo.get_holdings(user_id)
@@ -138,7 +147,6 @@ class NewsService:
         except Exception as exc:
             log.warning("Failed to get user symbols via PortfolioRepository: %s", exc)
 
-        # Fallback: query transactions directly
         try:
             from app.models.portfolio import PortfolioTransaction, TransactionType
             result = await self.db.execute(
@@ -167,36 +175,51 @@ class NewsService:
 
     @staticmethod
     def parse_company_names(raw: str | None) -> list[str]:
-        return NewsService.parse_symbols(raw)  # same format
+        return NewsService.parse_symbols(raw)
 
     def to_response(self, article: NewsArticle) -> dict:
-        """Convert NewsArticle to API response dict."""
+        """Convert NewsArticle to API response dict with fallback summary and external link."""
         symbols = self.parse_symbols(article.symbols)
         company_names = self.parse_company_names(article.company_names)
+
+        # Generate clear short summary for frontend if summary is empty
+        summary_text = article.summary
+        if not summary_text or not summary_text.strip():
+            src = article.source or "Market Sources"
+            summary_text = f"{article.title}. Key financial announcement and market update reported via {src}."
+
+        # Ensure external link is always populated for frontend clickthrough
+        ext_url = article.external_url or article.url
+
+        # Build symbol items
+        symbol_list = [
+            {"symbol": sym, "name": name}
+            for sym, name in zip(symbols, company_names)
+        ]
+        if not symbol_list and symbols:
+            for s in symbols:
+                symbol_list.append({"symbol": s, "name": None})
 
         return {
             "id": article.id,
             "title": article.title,
             "url": article.url,
-            "external_url": article.external_url,
+            "external_url": ext_url,
             "source": {
-                "key": article.source_key or "",
-                "name": article.source or "",
-                "type": article.source_type or "news",
+                "key": article.source_key or (article.source.lower().replace(" ", "_") if article.source else "news"),
+                "name": article.source or "Market News",
+                "type": article.source_type or ("official" if (article.source and "PSX" in article.source.upper()) else "news"),
             },
-            "is_official": article.source_type == "official",
-            "summary": article.summary,
-            "symbols": [
-                {"symbol": sym, "name": name}
-                for sym, name in zip(symbols, company_names)
-            ],
-            "event_type": article.event_type,
+            "is_official": article.source_type == "official" or (article.source and "PSX" in article.source.upper()),
+            "summary": summary_text,
+            "symbols": symbol_list,
+            "event_type": article.event_type or "market_update",
             "sentiment": None if article.sentiment_label is None else {
                 "label": article.sentiment_label,
                 "score": float(article.sentiment_score) if article.sentiment_score else None,
                 "method": article.sentiment_method,
             },
-            "impact_score": article.impact_score,
-            "published_at": article.published_at.isoformat() if article.published_at else None,
+            "impact_score": article.impact_score or 50,
+            "published_at": article.published_at.isoformat() if article.published_at else (article.created_at.isoformat() if article.created_at else None),
             "created_at": article.created_at.isoformat() if article.created_at else "",
         }

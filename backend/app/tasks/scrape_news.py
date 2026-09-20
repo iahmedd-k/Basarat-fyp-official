@@ -45,11 +45,11 @@ def run(self, force: bool = False, limit_per_source: int = 50):
     from app.services.news_pipeline.ingestion_state import get_last_ingestion_time
     from app.core.config import get_settings
 
-    status = market_status()
+    status = _run_async(market_status())
     log.info("News ingestion task triggered: force=%s, market_status=%s", force, status["status"])
 
     # ── Check 1: Market schedule gate ────────────────────────────────────
-    if not force and not is_ingestion_allowed():
+    if not force and not _run_async(is_ingestion_allowed()):
         log.info("Outside market hours and post-market window — skipping ingestion")
         return {
             "status": "skipped",

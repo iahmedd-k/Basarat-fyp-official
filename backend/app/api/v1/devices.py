@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
-from app.core.exceptions import ServiceUnavailableError
+from app.core.exceptions import NotFoundError, ServiceUnavailableError
 from app.db.session import get_db
 from app.models.user import Device, User
 from app.schemas.auth import DeviceRegisterRequest, DeviceResponse
@@ -22,6 +22,14 @@ async def register_device(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Register or refresh an FCM device token for mobile push notifications.
+
+    - **fcm_token**: Firebase Cloud Messaging registration token generated on client.
+    - **platform**: Client OS (`android`, `ios`, `web`).
+    - **device_name**: Optional human-readable device identifier (e.g. `Samsung S23`).
+
+    If the token already exists for the user, it reactivates the device (`is_active = true`).
+    """
     try:
         result = await db.execute(
             select(Device).where(
@@ -66,3 +74,19 @@ async def register_device(
         )
     except Exception as exc:
         raise ServiceUnavailableError("Failed to register device")
+
+
+@router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Deactivate a push notification device")
+async def unregister_device(
+    device_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deactivate an FCM device token so the device no longer receives push notifications."""
+    result = await db.execute(select(Device).where(Device.id == device_id, Device.user_id == user.id))
+    device = result.scalars().first()
+    if device is None:
+        from app.core.exceptions import NotFoundError
+        raise NotFoundError("Device not found")
+    device.is_active = False
+    await db.flush()

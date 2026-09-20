@@ -372,13 +372,28 @@ class MonteCarloRequest(BaseModel):
     """Request body for starting a Monte Carlo simulation."""
 
     num_simulations: int = Field(
-        1000, ge=100, le=10000,
-        description="Number of Monte Carlo paths",
+        default=1000,
+        ge=100,
+        le=10000,
+        description="Number of Monte Carlo paths (simulated price trajectories)",
+        examples=[1000],
     )
     horizon_days: int = Field(
-        30, ge=1, le=365,
-        description="Forecast horizon in trading days",
+        default=30,
+        ge=1,
+        le=365,
+        description="Forecast horizon in trading days (e.g., 30 days = ~1.5 months)",
+        examples=[30],
     )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "num_simulations": 1000,
+                "horizon_days": 30
+            }
+        }
+    }
 
 
 class MonteCarloResponse(BaseModel):

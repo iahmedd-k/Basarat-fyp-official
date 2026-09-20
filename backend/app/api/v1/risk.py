@@ -59,12 +59,18 @@ async def _get_holdings(db: AsyncSession, user_id: str) -> list[HoldingInfo]:
 
     holdings_info: list[HoldingInfo] = []
     for h in holdings:
-        # h already has symbol, sector, current_value from portfolio_service
-        current_value = float(h.get("market_value") or h.get("current_value") or 0)
+        if isinstance(h, dict):
+            symbol = h.get("symbol", "")
+            sector = h.get("sector") or "default"
+            current_value = float(h.get("market_value") or h.get("current_value") or 0)
+        else:
+            symbol = getattr(h, "symbol", "")
+            sector = getattr(h, "sector", None) or "default"
+            current_value = float(getattr(h, "market_value", None) or getattr(h, "current_value", 0) or 0)
         holdings_info.append(
             HoldingInfo(
-                symbol=h["symbol"],
-                sector=h.get("sector") or "default",
+                symbol=symbol,
+                sector=sector,
                 current_value=current_value,
                 allocation_pct=0.0,
             )

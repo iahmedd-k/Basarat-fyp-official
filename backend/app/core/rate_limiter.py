@@ -4,12 +4,15 @@ from slowapi.errors import RateLimitExceeded
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.core.config import get_settings
+
 
 def _get_client_ip(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
+    peer_ip = request.client.host if request.client else "unknown"
+    if forwarded and peer_ip in get_settings().TRUSTED_PROXY_IPS:
         return forwarded.split(",")[0].strip()
-    return get_remote_address(request)
+    return peer_ip or get_remote_address(request)
 
 
 def get_user_id_or_ip(request: Request) -> str:

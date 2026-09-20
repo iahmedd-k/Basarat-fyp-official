@@ -17,61 +17,59 @@ def _get_sync_db():
     """Get a synchronous DB session for Celery tasks."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    from app.core.config import settings
+    from app.core.config import get_settings
 
-    engine = create_engine(settings.DATABASE_URL_SYNC)
+    engine = create_engine(get_settings().DATABASE_URL_SYNC, pool_pre_ping=True)
     Session = sessionmaker(bind=engine)
     return Session()
 
 
 def _get_user_holdings_sync(user_id: str, symbols: list[str] | None = None):
     """Get portfolio holdings synchronously with computed current_value and allocation_pct."""
-    from app.models.portfolio import Portfolio, PortfolioHolding
+    from app.models.portfolio import PortfolioTransaction, TransactionType
     from app.models.stock import Stock
     from sqlalchemy import select
 
     db = _get_sync_db()
     try:
-        result = db.execute(
-            select(Portfolio).where(Portfolio.user_id == user_id).limit(1)
-        )
-        portfolio = result.scalars().first()
-        if not portfolio:
-            return []
-
-        q = (
-            select(PortfolioHolding, Stock)
-            .join(Stock, PortfolioHolding.stock_id == Stock.id)
-            .where(PortfolioHolding.portfolio_id == portfolio.id)
-        )
-        result = db.execute(q)
-        rows = result.all()
+        rows = db.execute(
+            select(PortfolioTransaction, Stock)
+            .join(Stock, PortfolioTransaction.symbol == Stock.symbol)
+            .where(PortfolioTransaction.user_id == user_id)
+            .order_by(PortfolioTransaction.transaction_date, PortfolioTransaction.created_at)
+        ).all()
 
         from app.services.stock_service import StockService
 
         stock_service = StockService()
         filtered_rows = []
-        for holding, stock in rows:
-            if symbols and stock.symbol not in symbols:
+        positions: dict[str, float] = {}
+        sectors: dict[str, str] = {}
+        for transaction, stock in rows:
+            quantity = float(transaction.quantity)
+            positions[stock.symbol] = positions.get(stock.symbol, 0.0) + (quantity if transaction.transaction_type == TransactionType.BUY else -quantity)
+            sectors[stock.symbol] = stock.sector or "default"
+        filtered_rows = []
+        for symbol, quantity in positions.items():
+            if quantity <= 0 or (symbols and symbol not in symbols):
                 continue
-            filtered_rows.append((holding, stock))
+            filtered_rows.append((symbol, quantity))
 
         if not filtered_rows:
             return []
 
-        stock_symbols = [stock.symbol for _, stock in filtered_rows]
+        stock_symbols = [symbol for symbol, _ in filtered_rows]
         quotes = stock_service.get_quote_batch(stock_symbols)
         quote_map = {sym: q for sym, q in zip(stock_symbols, quotes)}
 
         holdings = []
         total_value = 0.0
-        for holding, stock in filtered_rows:
-            quote = quote_map.get(stock.symbol)
+        from types import SimpleNamespace
+        for symbol, quantity in filtered_rows:
+            quote = quote_map.get(symbol)
             current_price = quote.get("current") if quote else None
-            current_value = (current_price * holding.quantity) if current_price else 0.0
-            holding.symbol = stock.symbol
-            holding.sector = getattr(stock, "sector", "default") or "default"
-            holding.current_value = current_value
+            current_value = (float(current_price) * quantity) if current_price else 0.0
+            holding = SimpleNamespace(symbol=symbol, sector=sectors[symbol], current_value=current_value, allocation_pct=0.0)
             total_value += current_value
             holdings.append(holding)
 
@@ -262,5 +260,13 @@ def _send_alerts_sync(user_id: str, breaches: list[dict]):
             )
             db.add(alert)
         db.commit()
+        from app.tasks.push_notifications import send_to_user
+        for breach in breaches:
+            send_to_user.delay(
+                user_id,
+                f"Basarat risk alert: {breach['severity'].upper()}",
+                breach["message"],
+                {"type": breach["type"], "severity": breach["severity"]},
+            )
     finally:
         db.close()

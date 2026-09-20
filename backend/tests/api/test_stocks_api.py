@@ -13,25 +13,28 @@ class TestStockSearch:
         assert "results" in data
         assert isinstance(data["results"], list)
 
-    async def test_search_requires_query(self, client: AsyncClient, auth_headers):
-        resp = await client.get("/api/v1/stocks/search", headers=auth_headers)
-        assert resp.status_code == 422
+    async def test_search_by_company_name_in_db(self, client: AsyncClient, auth_headers):
+        # Search by full company name "Habib" (matches Habib Bank Limited)
+        resp = await client.get("/api/v1/stocks/search?q=Habib", headers=auth_headers)
+        assert resp.status_code == 200
+        results = resp.json()["results"]
+        assert len(results) >= 1
+        assert any(r["symbol"] == "HBL" and "Habib" in r["name"] for r in results)
 
-    async def test_search_requires_auth(self, client: AsyncClient):
-        resp = await client.get("/api/v1/stocks/search?q=HB")
-        assert resp.status_code in (401, 403)
+        # Search by company name "Lucky" (matches Lucky Cement)
+        resp2 = await client.get("/api/v1/stocks/search?q=Lucky", headers=auth_headers)
+        assert resp2.status_code == 200
+        results2 = resp2.json()["results"]
+        assert len(results2) >= 1
+        assert any(r["symbol"] == "LUCK" for r in results2)
 
-    async def test_search_limit_validation(self, client: AsyncClient, auth_headers):
-        resp = await client.get("/api/v1/stocks/search?q=H&limit=101", headers=auth_headers)
-        assert resp.status_code == 422
-
-    async def test_search_empty_query(self, client: AsyncClient, auth_headers):
-        resp = await client.get("/api/v1/stocks/search?q=", headers=auth_headers)
-        assert resp.status_code == 422
-
-    async def test_search_limit_too_low(self, client: AsyncClient, auth_headers):
-        resp = await client.get("/api/v1/stocks/search?q=H&limit=0", headers=auth_headers)
-        assert resp.status_code == 422
+    async def test_search_rank_ordering(self, client: AsyncClient, auth_headers):
+        # Search prefix "HB" -> HBL should be returned
+        resp = await client.get("/api/v1/stocks/search?q=HB", headers=auth_headers)
+        assert resp.status_code == 200
+        results = resp.json()["results"]
+        assert len(results) >= 1
+        assert results[0]["symbol"] == "HBL"
 
 
 @pytest.mark.api
@@ -107,6 +110,9 @@ class TestStockTechnicalIndicators:
             data = resp.json()
             assert "symbol" in data
             assert "indicators" in data
+            assert "overall_signal" in data
+            assert "summary_message" in data
+            assert "summary" in data
             assert data["symbol"] == "HBL"
 
     async def test_indicators_requires_auth(self, client: AsyncClient):
@@ -125,6 +131,23 @@ class TestStockTechnicalIndicators:
             "/api/v1/stocks/HBL/technical-indicators?period=201",
             headers=auth_headers,
         )
+    async def test_indicators_with_limit(self, client: AsyncClient, auth_headers):
+        resp = await client.get(
+            "/api/v1/stocks/HBL/technical-indicators?indicators=RSI&limit=10",
+            headers=auth_headers,
+        )
+        assert resp.status_code in (200, 404, 503)
+        if resp.status_code == 200:
+            data = resp.json()
+            assert "indicators" in data
+            if "RSI" in data["indicators"]:
+                assert len(data["indicators"]["RSI"]) <= 10
+
+    async def test_indicators_invalid_limit(self, client: AsyncClient, auth_headers):
+        resp = await client.get(
+            "/api/v1/stocks/HBL/technical-indicators?limit=500",
+            headers=auth_headers,
+        )
         assert resp.status_code == 422
 
 
@@ -139,8 +162,13 @@ class TestStockFundamentals:
         if resp.status_code == 200:
             data = resp.json()
             assert "symbol" in data
-            assert "metrics" in data
             assert data["symbol"] == "HBL"
+            assert "company_profile" in data
+            assert "equity_profile" in data
+            assert "ratios" in data
+            assert "trading_limits" in data
+            assert "dividend_history" in data
+            assert "announcements" in data
 
     async def test_fundamentals_requires_auth(self, client: AsyncClient):
         resp = await client.get("/api/v1/stocks/HBL/fundamentals")

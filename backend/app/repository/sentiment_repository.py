@@ -69,22 +69,38 @@ class SentimentRepository:
     async def get_recent_news(
         self,
         symbol: str | None = None,
-        days: int = 7,
+        days: int = 365,
         limit: int = 100,
         page: int = 1,
     ) -> tuple[list[NewsArticle], int]:
-        from datetime import timedelta
+        from datetime import timezone, timedelta
+        from sqlalchemy import or_
+        from app.models.news import NewsArticleSymbol
 
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         stmt = (
             select(NewsArticle)
-            .where(NewsArticle.published_at >= cutoff)
-            .order_by(desc(NewsArticle.published_at))
+            .where(
+                or_(
+                    NewsArticle.published_at >= cutoff,
+                    NewsArticle.published_at.is_(None),
+                )
+            )
+            .order_by(NewsArticle.published_at.desc().nulls_last(), NewsArticle.created_at.desc())
         )
         if symbol:
-            stmt = stmt.where(NewsArticle.symbols.like(f"%{symbol.upper()}%"))
+            sym_clean = symbol.strip().upper()
+            sym_subq = select(NewsArticleSymbol.article_id).where(NewsArticleSymbol.symbol == sym_clean)
+            stmt = stmt.where(
+                or_(
+                    NewsArticle.id.in_(sym_subq),
+                    NewsArticle.symbols.ilike(f'%"{sym_clean}"%'),
+                    NewsArticle.symbols.ilike(f'%{sym_clean}%'),
+                    NewsArticle.title.ilike(f'%{sym_clean}%'),
+                )
+            )
 
-        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_stmt = select(func.count(NewsArticle.id)).where(stmt.whereclause)
         total = await self.db.scalar(count_stmt) or 0
 
         stmt = stmt.offset((page - 1) * limit).limit(limit)

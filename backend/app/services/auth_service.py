@@ -141,6 +141,9 @@ class AuthService:
         user_id: str,
         full_name: str | None = None,
         avatar_url: str | None = None,
+        risk_tolerance: str | None = None,
+        sector_preferences: list[str] | None = None,
+        investment_horizon: str | None = None,
     ) -> User:
         user = await self.db.get(User, user_id)
         if user is None:
@@ -150,6 +153,12 @@ class AuthService:
             user.full_name = full_name
         if avatar_url is not None:
             user.avatar_url = avatar_url
+        if risk_tolerance is not None:
+            user.risk_tolerance = risk_tolerance
+        if sector_preferences is not None:
+            user.sector_preferences = sector_preferences
+        if investment_horizon is not None:
+            user.investment_horizon = investment_horizon
 
         await self.db.flush()
         await self.db.refresh(user)
@@ -162,20 +171,12 @@ class AuthService:
         sector_preferences: list[str] | None = None,
         investment_horizon: str | None = None,
     ) -> User:
-        user = await self.db.get(User, user_id)
-        if user is None:
-            raise NotFoundError("User not found.")
-
-        if risk_tolerance is not None:
-            user.risk_tolerance = risk_tolerance
-        if sector_preferences is not None:
-            user.sector_preferences = sector_preferences
-        if investment_horizon is not None:
-            user.investment_horizon = investment_horizon
-
-        await self.db.flush()
-        await self.db.refresh(user)
-        return user
+        return await self.update_profile(
+            user_id=user_id,
+            risk_tolerance=risk_tolerance,
+            sector_preferences=sector_preferences,
+            investment_horizon=investment_horizon,
+        )
 
     async def update_notification_preferences(
         self,
@@ -238,13 +239,10 @@ class AuthService:
         )
         self.db.add(reset_token)
         await self.db.flush()
-
-        # TODO: Send email via async task (Celery)
-        # For now, log the token hash for testing (never log raw token)
-        # In production, use: send_password_reset_email.delay(user.email, raw_token)
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info("Password reset requested for user %s", user.email)
+        # Commit before dispatching so a delivered link always maps to a durable token.
+        await self.db.commit()
+        from app.tasks.email import send_password_reset_email
+        send_password_reset_email.delay(user.email, raw_token)
 
     async def reset_password(self, token: str, new_password: str) -> None:
         token_hash = hashlib.sha256(token.encode()).hexdigest()

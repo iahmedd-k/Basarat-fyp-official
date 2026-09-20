@@ -11,29 +11,18 @@ celery = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         # Existing tasks
-        "app.tasks.scrape_market",
         "app.tasks.scrape_news",
+        "app.tasks.news_tasks",
         "app.tasks.run_forecast_inference",
-        "app.tasks.compute_sentiment",
-        "app.tasks.evaluate_alert_rules",
-        # New: Daily workflow
-        "app.tasks.daily_workflow",
-        # New: Weekly retraining
-        "app.tasks.weekly_retraining",
-        # New: Model monitoring
         "app.tasks.model_monitoring",
-        # New: Recommendation cache
         "app.tasks.recommendation_cache",
-        # New: Risk tasks (Monte Carlo, threshold alerts)
         "app.tasks.risk_tasks",
-        # New: Sentiment aggregation
         "app.tasks.sentiment_tasks",
-        # New: Community tasks
         "app.tasks.community_tasks",
+        "app.tasks.push_notifications",
+        "app.tasks.email",
     ],
 )
-
-from celery.schedules import crontab
 
 celery.conf.update(
     task_serializer="json",
@@ -43,27 +32,18 @@ celery.conf.update(
     enable_utc=True,
     task_track_started=True,
     task_acks_late=True,
+    task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
+    result_expires=86400,
+    broker_connection_retry_on_startup=True,
     # Time limits for long-running tasks
     task_soft_time_limit=3600,
     task_time_limit=7200,
     beat_schedule={
         # ── Daily: data update + features + predictions + evaluation ──
-        "daily-data-update": {
-            "task": "app.tasks.daily_workflow.update_market_data",
+        "daily-workflow": {
+            "task": "app.tasks.daily_workflow.run_daily_pipeline",
             "schedule": crontab(hour=2, minute=0),  # 02:00 PKT
-        },
-        "daily-feature-generation": {
-            "task": "app.tasks.daily_workflow.generate_features",
-            "schedule": crontab(hour=3, minute=0),
-        },
-        "daily-predictions": {
-            "task": "app.tasks.daily_workflow.generate_predictions",
-            "schedule": crontab(hour=4, minute=0),
-        },
-        "daily-outcome-evaluation": {
-            "task": "app.tasks.daily_workflow.evaluate_pending",
-            "schedule": crontab(hour=5, minute=0),
         },
         # ── Weekly: retraining pipeline ──
         "weekly-retraining": {
@@ -93,6 +73,11 @@ celery.conf.update(
         "news-ingestion-market-aware": {
             "task": "app.tasks.scrape_news.run",
             "schedule": crontab(minute="*/30"),  # Every 30 min on the clock
+        },
+        # ── PSX Portfolio Announcements: every 10 min during active hours ──
+        "sync-portfolio-announcements": {
+            "task": "app.tasks.news_tasks.sync_portfolio_announcements",
+            "schedule": crontab(minute="*/10"),
         },
         # ── Rescore failed sentiment: hourly ──
         "rescore-failed-sentiment": {

@@ -122,6 +122,50 @@ async def get_recommendations(
 
 
 @router.get(
+    "/recommendations/engine-weights",
+    response_model=EngineWeightsResponse,
+    summary="Get current or default engine weights",
+)
+async def get_engine_weights(
+    user: User = Depends(get_current_user),
+):
+    try:
+        from app.services.recommendation_service import DEFAULT_WEIGHTS
+        user_w = _user_weights.get(user.id, {})
+        return EngineWeightsResponse(
+            gru_weight=user_w.get("gru_weight", DEFAULT_WEIGHTS.get("gru", 0.40)),
+            technical_weight=user_w.get("technical_weight", DEFAULT_WEIGHTS.get("technical", 0.35)),
+            fundamental_weight=user_w.get("fundamental_weight", DEFAULT_WEIGHTS.get("fundamental", 0.25)),
+        )
+    except Exception as exc:
+        raise ServiceUnavailableError(f"Failed to get engine weights: {exc}")
+
+
+@router.post(
+    "/recommendations/engine-weights",
+    response_model=EngineWeightsResponse,
+    summary="Set custom engine weights",
+)
+async def set_engine_weights(
+    data: EngineWeightsRequest,
+    user: User = Depends(get_current_user),
+):
+    try:
+        _user_weights[user.id] = {
+            "gru_weight": data.gru_weight,
+            "technical_weight": data.technical_weight,
+            "fundamental_weight": data.fundamental_weight,
+        }
+        return EngineWeightsResponse(
+            gru_weight=data.gru_weight,
+            technical_weight=data.technical_weight,
+            fundamental_weight=data.fundamental_weight,
+        )
+    except Exception as exc:
+        raise ServiceUnavailableError(f"Failed to set engine weights: {exc}")
+
+
+@router.get(
     "/recommendations/{symbol}",
     response_model=RecommendationDetailResponse,
     summary="Get detailed recommendation for a stock",
@@ -133,7 +177,7 @@ async def get_recommendation_detail(
     try:
         symbol = symbol.upper()
 
-        from app.services.recommendation_service import RecommendationEngine
+        from app.services.recommendation_service import RecommendationEngine, DEFAULT_WEIGHTS
 
         engine = RecommendationEngine()
         rec = engine.get_recommendation(
@@ -163,7 +207,7 @@ async def get_recommendation_detail(
             current_price=rec.get("current_price"),
             atr_14=rec.get("atr_14"),
             reasoning=reasoning,
-            weights=engine._weights,
+            weights=getattr(engine, "weights", DEFAULT_WEIGHTS),
         )
 
     except Exception as exc:
@@ -186,16 +230,14 @@ async def get_target_stop(
         from app.services.recommendation_service import RecommendationEngine
 
         features_path = Path("data/features/features_daily.parquet")
-        if not features_path.exists():
-            return TargetStopResponse(
-                symbol=symbol,
-                method="atr_band",
-                risk_tolerance=_get_user_risk_profile(user),
-            )
-
-        df = pd.read_parquet(features_path)
-        df["date"] = pd.to_datetime(df["date"])
-        sym_df = df[df["symbol"] == symbol].copy().sort_values("date").reset_index(drop=True)
+        sym_df = pd.DataFrame()
+        if features_path.exists():
+            try:
+                df = pd.read_parquet(features_path)
+                df["date"] = pd.to_datetime(df["date"])
+                sym_df = df[df["symbol"] == symbol].copy().sort_values("date").reset_index(drop=True)
+            except Exception as parquet_err:
+                log.warning("Error reading parquet in get_target_stop: %s", parquet_err)
 
         engine = RecommendationEngine()
         result = engine.compute_target_stop(
@@ -226,27 +268,3 @@ async def get_target_stop(
     except Exception as exc:
         log.exception("Failed to fetch target/stop for %s", symbol)
         raise ServiceUnavailableError(f"Failed to fetch target/stop: {exc}")
-
-
-@router.post(
-    "/recommendations/engine-weights",
-    response_model=EngineWeightsResponse,
-    summary="Set custom engine weights",
-)
-async def set_engine_weights(
-    data: EngineWeightsRequest,
-    user: User = Depends(get_current_user),
-):
-    try:
-        _user_weights[user.id] = {
-            "gru_weight": data.gru_weight,
-            "technical_weight": data.technical_weight,
-            "fundamental_weight": data.fundamental_weight,
-        }
-        return EngineWeightsResponse(
-            gru_weight=data.gru_weight,
-            technical_weight=data.technical_weight,
-            fundamental_weight=data.fundamental_weight,
-        )
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to set engine weights: {exc}")

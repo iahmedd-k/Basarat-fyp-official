@@ -6,6 +6,7 @@ from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
 from app.db.session import get_db
 from app.models.alert import Alert, AlertRule
+from app.models.stock import Stock
 from app.models.user import User
 from app.schemas.auth import (
     AlertResponse,
@@ -26,6 +27,11 @@ async def get_alert_rules(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Retrieve all custom alert rules configured by the authenticated user.
+
+    Returns a list of alert rule configurations including target stock, condition string,
+    threshold value, and active toggle state.
+    """
     try:
         result = await db.execute(
             select(AlertRule)
@@ -60,7 +66,18 @@ async def create_alert_rule(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Create a new custom alert rule for market conditions or stock triggers.
+
+    - **stock_id** *(optional)*: UUID of an existing stock from `GET /api/v1/stocks`, or `null` for general rules.
+    - **condition**: Trigger identifier (e.g. `price_above`, `price_below`, `var_threshold`).
+    - **threshold**: Target numeric trigger value (e.g. `250.0`).
+    """
     try:
+        if data.stock_id is not None:
+            stock = await db.get(Stock, data.stock_id)
+            if stock is None:
+                raise NotFoundError(f"Stock '{data.stock_id}' not found.")
+
         rule = AlertRule(
             user_id=user.id,
             stock_id=data.stock_id,
@@ -80,6 +97,8 @@ async def create_alert_rule(
             is_active=rule.is_active,
             created_at=rule.created_at.isoformat() if rule.created_at else "",
         )
+    except NotFoundError:
+        raise
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to create alert rule: {exc}")
 
@@ -95,6 +114,10 @@ async def update_alert_rule(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Partially update an existing alert rule.
+
+    Allows modifying threshold, trigger condition, target stock, or toggling active status.
+    """
     try:
         result = await db.execute(
             select(AlertRule).where(
@@ -107,6 +130,9 @@ async def update_alert_rule(
             raise NotFoundError(f"Alert rule '{rule_id}' not found.")
 
         if data.stock_id is not None:
+            stock = await db.get(Stock, data.stock_id)
+            if stock is None:
+                raise NotFoundError(f"Stock '{data.stock_id}' not found.")
             rule.stock_id = data.stock_id
         if data.condition is not None:
             rule.condition = data.condition
@@ -143,6 +169,7 @@ async def delete_alert_rule(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Permanently delete an alert rule owned by the authenticated user."""
     try:
         result = await db.execute(
             select(AlertRule).where(
@@ -168,12 +195,17 @@ async def delete_alert_rule(
     summary="Get user's alerts",
 )
 async def get_alerts(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    unread_only: bool = Query(False),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    unread_only: bool = Query(False, description="Filter for unread alerts only"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Retrieve financial, portfolio, and risk alerts generated for the user.
+
+    Returns alert records with severity headers (e.g. `[HIGH] VaR Breach`), message details,
+    timestamps, and read state.
+    """
     try:
         query = select(Alert).where(Alert.user_id == user.id)
         if unread_only:
@@ -211,6 +243,7 @@ async def mark_alert_read(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Mark a specific financial or risk alert as read (`is_read = true`)."""
     try:
         result = await db.execute(
             select(Alert).where(

@@ -5,6 +5,7 @@ import pandas as pd
 import pypsx_toolkit
 from fastapi import Depends
 
+from app.core.redis import cache_get_sync, cache_set_sync
 from app.services.market_service import MarketService
 
 QUOTE_TTL_SECONDS = 300
@@ -24,7 +25,10 @@ def _now():
 
 class StockService:
     def __init__(self, market_service: MarketService = Depends(MarketService)):
-        self._market = market_service
+        if market_service is None or not isinstance(market_service, MarketService):
+            self._market = MarketService()
+        else:
+            self._market = market_service
 
     def _get_market_frame(self):
         import pandas as pd
@@ -70,6 +74,26 @@ class StockService:
         rows = self.get_quote_batch([symbol])
         return rows[0] if rows else None
 
+    @staticmethod
+    def _get_field(row, *names, default=None):
+        if isinstance(row, dict):
+            for name in names:
+                if name in row:
+                    return row[name]
+        if hasattr(row, "__getitem__"):
+            for name in names:
+                try:
+                    if name in row:
+                        return row[name]
+                except Exception:
+                    pass
+        if hasattr(row, "get"):
+            for name in names:
+                val = row.get(name)
+                if val is not None:
+                    return val
+        return default
+
     def get_quote_batch(self, symbols):
         frame = self._get_market_frame()
         if frame is None or len(symbols) == 0:
@@ -81,20 +105,24 @@ class StockService:
                 rows.append(self._empty_quote(symbol))
                 continue
             row = frame.loc[symbol]
-            ldcp = self._num(row["LDCP"])
-            current = self._num(row["Current"])
-            change = self._num(row["Change"])
+            ldcp = self._num(self._get_field(row, "LDCP", "ldcp", "close", "Close", default=0.0))
+            current = self._num(self._get_field(row, "Current", "current", "price", "Price", default=0.0))
+            change = self._num(self._get_field(row, "Change", "change", default=0.0))
             change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
-            volume = self._safe_int(row["Volume"])
+            volume = self._safe_int(self._get_field(row, "Volume", "volume", "Vol", "vol", default=0))
+            sector = self._get_field(row, "Sector", "sector", "SECTOR", default=None)
+            open_val = self._num(self._get_field(row, "Open", "open", default=0.0))
+            high_val = self._num(self._get_field(row, "High", "high", default=0.0))
+            low_val = self._num(self._get_field(row, "Low", "low", default=0.0))
             rows.append(
                 {
                     "symbol": symbol,
                     "name": symbol,
-                    "sector": row["Sector"],
+                    "sector": sector,
                     "ldcp": ldcp,
-                    "open": self._num(row["Open"]),
-                    "high": self._num(row["High"]),
-                    "low": self._num(row["Low"]),
+                    "open": open_val,
+                    "high": high_val,
+                    "low": low_val,
                     "current": current,
                     "change": change,
                     "change_pct": change_pct,
@@ -267,16 +295,38 @@ class StockService:
             )
         return {"symbol": symbol, "range": label, "bars": bars}
 
-    def technical_indicators(self, symbol: str, indicators: str = "RSI,MACD,BB,SMA,ADX", period: int = 14):
+    def technical_indicators(
+        self,
+        symbol: str,
+        indicators: str = "RSI,MACD,BB,SMA,ADX",
+        period: int = 14,
+        limit: int = 30,
+    ):
         symbol = str(symbol).upper()
+        norm_indicators = ",".join(sorted([i.strip().upper() for i in indicators.split(",") if i.strip()]))
+        cache_key = f"tech:{symbol}:{norm_indicators}:{period}:{limit}"
+
+        # 1. Check Redis cache first
+        cached = cache_get_sync(cache_key)
+        if cached is not None:
+            return cached
+
         requested = [i.strip().upper() for i in indicators.split(",") if i.strip()]
         end = date.today()
         df = self._get_ohlcv(symbol, end - timedelta(days=370), end)
         if df is None or df.empty:
-            return {"symbol": symbol, "period": period, "indicators": {}}
+            return {
+                "symbol": symbol,
+                "period": period,
+                "overall_signal": "NEUTRAL",
+                "summary_message": "No historical price data available to compute technical indicators.",
+                "signals_breakdown": {"buy": 0, "neutral": 0, "sell": 0},
+                "summary": {},
+                "indicators": {},
+            }
 
         close = df["CLOSE"].astype(float)
-        result = {"symbol": symbol, "period": period, "indicators": {}}
+        latest_close = float(close.iloc[-1]) if not close.empty else 0.0
 
         def to_series(s):
             out = []
@@ -285,23 +335,155 @@ class StockService:
                 if v != v:
                     continue
                 out.append({"date": str(ts.date()), "value": round(v, 3)})
+            # Apply limit to slice only recent points
+            if limit and limit > 0:
+                return out[-limit:]
             return out
 
+        ind_series = {}
+        summary = {}
+        signals = {"buy": 0, "neutral": 0, "sell": 0}
+
+        # --- RSI ---
         if "RSI" in requested:
-            result["indicators"]["RSI"] = to_series(pypsx_toolkit.rsi(df, window=period, column="CLOSE"))
+            full_rsi = to_series(pypsx_toolkit.rsi(df, window=period, column="CLOSE"))
+            ind_series["RSI"] = full_rsi
+            if full_rsi:
+                latest_rsi = full_rsi[-1]["value"]
+                if latest_rsi >= 70:
+                    sig, desc = "SELL", "RSI is in overbought territory (>=70); potential pullback risk."
+                    signals["sell"] += 1
+                elif latest_rsi <= 30:
+                    sig, desc = "BUY", "RSI is in oversold territory (<=30); potential bullish rebound."
+                elif latest_rsi >= 50:
+                    sig, desc = "BUY", "RSI indicates positive upward momentum (50-70)."
+                    signals["buy"] += 1
+                else:
+                    sig, desc = "NEUTRAL", "RSI is below 50, showing subdued momentum."
+                    signals["neutral"] += 1
+                summary["rsi"] = {"value": latest_rsi, "signal": sig, "description": desc}
+
+        # --- MACD ---
         if "MACD" in requested:
             macd_line, macd_signal, _hist = pypsx_toolkit.macd(df, fast=12, slow=26, signal=9, column="CLOSE")
-            result["indicators"]["MACD"] = to_series(macd_line)
-            result["indicators"]["MACD_SIGNAL"] = to_series(macd_signal)
+            macd_s = to_series(macd_line)
+            sig_s = to_series(macd_signal)
+            ind_series["MACD"] = macd_s
+            ind_series["MACD_SIGNAL"] = sig_s
+            if macd_s and sig_s:
+                latest_macd = macd_s[-1]["value"]
+                latest_sig = sig_s[-1]["value"]
+                if latest_macd > latest_sig:
+                    sig, desc = "BUY", "Bullish MACD crossover; upward momentum is accelerating."
+                    signals["buy"] += 1
+                elif latest_macd < latest_sig:
+                    sig, desc = "SELL", "Bearish MACD crossover; downward momentum detected."
+                    signals["sell"] += 1
+                else:
+                    sig, desc = "NEUTRAL", "MACD line is converging with signal line."
+                    signals["neutral"] += 1
+                summary["macd"] = {
+                    "value": latest_macd,
+                    "signal_line": latest_sig,
+                    "signal": sig,
+                    "description": desc,
+                }
+
+        # --- Bollinger Bands ---
         if "BB" in requested or "BOLLINGER" in requested:
             bb_low, bb_mid, bb_up = pypsx_toolkit.bollinger_bands(df, window=20, num_std=2.0, column="CLOSE")
-            result["indicators"]["BB_LOWER"] = to_series(bb_low)
-            result["indicators"]["BB_MID"] = to_series(bb_mid)
-            result["indicators"]["BB_UPPER"] = to_series(bb_up)
+            low_s = to_series(bb_low)
+            mid_s = to_series(bb_mid)
+            up_s = to_series(bb_up)
+            ind_series["BB_LOWER"] = low_s
+            ind_series["BB_MID"] = mid_s
+            ind_series["BB_UPPER"] = up_s
+            if low_s and mid_s and up_s:
+                cur_up = up_s[-1]["value"]
+                cur_low = low_s[-1]["value"]
+                cur_mid = mid_s[-1]["value"]
+                if latest_close >= cur_up:
+                    sig, desc = "SELL", "Price is touching the upper Bollinger Band (overbought zone)."
+                    signals["sell"] += 1
+                elif latest_close <= cur_low:
+                    sig, desc = "BUY", "Price is touching the lower Bollinger Band (oversold zone)."
+                    signals["buy"] += 1
+                else:
+                    sig, desc = "NEUTRAL", "Price is oscillating within normal volatility bands."
+                    signals["neutral"] += 1
+                summary["bollinger"] = {
+                    "lower": cur_low,
+                    "mid": cur_mid,
+                    "upper": cur_up,
+                    "signal": sig,
+                    "description": desc,
+                }
+
+        # --- SMA ---
         if "SMA" in requested:
-            result["indicators"]["SMA"] = to_series(close.rolling(window=period).mean())
+            sma_s = to_series(close.rolling(window=period).mean())
+            ind_series["SMA"] = sma_s
+            if sma_s:
+                latest_sma = sma_s[-1]["value"]
+                if latest_close > latest_sma:
+                    sig, desc = "BUY", f"Price (PKR {latest_close:.2f}) is above the {period}-day moving average ({latest_sma:.2f})."
+                    signals["buy"] += 1
+                elif latest_close < latest_sma:
+                    sig, desc = "SELL", f"Price (PKR {latest_close:.2f}) is below the {period}-day moving average ({latest_sma:.2f})."
+                    signals["sell"] += 1
+                else:
+                    sig, desc = "NEUTRAL", f"Price is matching the {period}-day moving average."
+                    signals["neutral"] += 1
+                summary["sma"] = {"value": latest_sma, "signal": sig, "description": desc}
+
+        # --- ADX ---
         if "ADX" in requested:
-            result["indicators"]["ADX"] = to_series(self._adx(df, period))
+            adx_s = to_series(self._adx(df, period))
+            ind_series["ADX"] = adx_s
+            if adx_s:
+                latest_adx = adx_s[-1]["value"]
+                if latest_adx >= 25:
+                    trend_str, desc = "STRONG", f"ADX ({latest_adx:.1f}) confirms a strong directional trend."
+                elif latest_adx < 20:
+                    trend_str, desc = "WEAK", f"ADX ({latest_adx:.1f}) indicates a weak, choppy or range-bound market."
+                else:
+                    trend_str, desc = "MODERATE", f"ADX ({latest_adx:.1f}) indicates moderate trend development."
+                summary["adx"] = {
+                    "value": latest_adx,
+                    "trend_strength": trend_str,
+                    "description": desc,
+                }
+
+        # --- Overall Signal & Message ---
+        buy_c, neut_c, sell_c = signals["buy"], signals["neutral"], signals["sell"]
+        if buy_c >= 3 and sell_c == 0:
+            overall = "STRONGLY_BULLISH"
+            msg = f"Technical outlook is Strongly Bullish based on {buy_c} buy signals with 0 sell signals."
+        elif buy_c > sell_c:
+            overall = "BULLISH"
+            msg = f"Technical outlook is Moderately Bullish with {buy_c} buy, {neut_c} neutral, and {sell_c} sell signals."
+        elif sell_c >= 3 and buy_c == 0:
+            overall = "STRONGLY_BEARISH"
+            msg = f"Technical outlook is Strongly Bearish based on {sell_c} sell signals with 0 buy signals."
+        elif sell_c > buy_c:
+            overall = "BEARISH"
+            msg = f"Technical outlook is Bearish with {sell_c} sell, {neut_c} neutral, and {buy_c} buy signals."
+        else:
+            overall = "NEUTRAL"
+            msg = f"Technical outlook is Neutral / Consolidating with {buy_c} buy, {neut_c} neutral, and {sell_c} sell signals."
+
+        result = {
+            "symbol": symbol,
+            "period": period,
+            "overall_signal": overall,
+            "summary_message": msg,
+            "signals_breakdown": signals,
+            "summary": summary,
+            "indicators": ind_series,
+        }
+
+        # Cache in Redis (300s TTL)
+        cache_set_sync(cache_key, result, 300)
         return result
 
     @staticmethod
@@ -331,17 +513,166 @@ class StockService:
         adx = dx.ewm(alpha=1 / period, adjust=False).mean()
         return adx
 
+    def _fund_raw_string(self, symbol, category, metric_name=None):
+        frame = self._get_fund_frame(symbol)
+        if frame is None or frame.empty:
+            return None
+        try:
+            for idx, row in frame.iterrows():
+                cat = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else ""
+                met = idx[2] if isinstance(idx, tuple) and len(idx) > 2 else ""
+                val = str(row.get("VALUE", "")).strip()
+                if category.lower() in str(cat).lower():
+                    if metric_name is None:
+                        return val
+                    if metric_name.lower() in str(met).lower():
+                        return val
+                    if metric_name.lower() in str(val).lower():
+                        return str(met)
+            return None
+        except Exception:
+            return None
+
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
+        cache_key = f"fund:{symbol}"
+
+        cached = cache_get_sync(cache_key)
+        if cached is not None:
+            return cached
+
         quote = self._get_quote_frame(symbol)
         self._get_fund_frame(symbol)  # populate cache for _fund_metric
         div = self._get_dividend_frame(symbol)
 
+        # 1. Company Profile & Governance
+        desc = None
+        try:
+            desc = pypsx_toolkit.get_business_description(symbol)
+        except Exception:
+            pass
+        if not desc:
+            desc = self._fund_raw_string(symbol, "Profile", "Business Description")
+
+        ceo = self._fund_raw_string(symbol, "Governance", "CEO")
+        chairperson = self._fund_raw_string(symbol, "Governance", "Chairperson")
+        secretary = self._fund_raw_string(symbol, "Governance", "Company Secretary")
+        website = self._fund_raw_string(symbol, "Profile", "Website")
+        address = self._fund_raw_string(symbol, "Profile", "Address")
+        sector = self._sector_of(symbol)
+
+        company_profile = {
+            "name": symbol,
+            "sector": sector,
+            "business_description": desc,
+            "ceo": ceo,
+            "chairperson": chairperson,
+            "company_secretary": secretary,
+            "website": website,
+            "address": address,
+        }
+
+        # 2. Equity Profile
+        market_cap_k = self._fund_metric(symbol, "Equity Profile", "Market Cap (000's)")
+        market_cap_pkr = (market_cap_k * 1000.0) if market_cap_k else None
+        market_cap_m = round(market_cap_k / 1000.0, 2) if market_cap_k else None
+        total_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Shares"))
+        free_float_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Free Float"))
+        free_float_pct = self._fund_metric(symbol, "Equity Profile", "Free Float")
+        if free_float_pct and free_float_pct > 100:  # If raw shares was returned instead of pct
+            free_float_pct = round((free_float_shares / total_shares * 100), 2) if total_shares else None
+
+        equity_profile = {
+            "market_cap_pkr": market_cap_pkr,
+            "market_cap_pkr_m": market_cap_m,
+            "total_shares": total_shares if total_shares > 0 else None,
+            "free_float_shares": free_float_shares if free_float_shares > 0 else None,
+            "free_float_pct": free_float_pct,
+        }
+
+        # 3. Ratios & Valuation
         pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
         eps = self._fund_metric(symbol, "Financials Annual", "EPS")
-        market_cap_m = self._market_cap_m(symbol)
         div_yield = self._div_yield(div)
+        peg = self._fund_metric(symbol, "Ratios", "PEG")
+        eps_growth = self._fund_metric(symbol, "Ratios", "EPS Growth (%)")
+        net_margin = self._fund_metric(symbol, "Ratios", "Net Profit Margin (%)")
+        gross_margin = self._fund_metric(symbol, "Ratios", "Gross Profit Margin (%)")
 
+        ratios = {
+            "pe_ratio": pe_ratio,
+            "peg_ratio": peg,
+            "eps": eps,
+            "eps_growth_pct": eps_growth,
+            "net_profit_margin_pct": net_margin,
+            "gross_profit_margin_pct": gross_margin,
+            "dividend_yield_pct": div_yield,
+        }
+
+        # 4. Trading Limits & 52-Week Range (via snapshot)
+        year_high, year_low = None, None
+        cb_low, cb_up = None, None
+        year_change, ytd_change = None, None
+        try:
+            snap = pypsx_toolkit.get_snapshot(symbol)
+            if isinstance(snap, dict):
+                reg = snap.get("REG", {})
+                cb = reg.get("CIRCUIT BREAKER")
+                if cb and isinstance(cb, (tuple, list)) and len(cb) >= 2:
+                    cb_low, cb_up = self._num(cb[0]), self._num(cb[1])
+                range_52 = reg.get("52-WEEK RANGE ^")
+                if range_52 and isinstance(range_52, (tuple, list)) and len(range_52) >= 2:
+                    year_low, year_high = self._num(range_52[0]), self._num(range_52[1])
+                year_change = self._num(reg.get("1-Year Change * ^"))
+                ytd_change = self._num(reg.get("YTD Change * ^"))
+        except Exception:
+            pass
+
+        if year_change is None:
+            year_change = self._quote_field(quote, "1-YEAR CHANGE * ^")
+        if ytd_change is None:
+            ytd_change = self._quote_field(quote, "YTD CHANGE * ^")
+
+        trading_limits = {
+            "year_high": year_high,
+            "year_low": year_low,
+            "circuit_breaker_lower": cb_low,
+            "circuit_breaker_upper": cb_up,
+            "year_change_pct": year_change,
+            "ytd_change_pct": ytd_change,
+        }
+
+        # 5. Dividend History
+        dividend_history = []
+        try:
+            div_df = pypsx_toolkit.get_dividend_history(symbol)
+            if div_df is not None and not div_df.empty:
+                for _, drow in div_df.head(5).iterrows():
+                    dividend_history.append({
+                        "ex_date": str(drow.get("EX-DIVIDEND DATE", "")),
+                        "cash_amount": str(drow.get("CASH AMOUNT", "")),
+                        "record_date": str(drow.get("RECORD DATE", "")),
+                        "pay_date": str(drow.get("PAY DATE", "")),
+                    })
+        except Exception:
+            pass
+
+        # 6. Official Announcements
+        announcements = []
+        try:
+            ann_df = pypsx_toolkit.get_announcements(symbol)
+            if ann_df is not None and not ann_df.empty:
+                for idx, arow in ann_df.head(5).iterrows():
+                    ann_date = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else str(idx)
+                    announcements.append({
+                        "date": str(ann_date),
+                        "title": str(arow.get("TITLE", "")),
+                        "pdf_link": str(arow.get("PDF_LINK", "")),
+                    })
+        except Exception:
+            pass
+
+        # Legacy backward compatible metrics & extras
         metrics = [
             _metric("EPS", eps, "Earnings per share over the last twelve months."),
             _metric("P/E Ratio", pe_ratio, "Price-to-earnings; lower values suggest cheaper valuation."),
@@ -352,14 +683,28 @@ class StockService:
         ]
 
         extras = {
-            "year_change_pct": self._quote_field(quote, "1-YEAR CHANGE * ^"),
-            "ytd_change_pct": self._quote_field(quote, "YTD CHANGE * ^"),
-            "gross_profit_margin_pct": self._fund_metric(symbol, "Ratios", "Gross Profit Margin (%)"),
-            "net_profit_margin_pct": self._fund_metric(symbol, "Ratios", "Net Profit Margin (%)"),
-            "eps_growth_pct": self._fund_metric(symbol, "Ratios", "EPS Growth (%)"),
+            "year_change_pct": year_change,
+            "ytd_change_pct": ytd_change,
+            "gross_profit_margin_pct": gross_margin,
+            "net_profit_margin_pct": net_margin,
+            "eps_growth_pct": eps_growth,
         }
 
-        return {"symbol": symbol, "metrics": metrics, "extras": extras}
+        result = {
+            "symbol": symbol,
+            "company_profile": company_profile,
+            "equity_profile": equity_profile,
+            "ratios": ratios,
+            "trading_limits": trading_limits,
+            "dividend_history": dividend_history,
+            "announcements": announcements,
+            "metrics": metrics,
+            "extras": extras,
+        }
+
+        # Cache in Redis (1800s / 30m TTL)
+        cache_set_sync(cache_key, result, 1800)
+        return result
 
     def _div_yield(self, div):
         if div is None or div.empty or "DIVIDEND YIELD" not in div.columns:

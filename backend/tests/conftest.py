@@ -1,4 +1,5 @@
-"""Shared test fixtures for the Basarat test suite."""
+import os
+os.environ.setdefault("SECRET_KEY", "test-secret-key-12345678901234567890")
 
 import asyncio
 from collections.abc import AsyncGenerator
@@ -22,6 +23,18 @@ from app.models.stock import Stock
 from app.models.user import User
 
 
+try:
+    from app.celery_app import celery
+    celery.conf.update(
+        task_always_eager=True,
+        task_eager_propagates=True,
+        broker_url="memory://",
+        result_backend="cache+memory://",
+    )
+except Exception:
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Async event-loop fixture (session-scoped so one loop for the whole suite)
 # ---------------------------------------------------------------------------
@@ -30,6 +43,15 @@ def event_loop():
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest.fixture(autouse=True)
+def _mock_email_tasks(monkeypatch):
+    try:
+        from app.tasks import email as email_tasks
+        monkeypatch.setattr(email_tasks.send_password_reset_email, "delay", lambda *args, **kwargs: None)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -282,10 +304,54 @@ def mock_stock_service():
         ]}
 
     def mock_technical_indicators(symbol, indicators="RSI,MACD,BB,SMA,ADX", period=14):
-        return {"symbol": symbol.upper(), "period": period, "indicators": {"RSI": [{"date": "2025-01-01", "value": 65.0}]}}
+        return {
+            "symbol": symbol.upper(),
+            "period": period,
+            "overall_signal": "BULLISH",
+            "summary_message": "Technical outlook is Moderately Bullish.",
+            "signals_breakdown": {"buy": 1, "neutral": 0, "sell": 0},
+            "summary": {
+                "rsi": {"value": 65.0, "signal": "BUY", "description": "RSI indicates positive upward momentum."}
+            },
+            "indicators": {"RSI": [{"date": "2025-01-01", "value": 65.0}]},
+        }
 
     def mock_get_fundamentals(symbol):
-        return {"symbol": symbol.upper(), "metrics": [], "extras": {}}
+        return {
+            "symbol": symbol.upper(),
+            "company_profile": {
+                "name": "Habib Bank Limited",
+                "sector": "Commercial Banks",
+                "business_description": "Habib Bank Limited is a multinational bank.",
+                "ceo": "Muhammad Nassir Salim",
+                "website": "http://www.hbl.com",
+            },
+            "equity_profile": {
+                "market_cap_pkr_m": 444514.98,
+                "total_shares": 1466852508,
+                "free_float_pct": 40.0,
+            },
+            "ratios": {
+                "pe_ratio": 6.88,
+                "eps": 42.60,
+                "eps_growth_pct": 10.08,
+                "net_profit_margin_pct": 9.84,
+            },
+            "trading_limits": {
+                "year_high": 369.99,
+                "year_low": 235.55,
+                "circuit_breaker_lower": 267.67,
+                "circuit_breaker_upper": 327.15,
+            },
+            "dividend_history": [
+                {"ex_date": "Aug 13, 2026", "cash_amount": "6.000 PKR"}
+            ],
+            "announcements": [
+                {"date": "Aug 10, 2026", "title": "Half Yearly Report", "pdf_link": "https://dps.psx.com.pk/..."}
+            ],
+            "metrics": [],
+            "extras": {},
+        }
 
     def mock_search_symbols(q, limit=10):
         q = (q or "").strip().upper()

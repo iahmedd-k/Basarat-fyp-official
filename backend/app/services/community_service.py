@@ -59,13 +59,15 @@ class CommunityService:
         if len(content) > self.MAX_POST_CONTENT_LENGTH:
             raise ValidationFailedError(f"Content exceeds maximum length of {self.MAX_POST_CONTENT_LENGTH}")
 
-        if post_type == PostType.STOCK:
+        pt_value = post_type.value if hasattr(post_type, "value") else str(post_type)
+        if pt_value == "STOCK":
             if not stock_symbol:
                 raise ValidationFailedError("stock_symbol is required for STOCK posts")
-            stock = await self.db.get(Stock, stock_symbol)
+            stock_res = await self.db.execute(select(Stock).where(Stock.symbol == stock_symbol.upper()))
+            stock = stock_res.scalars().first()
             if not stock or not stock.is_active:
                 raise NotFoundError(f"Stock '{stock_symbol}' not found or inactive")
-        elif post_type == PostType.GENERAL_MARKET:
+        elif pt_value == "GENERAL_MARKET":
             if stock_symbol:
                 raise ValidationFailedError("stock_symbol must not be provided for GENERAL_MARKET posts")
             stock_symbol = None
@@ -185,10 +187,11 @@ class CommunityService:
 
     async def admin_restore_post(self, post_id: str, moderator_id: str) -> CommunityPost:
         post = await self.get_post_by_id(post_id, include_hidden=True)
-        if post.status != PostStatus.TEMPORARILY_HIDDEN.value:
-            raise ConflictError("Only temporarily hidden posts can be restored")
+        if post.status not in (PostStatus.TEMPORARILY_HIDDEN.value, PostStatus.DELETED.value):
+            raise ConflictError("Only temporarily hidden or deleted posts can be restored")
 
         post.status = PostStatus.PUBLISHED.value
+        post.removed_reason = None
         post.updated_at = datetime.now(timezone.utc)
 
         await self.db.execute(

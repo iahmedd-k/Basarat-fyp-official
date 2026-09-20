@@ -4,6 +4,7 @@ import logging
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import (
+    ForbiddenError,
     NotFoundError,
     ServiceUnavailableError,
 )

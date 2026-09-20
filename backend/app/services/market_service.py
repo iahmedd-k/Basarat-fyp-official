@@ -1,23 +1,21 @@
 import asyncio
 import logging
 import math
-import time
 from collections import defaultdict
 
 import pypsx_toolkit
 
+from app.core.redis import (
+    cache_get,
+    cache_get_sync,
+    cache_set,
+    cache_set_sync,
+)
+
 log = logging.getLogger(__name__)
 
 CACHE_TTL_SECONDS = 60
-
-_indices_cache: dict | None = None
-_indices_cache_time: float = 0.0
-
-_constituents_cache: dict[str, list] = {}
-_constituents_cache_time: dict[str, float] = {}
-
-_market_data_cache: list | None = None
-_market_data_cache_time: float = 0.0
+CONSTITUENTS_TTL_SECONDS = 300
 
 
 class MarketService:
@@ -48,12 +46,11 @@ class MarketService:
             return default
 
     async def get_indices(self) -> list[dict]:
-        global _indices_cache, _indices_cache_time
-        now = time.monotonic()
-
-        if _indices_cache is not None and now - _indices_cache_time < CACHE_TTL_SECONDS:
-            log.debug("Indices cache hit")
-            return _indices_cache
+        cache_key = "market:indices"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            log.debug("Indices cache hit from Redis")
+            return cached
 
         log.info("Fetching indices from external API")
         raw = await asyncio.to_thread(pypsx_toolkit.get_indices)
@@ -79,18 +76,15 @@ class MarketService:
             if code in self.MAIN_INDICES
         ]
 
-        _indices_cache = results
-        _indices_cache_time = now
-        log.info("Fetched %d indices", len(results))
+        await cache_set(cache_key, results, CACHE_TTL_SECONDS)
+        log.info("Stored %d indices in centralized cache", len(results))
         return results
 
     async def get_index_constituents(self, index_code: str) -> list[dict]:
-        now = time.monotonic()
-        cached = _constituents_cache.get(index_code)
-        cached_time = _constituents_cache_time.get(index_code, 0.0)
-
-        if cached is not None and now - cached_time < CACHE_TTL_SECONDS:
-            log.debug("Constituents cache hit for %s", index_code)
+        cache_key = f"market:constituents:{index_code}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            log.debug("Constituents cache hit from Redis for %s", index_code)
             return cached
 
         log.info("Fetching constituents for %s from external API", index_code)
@@ -121,27 +115,18 @@ class MarketService:
                 log.warning("Skipping malformed constituent row: %s", symbol, exc_info=True)
                 continue
 
-        _constituents_cache[index_code] = results
-        _constituents_cache_time[index_code] = now
-        log.info("Fetched %d constituents for %s", len(results), index_code)
+        await cache_set(cache_key, results, CONSTITUENTS_TTL_SECONDS)
+        log.info("Stored %d constituents for %s in centralized cache", len(results), index_code)
         return results
 
     def get_market_data_sync(self, force_refresh: bool = False) -> list[dict]:
-        """Synchronous market data fetch with caching.
-
-        Used by StockService which operates synchronously. Bypasses asyncio
-        to avoid event-loop conflicts.
-        """
-        global _market_data_cache, _market_data_cache_time
-        now = time.monotonic()
-
-        if (
-            not force_refresh
-            and _market_data_cache is not None
-            and now - _market_data_cache_time < CACHE_TTL_SECONDS
-        ):
-            log.debug("Market data cache hit (sync)")
-            return _market_data_cache
+        """Synchronous market data fetch with centralized Redis caching."""
+        cache_key = "market:quotes"
+        if not force_refresh:
+            cached = cache_get_sync(cache_key)
+            if cached is not None:
+                log.debug("Market data cache hit from Redis (sync)")
+                return cached
 
         log.info("Fetching market watch from external API (sync)")
         raw = pypsx_toolkit.market_watch()
@@ -152,7 +137,7 @@ class MarketService:
             change = self._safe_float(row.get("Change"))
             change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
             rows.append({
-                "symbol": symbol,
+                "symbol": str(symbol),
                 "sector": str(row.get("Sector", "")),
                 "ldcp": ldcp,
                 "open": self._safe_float(row.get("Open")),
@@ -164,22 +149,17 @@ class MarketService:
                 "volume": self._safe_int(row.get("Volume")),
             })
 
-        _market_data_cache = rows
-        _market_data_cache_time = now
-        log.info("Fetched %d market quotes (sync)", len(rows))
+        cache_set_sync(cache_key, rows, CACHE_TTL_SECONDS)
+        log.info("Stored %d market quotes in centralized cache (sync)", len(rows))
         return rows
 
     async def get_market_data(self, force_refresh: bool = False) -> list[dict]:
-        global _market_data_cache, _market_data_cache_time
-        now = time.monotonic()
-
-        if (
-            not force_refresh
-            and _market_data_cache is not None
-            and now - _market_data_cache_time < CACHE_TTL_SECONDS
-        ):
-            log.debug("Market data cache hit")
-            return _market_data_cache
+        cache_key = "market:quotes"
+        if not force_refresh:
+            cached = await cache_get(cache_key)
+            if cached is not None:
+                log.debug("Market data cache hit from Redis (async)")
+                return cached
 
         log.info("Fetching market watch from external API")
         raw = await asyncio.to_thread(pypsx_toolkit.market_watch)
@@ -190,7 +170,7 @@ class MarketService:
             change = self._safe_float(row.get("Change"))
             change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
             rows.append({
-                "symbol": symbol,
+                "symbol": str(symbol),
                 "sector": str(row.get("Sector", "")),
                 "ldcp": ldcp,
                 "open": self._safe_float(row.get("Open")),
@@ -202,9 +182,8 @@ class MarketService:
                 "volume": self._safe_int(row.get("Volume")),
             })
 
-        _market_data_cache = rows
-        _market_data_cache_time = now
-        log.info("Fetched %d market quotes", len(rows))
+        await cache_set(cache_key, rows, CACHE_TTL_SECONDS)
+        log.info("Stored %d market quotes in centralized cache", len(rows))
         return rows
 
     async def get_top_gainers(self, limit: int = 10) -> list[dict]:

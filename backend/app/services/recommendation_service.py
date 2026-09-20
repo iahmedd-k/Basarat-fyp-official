@@ -285,8 +285,8 @@ class RecommendationEngine:
     # Fundamental Signal (from live market data)
     # ───────────────────────────────────────────────────────────────────
 
-    def _fundamental_signal(self, symbol: str) -> tuple[float, dict]:
-        """Compute a fundamental signal from live market data.
+    def _fundamental_signal(self, symbol: str, overview_data: dict | None = None) -> tuple[float, dict]:
+        """Compute a fundamental signal from live market data or cached data.
 
         Uses P/E ratio, dividend yield, and market cap to assess
         whether the stock is fundamentally attractive.
@@ -294,15 +294,15 @@ class RecommendationEngine:
         Returns (signal in [-1, 1], reasoning dict).
         """
         try:
-            from app.services.stock_service import StockService
-            from app.services.market_service import MarketService
+            if overview_data is not None:
+                overview = overview_data
+            else:
+                from app.services.stock_service import StockService
+                stock_svc = StockService()
+                overview = stock_svc.get_overview(symbol)
 
-            stock_svc = StockService(market_service=MarketService())
-
-            overview = stock_svc.get_overview(symbol)
             pe_ratio = overview.get("pe_ratio")
             year_change = overview.get("year_change_pct")
-            current = overview.get("ltp", 0)
 
             signals = []
 
@@ -356,17 +356,14 @@ class RecommendationEngine:
         symbol: str,
         sym_df: pd.DataFrame,
         weights: dict | None = None,
+        overview_data: dict | None = None,
     ) -> dict:
-        """Compute the full composite recommendation for a single symbol.
-
-        Returns dict with: composite_score, verdict, ml_signal, technical_signal,
-        fundamental_signal, reasoning, confidence.
-        """
+        """Compute the full composite recommendation for a single symbol."""
         w = weights or self.weights
 
         ml_score, ml_reasoning = self._ml_signal(sym_df)
         tech_score, tech_reasoning = self._technical_signal(sym_df)
-        fund_score, fund_reasoning = self._fundamental_signal(symbol)
+        fund_score, fund_reasoning = self._fundamental_signal(symbol, overview_data=overview_data)
 
         composite = (
             w["gru"] * ml_score
@@ -413,22 +410,7 @@ class RecommendationEngine:
         ml_direction: str | None = None,
         horizon: str = "1D",
     ) -> dict:
-        """Compute target price and stop-loss using ATR-based method scaled for horizon.
-
-        Method: ATR Band (direction-aware and horizon-scaled)
-            bullish:  target = current_price + (atr_14 * target_multiplier * horizon_scale)
-                      stop  = current_price - (atr_14 * stop_multiplier * horizon_scale)
-            bearish:  target = current_price - (atr_14 * target_multiplier * horizon_scale)
-                      stop  = current_price + (atr_14 * stop_multiplier * horizon_scale)
-            sideways: target = None (no directional target)
-                      stop  = current_price - (atr_14 * stop_multiplier * horizon_scale)
-                      expected_range = [current_price - atr*mult*scale, current_price + atr*mult*scale]
-
-        Horizon scale:
-            1D: 0.60x (intraday / 1-day move bounds)
-            1W: 1.00x (standard 5-day move bounds)
-            1M: 1.60x (monthly position bounds)
-        """
+        """Compute target price and stop-loss using ATR-based method scaled for horizon."""
         if sym_df.empty:
             return {
                 "symbol": symbol,
@@ -448,52 +430,47 @@ class RecommendationEngine:
                 "target_price": None,
                 "stop_loss": None,
                 "method": "atr_band",
-                "error": "insufficient data (no ATR or price)",
+                "error": "invalid price or atr",
             }
 
-        mult = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"]).copy()
-        
-        # Scale multipliers based on horizon
-        HORIZON_SCALES = {"1D": 0.60, "1W": 1.00, "1M": 1.60}
-        h_scale = HORIZON_SCALES.get(horizon, 1.00)
-        
-        target_mult = mult["target"] * h_scale
-        stop_mult = mult["stop"] * h_scale
+        multipliers = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])
+        target_mult = multipliers["target"]
+        stop_mult = multipliers["stop"]
 
-        # Normalize direction (default to bullish for backward compatibility)
-        direction = (ml_direction or "bullish").lower()
+        # Scale multipliers based on forecast horizon
+        horizon_scales = {"1D": 0.60, "1W": 1.00, "1M": 1.60}
+        scale = horizon_scales.get(horizon, 1.00)
+        target_mult *= scale
+        stop_mult *= scale
 
-        if direction == "bearish":
-            # Bearish: target is BELOW current price, stop is above
-            target_price = round(current_price - (atr * target_mult), 2)
-            stop_loss = round(current_price + (atr * stop_mult), 2)
-            expected_range = None
-            upside_pct = round(((target_price - current_price) / current_price) * 100, 2)
-            downside_pct = round(((stop_loss - current_price) / current_price) * 100, 2)
-            rr_ratio = round(abs(target_price - current_price) / (abs(stop_loss - current_price) + 1e-6), 2)
-        elif direction == "sideways":
-            target_price = None
-            stop_loss = round(current_price - (atr * stop_mult), 2)
-            range_width = atr * target_mult
-            expected_range = {
-                "low": round(current_price - range_width, 2),
-                "high": round(current_price + range_width, 2),
-                "method": "atr_range",
-            }
-            upside_pct = None
-            downside_pct = round(((stop_loss - current_price) / current_price) * 100, 2)
-            rr_ratio = None
-        else:
-            # Bullish (or unknown): target above, stop below
+        direction = (ml_direction or "sideways").lower()
+        if direction in ("bullish", "buy"):
             target_price = round(current_price + (atr * target_mult), 2)
             stop_loss = round(current_price - (atr * stop_mult), 2)
             expected_range = None
-            upside_pct = round(((target_price - current_price) / current_price) * 100, 2)
-            downside_pct = round(((stop_loss - current_price) / current_price) * 100, 2)
-            rr_ratio = round(abs(target_price - current_price) / (abs(current_price - stop_loss) + 1e-6), 2)
+            upside_pct = round((target_price - current_price) / current_price * 100, 2)
+            downside_pct = round((stop_loss - current_price) / current_price * 100, 2)
+        elif direction in ("bearish", "sell"):
+            target_price = round(current_price - (atr * target_mult), 2)
+            stop_loss = round(current_price + (atr * stop_mult), 2)
+            expected_range = None
+            upside_pct = round((target_price - current_price) / current_price * 100, 2)
+            downside_pct = round((stop_loss - current_price) / current_price * 100, 2)
+        else:  # sideways or uncertain
+            target_price = None
+            stop_loss = round(current_price - (atr * stop_mult), 2)
+            range_half = round(atr * target_mult, 2)
+            expected_range = {
+                "low": round(current_price - range_half, 2),
+                "high": round(current_price + range_half, 2),
+                "method": "atr_range",
+            }
+            upside_pct = None
+            downside_pct = round((stop_loss - current_price) / current_price * 100, 2)
 
-        # Ensure stop_loss is positive (max 20% loss floor)
-        stop_loss = max(stop_loss, round(current_price * 0.80, 2))
+        stop_risk = abs(current_price - stop_loss) if stop_loss else 0
+        target_reward = abs(target_price - current_price) if target_price else 0
+        rr_ratio = round(target_reward / stop_risk, 2) if stop_risk > 0 and target_reward > 0 else None
 
         return {
             "symbol": symbol,
@@ -522,27 +499,50 @@ class RecommendationEngine:
         symbol: str,
         risk_tolerance: str = "moderate",
         weights: dict | None = None,
+        sym_df: pd.DataFrame | None = None,
+        overview_data: dict | None = None,
     ) -> dict:
-        """Get the full recommendation for a single symbol.
+        """Get the full recommendation for a single symbol."""
+        symbol = symbol.upper()
+        if sym_df is None:
+            if not FEATURES_PATH.exists():
+                return {
+                    "symbol": symbol,
+                    "signal": "hold",
+                    "confidence": 0.0,
+                    "target_price": None,
+                    "stop_loss": None,
+                    "reasoning": {"error": "features not available"},
+                    "technical_score": 0.0,
+                    "fundamental_score": 0.0,
+                }
 
-        Combines composite signal + target/stop-loss + reasoning.
-        """
-        # Load features
-        if not FEATURES_PATH.exists():
-            return {
-                "symbol": symbol,
-                "signal": "hold",
-                "confidence": 0.0,
-                "target_price": None,
-                "stop_loss": None,
-                "reasoning": {"error": "features not available"},
-                "technical_score": 0.0,
-                "fundamental_score": 0.0,
-            }
+            try:
+                df = pd.read_parquet(
+                    FEATURES_PATH,
+                    filters=[[("symbol", "==", symbol)]],
+                )
+            except Exception:
+                try:
+                    df = pd.read_parquet(FEATURES_PATH)
+                    df = df[df["symbol"] == symbol]
+                except Exception:
+                    df = pd.DataFrame()
 
-        df = pd.read_parquet(FEATURES_PATH)
-        df["date"] = pd.to_datetime(df["date"])
-        sym_df = df[df["symbol"] == symbol].copy().sort_values("date").reset_index(drop=True)
+            if df.empty:
+                return {
+                    "symbol": symbol,
+                    "signal": "hold",
+                    "confidence": 0.0,
+                    "target_price": None,
+                    "stop_loss": None,
+                    "reasoning": {"error": f"no data for {symbol}"},
+                    "technical_score": 0.0,
+                    "fundamental_score": 0.0,
+                }
+
+            df["date"] = pd.to_datetime(df["date"])
+            sym_df = df.copy().sort_values("date").reset_index(drop=True)
 
         if sym_df.empty:
             return {
@@ -557,7 +557,7 @@ class RecommendationEngine:
             }
 
         # Compute composite signal
-        composite = self.compute_composite(symbol, sym_df, weights)
+        composite = self.compute_composite(symbol, sym_df, weights, overview_data=overview_data)
 
         # Compute target/stop — pass composite verdict so target aligns with signal direction
         target_stop = self.compute_target_stop(symbol, sym_df, risk_tolerance,
@@ -572,10 +572,8 @@ class RecommendationEngine:
             "stop_loss": target_stop.get("stop_loss"),
             "expected_range": target_stop.get("expected_range"),
             "reasoning": composite["reasoning"],
-            "technical_score": composite["technical_signal"],
-            "fundamental_score": composite["fundamental_signal"],
-            "ml_score": composite["ml_signal"],
-            "composite_score": composite["composite_score"],
+            "current_price": target_stop.get("current_price"),
+            "atr_14": target_stop.get("atr_14"),
             "target_stop_method": target_stop.get("method"),
         }
 
@@ -585,30 +583,47 @@ class RecommendationEngine:
         sector_filter: str | None = None,
         weights: dict | None = None,
     ) -> list[dict]:
-        """Get recommendations for all active symbols.
-
-        Optionally filter by sector.
-        """
+        """Get recommendations for all active symbols with Redis caching."""
         if not FEATURES_PATH.exists():
             return []
 
+        # Check Redis cache first
+        from app.core.redis import cache_get_sync, cache_set_sync
+        cache_key = f"rec:all:{risk_tolerance}"
+        cached = cache_get_sync(cache_key)
+        if cached:
+            return cached
+
         from app.data.scraper.symbol_universe import get_active_symbols
+        from app.services.stock_service import StockService
 
         active = get_active_symbols()
         symbols = [e["symbol"] for e in active]
 
         # Load features once
-        df = pd.read_parquet(FEATURES_PATH)
-        df["date"] = pd.to_datetime(df["date"])
+        try:
+            df = pd.read_parquet(FEATURES_PATH)
+            df["date"] = pd.to_datetime(df["date"])
+        except Exception as exc:
+            log.warning("Failed to read features parquet in bulk: %s", exc)
+            df = pd.DataFrame()
+
+        # Batch load quotes for fundamental signals
+        stock_svc = StockService()
+        quotes = stock_svc.get_quote_batch(symbols)
+        quote_map = {q.get("symbol", "").upper(): q for q in quotes if isinstance(q, dict)}
 
         results = []
         for sym in symbols:
             try:
-                sym_df = df[df["symbol"] == sym].copy().sort_values("date").reset_index(drop=True)
-                if sym_df.empty or len(sym_df) < 10:
-                    continue
-
-                rec = self.get_recommendation(sym, risk_tolerance, weights)
+                overview_data = quote_map.get(sym, {})
+                if not df.empty:
+                    sym_df = df[df["symbol"] == sym].copy().sort_values("date").reset_index(drop=True)
+                    if sym_df.empty or len(sym_df) < 10:
+                        continue
+                    rec = self.get_recommendation(sym, risk_tolerance, weights, sym_df=sym_df, overview_data=overview_data)
+                else:
+                    rec = self.get_recommendation(sym, risk_tolerance, weights, overview_data=overview_data)
                 results.append(rec)
 
             except Exception as e:

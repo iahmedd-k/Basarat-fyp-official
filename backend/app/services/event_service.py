@@ -92,20 +92,19 @@ async def get_events(
     return list(result.scalars().all())
 
 
-async def extract_events_from_news(db: AsyncSession) -> int:
-    """Scan recent news articles for event-like content and create calendar events.
+# Valid event types for the calendar (core market-moving events only)
+VALID_EVENT_TYPES = {"earnings", "dividend", "sbp_monetary_policy"}
 
-    Looks for articles classified as earnings/dividend/interest_rate/monetary_policy
-    that contain date references.
+async def extract_events_from_news(db: AsyncSession) -> int:
+    """Scan recent news for core market-moving events and create calendar entries.
+
+    Only processes: earnings, dividends, SBP monetary policy.
     """
     from app.services.news_pipeline.event_classifier import classify_event
 
     result = await db.execute(
         select(NewsArticle)
-        .where(NewsArticle.event_type.in_([
-            "earnings", "dividend", "interest_rate", "monetary_policy",
-            "circular_debt", "block_order",
-        ]))
+        .where(NewsArticle.event_type.in_(VALID_EVENT_TYPES))
         .order_by(NewsArticle.published_at.desc())
         .limit(200)
     )
@@ -123,8 +122,9 @@ async def extract_events_from_news(db: AsyncSession) -> int:
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        if article.event_type in ("earnings", "dividend", "block_order") and symbols:
-            for sym in symbols[:3]:  # cap at 3 symbols per article
+        # Earnings & dividends: symbol-specific
+        if article.event_type in ("earnings", "dividend") and symbols:
+            for sym in symbols[:3]:
                 await upsert_event(
                     db=db,
                     event_type=article.event_type,
@@ -135,12 +135,12 @@ async def extract_events_from_news(db: AsyncSession) -> int:
                     source_url=article.url,
                 )
                 created += 1
-        elif article.event_type in ("interest_rate", "monetary_policy", "circular_debt"):
+
+        # SBP policy: market-wide (no symbol)
+        elif article.event_type == "sbp_monetary_policy":
             await upsert_event(
                 db=db,
-                event_type="sbp_monetary_policy"
-                if article.event_type in ("interest_rate", "monetary_policy")
-                else "circular_debt",
+                event_type="sbp_monetary_policy",
                 event_date=event_date,
                 title=article.title[:500],
                 symbol=None,

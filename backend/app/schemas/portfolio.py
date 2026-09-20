@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class TransactionCreate(BaseModel):
@@ -29,6 +29,37 @@ class TransactionCreate(BaseModel):
     @classmethod
     def _normalize_type(cls, v: str) -> str:
         return v.strip().upper()
+
+
+class CompletedTradeCreate(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=20, description="Stock symbol (e.g., OGDC)")
+    quantity: Decimal = Field(..., gt=0, description="Number of shares traded", max_digits=18, decimal_places=4)
+    buy_price: Decimal = Field(..., ge=0, description="Buy price per share", max_digits=18, decimal_places=4)
+    buy_date: date = Field(..., description="Buy date (YYYY-MM-DD)")
+    buy_fee: Decimal = Field(default=Decimal("0"), ge=0, description="Buy transaction fee", max_digits=18, decimal_places=4)
+    sell_price: Decimal = Field(..., ge=0, description="Sell price per share", max_digits=18, decimal_places=4)
+    sell_date: date = Field(..., description="Sell date (YYYY-MM-DD)")
+    sell_fee: Decimal = Field(default=Decimal("0"), ge=0, description="Sell transaction fee", max_digits=18, decimal_places=4)
+
+    @field_validator("symbol")
+    @classmethod
+    def _normalize_symbol(cls, v: str) -> str:
+        return v.strip().upper()
+
+    @field_validator("quantity", "buy_price", "buy_fee", "sell_price", "sell_fee", mode="before")
+    @classmethod
+    def _to_decimal(cls, v):
+        if v is None:
+            return Decimal("0")
+        if isinstance(v, Decimal):
+            return v
+        return Decimal(str(v))
+
+    @model_validator(mode="after")
+    def _validate_dates(self):
+        if self.sell_date < self.buy_date:
+            raise ValueError("sell_date cannot be earlier than buy_date")
+        return self
 
 
 class TransactionUpdate(BaseModel):
@@ -60,6 +91,24 @@ class TransactionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CompletedTradeResponse(BaseModel):
+    symbol: str
+    quantity: Decimal
+    buy_price: Decimal
+    buy_date: date
+    buy_fee: Decimal
+    sell_price: Decimal
+    sell_date: date
+    sell_fee: Decimal
+    holding_period_days: int
+    total_invested: Decimal
+    total_proceeds: Decimal
+    realized_pnl: Decimal
+    realized_pnl_percent: float
+    buy_transaction: TransactionResponse
+    sell_transaction: TransactionResponse
 
 
 class TransactionListResponse(BaseModel):

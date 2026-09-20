@@ -15,9 +15,10 @@ from app.models.portfolio import TransactionType
 from app.models.user import User
 from app.schemas.portfolio import (
     AllocationResponse,
+    CompletedTradeCreate,
+    CompletedTradeResponse,
     HoldingDetailResponse,
     HoldingItem,
-    HoldingItem as HoldingItemSchema,
     PerformanceResponse,
     PortfolioQueryParams,
     PortfolioResponse,
@@ -303,6 +304,86 @@ async def create_transaction(
     except Exception as exc:
         logger.exception("Create transaction failed")
         raise BadRequestError(f"Failed to create transaction: {exc}")
+
+
+@router.post(
+    "/portfolio/transactions/completed-trade",
+    response_model=CompletedTradeResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Record a past completed trade (both BUY and SELL) in one atomic operation",
+)
+async def create_completed_trade(
+    data: CompletedTradeCreate,
+    user: User = Depends(get_current_user),
+    service: PortfolioService = Depends(get_portfolio_service),
+):
+    """Record a past round-trip trade (BUY and SELL) in a single request.
+    
+    Creates both the BUY and SELL transactions atomically, validates the sequence,
+    and returns realized profit/loss, return percentage, and holding duration.
+    """
+    try:
+        trade_result = await service.create_completed_trade(
+            user_id=user.id,
+            symbol=data.symbol,
+            quantity=data.quantity,
+            buy_price=data.buy_price,
+            buy_date=data.buy_date,
+            buy_fee=data.buy_fee,
+            sell_price=data.sell_price,
+            sell_date=data.sell_date,
+            sell_fee=data.sell_fee,
+        )
+        
+        buy_t = trade_result["buy_transaction"]
+        sell_t = trade_result["sell_transaction"]
+        
+        return CompletedTradeResponse(
+            symbol=trade_result["symbol"],
+            quantity=trade_result["quantity"],
+            buy_price=trade_result["buy_price"],
+            buy_date=trade_result["buy_date"],
+            buy_fee=trade_result["buy_fee"],
+            sell_price=trade_result["sell_price"],
+            sell_date=trade_result["sell_date"],
+            sell_fee=trade_result["sell_fee"],
+            holding_period_days=trade_result["holding_period_days"],
+            total_invested=trade_result["total_invested"],
+            total_proceeds=trade_result["total_proceeds"],
+            realized_pnl=trade_result["realized_pnl"],
+            realized_pnl_percent=trade_result["realized_pnl_percent"],
+            buy_transaction=TransactionResponse(
+                id=buy_t.id,
+                symbol=buy_t.symbol,
+                transaction_type=buy_t.transaction_type.value,
+                quantity=buy_t.quantity,
+                price=buy_t.price,
+                fee=buy_t.fee,
+                transaction_date=buy_t.transaction_date,
+                created_at=buy_t.created_at,
+                updated_at=buy_t.updated_at,
+            ),
+            sell_transaction=TransactionResponse(
+                id=sell_t.id,
+                symbol=sell_t.symbol,
+                transaction_type=sell_t.transaction_type.value,
+                quantity=sell_t.quantity,
+                price=sell_t.price,
+                fee=sell_t.fee,
+                transaction_date=sell_t.transaction_date,
+                created_at=sell_t.created_at,
+                updated_at=sell_t.updated_at,
+            ),
+        )
+    except SymbolNotFoundError as e:
+        raise ValidationFailedError(str(e), code="INVALID_SYMBOL", field="symbol")
+    except (InsufficientHoldingError, InvalidTransactionHistoryError) as e:
+        raise ValidationFailedError(str(e), code="INVALID_TRANSACTION_SEQUENCE")
+    except ValidationFailedError:
+        raise
+    except Exception as exc:
+        logger.exception("Create completed trade failed")
+        raise BadRequestError(f"Failed to create completed trade: {exc}")
 
 
 # ── Update Transaction ────────────────────────────────────────────────────────

@@ -1,11 +1,13 @@
 """Portfolio Service - Business logic for portfolio operations."""
 
 import logging
-from datetime import date, datetime, timedelta
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.exceptions import (
     BadRequestError,
@@ -15,6 +17,7 @@ from app.core.exceptions import (
 )
 from app.models.portfolio import PortfolioTransaction, TransactionType
 from app.models.stock import Stock
+from app.models.stock import StockPrice
 from app.repository.portfolio_repository import PortfolioRepository
 from app.services.market_service import MarketService
 from app.services.portfolio_calculation import (
@@ -23,6 +26,7 @@ from app.services.portfolio_calculation import (
     PortfolioError,
     SymbolNotFoundError,
     calculate_allocation,
+    calculate_holding_from_position,
     calculate_performance_time_series,
     calculate_portfolio_summary,
     calculate_position,
@@ -96,6 +100,103 @@ class PortfolioService:
             fee=fee,
             transaction_date=transaction_date,
         )
+
+    async def create_completed_trade(
+        self,
+        user_id: str,
+        symbol: str,
+        quantity: Decimal,
+        buy_price: Decimal,
+        buy_date: date,
+        buy_fee: Decimal,
+        sell_price: Decimal,
+        sell_date: date,
+        sell_fee: Decimal,
+    ) -> dict:
+        """Record a completed round-trip trade (BUY + SELL) atomically with full validation."""
+        symbol = symbol.upper()
+
+        if sell_date < buy_date:
+            raise InvalidTransactionHistoryError("sell_date cannot be earlier than buy_date")
+
+        # Validate symbol exists
+        stock = await self._get_stock(symbol)
+        if not stock:
+            raise SymbolNotFoundError(f"Symbol '{symbol}' not found in stock universe")
+
+        # Get existing transactions for this symbol
+        existing_txns = await self.repo.get_user_transactions_for_symbol(user_id, symbol)
+
+        # Build candidate buy and sell objects for sequence validation
+        new_buy = PortfolioTransaction(
+            user_id=user_id,
+            symbol=symbol,
+            transaction_type=TransactionType.BUY,
+            quantity=quantity,
+            price=buy_price,
+            fee=buy_fee,
+            transaction_date=buy_date,
+        )
+        new_sell = PortfolioTransaction(
+            user_id=user_id,
+            symbol=symbol,
+            transaction_type=TransactionType.SELL,
+            quantity=quantity,
+            price=sell_price,
+            fee=sell_fee,
+            transaction_date=sell_date,
+        )
+
+        # Validate that applying BUY then SELL preserves valid non-negative history
+        try:
+            seq_with_buy = validate_transaction_sequence(existing_txns, new_buy)
+            validate_transaction_sequence(seq_with_buy, new_sell)
+        except ValueError as e:
+            raise InsufficientHoldingError(str(e))
+
+        # Create both transactions atomically in DB
+        buy_txn = await self.repo.create_transaction(
+            user_id=user_id,
+            symbol=symbol,
+            transaction_type=TransactionType.BUY,
+            quantity=quantity,
+            price=buy_price,
+            fee=buy_fee,
+            transaction_date=buy_date,
+        )
+        sell_txn = await self.repo.create_transaction(
+            user_id=user_id,
+            symbol=symbol,
+            transaction_type=TransactionType.SELL,
+            quantity=quantity,
+            price=sell_price,
+            fee=sell_fee,
+            transaction_date=sell_date,
+        )
+
+        total_invested = (quantity * buy_price) + buy_fee
+        total_proceeds = (quantity * sell_price) - sell_fee
+        realized_pnl = total_proceeds - total_invested
+        realized_pnl_percent = float(((total_proceeds - total_invested) / total_invested) * 100) if total_invested > 0 else 0.0
+        holding_period_days = (sell_date - buy_date).days
+
+        return {
+            "symbol": symbol,
+            "quantity": quantity,
+            "buy_price": buy_price,
+            "buy_date": buy_date,
+            "buy_fee": buy_fee,
+            "sell_price": sell_price,
+            "sell_date": sell_date,
+            "sell_fee": sell_fee,
+            "holding_period_days": holding_period_days,
+            "total_invested": total_invested,
+            "total_proceeds": total_proceeds,
+            "realized_pnl": realized_pnl,
+            "realized_pnl_percent": round(realized_pnl_percent, 2),
+            "buy_transaction": buy_txn,
+            "sell_transaction": sell_txn,
+        }
 
     async def get_transaction(self, transaction_id: str, user_id: str) -> PortfolioTransaction:
         """Get a single transaction by ID."""
@@ -237,11 +338,13 @@ class PortfolioService:
         price_dates = {}
         if active_symbols:
             quotes = self.stock_service.get_quote_batch(active_symbols)
-            for q in quotes:
-                sym = q.get("symbol", "").upper()
-                if sym and q.get("current") is not None:
-                    current_prices[sym] = Decimal(str(q["current"]))
-                    price_dates[sym] = datetime.utcnow()
+            quote_list = list(quotes.values()) if isinstance(quotes, dict) else (quotes or [])
+            for q in quote_list:
+                if isinstance(q, dict):
+                    sym = q.get("symbol", "").upper()
+                    if sym and q.get("current") is not None:
+                        current_prices[sym] = Decimal(str(q["current"]))
+                        price_dates[sym] = datetime.now(timezone.utc)
 
         # Calculate portfolio summary and holdings
         summary, holdings = calculate_portfolio_summary(
@@ -373,11 +476,7 @@ class PortfolioService:
         user_id: str,
         period: Literal["1D", "1W", "1M", "3M", "6M", "1Y", "ALL"] = "1M",
     ) -> dict:
-        """Get portfolio performance time series."""
-        # For V1, return empty data as historical price data is not available
-        # A full implementation would require storing daily portfolio snapshots
-        # or having access to historical price data for all symbols
-        
+        """Get historical market value from persisted transaction and OHLC data."""
         period_days = {
             "1D": 1,
             "1W": 7,
@@ -391,39 +490,72 @@ class PortfolioService:
         days = period_days.get(period, 30)
         cutoff = date.today() - timedelta(days=days)
         
-        # Get transactions after cutoff
-        txns = await self.repo.get_transactions_after_date(user_id, cutoff)
+        # Positions purchased before the selected period still contribute to
+        # performance, so load complete transaction history.
+        txns, _ = await self.repo.get_transactions(user_id, limit=10000)
         
         if not txns:
             return {"period": period, "data": []}
         
-        # This is a placeholder - full implementation needs historical prices
-        # For now, return current portfolio value as a single point
-        portfolio = await self.get_portfolio(user_id)
-        current_value = portfolio["summary"]["current_value"]
-        
+        symbols = sorted({transaction.symbol for transaction in txns})
+        prices_result = await self.db.execute(
+            select(Stock.symbol, StockPrice.date, StockPrice.adjusted_close)
+            .join(Stock, StockPrice.stock_id == Stock.id)
+            .where(Stock.symbol.in_(symbols), StockPrice.date >= cutoff)
+            .order_by(StockPrice.date.asc())
+        )
+        historical_prices: dict[str, dict[date, Decimal]] = defaultdict(dict)
+        for symbol, price_date, adjusted_close in prices_result.all():
+            if adjusted_close is not None:
+                historical_prices[symbol][price_date] = Decimal(str(adjusted_close))
         return {
             "period": period,
-            "data": [
-                {
-                    "date": date.today().isoformat(),
-                    "value": current_value,
-                }
-            ],
+            "data": calculate_performance_time_series(txns, historical_prices, period),
         }
 
     # ── Helper Methods ────────────────────────────────────────────────────────
 
     async def _get_stock(self, symbol: str) -> Stock | None:
-        """Get stock by symbol, using stock service cache first."""
-        # Check stock service cache
-        quote = self.stock_service.get_quote(symbol)
-        if quote and quote.get("symbol"):
-            # Stock exists in market data
-            # Now get from DB for metadata
-            stock_info = await self.repo.get_stock_info([symbol])
-            return stock_info.get(symbol)
-        
-        # Fallback: check DB directly
+        """Get stock by symbol, ensuring it exists in DB if valid PSX symbol."""
+        symbol = symbol.upper()
         stock_info = await self.repo.get_stock_info([symbol])
-        return stock_info.get(symbol)
+        stock = stock_info.get(symbol)
+        if stock:
+            return stock
+
+        # Check market quote and symbol universe
+        quote = self.stock_service.get_quote(symbol)
+        is_valid = False
+        name = symbol
+        sector = "Other"
+
+        if quote and quote.get("symbol"):
+            is_valid = True
+            name = quote.get("name") or symbol
+            sector = quote.get("sector") or "Other"
+        else:
+            try:
+                from app.data.scraper.symbol_universe import get_active_symbols
+                active_symbols = get_active_symbols()
+                match = next((s for s in active_symbols if s.get("symbol", "").upper() == symbol), None)
+                if match:
+                    is_valid = True
+                    name = match.get("company_name", symbol)
+                    sector = match.get("sector", "Other")
+            except Exception:
+                pass
+
+        if is_valid:
+            from uuid import uuid4
+            stock = Stock(
+                id=uuid4().hex,
+                symbol=symbol,
+                name=name,
+                sector=sector,
+            )
+            self.db.add(stock)
+            await self.db.flush()
+            await self.db.refresh(stock)
+            return stock
+
+        return None

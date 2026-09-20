@@ -100,24 +100,39 @@ STRESS_SCENARIOS = {
 # VaR / CVaR — Historical Simulation
 # ═══════════════════════════════════════════════════════════════════════
 
-def _load_returns_for_portfolio(holdings: list) -> pd.DataFrame | None:
-    """Load daily returns for all holdings. Returns DataFrame of daily returns."""
+_PRICE_PIVOT_CACHE: pd.DataFrame | None = None
+
+
+def _get_price_pivot() -> pd.DataFrame | None:
+    """Load and cache the daily close price pivot table in memory."""
+    global _PRICE_PIVOT_CACHE
+    if _PRICE_PIVOT_CACHE is not None:
+        return _PRICE_PIVOT_CACHE
+
     features_path = DATA_DIR / "features" / "features_daily.parquet"
     if not features_path.exists():
         return None
 
     df = pd.read_parquet(features_path)
     df["date"] = pd.to_datetime(df["date"])
-
-    symbols = [h.symbol for h in holdings]
-    weights = {h.symbol: float(h.allocation_pct or 0) / 100.0 for h in holdings}
-
     pivot = df.pivot_table(
         index="date", columns="symbol",
         values="close", aggfunc="last",
     ).sort_index()
+    _PRICE_PIVOT_CACHE = pivot
+    return _PRICE_PIVOT_CACHE
 
-    available = [s for s in symbols if s in pivot.columns]
+
+def _load_returns_for_portfolio(holdings: list) -> pd.Series | None:
+    """Load daily returns for all holdings. Returns Series of weighted daily returns."""
+    pivot = _get_price_pivot()
+    if pivot is None or pivot.empty:
+        return None
+
+    symbols = [getattr(h, "symbol", "") for h in holdings]
+    weights = {getattr(h, "symbol", ""): float(getattr(h, "allocation_pct", 0) or 0) / 100.0 for h in holdings}
+
+    available = [s for s in symbols if s and s in pivot.columns]
     if not available:
         return None
 
@@ -126,7 +141,7 @@ def _load_returns_for_portfolio(holdings: list) -> pd.DataFrame | None:
         return None
 
     # Weighted portfolio returns
-    w = np.array([weights[s] for s in available])
+    w = np.array([weights.get(s, 0.0) for s in available], dtype=float)
     w_sum = w.sum()
     if w_sum == 0:
         w = np.ones(len(w)) / len(w)
@@ -194,7 +209,7 @@ def run_monte_carlo_simulation(
     horizon_days: int = 30,
     seed: int | None = None,
 ) -> dict[str, Any]:
-    """Run Monte Carlo simulation using Geometric Brownian Motion.
+    """Run Monte Carlo simulation using Geometric Brownian Motion (Vectorized NumPy).
 
     Args:
         holdings: list of PortfolioHolding objects
@@ -219,15 +234,11 @@ def run_monte_carlo_simulation(
     mu = float(returns.mean())  # daily drift
     sigma = float(returns.std())  # daily volatility
 
-    # Simulate GBM paths
+    # Fully vectorized 2D GBM paths simulation: (num_simulations, horizon_days)
     dt = 1  # 1 trading day
-    paths = np.zeros((num_simulations, horizon_days))
-
-    for i in range(num_simulations):
-        z = rng.standard_normal(horizon_days)
-        log_returns = (mu - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * z
-        price_path = np.exp(np.cumsum(log_returns))
-        paths[i] = price_path
+    z = rng.standard_normal((num_simulations, horizon_days))
+    log_returns = (mu - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * z
+    paths = np.exp(np.cumsum(log_returns, axis=1))
 
     # Terminal portfolio values (normalized to 1.0 start)
     terminal_values = paths[:, -1] - 1.0  # returns from start

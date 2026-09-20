@@ -13,27 +13,45 @@ _PASSWORD_COMPLEXITY_RE = re.compile(
 _URL_RE = re.compile(r"^https?://[^\s/$.?#].[^\s]*$", re.IGNORECASE)
 
 
+from enum import Enum
+
+
+class RiskTolerance(str, Enum):
+    CONSERVATIVE = "conservative"
+    MODERATE = "moderate"
+    AGGRESSIVE = "aggressive"
+
+
+class InvestmentHorizon(str, Enum):
+    SHORT_TERM = "short_term"
+    MEDIUM_TERM = "medium_term"
+    LONG_TERM = "long_term"
+
+
+class SectorPreference(str, Enum):
+    ALL_SECTORS = "All Sectors"
+    COMMERCIAL_BANKS = "Commercial Banks"
+    OIL_GAS = "Oil & Gas"
+    CEMENT = "Cement"
+    FERTILIZER = "Fertilizer"
+    TECHNOLOGY = "Technology"
+    PHARMACEUTICALS = "Pharmaceuticals"
+    AUTOMOBILE = "Automobile"
+    TEXTILE = "Textile"
+    POWER_ENERGY = "Power & Energy"
+    CHEMICALS = "Chemicals"
+    FOOD_PERSONAL_CARE = "Food & Personal Care"
+    ENGINEERING = "Engineering"
+    INSURANCE = "Insurance"
+    PROPERTY_REAL_ESTATE = "Property / Real Estate"
+    TELECOMMUNICATIONS = "Telecommunications"
+
+
 # Valid sector preferences for risk profile
-VALID_SECTORS: list[str] = [
-    "Commercial Banks",
-    "Oil & Gas",
-    "Cement",
-    "Fertilizer",
-    "Technology",
-    "Pharmaceuticals",
-    "Automobile",
-    "Textile",
-    "Power & Energy",
-    "Chemicals",
-    "Food & Personal Care",
-    "Engineering",
-    "Insurance",
-    "Property / Real Estate",
-    "Telecommunications",
-]
+VALID_SECTORS: list[str] = [s.value for s in SectorPreference if s != SectorPreference.ALL_SECTORS]
 
 # Special value to indicate "No preference" / "All sectors"
-NO_PREFERENCE = "All Sectors"
+NO_PREFERENCE = SectorPreference.ALL_SECTORS.value
 
 
 class UserSummary(BaseModel):
@@ -43,7 +61,6 @@ class UserSummary(BaseModel):
     email: str
     username: str
     full_name: str | None = None
-    is_admin: bool = False
 
 
 class SignupRequest(BaseModel):
@@ -128,7 +145,9 @@ class UserProfileResponse(BaseModel):
     avatar_url: str | None = None
     is_active: bool
     is_verified: bool
-    is_admin: bool
+    risk_tolerance: RiskTolerance | None = None
+    sector_preferences: list[str] | None = None
+    investment_horizon: InvestmentHorizon | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -137,6 +156,9 @@ class UserProfileResponse(BaseModel):
 class UpdateProfileRequest(BaseModel):
     full_name: str | None = Field(None, max_length=255)
     avatar_url: str | None = Field(None, max_length=500)
+    risk_tolerance: RiskTolerance | None = None
+    sector_preferences: list[SectorPreference] | None = Field(None, max_length=50)
+    investment_horizon: InvestmentHorizon | None = None
 
     @field_validator("avatar_url")
     @classmethod
@@ -145,34 +167,37 @@ class UpdateProfileRequest(BaseModel):
             raise ValueError("avatar_url must be a valid HTTP or HTTPS URL.")
         return v
 
-
-class UpdateRiskProfileRequest(BaseModel):
-    risk_tolerance: str | None = Field(None, pattern="^(conservative|moderate|aggressive)$")
-    sector_preferences: list[str] | None = Field(None, max_length=50)
-    investment_horizon: str | None = None
-
     @field_validator("sector_preferences")
     @classmethod
-    def validate_sector_preferences(cls, v: list[str] | None) -> list[str] | None:
+    def validate_sector_preferences(cls, v: list[SectorPreference] | None) -> list[str] | None:
         if v is None:
             return v
-        # Allow "All Sectors" as a special value (mutually exclusive with other sectors)
-        if NO_PREFERENCE in v:
-            if len(v) > 1:
+        str_values = [item.value if isinstance(item, Enum) else str(item) for item in v]
+        if NO_PREFERENCE in str_values:
+            if len(str_values) > 1:
                 raise ValueError(f'"{NO_PREFERENCE}" cannot be combined with other sectors')
             return [NO_PREFERENCE]
-        # Validate each sector against the allowed list
-        for sector in v:
+        for sector in str_values:
             if sector not in VALID_SECTORS:
                 raise ValueError(f'Invalid sector: "{sector}". Valid sectors: {", ".join(VALID_SECTORS)}')
-        # Remove duplicates while preserving order
         seen = set()
         unique_sectors = []
-        for sector in v:
+        for sector in str_values:
             if sector not in seen:
                 seen.add(sector)
                 unique_sectors.append(sector)
         return unique_sectors
+
+
+UpdateRiskProfileRequest = UpdateProfileRequest
+UpdateInvestmentProfileRequest = UpdateProfileRequest
+
+
+class RiskProfileResponse(BaseModel):
+    message: str = "Risk profile updated"
+    risk_tolerance: RiskTolerance | None = None
+    sector_preferences: list[str] | None = None
+    investment_horizon: InvestmentHorizon | None = None
 
 
 class UpdateNotificationPrefsRequest(BaseModel):

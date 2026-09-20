@@ -18,12 +18,20 @@ router = APIRouter()
     summary="Get user notifications",
 )
 async def get_notifications(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    unread_only: bool = Query(False),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    unread_only: bool = Query(False, description="Filter for unread notifications only"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Retrieve the authenticated user's Notification Center inbox.
+
+    Returns paginated notifications with:
+    - **notifications**: List of alert/notification records with timestamps, title, and body.
+    - **total**: Total count of notifications matching the filter.
+    - **page / limit**: Active pagination parameters.
+    - **has_more**: Boolean indicating if further pages are available.
+    """
     try:
         base_filter = Alert.user_id == user.id
         if unread_only:
@@ -80,6 +88,7 @@ async def mark_notification_read(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Mark an individual notification inbox item as read."""
     try:
         result = await db.execute(
             select(Alert).where(

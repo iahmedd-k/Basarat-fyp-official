@@ -11,7 +11,7 @@ Methodology:
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 
@@ -64,7 +64,18 @@ def calculate_position(transactions: list[PortfolioTransaction]) -> Position:
     realized_pnl = Decimal("0")
     average_cost = Decimal("0")
 
-    for txn in transactions:
+    def _sort_key(t):
+        t_date = t.transaction_date
+        if isinstance(t_date, datetime):
+            t_date = t_date.date()
+        created = t.created_at
+        created_ts = created.timestamp() if (created is not None and hasattr(created, 'timestamp')) else 0.0
+        type_order = 0 if t.transaction_type == TransactionType.BUY else 1
+        return (t_date or date.min, type_order, created_ts)
+
+    sorted_txns = sorted(transactions, key=_sort_key)
+
+    for txn in sorted_txns:
         qty = txn.quantity
         price = txn.price
         fee = txn.fee or Decimal("0")
@@ -134,12 +145,21 @@ def validate_transaction_sequence(
     Raises:
         ValueError: If sequence would create negative holdings
     """
-    all_txns = [t for t in transactions if t.id != exclude_txn_id]
+    all_txns = [t for t in transactions if exclude_txn_id is None or t.id != exclude_txn_id]
     if new_txn:
         all_txns.append(new_txn)
     
-    # Sort by transaction_date, then created_at
-    all_txns.sort(key=lambda t: (t.transaction_date, t.created_at))
+    def _sort_key(t):
+        t_date = t.transaction_date
+        if isinstance(t_date, datetime):
+            t_date = t_date.date()
+        created = t.created_at
+        created_ts = created.timestamp() if (created is not None and hasattr(created, 'timestamp')) else 0.0
+        # BUY (0) before SELL (1) on the same date
+        type_order = 0 if t.transaction_type == TransactionType.BUY else 1
+        return (t_date or date.min, type_order, created_ts)
+
+    all_txns.sort(key=_sort_key)
     
     running_qty = Decimal("0")
     for txn in all_txns:
@@ -328,19 +348,34 @@ def calculate_performance_time_series(
     historical_prices: dict[str, dict[date, Decimal]],
     period: str = "1M",
 ) -> list[dict]:
+    """Value open positions at each available historical price date.
+
+    The result is a market-value chart (not a time-weighted return): cash paid
+    for purchases and cash received for sales are intentionally excluded.
+    This makes the chart honest for a holdings screen and avoids inventing a
+    return series when deposits/withdrawals are not modelled.
     """
-    Calculate portfolio value over time for performance chart.
-    
-    This is a simplified implementation. A full implementation would need:
-    - Daily price snapshots for all symbols
-    - Proper handling of cash flows (deposits/withdrawals)
-    - Time-weighted return calculation
-    
-    For V1, we return a simplified version using available price data.
-    """
-    # This is a placeholder - full implementation requires historical price data
-    # which is not currently available from the market service
-    return []
+    if not transactions or not historical_prices:
+        return []
+    all_dates = sorted({price_date for prices in historical_prices.values() for price_date in prices})
+    points: list[dict] = []
+    for point_date in all_dates:
+        value = Decimal("0")
+        quantities: dict[str, Decimal] = {}
+        for transaction in transactions:
+            if transaction.transaction_date > point_date:
+                continue
+            direction = Decimal("1") if transaction.transaction_type == TransactionType.BUY else Decimal("-1")
+            quantities[transaction.symbol] = quantities.get(transaction.symbol, Decimal("0")) + direction * transaction.quantity
+        for symbol, quantity in quantities.items():
+            if quantity <= 0:
+                continue
+            prices = historical_prices.get(symbol, {})
+            available_dates = [d for d in prices if d <= point_date]
+            if available_dates:
+                value += quantity * prices[max(available_dates)]
+        points.append({"date": point_date.isoformat(), "value": _round_decimal(value, 2)})
+    return points
 
 
 # Portfolio-specific domain errors
