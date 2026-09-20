@@ -131,8 +131,10 @@ class Settings(BaseSettings):
                 or not Path(self.FIREBASE_CREDENTIALS_PATH).is_file()
             ):
                 raise ValueError("FIREBASE_CREDENTIALS_PATH must point to a readable service-account file")
-            if not all((self.SMTP_HOST, self.SMTP_FROM_EMAIL, self.PASSWORD_RESET_URL)):
-                raise ValueError("SMTP_HOST, SMTP_FROM_EMAIL, and PASSWORD_RESET_URL are required outside development")
+            if not all((self.SMTP_HOST, self.SMTP_FROM_EMAIL)):
+                logging.getLogger(__name__).warning("SMTP_HOST or SMTP_FROM_EMAIL not configured; transactional emails will be disabled.")
+            if not self.PASSWORD_RESET_URL:
+                self.PASSWORD_RESET_URL = "basarat://reset-password?token={token}"
 
 
 @lru_cache()
