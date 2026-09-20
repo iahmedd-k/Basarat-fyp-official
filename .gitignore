@@ -9,6 +9,8 @@ env/
 
 # Environment
 .env
+.env.*
+!.env.example
 
 # Editors / OS
 .vscode/
@@ -21,3 +23,23 @@ env/
 htmlcov/
 *.db
 *.sqlite3
+
+# ML data artifacts
+backend/data/raw/
+backend/data/features/*.parquet
+backend/data/sequences/
+backend/data/processed/
+backend/data/processed_v2/
+backend/data/processed_v3/
+backend/data/scalers/
+backend/data/reports/
+
+# Model files
+backend/models/
+
+# Log files
+*.log
+*celerybeat-schedule*
+
+# Temporary files
+*_tmp.*

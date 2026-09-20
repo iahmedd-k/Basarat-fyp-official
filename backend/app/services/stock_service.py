@@ -1,0 +1,758 @@
+import time
+from datetime import date, timedelta
+
+import pandas as pd
+import pypsx_toolkit
+from fastapi import Depends
+
+from app.core.redis import cache_get_sync, cache_set_sync
+from app.services.market_service import MarketService
+
+QUOTE_TTL_SECONDS = 300
+FUND_TTL_SECONDS = 1800
+OHLCV_TTL_SECONDS = 600
+
+# Unified in-process TTL cache: key -> (value, timestamp).
+# NOTE: Per-process only. Not safe across multiple workers.
+# For multi-worker deployments, replace with Redis-backed caching.
+_cache: dict[str, tuple] = {}
+_cache_ttl: dict[str, float] = {}
+
+
+def _now():
+    return time.monotonic()
+
+
+class StockService:
+    def __init__(self, market_service: MarketService = Depends(MarketService)):
+        if market_service is None or not isinstance(market_service, MarketService):
+            self._market = MarketService()
+        else:
+            self._market = market_service
+
+    def _get_market_frame(self):
+        import pandas as pd
+
+        data = self._market.get_market_data_sync()
+        if data is None:
+            return None
+        if isinstance(data, pd.DataFrame):
+            return data
+        if isinstance(data, list):
+            if not data:
+                return pd.DataFrame()
+            return pd.DataFrame(data).set_index("symbol")
+        return None
+
+    def search_symbols(self, q: str, limit: int = 10):
+        q = (q or "").strip().upper()
+        if not q:
+            return []
+        frame = self._get_market_frame()
+        if frame is None:
+            return []
+        matches = [s for s in frame.index if q in str(s).upper()]
+        return [
+            {
+                "symbol": str(symbol),
+                "name": str(symbol),  # market_watch data lacks company names
+                "sector": self._sector_of(symbol),
+            }
+            for symbol in matches[:limit]
+        ]
+
+    def _sector_of(self, symbol):
+        frame = self._get_market_frame()
+        if frame is None:
+            return None
+        try:
+            return frame.loc[symbol, "Sector"]
+        except Exception:
+            return None
+
+    def get_quote(self, symbol: str):
+        rows = self.get_quote_batch([symbol])
+        return rows[0] if rows else None
+
+    @staticmethod
+    def _get_field(row, *names, default=None):
+        if isinstance(row, dict):
+            for name in names:
+                if name in row:
+                    return row[name]
+        if hasattr(row, "__getitem__"):
+            for name in names:
+                try:
+                    if name in row:
+                        return row[name]
+                except Exception:
+                    pass
+        if hasattr(row, "get"):
+            for name in names:
+                val = row.get(name)
+                if val is not None:
+                    return val
+        return default
+
+    def get_quote_batch(self, symbols):
+        frame = self._get_market_frame()
+        if frame is None or len(symbols) == 0:
+            return []
+        rows = []
+        for symbol in symbols:
+            symbol = str(symbol).upper()
+            if symbol not in frame.index:
+                rows.append(self._empty_quote(symbol))
+                continue
+            row = frame.loc[symbol]
+            ldcp = self._num(self._get_field(row, "LDCP", "ldcp", "close", "Close", default=0.0))
+            current = self._num(self._get_field(row, "Current", "current", "price", "Price", default=0.0))
+            change = self._num(self._get_field(row, "Change", "change", default=0.0))
+            change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+            volume = self._safe_int(self._get_field(row, "Volume", "volume", "Vol", "vol", default=0))
+            sector = self._get_field(row, "Sector", "sector", "SECTOR", default=None)
+            open_val = self._num(self._get_field(row, "Open", "open", default=0.0))
+            high_val = self._num(self._get_field(row, "High", "high", default=0.0))
+            low_val = self._num(self._get_field(row, "Low", "low", default=0.0))
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "name": symbol,
+                    "sector": sector,
+                    "ldcp": ldcp,
+                    "open": open_val,
+                    "high": high_val,
+                    "low": low_val,
+                    "current": current,
+                    "change": change,
+                    "change_pct": change_pct,
+                    "volume": volume,
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _empty_quote(symbol):
+        return {
+            "symbol": symbol,
+            "name": symbol,
+            "sector": None,
+            "ldcp": 0.0,
+            "open": 0.0,
+            "high": 0.0,
+            "low": 0.0,
+            "current": 0.0,
+            "change": 0.0,
+            "change_pct": 0.0,
+            "volume": 0,
+        }
+
+    def _get_quote_frame(self, symbol):
+        symbol = str(symbol).upper()
+        now = _now()
+        cache_key = f"quote:{symbol}"
+        cached_at = _cache_ttl.get(cache_key, 0.0)
+        if cache_key in _cache and now - cached_at <= QUOTE_TTL_SECONDS:
+            return _cache[cache_key]
+        try:
+            frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
+        except Exception:
+            frame = None
+        _cache[cache_key] = frame
+        _cache_ttl[cache_key] = now
+        return frame
+
+    def _get_fund_frame(self, symbol):
+        symbol = str(symbol).upper()
+        now = _now()
+        cache_key = f"fund:{symbol}"
+        cached_at = _cache_ttl.get(cache_key, 0.0)
+        if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
+            return _cache[cache_key]
+        try:
+            frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
+        except Exception:
+            frame = None
+        _cache[cache_key] = frame
+        _cache_ttl[cache_key] = now
+        return frame
+
+    def _fund_metric(self, symbol, category, metric):
+        frame = self._get_fund_frame(symbol)
+        if frame is None:
+            return None
+        try:
+            mask = (
+                (frame.index.get_level_values(0) == symbol)
+                & (frame.index.get_level_values(1) == category)
+                & (frame.index.get_level_values(2) == metric)
+            )
+            matches = frame.loc[mask, "VALUE"]
+            if matches.empty:
+                return None
+            return self._latest_number(matches.iloc[0])
+        except Exception:
+            return None
+
+    def _get_dividend_frame(self, symbol):
+        symbol = str(symbol).upper()
+        now = _now()
+        cache_key = f"div:{symbol}"
+        cached_at = _cache_ttl.get(cache_key, 0.0)
+        if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
+            return _cache[cache_key]
+        try:
+            frame = pypsx_toolkit.get_dividend_info(symbol, format="dataframe")
+        except Exception:
+            frame = None
+        _cache[cache_key] = frame
+        _cache_ttl[cache_key] = now
+        return frame
+
+    def _get_ohlcv(self, symbol, start: date, end: date):
+        symbol = str(symbol).upper()
+        key = f"ohlcv:{symbol}:{start.isoformat()}:{end.isoformat()}"
+        now = _now()
+        cached_at = _cache_ttl.get(key, 0.0)
+        if key in _cache and now - cached_at <= OHLCV_TTL_SECONDS:
+            return _cache[key]
+        try:
+            df = pypsx_toolkit.get_historical(
+                symbol, start_date=start.isoformat(), end_date=end.isoformat()
+            )
+        except Exception:
+            df = None
+        _cache[key] = df
+        _cache_ttl[key] = now
+        return df
+
+    def get_overview(self, symbol: str):
+        symbol = str(symbol).upper()
+        batch = self.get_quote_batch([symbol])
+        if not batch:
+            return {"symbol": symbol, "message": "no data"}
+        q = batch[0]
+        # Validate that we got real data (not an empty/default quote)
+        if q.get("current") == 0.0 and q.get("volume") == 0:
+            return {"symbol": symbol, "message": "no data"}
+        quote = self._get_quote_frame(symbol)
+        return {
+            "symbol": symbol,
+            "name": symbol,
+            "sector": q["sector"],
+            "ltp": q["current"],
+            "ldcp": q["ldcp"],
+            "change": q["change"],
+            "change_pct": q["change_pct"],
+            "day_range": {"low": q["low"], "high": q["high"]},
+            "volume": q["volume"],
+            "market_cap_m": self._market_cap_m(symbol),
+            "market_cap": self._market_cap_m(symbol),
+            "pe_ratio": self._quote_field(quote, "P/E RATIO (TTM) **"),
+            "year_change_pct": self._quote_field(quote, "1-YEAR CHANGE * ^"),
+            "ytd_change_pct": self._quote_field(quote, "YTD CHANGE * ^"),
+        }
+
+    def _market_cap_m(self, symbol):
+        raw = self._fund_metric(symbol, "Equity Profile", "Market Cap (000's)")
+        if raw is None:
+            return None
+        return round(raw / 1000.0, 2)
+
+    def _quote_field(self, frame, column):
+        if frame is None or frame.empty or column not in frame.columns:
+            return None
+        value = frame.iloc[0][column]
+        return self._latest_number(value)
+
+    RANGE_MAP = {
+        "1D": ("1D", timedelta(days=3)),
+        "1W": ("1W", timedelta(days=8)),
+        "1M": ("1M", timedelta(days=32)),
+        "1Y": ("1Y", timedelta(days=366)),
+    }
+
+    def get_price_history(self, symbol: str, range: str = "1M"):
+        symbol = str(symbol).upper()
+        label, lookback = self.RANGE_MAP.get(range.upper(), self.RANGE_MAP["1M"])
+        end = date.today()
+        start = end - lookback
+        df = self._get_ohlcv(symbol, start, end)
+        if df is None or df.empty:
+            return {"symbol": symbol, "range": label, "bars": []}
+
+        bars = []
+        for ts, row in df.iterrows():
+            bars.append(
+                {
+                    "date": str(ts.date()),
+                    "open": self._num(row["OPEN"]),
+                    "high": self._num(row["HIGH"]),
+                    "low": self._num(row["LOW"]),
+                    "close": self._num(row["CLOSE"]),
+                    "volume": self._safe_int(row["VOLUME"]),
+                }
+            )
+        return {"symbol": symbol, "range": label, "bars": bars}
+
+    def technical_indicators(
+        self,
+        symbol: str,
+        indicators: str = "RSI,MACD,BB,SMA,ADX",
+        period: int = 14,
+        limit: int = 30,
+    ):
+        symbol = str(symbol).upper()
+        norm_indicators = ",".join(sorted([i.strip().upper() for i in indicators.split(",") if i.strip()]))
+        cache_key = f"tech:{symbol}:{norm_indicators}:{period}:{limit}"
+
+        # 1. Check Redis cache first
+        cached = cache_get_sync(cache_key)
+        if cached is not None:
+            return cached
+
+        requested = [i.strip().upper() for i in indicators.split(",") if i.strip()]
+        end = date.today()
+        df = self._get_ohlcv(symbol, end - timedelta(days=370), end)
+        if df is None or df.empty:
+            return {
+                "symbol": symbol,
+                "period": period,
+                "overall_signal": "NEUTRAL",
+                "summary_message": "No historical price data available to compute technical indicators.",
+                "signals_breakdown": {"buy": 0, "neutral": 0, "sell": 0},
+                "summary": {},
+                "indicators": {},
+            }
+
+        close = df["CLOSE"].astype(float)
+        latest_close = float(close.iloc[-1]) if not close.empty else 0.0
+
+        def to_series(s):
+            out = []
+            for ts, val in s.items():
+                v = float(val)
+                if v != v:
+                    continue
+                out.append({"date": str(ts.date()), "value": round(v, 3)})
+            # Apply limit to slice only recent points
+            if limit and limit > 0:
+                return out[-limit:]
+            return out
+
+        ind_series = {}
+        summary = {}
+        signals = {"buy": 0, "neutral": 0, "sell": 0}
+
+        # --- RSI ---
+        if "RSI" in requested:
+            full_rsi = to_series(pypsx_toolkit.rsi(df, window=period, column="CLOSE"))
+            ind_series["RSI"] = full_rsi
+            if full_rsi:
+                latest_rsi = full_rsi[-1]["value"]
+                if latest_rsi >= 70:
+                    sig, desc = "SELL", "RSI is in overbought territory (>=70); potential pullback risk."
+                    signals["sell"] += 1
+                elif latest_rsi <= 30:
+                    sig, desc = "BUY", "RSI is in oversold territory (<=30); potential bullish rebound."
+                elif latest_rsi >= 50:
+                    sig, desc = "BUY", "RSI indicates positive upward momentum (50-70)."
+                    signals["buy"] += 1
+                else:
+                    sig, desc = "NEUTRAL", "RSI is below 50, showing subdued momentum."
+                    signals["neutral"] += 1
+                summary["rsi"] = {"value": latest_rsi, "signal": sig, "description": desc}
+
+        # --- MACD ---
+        if "MACD" in requested:
+            macd_line, macd_signal, _hist = pypsx_toolkit.macd(df, fast=12, slow=26, signal=9, column="CLOSE")
+            macd_s = to_series(macd_line)
+            sig_s = to_series(macd_signal)
+            ind_series["MACD"] = macd_s
+            ind_series["MACD_SIGNAL"] = sig_s
+            if macd_s and sig_s:
+                latest_macd = macd_s[-1]["value"]
+                latest_sig = sig_s[-1]["value"]
+                if latest_macd > latest_sig:
+                    sig, desc = "BUY", "Bullish MACD crossover; upward momentum is accelerating."
+                    signals["buy"] += 1
+                elif latest_macd < latest_sig:
+                    sig, desc = "SELL", "Bearish MACD crossover; downward momentum detected."
+                    signals["sell"] += 1
+                else:
+                    sig, desc = "NEUTRAL", "MACD line is converging with signal line."
+                    signals["neutral"] += 1
+                summary["macd"] = {
+                    "value": latest_macd,
+                    "signal_line": latest_sig,
+                    "signal": sig,
+                    "description": desc,
+                }
+
+        # --- Bollinger Bands ---
+        if "BB" in requested or "BOLLINGER" in requested:
+            bb_low, bb_mid, bb_up = pypsx_toolkit.bollinger_bands(df, window=20, num_std=2.0, column="CLOSE")
+            low_s = to_series(bb_low)
+            mid_s = to_series(bb_mid)
+            up_s = to_series(bb_up)
+            ind_series["BB_LOWER"] = low_s
+            ind_series["BB_MID"] = mid_s
+            ind_series["BB_UPPER"] = up_s
+            if low_s and mid_s and up_s:
+                cur_up = up_s[-1]["value"]
+                cur_low = low_s[-1]["value"]
+                cur_mid = mid_s[-1]["value"]
+                if latest_close >= cur_up:
+                    sig, desc = "SELL", "Price is touching the upper Bollinger Band (overbought zone)."
+                    signals["sell"] += 1
+                elif latest_close <= cur_low:
+                    sig, desc = "BUY", "Price is touching the lower Bollinger Band (oversold zone)."
+                    signals["buy"] += 1
+                else:
+                    sig, desc = "NEUTRAL", "Price is oscillating within normal volatility bands."
+                    signals["neutral"] += 1
+                summary["bollinger"] = {
+                    "lower": cur_low,
+                    "mid": cur_mid,
+                    "upper": cur_up,
+                    "signal": sig,
+                    "description": desc,
+                }
+
+        # --- SMA ---
+        if "SMA" in requested:
+            sma_s = to_series(close.rolling(window=period).mean())
+            ind_series["SMA"] = sma_s
+            if sma_s:
+                latest_sma = sma_s[-1]["value"]
+                if latest_close > latest_sma:
+                    sig, desc = "BUY", f"Price (PKR {latest_close:.2f}) is above the {period}-day moving average ({latest_sma:.2f})."
+                    signals["buy"] += 1
+                elif latest_close < latest_sma:
+                    sig, desc = "SELL", f"Price (PKR {latest_close:.2f}) is below the {period}-day moving average ({latest_sma:.2f})."
+                    signals["sell"] += 1
+                else:
+                    sig, desc = "NEUTRAL", f"Price is matching the {period}-day moving average."
+                    signals["neutral"] += 1
+                summary["sma"] = {"value": latest_sma, "signal": sig, "description": desc}
+
+        # --- ADX ---
+        if "ADX" in requested:
+            adx_s = to_series(self._adx(df, period))
+            ind_series["ADX"] = adx_s
+            if adx_s:
+                latest_adx = adx_s[-1]["value"]
+                if latest_adx >= 25:
+                    trend_str, desc = "STRONG", f"ADX ({latest_adx:.1f}) confirms a strong directional trend."
+                elif latest_adx < 20:
+                    trend_str, desc = "WEAK", f"ADX ({latest_adx:.1f}) indicates a weak, choppy or range-bound market."
+                else:
+                    trend_str, desc = "MODERATE", f"ADX ({latest_adx:.1f}) indicates moderate trend development."
+                summary["adx"] = {
+                    "value": latest_adx,
+                    "trend_strength": trend_str,
+                    "description": desc,
+                }
+
+        # --- Overall Signal & Message ---
+        buy_c, neut_c, sell_c = signals["buy"], signals["neutral"], signals["sell"]
+        if buy_c >= 3 and sell_c == 0:
+            overall = "STRONGLY_BULLISH"
+            msg = f"Technical outlook is Strongly Bullish based on {buy_c} buy signals with 0 sell signals."
+        elif buy_c > sell_c:
+            overall = "BULLISH"
+            msg = f"Technical outlook is Moderately Bullish with {buy_c} buy, {neut_c} neutral, and {sell_c} sell signals."
+        elif sell_c >= 3 and buy_c == 0:
+            overall = "STRONGLY_BEARISH"
+            msg = f"Technical outlook is Strongly Bearish based on {sell_c} sell signals with 0 buy signals."
+        elif sell_c > buy_c:
+            overall = "BEARISH"
+            msg = f"Technical outlook is Bearish with {sell_c} sell, {neut_c} neutral, and {buy_c} buy signals."
+        else:
+            overall = "NEUTRAL"
+            msg = f"Technical outlook is Neutral / Consolidating with {buy_c} buy, {neut_c} neutral, and {sell_c} sell signals."
+
+        result = {
+            "symbol": symbol,
+            "period": period,
+            "overall_signal": overall,
+            "summary_message": msg,
+            "signals_breakdown": signals,
+            "summary": summary,
+            "indicators": ind_series,
+        }
+
+        # Cache in Redis (300s TTL)
+        cache_set_sync(cache_key, result, 300)
+        return result
+
+    @staticmethod
+    def _adx(df, period=14):
+        import numpy as np
+
+        high = df["HIGH"].astype(float)
+        low = df["LOW"].astype(float)
+        close = df["CLOSE"].astype(float)
+
+        plus_dm = high.diff().where(high.diff() > -low.diff(), 0.0).clip(lower=0.0)
+        minus_dm = (-low.diff()).where(-low.diff() > high.diff(), 0.0).clip(lower=0.0)
+
+        tr = pd.concat(
+            [
+                (high - low),
+                (high - close.shift(1)).abs(),
+                (low - close.shift(1)).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        atr = tr.ewm(alpha=1 / period, adjust=False).mean()
+
+        plus_di = 100 * plus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr
+        minus_di = 100 * minus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr
+        dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+        adx = dx.ewm(alpha=1 / period, adjust=False).mean()
+        return adx
+
+    def _fund_raw_string(self, symbol, category, metric_name=None):
+        frame = self._get_fund_frame(symbol)
+        if frame is None or frame.empty:
+            return None
+        try:
+            for idx, row in frame.iterrows():
+                cat = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else ""
+                met = idx[2] if isinstance(idx, tuple) and len(idx) > 2 else ""
+                val = str(row.get("VALUE", "")).strip()
+                if category.lower() in str(cat).lower():
+                    if metric_name is None:
+                        return val
+                    if metric_name.lower() in str(met).lower():
+                        return val
+                    if metric_name.lower() in str(val).lower():
+                        return str(met)
+            return None
+        except Exception:
+            return None
+
+    def get_fundamentals(self, symbol: str):
+        symbol = str(symbol).upper()
+        cache_key = f"fund:{symbol}"
+
+        cached = cache_get_sync(cache_key)
+        if cached is not None:
+            return cached
+
+        quote = self._get_quote_frame(symbol)
+        self._get_fund_frame(symbol)  # populate cache for _fund_metric
+        div = self._get_dividend_frame(symbol)
+
+        # 1. Company Profile & Governance
+        desc = None
+        try:
+            desc = pypsx_toolkit.get_business_description(symbol)
+        except Exception:
+            pass
+        if not desc:
+            desc = self._fund_raw_string(symbol, "Profile", "Business Description")
+
+        ceo = self._fund_raw_string(symbol, "Governance", "CEO")
+        chairperson = self._fund_raw_string(symbol, "Governance", "Chairperson")
+        secretary = self._fund_raw_string(symbol, "Governance", "Company Secretary")
+        website = self._fund_raw_string(symbol, "Profile", "Website")
+        address = self._fund_raw_string(symbol, "Profile", "Address")
+        sector = self._sector_of(symbol)
+
+        company_profile = {
+            "name": symbol,
+            "sector": sector,
+            "business_description": desc,
+            "ceo": ceo,
+            "chairperson": chairperson,
+            "company_secretary": secretary,
+            "website": website,
+            "address": address,
+        }
+
+        # 2. Equity Profile
+        market_cap_k = self._fund_metric(symbol, "Equity Profile", "Market Cap (000's)")
+        market_cap_pkr = (market_cap_k * 1000.0) if market_cap_k else None
+        market_cap_m = round(market_cap_k / 1000.0, 2) if market_cap_k else None
+        total_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Shares"))
+        free_float_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Free Float"))
+        free_float_pct = self._fund_metric(symbol, "Equity Profile", "Free Float")
+        if free_float_pct and free_float_pct > 100:  # If raw shares was returned instead of pct
+            free_float_pct = round((free_float_shares / total_shares * 100), 2) if total_shares else None
+
+        equity_profile = {
+            "market_cap_pkr": market_cap_pkr,
+            "market_cap_pkr_m": market_cap_m,
+            "total_shares": total_shares if total_shares > 0 else None,
+            "free_float_shares": free_float_shares if free_float_shares > 0 else None,
+            "free_float_pct": free_float_pct,
+        }
+
+        # 3. Ratios & Valuation
+        pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
+        eps = self._fund_metric(symbol, "Financials Annual", "EPS")
+        div_yield = self._div_yield(div)
+        peg = self._fund_metric(symbol, "Ratios", "PEG")
+        eps_growth = self._fund_metric(symbol, "Ratios", "EPS Growth (%)")
+        net_margin = self._fund_metric(symbol, "Ratios", "Net Profit Margin (%)")
+        gross_margin = self._fund_metric(symbol, "Ratios", "Gross Profit Margin (%)")
+
+        ratios = {
+            "pe_ratio": pe_ratio,
+            "peg_ratio": peg,
+            "eps": eps,
+            "eps_growth_pct": eps_growth,
+            "net_profit_margin_pct": net_margin,
+            "gross_profit_margin_pct": gross_margin,
+            "dividend_yield_pct": div_yield,
+        }
+
+        # 4. Trading Limits & 52-Week Range (via snapshot)
+        year_high, year_low = None, None
+        cb_low, cb_up = None, None
+        year_change, ytd_change = None, None
+        try:
+            snap = pypsx_toolkit.get_snapshot(symbol)
+            if isinstance(snap, dict):
+                reg = snap.get("REG", {})
+                cb = reg.get("CIRCUIT BREAKER")
+                if cb and isinstance(cb, (tuple, list)) and len(cb) >= 2:
+                    cb_low, cb_up = self._num(cb[0]), self._num(cb[1])
+                range_52 = reg.get("52-WEEK RANGE ^")
+                if range_52 and isinstance(range_52, (tuple, list)) and len(range_52) >= 2:
+                    year_low, year_high = self._num(range_52[0]), self._num(range_52[1])
+                year_change = self._num(reg.get("1-Year Change * ^"))
+                ytd_change = self._num(reg.get("YTD Change * ^"))
+        except Exception:
+            pass
+
+        if year_change is None:
+            year_change = self._quote_field(quote, "1-YEAR CHANGE * ^")
+        if ytd_change is None:
+            ytd_change = self._quote_field(quote, "YTD CHANGE * ^")
+
+        trading_limits = {
+            "year_high": year_high,
+            "year_low": year_low,
+            "circuit_breaker_lower": cb_low,
+            "circuit_breaker_upper": cb_up,
+            "year_change_pct": year_change,
+            "ytd_change_pct": ytd_change,
+        }
+
+        # 5. Dividend History
+        dividend_history = []
+        try:
+            div_df = pypsx_toolkit.get_dividend_history(symbol)
+            if div_df is not None and not div_df.empty:
+                for _, drow in div_df.head(5).iterrows():
+                    dividend_history.append({
+                        "ex_date": str(drow.get("EX-DIVIDEND DATE", "")),
+                        "cash_amount": str(drow.get("CASH AMOUNT", "")),
+                        "record_date": str(drow.get("RECORD DATE", "")),
+                        "pay_date": str(drow.get("PAY DATE", "")),
+                    })
+        except Exception:
+            pass
+
+        # 6. Official Announcements
+        announcements = []
+        try:
+            ann_df = pypsx_toolkit.get_announcements(symbol)
+            if ann_df is not None and not ann_df.empty:
+                for idx, arow in ann_df.head(5).iterrows():
+                    ann_date = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else str(idx)
+                    announcements.append({
+                        "date": str(ann_date),
+                        "title": str(arow.get("TITLE", "")),
+                        "pdf_link": str(arow.get("PDF_LINK", "")),
+                    })
+        except Exception:
+            pass
+
+        # Legacy backward compatible metrics & extras
+        metrics = [
+            _metric("EPS", eps, "Earnings per share over the last twelve months."),
+            _metric("P/E Ratio", pe_ratio, "Price-to-earnings; lower values suggest cheaper valuation."),
+            _metric("ROE", None, "Not provided by the PSX fundamentals feed."),
+            _metric("Debt-to-Equity", None, "Not provided by the PSX fundamentals feed."),
+            _metric("Dividend Yield", div_yield, "Trailing dividend yield relative to the last traded price."),
+            _metric("Market Cap (PKR M)", market_cap_m, "Market capitalisation in millions of PKR."),
+        ]
+
+        extras = {
+            "year_change_pct": year_change,
+            "ytd_change_pct": ytd_change,
+            "gross_profit_margin_pct": gross_margin,
+            "net_profit_margin_pct": net_margin,
+            "eps_growth_pct": eps_growth,
+        }
+
+        result = {
+            "symbol": symbol,
+            "company_profile": company_profile,
+            "equity_profile": equity_profile,
+            "ratios": ratios,
+            "trading_limits": trading_limits,
+            "dividend_history": dividend_history,
+            "announcements": announcements,
+            "metrics": metrics,
+            "extras": extras,
+        }
+
+        # Cache in Redis (1800s / 30m TTL)
+        cache_set_sync(cache_key, result, 1800)
+        return result
+
+    def _div_yield(self, div):
+        if div is None or div.empty or "DIVIDEND YIELD" not in div.columns:
+            return None
+        value = div.iloc[0]["DIVIDEND YIELD"]
+        return self._latest_number(value)
+
+    @staticmethod
+    def _num(value):
+        import math
+
+        if value is None:
+            return None
+        try:
+            v = float(value)
+            if math.isnan(v) or math.isinf(v):
+                return None
+            return v
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _safe_int(value, default=0):
+        import math
+
+        if value is None:
+            return default
+        try:
+            v = float(value)
+            if math.isnan(v) or math.isinf(v):
+                return default
+            return int(v)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _latest_number(value):
+        if value is None:
+            return None
+        text = str(value).strip().replace(",", "").replace("%", "")
+        parts = [p.strip() for p in text.split("|")]
+        for part in parts:
+            try:
+                return round(float(part), 4)
+            except ValueError:
+                continue
+        return None
+
+
+def _metric(key, value, note):
+    return {"key": key, "value": value, "note": note}
