@@ -18,9 +18,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Drop legacy tables (messages first due to FK dependency on conversations)
-    op.drop_table('messages')
-    op.drop_table('conversations')
+    # Drop legacy tables if they exist (messages first due to FK dependency on conversations)
+    op.execute("DROP TABLE IF EXISTS messages CASCADE")
+    op.execute("DROP TABLE IF EXISTS conversations CASCADE")
 
     # news_articles — new columns for the pipeline
     op.add_column('news_articles', sa.Column('source_type', sa.String(length=50), nullable=True))

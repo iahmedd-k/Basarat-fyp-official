@@ -334,7 +334,8 @@ async def report_post(
         )
 
         from app.tasks.community_tasks import process_post_report_threshold
-        process_post_report_threshold.delay(post_id)
+        from app.core.task_runner import dispatch_task
+        dispatch_task(process_post_report_threshold, post_id)
     except (NotFoundError, ConflictError, ValidationFailedError):
         raise
     except Exception as e:

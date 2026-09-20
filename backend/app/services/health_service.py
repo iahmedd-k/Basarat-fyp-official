@@ -12,27 +12,27 @@ IS_TESTING = os.environ.get("PYTEST_CURRENT_TEST") is not None or os.environ.get
 
 class HealthService:
     def _check_redis(self):
-        if IS_TESTING:
+        if IS_TESTING or not getattr(settings, "REDIS_ENABLED", True):
             return "ready"
         try:
-            if redis.from_url(settings.REDIS_URL).ping():
+            if redis.from_url(settings.REDIS_URL, socket_timeout=2.0).ping():
                 return "ready"
         except Exception:
             pass
         return "down"
 
     def _check_celery_worker(self):
-        if IS_TESTING:
+        if IS_TESTING or not getattr(settings, "USE_CELERY", True):
             return "ready"
         try:
-            if celery.control.ping(timeout=3):
+            if celery.control.ping(timeout=2):
                 return "ready"
         except Exception:
             pass
         return "down"
 
     def _check_celery_beat(self):
-        if IS_TESTING:
+        if IS_TESTING or not getattr(settings, "USE_CELERY", True):
             return "ready"
         if self._check_redis() == "ready":
             return "ready"

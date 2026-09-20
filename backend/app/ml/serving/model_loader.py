@@ -104,16 +104,17 @@ def load_artifacts() -> None:
 
     Called once during app startup. If anything fails, model_ready stays False.
     """
-    import tensorflow as tf
-
     try:
-        # ── GRU Model ───────────────────────────────────────────────────
+        import tensorflow as tf
         model_path = GRU_MODEL_DIR / "model.keras"
         if not model_path.exists():
             log.error("Model file not found: %s", model_path)
             return
         artifacts.model = tf.keras.models.load_model(str(model_path))
         log.info("Loaded GRU model <- %s", model_path)
+    except Exception as tf_err:
+        log.warning("Could not load GRU model artifact: %s", tf_err)
+        artifacts.model = None
 
         # ── Scaler ──────────────────────────────────────────────────────
         scaler_path = DATA_DIR / "scaler.pkl"

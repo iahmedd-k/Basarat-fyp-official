@@ -30,9 +30,11 @@ class Settings(BaseSettings):
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_ENABLED: bool = True
     CACHE_TTL_SECONDS: int = 300
 
-    # Celery
+    # Celery & Task Runner
+    USE_CELERY: bool = True
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 

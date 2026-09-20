@@ -88,3 +88,19 @@ celery.conf.update(
 )
 
 celery.autodiscover_tasks(["app.tasks"])
+
+from celery.signals import worker_process_init
+
+
+@worker_process_init.connect
+def reset_db_connections(**kwargs):
+    """Dispose any parent-inherited connections when a worker process forks."""
+    try:
+        from app.db.base import engine, _sync_engine
+        engine.sync_engine.dispose()
+        if _sync_engine is not None:
+            _sync_engine.dispose()
+    except Exception:
+        pass
+
+

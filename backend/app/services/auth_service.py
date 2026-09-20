@@ -242,7 +242,8 @@ class AuthService:
         # Commit before dispatching so a delivered link always maps to a durable token.
         await self.db.commit()
         from app.tasks.email import send_password_reset_email
-        send_password_reset_email.delay(user.email, raw_token)
+        from app.core.task_runner import dispatch_task
+        dispatch_task(send_password_reset_email, user.email, raw_token)
 
     async def reset_password(self, token: str, new_password: str) -> None:
         token_hash = hashlib.sha256(token.encode()).hexdigest()

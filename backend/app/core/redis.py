@@ -12,17 +12,20 @@ log = logging.getLogger(__name__)
 _redis_client = None
 _sync_redis_client = None
 
-# In-memory fallback if Redis is unreachable (e.g. testing or local startup)
+# In-memory fallback if Redis is disabled or unreachable
 _mem_cache: dict[str, tuple[Any, float]] = {}
 
 
 def get_redis_client():
     """Get or initialize the async redis client."""
     global _redis_client
+    settings = get_settings()
+    if not getattr(settings, "REDIS_ENABLED", True):
+        return None
+
     if _redis_client is None:
         try:
             import redis.asyncio as aioredis
-            settings = get_settings()
             _redis_client = aioredis.from_url(
                 settings.REDIS_URL,
                 decode_responses=True,
@@ -38,10 +41,13 @@ def get_redis_client():
 def get_sync_redis_client():
     """Get or initialize the sync redis client for non-async services."""
     global _sync_redis_client
+    settings = get_settings()
+    if not getattr(settings, "REDIS_ENABLED", True):
+        return None
+
     if _sync_redis_client is None:
         try:
             import redis
-            settings = get_settings()
             _sync_redis_client = redis.from_url(
                 settings.REDIS_URL,
                 decode_responses=True,
@@ -79,12 +85,45 @@ async def cache_set(key: str, value: Any, ttl_seconds: int = 60) -> None:
     client = get_redis_client()
     if client:
         try:
-            raw = json.dumps(value)
+            raw = json.dumps(value, default=str)
             await client.setex(key, ttl_seconds, raw)
         except Exception as exc:
             log.debug("Redis set error for key %s: %s", key, exc)
 
     _mem_cache[key] = (value, time.monotonic() + ttl_seconds)
+
+
+async def cache_invalidate(key: str) -> None:
+    """Invalidate key in Redis and local memory cache."""
+    client = get_redis_client()
+    if client:
+        try:
+            await client.delete(key)
+        except Exception as exc:
+            log.debug("Redis delete error for key %s: %s", key, exc)
+    _mem_cache.pop(key, None)
+
+
+async def cache_invalidate_pattern(pattern: str) -> None:
+    """Invalidate keys matching pattern."""
+    client = get_redis_client()
+    if client:
+        try:
+            cursor = 0
+            while True:
+                cursor, keys = await client.scan(cursor, match=pattern, count=100)
+                if keys:
+                    await client.delete(*keys)
+                if cursor == 0:
+                    break
+        except Exception as exc:
+            log.debug("Redis scan/delete error: %s", exc)
+
+    # Also clean matching keys in memory cache
+    import fnmatch
+    for k in list(_mem_cache.keys()):
+        if fnmatch.fnmatch(k, pattern):
+            del _mem_cache[k]
 
 
 def cache_get_sync(key: str) -> Any | None:
@@ -111,7 +150,7 @@ def cache_set_sync(key: str, value: Any, ttl_seconds: int = 60) -> None:
     client = get_sync_redis_client()
     if client:
         try:
-            raw = json.dumps(value)
+            raw = json.dumps(value, default=str)
             client.setex(key, ttl_seconds, raw)
         except Exception as exc:
             log.debug("Sync Redis set error for key %s: %s", key, exc)

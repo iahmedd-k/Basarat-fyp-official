@@ -261,8 +261,10 @@ def _send_alerts_sync(user_id: str, breaches: list[dict]):
             db.add(alert)
         db.commit()
         from app.tasks.push_notifications import send_to_user
+        from app.core.task_runner import dispatch_task
         for breach in breaches:
-            send_to_user.delay(
+            dispatch_task(
+                send_to_user,
                 user_id,
                 f"Basarat risk alert: {breach['severity'].upper()}",
                 breach["message"],

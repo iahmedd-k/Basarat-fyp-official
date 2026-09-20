@@ -150,17 +150,21 @@ async def run_monte_carlo(
             raise NotFoundError("No portfolio holdings found for Monte Carlo simulation.")
 
         from app.tasks.risk_tasks import run_monte_carlo_task
+        from app.core.task_runner import dispatch_task
+        import uuid
 
         symbols = [h.symbol for h in holdings]
-        task = run_monte_carlo_task.delay(
+        task_future = dispatch_task(
+            run_monte_carlo_task,
             user_id=user.id,
             symbols=symbols,
             num_simulations=data.num_simulations,
             horizon_days=data.horizon_days,
         )
+        task_id = getattr(task_future, "id", uuid.uuid4().hex)
 
         return MonteCarloResponse(
-            job_id=task.id,
+            job_id=str(task_id),
             status="pending",
             num_simulations=data.num_simulations,
             horizon_days=data.horizon_days,
