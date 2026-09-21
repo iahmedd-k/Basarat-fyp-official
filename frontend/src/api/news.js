@@ -1,7 +1,9 @@
+import { clearSession, refreshSession } from './auth';
+
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
-async function request(endpoint, options = {}) {
-  const token = localStorage.getItem('clerk_token');
+async function request(endpoint, options = {}, allowRefresh = true) {
+  const token = localStorage.getItem('basarat_access_token');
   const headers = {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
@@ -12,6 +14,21 @@ async function request(endpoint, options = {}) {
     ...options,
     headers,
   });
+
+  if (response.status === 401 && allowRefresh) {
+    try {
+      const session = await refreshSession();
+      return request(endpoint, {
+        ...options,
+        headers: {
+          ...options.headers,
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      }, false);
+    } catch {
+      clearSession();
+    }
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Request failed' }));
@@ -64,11 +81,30 @@ export const newsApi = {
     });
     return request(`/stocks/${symbol}/news?${searchParams.toString()}`);
   },
+
+  async getMarketSentiment() {
+    return request('/sentiment/market-overview');
+  },
+
+  async getStockSentiment(symbol, days = 7) {
+    return request(`/sentiment/${encodeURIComponent(symbol)}?days=${days}`);
+  },
+
+  async getSentimentHistory(symbol, period = '1M', limit = 100) {
+    return request(`/sentiment/${encodeURIComponent(symbol)}/history?period=${period}&limit=${limit}`);
+  },
+
+  async getSentimentNews(symbol, params = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        searchParams.append(key, value);
+      }
+    });
+    return request(`/sentiment/${encodeURIComponent(symbol)}/news?${searchParams.toString()}`);
+  },
 };
 
-export async function getClerkToken() {
-  if (window.Clerk && window.Clerk.session) {
-    return window.Clerk.session.getToken();
-  }
-  return null;
+export async function getAccessToken() {
+  return localStorage.getItem('basarat_access_token');
 }
