@@ -46,12 +46,16 @@ def event_loop():
 
 
 @pytest.fixture(autouse=True)
-def _mock_email_tasks(monkeypatch):
-    try:
-        from app.tasks import email as email_tasks
-        monkeypatch.setattr(email_tasks.send_password_reset_email, "delay", lambda *args, **kwargs: None)
-    except Exception:
-        pass
+def _mock_email_service(monkeypatch):
+    """Mock EmailService so no real emails are sent during tests."""
+    from unittest.mock import AsyncMock, patch
+
+    async def _noop(*args, **kwargs):
+        return {"status": "sent"}
+
+    with patch("app.services.email_service.EmailService.send_verification_email", new_callable=AsyncMock, side_effect=_noop):
+        with patch("app.services.email_service.EmailService.send_password_reset_email", new_callable=AsyncMock, side_effect=_noop):
+            yield
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +125,7 @@ async def _create_user(
     password: str = "TestPass123!",
     is_active: bool = True,
     is_admin: bool = False,
+    is_verified: bool = True,
 ) -> User:
     email = email or f"{uuid4().hex[:8]}@test.com"
     user = User(
@@ -130,6 +135,7 @@ async def _create_user(
         full_name="Test User",
         is_active=is_active,
         is_admin=is_admin,
+        is_verified=is_verified,
     )
     db.add(user)
     await db.flush()

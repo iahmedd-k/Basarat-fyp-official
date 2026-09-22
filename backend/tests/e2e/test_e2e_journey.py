@@ -1,22 +1,47 @@
 """End-to-end tests — complete user journeys through the API."""
 
+import hashlib
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import create_email_verification_token, hash_password
+from app.models.user import EmailVerificationToken, User
+
+
+async def _signup_and_verify(client: AsyncClient, db_session: AsyncSession, email: str, password: str, full_name: str | None = None) -> dict:
+    """Signup, verify email via DB, login, return tokens."""
+    resp = await client.post("/api/v1/auth/signup", json={
+        "email": email,
+        "password": password,
+        "full_name": full_name,
+    })
+    assert resp.status_code == 201
+
+    result = await db_session.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+    assert user is not None
+    user.is_verified = True
+    await db_session.flush()
+
+    login_resp = await client.post("/api/v1/auth/login", json={
+        "email": email,
+        "password": password,
+    })
+    assert login_resp.status_code == 200
+    return login_resp.json()
 
 
 @pytest.mark.e2e
 class TestNewUserJourney:
     """Simulate a new user's first session on the platform."""
 
-    async def test_complete_onboarding_journey(self, client: AsyncClient):
-        signup = await client.post("/api/v1/auth/signup", json={
-            "email": "newinvestor@test.com",
-            "password": "Invest123!",
-            "full_name": "New Investor",
-        })
-        assert signup.status_code == 201
-        token = signup.json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
+    async def test_complete_onboarding_journey(self, client: AsyncClient, db_session: AsyncSession):
+        tokens = await _signup_and_verify(client, db_session, "newinvestor@test.com", "Invest123!", "New Investor")
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
         profile = await client.get("/api/v1/users/me", headers=headers)
         assert profile.status_code == 200
@@ -49,13 +74,9 @@ class TestNewUserJourney:
 class TestPortfolioManagementJourney:
     """Simulate a user building and managing their portfolio."""
 
-    async def test_portfolio_lifecycle(self, client: AsyncClient):
-        signup = await client.post("/api/v1/auth/signup", json={
-            "email": "portfolio@test.com",
-            "password": "Port123!",
-        })
-        token = signup.json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
+    async def test_portfolio_lifecycle(self, client: AsyncClient, db_session: AsyncSession):
+        tokens = await _signup_and_verify(client, db_session, "portfolio@test.com", "Port123!")
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
         holdings_to_add = [
             {"symbol": "HBL", "quantity": 100, "avg_buy_price": 150.0, "purchase_date": "2025-01-01"},
@@ -102,13 +123,9 @@ class TestPortfolioManagementJourney:
 class TestAlertManagementJourney:
     """Simulate a user setting up and managing alerts."""
 
-    async def test_alert_lifecycle(self, client: AsyncClient):
-        signup = await client.post("/api/v1/auth/signup", json={
-            "email": "alertuser@test.com",
-            "password": "Alert123!",
-        })
-        token = signup.json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
+    async def test_alert_lifecycle(self, client: AsyncClient, db_session: AsyncSession):
+        tokens = await _signup_and_verify(client, db_session, "alertuser@test.com", "Alert123!")
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
         rule_resp = await client.post(
             "/api/v1/alerts/rules",
@@ -125,7 +142,7 @@ class TestAlertManagementJourney:
         await client.patch(
             f"/api/v1/alerts/rules/{rule_id}",
             headers=headers,
-            json={"threshold": 250.0},
+            json={"threshold": 250.0, "is_active": False},
         )
 
         alerts = await client.get("/api/v1/alerts", headers=headers)
@@ -136,13 +153,9 @@ class TestAlertManagementJourney:
 class TestCommunityJourney:
     """Simulate a user engaging with the community."""
 
-    async def test_community_engagement(self, client: AsyncClient):
-        signup = await client.post("/api/v1/auth/signup", json={
-            "email": "community@test.com",
-            "password": "Comm123!",
-        })
-        token = signup.json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
+    async def test_community_engagement(self, client: AsyncClient, db_session: AsyncSession):
+        tokens = await _signup_and_verify(client, db_session, "community@test.com", "Comm123!")
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
         post_resp = await client.post(
             "/api/v1/community/posts",
@@ -192,13 +205,9 @@ class TestCommunityJourney:
 class TestResearchJourney:
     """Simulate a user researching a stock before investing."""
 
-    async def test_stock_research_flow(self, client: AsyncClient):
-        signup = await client.post("/api/v1/auth/signup", json={
-            "email": "researcher@test.com",
-            "password": "Research1!",
-        })
-        token = signup.json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
+    async def test_stock_research_flow(self, client: AsyncClient, db_session: AsyncSession):
+        tokens = await _signup_and_verify(client, db_session, "researcher@test.com", "Research1!")
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
         overview = await client.get("/api/v1/stocks/HBL/overview", headers=headers)
         assert overview.status_code in (200, 404)

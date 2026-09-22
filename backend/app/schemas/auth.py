@@ -137,6 +137,14 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
 class UserProfileResponse(BaseModel):
     id: str
     email: str

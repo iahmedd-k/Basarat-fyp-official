@@ -1,25 +1,48 @@
 """Integration tests — full auth flow with real DB session."""
 
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import create_email_verification_token, hash_password
+from app.models.user import EmailVerificationToken, User
+
+
+async def _verify_user_in_db(db: AsyncSession, user_id: str) -> None:
+    """Helper: mark a user as verified directly in DB."""
+    user = await db.get(User, user_id)
+    user.is_verified = True
+    await db.flush()
 
 
 @pytest.mark.integration
 class TestAuthFlowIntegration:
-    async def test_signup_login_refresh_cycle(self, client: AsyncClient):
+    async def test_signup_login_refresh_cycle(self, client: AsyncClient, db_session: AsyncSession):
         signup_resp = await client.post("/api/v1/auth/signup", json={
             "email": "flow@test.com",
             "password": "SecurePass1!",
             "full_name": "Flow Test",
         })
         assert signup_resp.status_code == 201
-        tokens = signup_resp.json()
+        assert "message" in signup_resp.json()
+
+        # Verify email via DB (simulates clicking verification link)
+        from sqlalchemy import select
+        result = await db_session.execute(select(User).where(User.email == "flow@test.com"))
+        user = result.scalars().first()
+        assert user is not None
+        await _verify_user_in_db(db_session, user.id)
 
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": "flow@test.com",
             "password": "SecurePass1!",
         })
         assert login_resp.status_code == 200
+        tokens = login_resp.json()
 
         refresh_resp = await client.post("/api/v1/auth/refresh", json={
             "refresh_token": tokens["refresh_token"],
@@ -35,12 +58,25 @@ class TestAuthFlowIntegration:
         assert profile_resp.status_code == 200
         assert profile_resp.json()["email"] == "flow@test.com"
 
-    async def test_change_password_flow(self, client: AsyncClient):
+    async def test_change_password_flow(self, client: AsyncClient, db_session: AsyncSession):
         signup = await client.post("/api/v1/auth/signup", json={
             "email": "changepw@test.com",
             "password": "OldPass123!",
         })
-        token = signup.json()["access_token"]
+        assert signup.status_code == 201
+
+        # Verify user in DB
+        from sqlalchemy import select
+        result = await db_session.execute(select(User).where(User.email == "changepw@test.com"))
+        user = result.scalars().first()
+        await _verify_user_in_db(db_session, user.id)
+
+        login_resp = await client.post("/api/v1/auth/login", json={
+            "email": "changepw@test.com",
+            "password": "OldPass123!",
+        })
+        assert login_resp.status_code == 200
+        token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         change_resp = await client.post(
