@@ -1,6 +1,8 @@
 {
-  "model_version": "gru_v1_production_retrained",
+  "model_version": "gru_v1",
   "feature_version": "2025.09.18.v2",
+  "n_features": 36,
+  "window_size": 30,
   "feature_columns": [
     "open",
     "high",
@@ -39,30 +41,10 @@
     "stock_return_20d",
     "stock_relative_return_20d"
   ],
-  "n_features": 36,
-  "window_size": 30,
   "label_mapping": {
     "bullish": 0,
     "bearish": 1,
     "sideways": 2
   },
-  "class_weights": {
-    "0": 1.2761513124245587,
-    "1": 1.257131916523071,
-    "2": 0.7037632497870444
-  },
-  "train_date_range": {
-    "min": "2020-03-12",
-    "max": "2025-09-29",
-    "n": 124754
-  },
-  "val_date_range": {
-    "min": "2025-09-29",
-    "max": "2026-09-17",
-    "n": 23689
-  },
-  "scaler_version": "StandardScaler_v2026",
-  "training_duration_sec": 2220.6703073978424,
-  "val_accuracy": 0.48300899151504917,
-  "training_timestamp": "2026-09-19T01:06:34.357893"
+  "updated_at": "2026-09-22T17:32:42.525638+00:00"
 }

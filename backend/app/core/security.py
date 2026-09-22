@@ -55,3 +55,27 @@ def decode_email_verification_token(token: str) -> dict | None:
         return payload
     except JWTError:
         return None
+
+
+def create_password_reset_grant_token(user_id: str, email: str) -> str:
+    """Creates a short-lived (15 min) JWT grant token returned after OTP verification in Step 2."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.PASSWORD_RESET_GRANT_EXPIRE_MINUTES)
+    to_encode = {
+        "sub": user_id,
+        "email": email,
+        "type": "password_reset_grant",
+        "exp": expire,
+        "jti": uuid4().hex,
+    }
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def decode_password_reset_grant_token(token: str) -> dict | None:
+    """Validates and decodes the password reset grant token."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "password_reset_grant":
+            return None
+        return payload
+    except JWTError:
+        return None

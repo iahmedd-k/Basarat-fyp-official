@@ -16,7 +16,9 @@ from app.core.exceptions import (
 )
 from app.core.security import (
     create_access_token,
+    create_password_reset_grant_token,
     create_refresh_token,
+    decode_password_reset_grant_token,
     decode_token,
     hash_password,
     verify_password,
@@ -274,6 +276,7 @@ class AuthService:
         user.hashed_password = hash_password(new_password)
         await self.db.flush()
         await self._revoke_all_user_tokens(user_id)
+        await self.email_service.send_password_changed_alert(user.email)
 
     async def forgot_password(self, email: str) -> None:
         email = email.strip().lower()
@@ -284,7 +287,7 @@ class AuthService:
         if user is None:
             return
 
-        # Invalidate old reset codes
+        # Invalidate old unused reset codes
         await self.db.execute(
             delete(PasswordResetToken).where(
                 PasswordResetToken.user_id == user.id,
@@ -293,33 +296,35 @@ class AuthService:
         )
         await self.db.flush()
 
-        # Generate OTP
+        # Generate 6-digit OTP
         settings = get_settings()
         code = _generate_otp()
         code_hash = _hash_code(code)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
 
-        reset_token = PasswordResetToken(
+        reset_token_record = PasswordResetToken(
             token_hash=code_hash,
             user_id=user.id,
             expires_at=expires_at,
         )
-        self.db.add(reset_token)
+        self.db.add(reset_token_record)
         await self.db.flush()
         await self.db.commit()
 
         await self.email_service.send_password_reset_code(user.email, code)
 
-    async def reset_password(self, email: str, code: str, new_password: str) -> None:
+    async def verify_reset_code(self, email: str, code: str) -> dict:
+        """
+        Step 2 of 3: Verify the 6-digit reset code, mark OTP used immediately,
+        and issue a temporary signed reset_token grant.
+        """
         email = email.strip().lower()
-        settings = get_settings()
-
         result = await self.db.execute(
             select(User).where(User.email == email)
         )
         user = result.scalars().first()
         if user is None:
-            raise BadRequestError("Invalid email or code.")
+            raise BadRequestError("Invalid email or reset code.")
 
         code_hash = _hash_code(code)
         result = await self.db.execute(
@@ -330,14 +335,75 @@ class AuthService:
                 PasswordResetToken.expires_at > datetime.now(timezone.utc),
             )
         )
-        reset_token = result.scalars().first()
-        if not reset_token:
-            raise BadRequestError("Invalid or expired code.")
+        reset_token_record = result.scalars().first()
+        if not reset_token_record:
+            raise BadRequestError("Invalid or expired reset code.")
+
+        # Consume / Burn the OTP immediately so it cannot be reused
+        reset_token_record.used = True
+        await self.db.flush()
+
+        # Create temporary signed JWT grant for setting the password
+        settings = get_settings()
+        grant_token = create_password_reset_grant_token(user.id, user.email)
+        return {
+            "reset_token": grant_token,
+            "expires_in": settings.PASSWORD_RESET_GRANT_EXPIRE_MINUTES * 60,
+            "token_type": "bearer",
+            "message": "Code verified successfully. Please proceed to set your new password.",
+        }
+
+    async def reset_password(
+        self,
+        new_password: str,
+        reset_token: str | None = None,
+        email: str | None = None,
+        code: str | None = None,
+    ) -> None:
+        """
+        Step 3 of 3: Set new password using reset_token grant (or email+code fallback).
+        Revokes all active sessions on all devices and sends security notification email.
+        """
+        user: User | None = None
+
+        if reset_token:
+            payload = decode_password_reset_grant_token(reset_token)
+            if not payload or not payload.get("sub"):
+                raise BadRequestError("Invalid or expired reset session. Please request a new code.")
+            user_id = payload.get("sub")
+            user = await self.db.get(User, user_id)
+            if user is None:
+                raise NotFoundError("User not found.")
+        elif email and code:
+            # Fallback for direct code redemption
+            email = email.strip().lower()
+            result = await self.db.execute(
+                select(User).where(User.email == email)
+            )
+            user = result.scalars().first()
+            if user is None:
+                raise BadRequestError("Invalid email or reset code.")
+
+            code_hash = _hash_code(code)
+            result = await self.db.execute(
+                select(PasswordResetToken).where(
+                    PasswordResetToken.user_id == user.id,
+                    PasswordResetToken.token_hash == code_hash,
+                    PasswordResetToken.used == False,
+                    PasswordResetToken.expires_at > datetime.now(timezone.utc),
+                )
+            )
+            reset_token_record = result.scalars().first()
+            if not reset_token_record:
+                raise BadRequestError("Invalid or expired reset code.")
+            reset_token_record.used = True
+        else:
+            raise BadRequestError("Either reset_token or email and code is required.")
 
         user.hashed_password = hash_password(new_password)
-        reset_token.used = True
         await self.db.flush()
         await self._revoke_all_user_tokens(user.id)
+        await self.email_service.send_password_changed_alert(user.email)
 
     async def _send_verification_otp(self, user: User) -> None:
         settings = get_settings()

@@ -58,9 +58,10 @@ class Settings(BaseSettings):
     SENDGRID_API_KEY: str = ""
     SENDGRID_FROM_EMAIL: str = ""
 
-    # Email verification
-    EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 1
-    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 1
+    # Email verification and password reset
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 10
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 10
+    PASSWORD_RESET_GRANT_EXPIRE_MINUTES: int = 15
 
     # Clerk Auth Webhook
     CLERK_WEBHOOK_SECRET: str = ""

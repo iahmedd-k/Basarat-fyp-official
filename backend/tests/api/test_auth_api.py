@@ -255,7 +255,8 @@ class TestAuthChangePassword:
             headers=auth_headers,
             json={"current_password": "TestPass123!", "new_password": "NewPass456!"},
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        assert "Password changed successfully" in resp.json()["message"]
 
     async def test_change_password_wrong_current(self, client: AsyncClient, auth_headers):
         resp = await client.post(
@@ -267,13 +268,14 @@ class TestAuthChangePassword:
 
 
 @pytest.mark.api
+@pytest.mark.api
 class TestAuthForgotPassword:
     async def test_forgot_password_send_code(self, client: AsyncClient, test_user):
         resp = await client.post("/api/v1/auth/forgot-password", json={
             "email": test_user.email,
         })
         assert resp.status_code == 200
-        assert resp.json()["message"] == "If the email exists, a reset code has been sent."
+        assert "reset code has been sent" in resp.json()["message"]
 
     async def test_forgot_password_nonexistent_email(self, client: AsyncClient):
         resp = await client.post("/api/v1/auth/forgot-password", json={
@@ -281,24 +283,37 @@ class TestAuthForgotPassword:
         })
         assert resp.status_code == 200
 
-    async def test_forgot_password_reset_with_code(self, client: AsyncClient, test_user, db_session):
+    async def test_forgot_password_full_3step_flow(self, client: AsyncClient, test_user, db_session):
         code = "654321"
-        reset_token = PasswordResetToken(
+        reset_token_rec = PasswordResetToken(
             token_hash=_hash_code(code),
             user_id=test_user.id,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
         )
-        db_session.add(reset_token)
+        db_session.add(reset_token_rec)
         await db_session.flush()
 
-        resp = await client.post("/api/v1/auth/forgot-password", json={
+        # Step 2: Verify reset code and receive reset_token grant
+        verify_resp = await client.post("/api/v1/auth/verify-reset-code", json={
             "email": test_user.email,
             "code": code,
-            "new_password": "NewResetPass123!",
         })
-        assert resp.status_code == 200
-        assert resp.json()["message"] == "Password has been reset successfully."
+        assert verify_resp.status_code == 200
+        data = verify_resp.json()
+        assert "reset_token" in data
+        assert data["expires_in"] == 900
+        reset_grant = data["reset_token"]
 
+        # Step 3: Reset password using the grant token
+        reset_resp = await client.post("/api/v1/auth/reset-password", json={
+            "reset_token": reset_grant,
+            "new_password": "NewResetPass123!",
+            "confirm_password": "NewResetPass123!",
+        })
+        assert reset_resp.status_code == 200
+        assert "reset successfully" in reset_resp.json()["message"]
+
+        # Verify new password can now log in
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": test_user.email,
             "password": "NewResetPass123!",
@@ -306,61 +321,74 @@ class TestAuthForgotPassword:
         assert login_resp.status_code == 200
 
     async def test_forgot_password_wrong_code(self, client: AsyncClient, test_user, db_session):
-        reset_token = PasswordResetToken(
+        reset_token_rec = PasswordResetToken(
             token_hash=_hash_code("111111"),
             user_id=test_user.id,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
         )
-        db_session.add(reset_token)
+        db_session.add(reset_token_rec)
         await db_session.flush()
 
-        resp = await client.post("/api/v1/auth/forgot-password", json={
+        resp = await client.post("/api/v1/auth/verify-reset-code", json={
             "email": test_user.email,
             "code": "999999",
-            "new_password": "NewPass123!",
         })
         assert resp.status_code == 400
 
     async def test_forgot_password_expired_code(self, client: AsyncClient, test_user, db_session):
         code = "123456"
-        reset_token = PasswordResetToken(
+        reset_token_rec = PasswordResetToken(
             token_hash=_hash_code(code),
             user_id=test_user.id,
             expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
         )
-        db_session.add(reset_token)
+        db_session.add(reset_token_rec)
         await db_session.flush()
 
-        resp = await client.post("/api/v1/auth/forgot-password", json={
+        resp = await client.post("/api/v1/auth/verify-reset-code", json={
             "email": test_user.email,
             "code": code,
-            "new_password": "NewPass123!",
         })
         assert resp.status_code == 400
 
-    async def test_forgot_password_reused_code(self, client: AsyncClient, test_user, db_session):
+    async def test_forgot_password_code_cannot_be_reused(self, client: AsyncClient, test_user, db_session):
         code = "123456"
-        reset_token = PasswordResetToken(
+        reset_token_rec = PasswordResetToken(
             token_hash=_hash_code(code),
             user_id=test_user.id,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
         )
-        db_session.add(reset_token)
+        db_session.add(reset_token_rec)
         await db_session.flush()
 
-        resp1 = await client.post("/api/v1/auth/forgot-password", json={
+        # First verification succeeds and consumes OTP
+        resp1 = await client.post("/api/v1/auth/verify-reset-code", json={
             "email": test_user.email,
             "code": code,
-            "new_password": "NewPass123!",
         })
         assert resp1.status_code == 200
 
-        resp2 = await client.post("/api/v1/auth/forgot-password", json={
+        # Second verification with same code fails immediately
+        resp2 = await client.post("/api/v1/auth/verify-reset-code", json={
             "email": test_user.email,
             "code": code,
-            "new_password": "AnotherPass123!",
         })
         assert resp2.status_code == 400
+
+
+@pytest.mark.api
+class TestAuthMeAndLogoutAll:
+    async def test_get_me_success(self, client: AsyncClient, auth_headers, test_user):
+        resp = await client.get("/api/v1/auth/me", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["email"] == test_user.email
+        assert data["id"] == test_user.id
+
+    async def test_logout_all_success(self, client: AsyncClient, auth_headers):
+        resp = await client.post("/api/v1/auth/logout-all", headers=auth_headers)
+        assert resp.status_code == 200
+        assert "All active sessions" in resp.json()["message"]
 
 
 @pytest.mark.regression

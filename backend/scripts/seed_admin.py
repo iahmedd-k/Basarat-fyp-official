@@ -20,7 +20,7 @@ if str(backend_dir) not in sys.path:
 
 from sqlalchemy import select
 from app.core.security import hash_password
-from app.db.session import async_session_factory, engine
+from app.db.base import async_session_factory, engine
 from app.models.user import User
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -48,7 +48,7 @@ async def seed_admin_user(
             user.username = username
             if full_name:
                 user.full_name = full_name
-            user.password_hash = password_hashed
+            user.hashed_password = password_hashed
             user.is_admin = True
             user.is_active = True
             user.is_verified = True
@@ -59,7 +59,7 @@ async def seed_admin_user(
                 email=email,
                 username=username,
                 full_name=full_name or "System Administrator",
-                password_hash=password_hashed,
+                hashed_password=password_hashed,
                 is_admin=True,
                 is_active=True,
                 is_verified=True,

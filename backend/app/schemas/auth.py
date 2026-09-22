@@ -57,17 +57,17 @@ NO_PREFERENCE = SectorPreference.ALL_SECTORS.value
 class UserSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
-    email: str
-    username: str
-    full_name: str | None = None
+    id: str = Field(..., description="Unique user identifier (UUID)", examples=["usr_9f8e7d6c5b4a"])
+    email: str = Field(..., description="User email address", examples=["investor@example.com"])
+    username: str = Field(..., description="Unique username", examples=["user_abc123"])
+    full_name: str | None = Field(None, description="Full name of user", examples=["Ahmed Khan"])
 
 
 class SignupRequest(BaseModel):
     """Request body for user registration."""
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
-    full_name: str | None = Field(None, max_length=255)
+    email: EmailStr = Field(..., description="Valid email address for registration", examples=["investor@example.com"])
+    password: str = Field(..., min_length=8, max_length=128, description="Password (min 8 chars, 1 uppercase, 1 digit, 1 special char)", examples=["SecurePass123!"])
+    full_name: str | None = Field(None, max_length=255, description="Full name of the user", examples=["Ahmed Khan"])
 
     @field_validator("password")
     @classmethod
@@ -82,45 +82,54 @@ class SignupRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     """Request body for email/password authentication."""
-    email: EmailStr
-    password: str
+    email: EmailStr = Field(..., description="Registered email address", examples=["investor@example.com"])
+    password: str = Field(..., description="User password", examples=["SecurePass123!"])
 
 
 class RefreshRequest(BaseModel):
     """Request body for token refresh."""
-    refresh_token: str
+    refresh_token: str = Field(..., description="Valid refresh token received from login or verify-email", examples=["eyJhbGciOi..."])
 
 
 class LogoutRequest(BaseModel):
     """Request body for logout."""
-    refresh_token: str
+    refresh_token: str = Field(..., description="Refresh token to invalidate", examples=["eyJhbGciOi..."])
 
 
 class TokenResponse(BaseModel):
-    """Response containing JWT tokens and user summary."""
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
+    """Response containing JWT access & refresh tokens and user summary."""
+    access_token: str = Field(..., description="Short-lived JWT access token for Authorization header", examples=["eyJhbGciOi..."])
+    refresh_token: str = Field(..., description="Rotating refresh token to exchange for new access tokens", examples=["eyJhbGciOi..."])
+    token_type: str = Field("bearer", description="Token authorization scheme type", examples=["bearer"])
     user: UserSummary
 
 
 class ForgotPasswordRequest(BaseModel):
-    """Step 1: Request password reset code via email."""
-    email: EmailStr
+    """Step 1 of 3: Request password reset OTP code via email."""
+    email: EmailStr = Field(..., description="Email address associated with the account", examples=["investor@example.com"])
 
 
 class VerifyResetCodeRequest(BaseModel):
-    """Step 2: Verify the 6-digit reset code."""
-    email: EmailStr
-    code: str = Field(..., min_length=6, max_length=6, description="6-digit reset code from email")
+    """Step 2 of 3: Verify the 6-digit reset code received in email."""
+    email: EmailStr = Field(..., description="Email address where the reset code was sent", examples=["investor@example.com"])
+    code: str = Field(..., min_length=6, max_length=6, description="6-digit reset code from email", examples=["123456"])
+
+
+class VerifyResetCodeResponse(BaseModel):
+    """Step 2 Response: Returns temporary reset_token grant to set new password."""
+    reset_token: str = Field(..., description="Short-lived (15 min) grant token required in Step 3 (reset-password)", examples=["eyJhbGciOi..."])
+    expires_in: int = Field(900, description="Token validity duration in seconds (15 minutes)", examples=[900])
+    token_type: str = Field("bearer", description="Token type", examples=["bearer"])
+    message: str = Field("Code verified successfully. Please proceed to set your new password.", description="Status message")
 
 
 class ResetPasswordRequest(BaseModel):
-    """Step 3: Set new password after code verification."""
-    email: EmailStr
-    code: str = Field(..., min_length=6, max_length=6, description="6-digit reset code from email")
-    new_password: str = Field(..., min_length=8, max_length=128)
-    confirm_password: str = Field(..., min_length=8, max_length=128)
+    """Step 3 of 3: Set new password using reset_token (or email+code fallback)."""
+    reset_token: str | None = Field(None, description="Temporary grant token received from Step 2 (/verify-reset-code)", examples=["eyJhbGciOi..."])
+    email: EmailStr | None = Field(None, description="Email address (optional fallback if reset_token is not used)", examples=["investor@example.com"])
+    code: str | None = Field(None, min_length=6, max_length=6, description="6-digit reset code (optional fallback if reset_token is not used)", examples=["123456"])
+    new_password: str = Field(..., min_length=8, max_length=128, description="New password (min 8 chars, 1 uppercase, 1 digit, 1 special char)", examples=["NewSecurePass123!"])
+    confirm_password: str | None = Field(None, min_length=8, max_length=128, description="Confirmation of new password (must match new_password)", examples=["NewSecurePass123!"])
 
     @field_validator("new_password")
     @classmethod
@@ -134,16 +143,17 @@ class ResetPasswordRequest(BaseModel):
 
     @field_validator("confirm_password")
     @classmethod
-    def validate_passwords_match(cls, v: str, info) -> str:
-        if "new_password" in info.data and v != info.data["new_password"]:
+    def validate_passwords_match(cls, v: str | None, info) -> str | None:
+        if v is not None and "new_password" in info.data and v != info.data["new_password"]:
             raise ValueError("Passwords do not match.")
         return v
 
 
 class ChangePasswordRequest(BaseModel):
-    """Request body to change password (authenticated)."""
-    current_password: str
-    new_password: str = Field(..., min_length=8, max_length=128)
+    """Request body to change password while logged in."""
+    current_password: str = Field(..., description="Current account password", examples=["OldSecurePass123!"])
+    new_password: str = Field(..., min_length=8, max_length=128, description="New password", examples=["NewSecurePass123!"])
+    confirm_password: str | None = Field(None, min_length=8, max_length=128, description="Confirmation of new password", examples=["NewSecurePass123!"])
 
     @field_validator("new_password")
     @classmethod
@@ -155,21 +165,28 @@ class ChangePasswordRequest(BaseModel):
             )
         return v
 
+    @field_validator("confirm_password")
+    @classmethod
+    def validate_passwords_match(cls, v: str | None, info) -> str | None:
+        if v is not None and "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("Passwords do not match.")
+        return v
+
 
 class MessageResponse(BaseModel):
-    """Generic message response."""
-    message: str
+    """Generic status/message response."""
+    message: str = Field(..., description="Informational message", examples=["Operation completed successfully."])
 
 
 class VerifyEmailRequest(BaseModel):
-    """Request body to verify email with 6-digit code."""
-    email: EmailStr
-    code: str = Field(..., min_length=6, max_length=6, description="6-digit verification code")
+    """Request body to verify email with 6-digit code after signup."""
+    email: EmailStr = Field(..., description="Registered email address", examples=["investor@example.com"])
+    code: str = Field(..., min_length=6, max_length=6, description="6-digit verification code from email", examples=["123456"])
 
 
 class ResendVerificationRequest(BaseModel):
     """Request body to resend the verification code."""
-    email: EmailStr
+    email: EmailStr = Field(..., description="Registered email address", examples=["investor@example.com"])
 
 
 class UserProfileResponse(BaseModel):
