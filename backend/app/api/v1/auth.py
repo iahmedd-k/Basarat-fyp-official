@@ -23,7 +23,6 @@ from app.schemas.auth import (
     MessageResponse,
     RefreshRequest,
     ResendVerificationRequest,
-    ResetPasswordRequest,
     SignupRequest,
     TokenResponse,
     VerifyEmailRequest,
@@ -43,6 +42,7 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> AuthService:
     response_model=MessageResponse,
     status_code=201,
     summary="Register a new user account",
+    description="Creates a new account and sends a 6-digit verification code to the provided email.",
 )
 @limiter.limit("5/minute")
 async def signup(
@@ -56,11 +56,7 @@ async def signup(
             password=data.password,
             full_name=data.full_name,
         )
-    except ConflictError:
-        raise
-    except ValidationFailedError:
-        raise
-    except RateLimitExceeded:
+    except (ConflictError, ValidationFailedError, RateLimitExceeded):
         raise
     except Exception as e:
         log.exception("Signup failed")
@@ -70,7 +66,8 @@ async def signup(
 @router.post(
     "/auth/verify-email",
     response_model=TokenResponse,
-    summary="Verify email with 6-digit code",
+    summary="Verify email address",
+    description="Verifies the user's email using the 6-digit code sent during signup. Returns access and refresh tokens on success.",
 )
 @limiter.limit("10/minute")
 async def verify_email(
@@ -80,11 +77,7 @@ async def verify_email(
 ):
     try:
         return await service.verify_email(data.email, data.code)
-    except BadRequestError:
-        raise
-    except NotFoundError:
-        raise
-    except RateLimitExceeded:
+    except (BadRequestError, NotFoundError, RateLimitExceeded):
         raise
     except Exception as e:
         log.exception("Email verification failed")
@@ -94,8 +87,9 @@ async def verify_email(
 @router.post(
     "/auth/resend-verification",
     response_model=MessageResponse,
-    status_code=202,
-    summary="Resend verification email",
+    status_code=200,
+    summary="Resend verification code",
+    description="Generates a new 6-digit verification code and sends it to the user's email. Previous codes are invalidated.",
 )
 @limiter.limit("3/minute")
 async def resend_verification(
@@ -116,6 +110,7 @@ async def resend_verification(
     "/auth/login",
     response_model=TokenResponse,
     summary="Authenticate and get tokens",
+    description="Authenticates a verified user with email and password. Returns access and refresh tokens.",
 )
 @limiter.limit("5/minute")
 async def login(
@@ -128,11 +123,7 @@ async def login(
             email=data.email,
             password=data.password,
         )
-    except UnauthorizedError:
-        raise
-    except ValidationFailedError:
-        raise
-    except RateLimitExceeded:
+    except (UnauthorizedError, ValidationFailedError, RateLimitExceeded):
         raise
     except Exception as e:
         log.exception("Login failed")
@@ -142,7 +133,8 @@ async def login(
 @router.post(
     "/auth/refresh",
     response_model=TokenResponse,
-    summary="Refresh access token using refresh token",
+    summary="Refresh access token",
+    description="Exchanges a valid refresh token for a new access/refresh token pair. The old refresh token is revoked (rotation).",
 )
 @limiter.limit("10/minute")
 async def refresh_token(
@@ -152,25 +144,18 @@ async def refresh_token(
 ):
     try:
         return await service.refresh_token(data.refresh_token)
-    except UnauthorizedError:
-        raise
-    except ValidationFailedError:
-        raise
-    except RateLimitExceeded:
+    except (UnauthorizedError, ValidationFailedError, RateLimitExceeded):
         raise
     except Exception as e:
         log.exception("Token refresh failed")
         raise ServiceUnavailableError("Token refresh failed")
 
 
-# NOTE: Logout is intentionally unauthenticated. SPAs and mobile apps often
-# lose their access token but still need to invalidate the refresh token to
-# complete a logout. The endpoint returns 204 regardless of whether the token
-# was valid, invalid, or already revoked — no information leakage.
 @router.post(
     "/auth/logout",
     status_code=204,
     summary="Logout and invalidate refresh token",
+    description="Revokes the given refresh token. Always returns 204 regardless of token validity to prevent token enumeration.",
 )
 @limiter.limit("10/minute")
 async def logout(
@@ -183,8 +168,14 @@ async def logout(
 
 @router.post(
     "/auth/forgot-password",
-    status_code=202,
-    summary="Request a password reset link",
+    response_model=MessageResponse,
+    status_code=200,
+    summary="Request password reset code or reset password",
+    description=(
+        "Step 1 – Send code: provide {email}. Sends a 6-digit code to the user's email.\n\n"
+        "Step 2 – Reset: provide {email, code, new_password}. Resets the password.\n\n"
+        "Always returns success to prevent email enumeration."
+    ),
 )
 @limiter.limit("3/minute")
 async def forgot_password(
@@ -192,14 +183,25 @@ async def forgot_password(
     data: ForgotPasswordRequest,
     service: AuthService = Depends(_get_service),
 ):
-    await service.forgot_password(data.email)
-    return MessageResponse(message="If the email exists, a reset link has been sent.")
+    try:
+        if data.code and data.new_password:
+            await service.reset_password(data.email, data.code, data.new_password)
+            return MessageResponse(message="Password has been reset successfully.")
+        else:
+            await service.forgot_password(data.email)
+            return MessageResponse(message="If the email exists, a reset code has been sent.")
+    except (BadRequestError, ValidationFailedError, NotFoundError, RateLimitExceeded):
+        raise
+    except Exception as e:
+        log.exception("Forgot password failed")
+        raise ServiceUnavailableError("Forgot password failed")
 
 
 @router.post(
     "/auth/change-password",
     status_code=204,
     summary="Change password (authenticated)",
+    description="Changes the authenticated user's password. All existing refresh tokens are revoked.",
 )
 @limiter.limit("10/minute")
 async def change_password(
@@ -214,40 +216,8 @@ async def change_password(
             current_password=data.current_password,
             new_password=data.new_password,
         )
-    except UnauthorizedError:
-        raise
-    except NotFoundError:
-        raise
-    except ValidationFailedError:
-        raise
-    except RateLimitExceeded:
+    except (UnauthorizedError, NotFoundError, ValidationFailedError, RateLimitExceeded):
         raise
     except Exception as e:
         log.exception("Password change failed")
         raise ServiceUnavailableError("Password change failed")
-
-
-@router.post(
-    "/auth/reset-password",
-    status_code=204,
-    summary="Reset password using email + code",
-)
-@limiter.limit("3/minute")
-async def reset_password(
-    request: Request,
-    data: ResetPasswordRequest,
-    service: AuthService = Depends(_get_service),
-):
-    try:
-        await service.reset_password(data.email, data.code, data.new_password)
-    except BadRequestError:
-        raise
-    except ValidationFailedError:
-        raise
-    except NotFoundError:
-        raise
-    except RateLimitExceeded:
-        raise
-    except Exception as e:
-        log.exception("Password reset failed")
-        raise ServiceUnavailableError("Password reset failed")

@@ -64,6 +64,7 @@ class UserSummary(BaseModel):
 
 
 class SignupRequest(BaseModel):
+    """Request body for user registration."""
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
     full_name: str | None = Field(None, max_length=255)
@@ -80,19 +81,23 @@ class SignupRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    """Request body for email/password authentication."""
     email: EmailStr
     password: str
 
 
 class RefreshRequest(BaseModel):
+    """Request body for token refresh."""
     refresh_token: str
 
 
 class LogoutRequest(BaseModel):
+    """Request body for logout."""
     refresh_token: str
 
 
 class TokenResponse(BaseModel):
+    """Response containing JWT tokens and user summary."""
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
@@ -100,18 +105,20 @@ class TokenResponse(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
+    """
+    Password reset flow — single endpoint, two steps.
 
-
-class ResetPasswordRequest(BaseModel):
+    Step 1 – Send code:  {"email": "..."}
+    Step 2 – Reset:      {"email": "...", "code": "123456", "new_password": "..."}
+    """
     email: EmailStr
-    code: str = Field(..., min_length=6, max_length=6)
-    new_password: str = Field(..., min_length=8, max_length=128)
+    code: str | None = Field(None, min_length=6, max_length=6, description="6-digit reset code (step 2 only)")
+    new_password: str | None = Field(None, min_length=8, max_length=128)
 
     @field_validator("new_password")
     @classmethod
-    def validate_password_complexity(cls, v: str) -> str:
-        if not _PASSWORD_COMPLEXITY_RE.match(v):
+    def validate_password_complexity(cls, v: str | None) -> str | None:
+        if v is not None and not _PASSWORD_COMPLEXITY_RE.match(v):
             raise ValueError(
                 "Password must contain at least one uppercase letter, "
                 "one digit, and one special character."
@@ -120,6 +127,7 @@ class ResetPasswordRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
+    """Request body to change password (authenticated)."""
     current_password: str
     new_password: str = Field(..., min_length=8, max_length=128)
 
@@ -135,15 +143,18 @@ class ChangePasswordRequest(BaseModel):
 
 
 class MessageResponse(BaseModel):
+    """Generic message response."""
     message: str
 
 
 class VerifyEmailRequest(BaseModel):
+    """Request body to verify email with 6-digit code."""
     email: EmailStr
-    code: str = Field(..., min_length=6, max_length=6)
+    code: str = Field(..., min_length=6, max_length=6, description="6-digit verification code")
 
 
 class ResendVerificationRequest(BaseModel):
+    """Request body to resend the verification code."""
     email: EmailStr
 
 

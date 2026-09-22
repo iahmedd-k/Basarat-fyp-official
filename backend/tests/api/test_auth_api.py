@@ -149,19 +149,19 @@ class TestAuthResendVerification:
         resp = await client.post("/api/v1/auth/resend-verification", json={
             "email": "resend@test.com",
         })
-        assert resp.status_code == 202
+        assert resp.status_code == 200
 
     async def test_resend_verification_nonexistent_email(self, client: AsyncClient):
         resp = await client.post("/api/v1/auth/resend-verification", json={
             "email": "nonexistent@test.com",
         })
-        assert resp.status_code == 202
+        assert resp.status_code == 200
 
     async def test_resend_verification_already_verified(self, client: AsyncClient, test_user):
         resp = await client.post("/api/v1/auth/resend-verification", json={
             "email": test_user.email,
         })
-        assert resp.status_code == 202
+        assert resp.status_code == 200
 
 
 @pytest.mark.api
@@ -268,22 +268,20 @@ class TestAuthChangePassword:
 
 @pytest.mark.api
 class TestAuthForgotPassword:
-    async def test_forgot_password_success(self, client: AsyncClient, test_user):
+    async def test_forgot_password_send_code(self, client: AsyncClient, test_user):
         resp = await client.post("/api/v1/auth/forgot-password", json={
             "email": test_user.email,
         })
-        assert resp.status_code == 202
+        assert resp.status_code == 200
+        assert resp.json()["message"] == "If the email exists, a reset code has been sent."
 
     async def test_forgot_password_nonexistent_email(self, client: AsyncClient):
         resp = await client.post("/api/v1/auth/forgot-password", json={
             "email": "nonexistent@test.com",
         })
-        assert resp.status_code == 202
+        assert resp.status_code == 200
 
-
-@pytest.mark.api
-class TestAuthResetPassword:
-    async def test_reset_password_success(self, client: AsyncClient, test_user, db_session):
+    async def test_forgot_password_reset_with_code(self, client: AsyncClient, test_user, db_session):
         code = "654321"
         reset_token = PasswordResetToken(
             token_hash=_hash_code(code),
@@ -293,12 +291,13 @@ class TestAuthResetPassword:
         db_session.add(reset_token)
         await db_session.flush()
 
-        resp = await client.post("/api/v1/auth/reset-password", json={
+        resp = await client.post("/api/v1/auth/forgot-password", json={
             "email": test_user.email,
             "code": code,
             "new_password": "NewResetPass123!",
         })
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        assert resp.json()["message"] == "Password has been reset successfully."
 
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": test_user.email,
@@ -306,7 +305,7 @@ class TestAuthResetPassword:
         })
         assert login_resp.status_code == 200
 
-    async def test_reset_password_wrong_code(self, client: AsyncClient, test_user, db_session):
+    async def test_forgot_password_wrong_code(self, client: AsyncClient, test_user, db_session):
         reset_token = PasswordResetToken(
             token_hash=_hash_code("111111"),
             user_id=test_user.id,
@@ -315,14 +314,14 @@ class TestAuthResetPassword:
         db_session.add(reset_token)
         await db_session.flush()
 
-        resp = await client.post("/api/v1/auth/reset-password", json={
+        resp = await client.post("/api/v1/auth/forgot-password", json={
             "email": test_user.email,
             "code": "999999",
             "new_password": "NewPass123!",
         })
         assert resp.status_code == 400
 
-    async def test_reset_password_expired_code(self, client: AsyncClient, test_user, db_session):
+    async def test_forgot_password_expired_code(self, client: AsyncClient, test_user, db_session):
         code = "123456"
         reset_token = PasswordResetToken(
             token_hash=_hash_code(code),
@@ -332,14 +331,14 @@ class TestAuthResetPassword:
         db_session.add(reset_token)
         await db_session.flush()
 
-        resp = await client.post("/api/v1/auth/reset-password", json={
+        resp = await client.post("/api/v1/auth/forgot-password", json={
             "email": test_user.email,
             "code": code,
             "new_password": "NewPass123!",
         })
         assert resp.status_code == 400
 
-    async def test_reset_password_reused_code(self, client: AsyncClient, test_user, db_session):
+    async def test_forgot_password_reused_code(self, client: AsyncClient, test_user, db_session):
         code = "123456"
         reset_token = PasswordResetToken(
             token_hash=_hash_code(code),
@@ -349,14 +348,14 @@ class TestAuthResetPassword:
         db_session.add(reset_token)
         await db_session.flush()
 
-        resp1 = await client.post("/api/v1/auth/reset-password", json={
+        resp1 = await client.post("/api/v1/auth/forgot-password", json={
             "email": test_user.email,
             "code": code,
             "new_password": "NewPass123!",
         })
-        assert resp1.status_code == 204
+        assert resp1.status_code == 200
 
-        resp2 = await client.post("/api/v1/auth/reset-password", json={
+        resp2 = await client.post("/api/v1/auth/forgot-password", json={
             "email": test_user.email,
             "code": code,
             "new_password": "AnotherPass123!",

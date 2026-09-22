@@ -104,6 +104,7 @@ def load_artifacts() -> None:
 
     Called once during app startup. If anything fails, model_ready stays False.
     """
+    # ── GRU Model ─────────────────────────────────────────────────────
     try:
         import tensorflow as tf
         model_path = GRU_MODEL_DIR / "model.keras"
@@ -116,15 +117,19 @@ def load_artifacts() -> None:
         log.warning("Could not load GRU model artifact: %s", tf_err)
         artifacts.model = None
 
-        # ── Scaler ──────────────────────────────────────────────────────
+    # ── Scaler ──────────────────────────────────────────────────────
+    try:
         scaler_path = DATA_DIR / "scaler.pkl"
         if not scaler_path.exists():
             log.error("Scaler file not found: %s", scaler_path)
             return
         artifacts.scaler = joblib.load(scaler_path)
         log.info("Loaded scaler <- %s", scaler_path)
+    except Exception as e:
+        log.warning("Could not load scaler: %s", e)
 
-        # ── Metadata ────────────────────────────────────────────────────
+    # ── Metadata ────────────────────────────────────────────────────
+    try:
         meta_path = GRU_MODEL_DIR / "metadata.json"
         if not meta_path.exists():
             log.error("Metadata file not found: %s", meta_path)
@@ -139,35 +144,40 @@ def load_artifacts() -> None:
         log.info("Loaded metadata <- %s (window=%d, features=%d, version=%s)",
                  meta_path, artifacts.window_size, artifacts.n_features,
                  meta.get("feature_version", "unknown"))
+    except Exception as e:
+        log.warning("Could not load metadata: %s", e)
 
-        # ── Validate feature list matches explicit GRU feature list ─────────
-        is_valid, err = validate_feature_list(artifacts.feature_columns)
-        if not is_valid:
-            log.error("Feature list validation failed: %s", err)
-            log.error("Expected GRU feature version: %s, got: %s",
-                      GRU_FEATURE_VERSION, meta.get("feature_version", "unknown"))
-            return
+    # ── Validate feature list matches explicit GRU feature list ─────────
+    try:
+        if artifacts.feature_columns:
+            is_valid, err = validate_feature_list(artifacts.feature_columns)
+            if not is_valid:
+                log.error("Feature list validation failed: %s", err)
+                log.error("Expected GRU feature version: %s, got: %s",
+                          GRU_FEATURE_VERSION, meta.get("feature_version", "unknown"))
+                return
 
         # Validate feature count
-        is_valid, err = validate_feature_count(artifacts.n_features)
-        if not is_valid:
-            log.error("Feature count validation failed: %s", err)
-            return
+        if artifacts.n_features:
+            is_valid, err = validate_feature_count(artifacts.n_features)
+            if not is_valid:
+                log.error("Feature count validation failed: %s", err)
+                return
 
         # ── Validate shapes ─────────────────────────────────────────────
-        expected_shape = (None, artifacts.window_size, artifacts.n_features)
-        actual_shape = artifacts.model.input_shape
-        if actual_shape[1:] != (artifacts.window_size, artifacts.n_features):
-            log.error("Model input shape %s does not match metadata %s",
-                      actual_shape, expected_shape)
-            return
+        if artifacts.model is not None:
+            expected_shape = (None, artifacts.window_size, artifacts.n_features)
+            actual_shape = artifacts.model.input_shape
+            if actual_shape[1:] != (artifacts.window_size, artifacts.n_features):
+                log.error("Model input shape %s does not match metadata %s",
+                          actual_shape, expected_shape)
+                return
 
         artifacts.model_ready = True
         log.info("GRU artifacts loaded successfully — model_ready=True (feature_version=%s)",
                  GRU_FEATURE_VERSION)
-
     except Exception:
-        log.exception("Failed to load GRU artifacts")
+        log.exception("Failed to validate GRU artifacts")
         artifacts.model_ready = False
 
     # Load XGB (non-fatal if it fails — GRU still works alone)
