@@ -209,8 +209,6 @@ class TestPasswordSecurity:
         body = resp.json()
         assert "password" not in body
         assert "hashed_password" not in body
-        assert "user" in body
-        assert "password" not in body.get("user", {})
 
     async def test_login_failure_does_not_leak_info(self, client: AsyncClient):
         resp = await client.post("/api/v1/auth/login", json={

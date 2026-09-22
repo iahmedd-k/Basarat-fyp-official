@@ -44,7 +44,12 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = ""
     FIREBASE_PROJECT_ID: str = ""
 
-    # Transactional email / password reset
+    # Transactional email (Resend)
+    RESEND_API_KEY: str = ""
+    RESEND_FROM_EMAIL: str = ""
+    FRONTEND_URL: str = ""
+
+    # Legacy SMTP (kept for backward compat, not used for new flows)
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
@@ -52,6 +57,9 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = ""
     SMTP_USE_TLS: bool = True
     PASSWORD_RESET_URL: str = ""
+
+    # Email verification
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 30
 
     # Clerk Auth Webhook
     CLERK_WEBHOOK_SECRET: str = ""

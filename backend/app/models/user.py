@@ -38,6 +38,7 @@ class User(Base):
     assistant_conversations = relationship("AssistantConversation", back_populates="user", lazy="selectin")
     refresh_tokens = relationship("RefreshToken", back_populates="user", lazy="selectin")
     password_reset_tokens = relationship("PasswordResetToken", back_populates="user", lazy="selectin")
+    email_verification_tokens = relationship("EmailVerificationToken", back_populates="user", lazy="selectin")
 
 
 class RefreshToken(Base):
@@ -69,6 +70,19 @@ class PasswordResetToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="password_reset_tokens")
+
+
+class EmailVerificationToken(Base):
+    __tablename__ = "email_verification_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: uuid4().hex)
+    token_hash: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="email_verification_tokens")
 
 
 class Device(Base):

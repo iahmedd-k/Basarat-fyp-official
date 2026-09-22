@@ -4,6 +4,7 @@ import logging
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import (
+    BadRequestError,
     ConflictError,
     NotFoundError,
     ServiceUnavailableError,
@@ -21,9 +22,11 @@ from app.schemas.auth import (
     LogoutRequest,
     MessageResponse,
     RefreshRequest,
+    ResendVerificationRequest,
     ResetPasswordRequest,
     SignupRequest,
     TokenResponse,
+    VerifyEmailRequest,
 )
 from app.services.auth_service import AuthService
 
@@ -37,7 +40,7 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> AuthService:
 
 @router.post(
     "/auth/signup",
-    response_model=TokenResponse,
+    response_model=MessageResponse,
     status_code=201,
     summary="Register a new user account",
 )
@@ -62,6 +65,51 @@ async def signup(
     except Exception as e:
         log.exception("Signup failed")
         raise ServiceUnavailableError("Signup failed")
+
+
+@router.post(
+    "/auth/verify-email",
+    response_model=TokenResponse,
+    summary="Verify email with token",
+)
+@limiter.limit("10/minute")
+async def verify_email(
+    request: Request,
+    data: VerifyEmailRequest,
+    service: AuthService = Depends(_get_service),
+):
+    try:
+        return await service.verify_email(data.token)
+    except BadRequestError:
+        raise
+    except NotFoundError:
+        raise
+    except RateLimitExceeded:
+        raise
+    except Exception as e:
+        log.exception("Email verification failed")
+        raise ServiceUnavailableError("Email verification failed")
+
+
+@router.post(
+    "/auth/resend-verification",
+    response_model=MessageResponse,
+    status_code=202,
+    summary="Resend verification email",
+)
+@limiter.limit("3/minute")
+async def resend_verification(
+    request: Request,
+    data: ResendVerificationRequest,
+    service: AuthService = Depends(_get_service),
+):
+    try:
+        return await service.resend_verification(data.email)
+    except RateLimitExceeded:
+        raise
+    except Exception as e:
+        log.exception("Resend verification failed")
+        raise ServiceUnavailableError("Resend verification failed")
 
 
 @router.post(
