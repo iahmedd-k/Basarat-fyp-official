@@ -44,19 +44,19 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = ""
     FIREBASE_PROJECT_ID: str = ""
 
-    # Transactional email (Resend)
-    RESEND_API_KEY: str = ""
-    RESEND_FROM_EMAIL: str = ""
-    FRONTEND_URL: str = ""
-
-    # Legacy SMTP (kept for backward compat, not used for new flows)
+    # Transactional email (SMTP)
     SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
+    SMTP_PORT: int = 465
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
     SMTP_USE_TLS: bool = True
+    FRONTEND_URL: str = ""
     PASSWORD_RESET_URL: str = ""
+
+    # SendGrid
+    SENDGRID_API_KEY: str = ""
+    SENDGRID_FROM_EMAIL: str = ""
 
     # Email verification
     EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 30
