@@ -105,24 +105,38 @@ class TokenResponse(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    """
-    Password reset flow — single endpoint, two steps.
-
-    Step 1 – Send code:  {"email": "..."}
-    Step 2 – Reset:      {"email": "...", "code": "123456", "new_password": "..."}
-    """
+    """Step 1: Request password reset code via email."""
     email: EmailStr
-    code: str | None = Field(None, min_length=6, max_length=6, description="6-digit reset code (step 2 only)")
-    new_password: str | None = Field(None, min_length=8, max_length=128)
+
+
+class VerifyResetCodeRequest(BaseModel):
+    """Step 2: Verify the 6-digit reset code."""
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6, description="6-digit reset code from email")
+
+
+class ResetPasswordRequest(BaseModel):
+    """Step 3: Set new password after code verification."""
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6, description="6-digit reset code from email")
+    new_password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: str = Field(..., min_length=8, max_length=128)
 
     @field_validator("new_password")
     @classmethod
-    def validate_password_complexity(cls, v: str | None) -> str | None:
-        if v is not None and not _PASSWORD_COMPLEXITY_RE.match(v):
+    def validate_password_complexity(cls, v: str) -> str:
+        if not _PASSWORD_COMPLEXITY_RE.match(v):
             raise ValueError(
                 "Password must contain at least one uppercase letter, "
                 "one digit, and one special character."
             )
+        return v
+
+    @field_validator("confirm_password")
+    @classmethod
+    def validate_passwords_match(cls, v: str, info) -> str:
+        if "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("Passwords do not match.")
         return v
 
 

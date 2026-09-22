@@ -1,0 +1,101 @@
+{
+  "selected_weighting": "GRU 40% / XGB 60%",
+  "gru_weight": 0.4,
+  "xgb_weight": 0.6,
+  "gru_model_ref": "models\\experiments\\lookback_horizon\\gru_window_45.keras",
+  "xgb_model_ref": "models\\experiments\\lookback_horizon\\xgb_extended_horizons.xgb",
+  "val_metrics": {
+    "name": "GRU 40% / XGB 60%",
+    "sample_count": 24158,
+    "accuracy": 0.4544,
+    "macro_f1": 0.4277,
+    "weighted_f1": 0.4521,
+    "balanced_accuracy": 0.4281,
+    "per_class": {
+      "bullish": {
+        "precision": 0.3624,
+        "recall": 0.3301,
+        "f1": 0.3455,
+        "support": 6817
+      },
+      "bearish": {
+        "precision": 0.3577,
+        "recall": 0.3647,
+        "f1": 0.3612,
+        "support": 6647
+      },
+      "sideways": {
+        "precision": 0.5642,
+        "recall": 0.5895,
+        "f1": 0.5766,
+        "support": 10694
+      }
+    },
+    "confusion_matrix": [
+      [
+        2250,
+        2055,
+        2512
+      ],
+      [
+        1866,
+        2424,
+        2357
+      ],
+      [
+        2093,
+        2297,
+        6304
+      ]
+    ],
+    "gru_weight": 0.4,
+    "xgb_weight": 0.6
+  },
+  "test_metrics": {
+    "name": "Selected Ensemble GRU 40% / XGB 60% (Test)",
+    "sample_count": 29863,
+    "accuracy": 0.4622,
+    "macro_f1": 0.4227,
+    "weighted_f1": 0.4628,
+    "balanced_accuracy": 0.4261,
+    "per_class": {
+      "bullish": {
+        "precision": 0.3103,
+        "recall": 0.4125,
+        "f1": 0.3542,
+        "support": 7419
+      },
+      "bearish": {
+        "precision": 0.3593,
+        "recall": 0.2721,
+        "f1": 0.3097,
+        "support": 8038
+      },
+      "sideways": {
+        "precision": 0.6148,
+        "recall": 0.5938,
+        "f1": 0.6041,
+        "support": 14406
+      }
+    },
+    "confusion_matrix": [
+      [
+        3060,
+        1637,
+        2722
+      ],
+      [
+        3212,
+        2187,
+        2639
+      ],
+      [
+        3588,
+        2263,
+        8555
+      ]
+    ],
+    "gru_weight": 0.4,
+    "xgb_weight": 0.6
+  }
+}

@@ -23,9 +23,11 @@ from app.schemas.auth import (
     MessageResponse,
     RefreshRequest,
     ResendVerificationRequest,
+    ResetPasswordRequest,
     SignupRequest,
     TokenResponse,
     VerifyEmailRequest,
+    VerifyResetCodeRequest,
 )
 from app.services.auth_service import AuthService
 
@@ -170,12 +172,8 @@ async def logout(
     "/auth/forgot-password",
     response_model=MessageResponse,
     status_code=200,
-    summary="Request password reset code or reset password",
-    description=(
-        "Step 1 – Send code: provide {email}. Sends a 6-digit code to the user's email.\n\n"
-        "Step 2 – Reset: provide {email, code, new_password}. Resets the password.\n\n"
-        "Always returns success to prevent email enumeration."
-    ),
+    summary="Request password reset code",
+    description="Sends a 6-digit reset code to the user's email if the account exists. Always returns success to prevent email enumeration.",
 )
 @limiter.limit("3/minute")
 async def forgot_password(
@@ -184,17 +182,59 @@ async def forgot_password(
     service: AuthService = Depends(_get_service),
 ):
     try:
-        if data.code and data.new_password:
-            await service.reset_password(data.email, data.code, data.new_password)
-            return MessageResponse(message="Password has been reset successfully.")
-        else:
-            await service.forgot_password(data.email)
-            return MessageResponse(message="If the email exists, a reset code has been sent.")
-    except (BadRequestError, ValidationFailedError, NotFoundError, RateLimitExceeded):
+        await service.forgot_password(data.email)
+    except RateLimitExceeded:
         raise
     except Exception as e:
         log.exception("Forgot password failed")
         raise ServiceUnavailableError("Forgot password failed")
+    return MessageResponse(message="If the email exists, a reset code has been sent.")
+
+
+@router.post(
+    "/auth/verify-reset-code",
+    response_model=MessageResponse,
+    status_code=200,
+    summary="Verify password reset code",
+    description="Verifies the 6-digit code sent to the user's email. Returns success if valid.",
+)
+@limiter.limit("10/minute")
+async def verify_reset_code(
+    request: Request,
+    data: VerifyResetCodeRequest,
+    service: AuthService = Depends(_get_service),
+):
+    try:
+        await service.verify_reset_code(data.email, data.code)
+    except BadRequestError:
+        raise
+    except RateLimitExceeded:
+        raise
+    except Exception as e:
+        log.exception("Verify reset code failed")
+        raise ServiceUnavailableError("Verify reset code failed")
+    return MessageResponse(message="Code verified successfully.")
+
+
+@router.post(
+    "/auth/reset-password",
+    status_code=204,
+    summary="Reset password after code verification",
+    description="Sets new password after verifying the 6-digit code. Revokes all existing sessions.",
+)
+@limiter.limit("3/minute")
+async def reset_password(
+    request: Request,
+    data: ResetPasswordRequest,
+    service: AuthService = Depends(_get_service),
+):
+    try:
+        await service.reset_password(data.email, data.code, data.new_password)
+    except (BadRequestError, ValidationFailedError, NotFoundError, RateLimitExceeded):
+        raise
+    except Exception as e:
+        log.exception("Password reset failed")
+        raise ServiceUnavailableError("Password reset failed")
 
 
 @router.post(
