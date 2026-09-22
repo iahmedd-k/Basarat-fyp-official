@@ -24,7 +24,7 @@ from app.ml.serving.model_loader import artifacts
 log = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
-FEATURES_PATH = Path("data/features/features_daily.parquet") if Path("data/features/features_daily.parquet").exists() else ROOT_DIR / "data" / "features" / "features_daily.parquet"
+FEATURES_PATH = ROOT_DIR / "data" / "features" / "features_daily.parquet"
 
 NEAR_TIE_THRESHOLD_PP = 5.0
 
@@ -329,6 +329,19 @@ def get_forecast(symbol: str, horizon: str = "1D") -> dict:
         )
 
     # ── Load feature data ──────────────────────────────────────────────
+    # Render's filesystem is ephemeral, and the startup asset step may not have
+    # run (for example, when the API is started outside render_start.py). Keep
+    # forecast inference self-healing from the tracked, checksummed chunks.
+    if not FEATURES_PATH.is_file():
+        try:
+            from scripts.prepare_render_assets import prepare_features
+
+            prepare_features()
+        except (FileNotFoundError, RuntimeError) as exc:
+            raise FileNotFoundError(
+                f"Forecast feature data is unavailable at {FEATURES_PATH}; "
+                "deploy backend/deploy_assets/ or provide the parquet snapshot."
+            ) from exc
     df = pd.read_parquet(FEATURES_PATH)
     sym_df = df[df["symbol"] == symbol].copy()
     sym_df["date"] = pd.to_datetime(sym_df["date"])
