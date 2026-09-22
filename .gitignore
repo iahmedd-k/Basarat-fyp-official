@@ -11,6 +11,7 @@ env/
 .env
 .env.*
 !.env.example
+backend/.route-test-secrets
 
 # Editors / OS
 .vscode/
@@ -31,10 +32,12 @@ backend/data/sequences/
 backend/data/processed/
 backend/data/processed_v2/
 backend/data/processed_v3/
-backend/data/scalers/
+backend/data/scalers/*
+!backend/data/scalers/
+!backend/data/scalers/scaler.pkl
 backend/data/reports/
 
-# Model files
+# Inference model artifacts under backend/models are intentionally tracked.
 
 
 # Log files

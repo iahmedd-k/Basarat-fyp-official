@@ -8,12 +8,14 @@ from alembic import context
 from app.models import *  # noqa: F401, F403
 from app.db.base import Base
 from app.core.config import get_settings
+from app.core.database_urls import sync_database_url
 
 # this is the Alembic Config object
 config = context.config
 
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL_SYNC)
+sync_url = sync_database_url(settings.DATABASE_URL, settings.DATABASE_URL_SYNC)
+config.set_main_option("sqlalchemy.url", sync_url.render_as_string(hide_password=False).replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:

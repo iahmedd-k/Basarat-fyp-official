@@ -14,14 +14,9 @@ env/
 .DS_Store
 tests/
 data/raw/
-data/features/*.parquet
 data/sequences/
 data/processed/
-data/scalers/
 data/reports/
-models/
-*.keras
-*.npz
-*.pkl
-*.parquet
+# Keep models/, *.keras, *.npz, *.pkl, and inference data in the image.
+# They include runtime artifacts (GRU/XGBoost models and the fitted scaler).
 *_tmp.*

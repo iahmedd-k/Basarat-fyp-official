@@ -966,8 +966,9 @@ class CommunityService:
                 CommunityNotification.actor_id == actor_id,
             )
         )
-        if existing.scalars().first():
-            return existing.scalars().first()
+        existing_notification = existing.scalars().first()
+        if existing_notification is not None:
+            return existing_notification
 
         notification = CommunityNotification(
             recipient_id=recipient_id,

@@ -47,6 +47,7 @@ async def _run_pipeline_background(db_factory, limit_per_source: int = 50):
             await extract_events_from_news(db)
         except Exception as exc:
             import logging
+            ingestion_state.mark_ingestion_failed(str(exc))
             logging.getLogger(__name__).exception("Background pipeline failed: %s", exc)
 
 
@@ -171,6 +172,7 @@ async def refresh_news(
             )
 
         # ── Run pipeline in background ───────────────────────────────────
+        ingestion_state.mark_ingestion_started()
         background_tasks.add_task(_run_pipeline_background, async_session_factory, 50)
 
         return NewsRefreshResponse(
@@ -191,24 +193,9 @@ async def refresh_status(
     user: User = Depends(get_current_user),
 ):
     """Get current refresh job status for client polling after pull-to-refresh."""
-    last_run = ingestion_state.get_last_ingestion_time()
-    # We don't track running state persistently; assume done if not in cooldown
-    settings = get_settings()
-    state = "idle"
-    last_success = last_run.isoformat() if last_run else None
-    new_articles = 0
-
-    # If we had a way to track running state, we'd check it here
-    # For now, check if last run was recent
-    if last_run:
-        elapsed = (datetime.now(timezone.utc) - last_run).total_seconds()
-        if elapsed < 60:  # assume running if < 1 min ago
-            state = "running"
-
+    state = ingestion_state.get_ingestion_status()
     return NewsRefreshStatusResponse(
-        state=state,
-        last_success_at=last_success,
-        new_articles=new_articles,
+        **state,
     )
 
 
@@ -228,8 +215,8 @@ REGISTERED_SOURCES = [
     {"key": "ogra", "name": "OGRA Petroleum & Gas", "type": "official"},
     {"key": "fbr_mof", "name": "FBR & Ministry of Finance", "type": "official"},
     {"key": "business_recorder", "name": "Business Recorder", "type": "news"},
-    {"key": "dawn_business", "name": "Dawn Business", "type": "news"},
-    {"key": "mettis_global", "name": "Mettis Global", "type": "news"},
+    {"key": "dawn", "name": "Dawn Business", "type": "news"},
+    {"key": "mettis", "name": "Mettis Global", "type": "news"},
 ]
 
 

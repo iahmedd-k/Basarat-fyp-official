@@ -85,7 +85,8 @@ def fetch_articles(limit: int = 50) -> list[NormalizedArticle]:
                         title=title,
                         url=url,
                         source="Business Recorder",
-                        source_type="financial_media",
+                        source_key="business_recorder",
+                        source_type="news",
                         published_at=pub_date,
                         summary=None,
                     )
@@ -118,7 +119,8 @@ def fetch_articles(limit: int = 50) -> list[NormalizedArticle]:
                         title=title,
                         url=url,
                         source="Business Recorder",
-                        source_type="financial_media",
+                        source_key="business_recorder",
+                        source_type="news",
                         published_at=None,
                         summary=None,
                     )

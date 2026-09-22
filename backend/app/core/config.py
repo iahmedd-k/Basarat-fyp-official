@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from app.core.database_urls import sync_database_url
 
 
 class Settings(BaseSettings):
@@ -27,7 +28,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/basarat"
-    DATABASE_URL_SYNC: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/basarat"
+    DATABASE_URL_SYNC: str = ""
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -124,6 +125,8 @@ class Settings(BaseSettings):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        if not self.DATABASE_URL_SYNC:
+            self.DATABASE_URL_SYNC = sync_database_url(self.DATABASE_URL).render_as_string(hide_password=False)
         placeholder_values = {"change-me-in-production", "your-secret-key", "secret", "changeme", "dev-secret"}
         if self.SECRET_KEY.lower() in placeholder_values:
             raise ValueError(

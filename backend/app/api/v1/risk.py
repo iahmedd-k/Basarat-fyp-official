@@ -188,23 +188,28 @@ async def get_monte_carlo_result(
     user: User = Depends(get_current_user),
 ):
     try:
-        from celery.result import AsyncResult
-        from app.tasks.risk_tasks import run_monte_carlo_task
+        from app.core.task_runner import get_local_job_result
 
-        task_result = AsyncResult(task_id, app=run_monte_carlo_task.app)
+        local_result = get_local_job_result(task_id)
+        if local_result is not None:
+            state, result, error = local_result
+        else:
+            from celery.result import AsyncResult
+            from app.tasks.risk_tasks import run_monte_carlo_task
+            task_result = AsyncResult(task_id, app=run_monte_carlo_task.app)
+            state, result, error = task_result.state, task_result.result, None
 
-        if task_result.state == "PENDING":
+        if state == "PENDING":
             return MonteCarloResultResponse(
                 job_id=task_id, status="pending",
             )
-        elif task_result.state == "FAILURE":
+        elif state == "FAILURE":
             log.warning("Monte Carlo task failed: task_id=%s user=%s", task_id, user.id)
             return MonteCarloResultResponse(
                 job_id=task_id, status="failed",
                 error="Simulation failed. Please try again.",
             )
-        elif task_result.state == "SUCCESS":
-            result = task_result.result
+        elif state == "SUCCESS":
             result_owner = result.get("user_id")
             if not result_owner or result_owner != user.id:
                 raise NotFoundError("Task not found.")
@@ -222,7 +227,7 @@ async def get_monte_carlo_result(
             )
         else:
             return MonteCarloResultResponse(
-                job_id=task_id, status=task_result.state,
+                job_id=task_id, status=state,
             )
     except AppError:
         raise

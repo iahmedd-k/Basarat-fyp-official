@@ -161,6 +161,8 @@ async def report_comment(
         )
     except (NotFoundError, ConflictError, ValidationFailedError):
         raise
+    except ValueError as e:
+        raise ValidationFailedError(f"Invalid report reason: {e}")
     except Exception as e:
         log.exception("Report comment failed")
         raise ServiceUnavailableError("Failed to report comment")

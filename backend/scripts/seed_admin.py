@@ -1,8 +1,8 @@
 """Manual admin seeding script for Basarat backend.
 
-Usage:
-    python -m scripts.seed_admin
-    python scripts/seed_admin.py --email admin@example.com --password "SecurePass123!" --username admin --full-name "Admin"
+Usage (development/test only):
+    Set ALLOW_ADMIN_SEED=1 and provide ADMIN_EMAIL, ADMIN_PASSWORD, and ADMIN_USERNAME.
+    Prefer `python -m scripts.seed_route_test_accounts` to provision both route-test accounts.
 """
 
 import argparse
@@ -20,6 +20,7 @@ if str(backend_dir) not in sys.path:
 
 from sqlalchemy import select
 from app.core.security import hash_password
+from app.core.config import get_settings
 from app.db.base import async_session_factory, engine
 from app.models.user import User
 
@@ -39,6 +40,11 @@ async def seed_admin_user(
         stmt = select(User).where((User.email == email) | (User.username == username))
         result = await session.execute(stmt)
         user = result.scalars().first()
+
+        if user and (user.email.lower() != email.lower() or user.username != username):
+            raise RuntimeError(
+                "The requested admin email/username conflicts with a different account; refusing to modify it."
+            )
 
         password_hashed = hash_password(password)
 
@@ -73,21 +79,29 @@ async def seed_admin_user(
 
 
 def main():
+    if os.getenv("ALLOW_ADMIN_SEED") != "1":
+        raise SystemExit("Set ALLOW_ADMIN_SEED=1 to explicitly enable admin seeding.")
+    if get_settings().ENVIRONMENT not in {"development", "test"}:
+        raise SystemExit("Refusing to seed an admin account outside development/test.")
+
     parser = argparse.ArgumentParser(description="Seed manual admin credentials in the database.")
     parser.add_argument(
         "--email",
-        default=os.getenv("ADMIN_EMAIL", "admin@basarat.pk"),
-        help="Admin email address (default: ADMIN_EMAIL env var or admin@basarat.pk)",
+        default=os.getenv("ADMIN_EMAIL"),
+        required=not bool(os.getenv("ADMIN_EMAIL")),
+        help="Admin email address (or ADMIN_EMAIL environment variable)",
     )
     parser.add_argument(
         "--password",
-        default=os.getenv("ADMIN_PASSWORD", "Admin1234!"),
-        help="Admin password (default: ADMIN_PASSWORD env var or Admin1234!)",
+        default=os.getenv("ADMIN_PASSWORD"),
+        required=not bool(os.getenv("ADMIN_PASSWORD")),
+        help="Admin password (or ADMIN_PASSWORD environment variable)",
     )
     parser.add_argument(
         "--username",
-        default=os.getenv("ADMIN_USERNAME", "admin"),
-        help="Admin username (default: ADMIN_USERNAME env var or admin)",
+        default=os.getenv("ADMIN_USERNAME"),
+        required=not bool(os.getenv("ADMIN_USERNAME")),
+        help="Admin username (or ADMIN_USERNAME environment variable)",
     )
     parser.add_argument(
         "--full-name",

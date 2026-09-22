@@ -1,0 +1,20 @@
+services:
+  - type: web
+    # Match this name to the existing Render web service before Blueprint sync.
+    name: basarat-api
+    repo: https://github.com/iahmedd-k/Basarat-fyp-official
+    branch: main
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/render_start.py
+    healthCheckPath: /api/v1/health/ready
+    autoDeployTrigger: commit
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: USE_CELERY
+        value: "false"

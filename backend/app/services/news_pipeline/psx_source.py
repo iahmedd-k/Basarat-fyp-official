@@ -8,10 +8,11 @@ Request contract (captured from Chrome DevTools):
 """
 
 import logging
+import hashlib
 import re
 import time
-from datetime import datetime
-from urllib.parse import urljoin
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode, urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -90,14 +91,20 @@ def _parse_pkt_datetime(date_str: str | None, time_str: str | None) -> tuple[dat
     time_str = (time_str or "00:00").strip()
 
     # Try to parse date and time
-    for date_fmt in ("%d-%b-%Y", "%d %b %Y", "%Y-%m-%d", "%d/%m/%Y"):
+    for date_fmt in (
+        "%d-%b-%Y",
+        "%d %b %Y",
+        "%b %d, %Y",
+        "%B %d, %Y",
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+    ):
         for time_fmt in ("%H:%M", "%I:%M %p", "%H:%M:%S"):
             try:
                 dt_str = f"{date_str} {time_str}"
                 fmt = f"{date_fmt} {time_fmt}"
                 dt = datetime.strptime(dt_str, fmt)
                 # Assume PKT (UTC+5, no DST)
-                from datetime import timezone, timedelta
                 pkt = timezone(timedelta(hours=5))
                 dt = dt.replace(tzinfo=pkt)
                 # Convert to UTC
@@ -181,9 +188,14 @@ def _parse_announcement_rows(soup: BeautifulSoup, announcement_type: str) -> lis
                 external_id = _extract_doc_id(primary_href)
                 external_url = urljoin(_BASE, primary_href) if not primary_href.startswith("http") else primary_href
 
-            # If no document link, use a generated dedupe key and the announcements page as URL
+            # The announcements page itself is not unique and violates the URL
+            # uniqueness constraint when several rows have no PDF attachment.
             if not external_url:
-                external_url = _ANNOUNCEMENTS_URL
+                stable_key = hashlib.sha256(
+                    f"{symbol}|{date_text or ''}|{time_text or ''}|{title}".encode("utf-8")
+                ).hexdigest()[:24]
+                external_id = f"announcement-{stable_key}"
+                external_url = f"{_ANNOUNCEMENTS_URL}?{urlencode({'symbol': symbol, 'ref': stable_key})}"
 
             # Build summary
             summary = _build_summary(symbol, company or "", title)

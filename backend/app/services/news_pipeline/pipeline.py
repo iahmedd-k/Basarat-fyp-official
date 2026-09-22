@@ -50,7 +50,7 @@ _SOURCE_ADAPTERS = [
 ]
 
 # Sources that should get FinBERT sentiment (news sources only)
-_SENTIMENT_SOURCES = {"business recorder", "dawn business", "mettis global"}
+_SENTIMENT_SOURCES = {"business_recorder", "dawn", "mettis"}
 
 # Official sources that get NO sentiment dot (except PSX results with EPS rule)
 _NO_SENTIMENT_SOURCES = {"psx", "secp", "sbp", "ogra", "fbr/mof"}
@@ -217,6 +217,7 @@ async def run_pipeline(db: AsyncSession, limit_per_source: int = 50) -> Pipeline
 
     Updates ingestion state on success. Returns structured PipelineResult.
     """
+    ingestion_state.mark_ingestion_started()
     result = PipelineResult()
     existing_hashes = await _load_existing_hashes(db)
     all_new_articles: list[dict] = []
@@ -225,6 +226,7 @@ async def run_pipeline(db: AsyncSession, limit_per_source: int = 50) -> Pipeline
     for source_name, fetch_fn in _SOURCE_ADAPTERS:
         src_result = IngestResult(source=source_name)
         try:
+            source_article_count = len(all_new_articles)
             raw_articles = fetch_fn(limit=limit_per_source)
             src_result.articles_fetched = len(raw_articles)
 
@@ -255,9 +257,7 @@ async def run_pipeline(db: AsyncSession, limit_per_source: int = 50) -> Pipeline
 
                 all_new_articles.append(cleaned)
 
-            src_result.articles_inserted = len([
-                a for a in all_new_articles if a.get("source") == raw.source
-            ])
+            src_result.articles_inserted = len(all_new_articles) - source_article_count
         except Exception as exc:
             src_result.error = str(exc)
             log.warning("Source %s failed: %s", source_name, exc)
@@ -266,6 +266,8 @@ async def run_pipeline(db: AsyncSession, limit_per_source: int = 50) -> Pipeline
 
     if not all_new_articles:
         log.info("No new articles to process")
+        ingestion_state.mark_ingestion_completed(0)
+        ingestion_state.increment_run_count()
         result.completed_at = datetime.now(timezone.utc).isoformat()
         return result
 
@@ -372,10 +374,10 @@ async def run_pipeline(db: AsyncSession, limit_per_source: int = 50) -> Pipeline
     # ── Stage 9: SAVE TO DATABASE ────────────────────────────────────────
     inserted_count = await _save_article_batch(db, all_new_articles)
 
-    if inserted_count:
-        # Update ingestion state on successful commit
-        ingestion_state.set_last_ingestion_time()
-        ingestion_state.increment_run_count()
+    # Record completion even when all fetched items were duplicates or no new
+    # items could be saved, so refresh polling does not keep stale state.
+    ingestion_state.mark_ingestion_completed(inserted_count)
+    ingestion_state.increment_run_count()
 
     # Update per-source counts
     for r in result.sources:

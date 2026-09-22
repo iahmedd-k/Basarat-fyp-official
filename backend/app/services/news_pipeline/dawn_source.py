@@ -81,7 +81,8 @@ def fetch_articles(limit: int = 50) -> list[NormalizedArticle]:
                         title=title,
                         url=url,
                         source="Dawn Business",
-                        source_type="financial_media",
+                        source_key="dawn",
+                        source_type="news",
                         published_at=pub_date,
                         summary=None,
                     )

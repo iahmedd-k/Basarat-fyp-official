@@ -3,11 +3,23 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy import create_engine
 
 from app.core.config import get_settings
+from app.core.database_urls import async_database_url, sync_database_url
 
 settings = get_settings()
 
-# Async engine (for FastAPI)
-engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG, future=True)
+# Supabase free databases have tight connection limits. Keep a small bounded
+# pool; transaction-pooler-specific asyncpg options are applied automatically.
+async_url, async_connect_args = async_database_url(settings.DATABASE_URL)
+engine = create_async_engine(
+    async_url,
+    echo=settings.DEBUG,
+    future=True,
+    pool_pre_ping=True,
+    pool_size=3,
+    max_overflow=2,
+    pool_recycle=1200,
+    connect_args=async_connect_args,
+)
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 # Sync engine (for Celery tasks) — lazy initialization
@@ -19,7 +31,14 @@ def get_sync_engine():
     """Lazy-init sync engine for Celery tasks."""
     global _sync_engine
     if _sync_engine is None:
-        _sync_engine = create_engine(settings.DATABASE_URL_SYNC, pool_pre_ping=True, future=True)
+        _sync_engine = create_engine(
+            sync_database_url(settings.DATABASE_URL, settings.DATABASE_URL_SYNC),
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=0,
+            pool_recycle=1200,
+            future=True,
+        )
     return _sync_engine
 
 

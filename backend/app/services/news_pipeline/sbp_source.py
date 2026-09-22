@@ -19,8 +19,8 @@ from app.services.news_pipeline.base import NormalizedArticle
 log = logging.getLogger(__name__)
 
 _BASE = "https://www.sbp.org.pk"
-_PRESS_URL = f"{_BASE}/press/press_"
-_NEWS_URL = f"{_BASE}/news/"
+_PRESS_URL = f"{_BASE}/press-release"
+_NEWS_URL = f"https://archive.sbp.org.pk/press/{datetime.now().year}/index2.asp"
 
 
 def _parse_date(text: str | None) -> datetime | None:
@@ -69,6 +69,7 @@ def fetch_articles(limit: int = 50) -> list[NormalizedArticle]:
                         title=title,
                         url=full_url,
                         source="SBP",
+                        source_key="sbp",
                         source_type="official",
                         published_at=_parse_date(date_text),
                         summary=None,

@@ -25,7 +25,15 @@ def _run_async(coro):
     try:
         return loop.run_until_complete(coro)
     finally:
-        loop.close()
+        # Async connections cannot safely be reused by the next Celery task's
+        # fresh event loop. Dispose the worker-local pool before closing this loop.
+        from app.db.base import engine
+        try:
+            loop.run_until_complete(engine.dispose())
+        except Exception:
+            log.exception("Failed to dispose async database connections")
+        finally:
+            loop.close()
 
 
 @shared_task(

@@ -26,7 +26,6 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     SignupRequest,
     TokenResponse,
-    UserProfileResponse,
     VerifyEmailRequest,
     VerifyResetCodeRequest,
     VerifyResetCodeResponse,
@@ -192,23 +191,6 @@ async def refresh_token(
         raise ServiceUnavailableError("Token refresh failed")
 
 
-@router.get(
-    "/auth/me",
-    response_model=UserProfileResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Get current logged-in user profile & status",
-    description=(
-        "**Current User Profile:**\n\n"
-        "- Requires `Authorization: Bearer <access_token>`.\n"
-        "- Returns the authenticated user's ID, email, username, verification state, and profile settings."
-    ),
-)
-async def get_me(
-    user: User = Depends(get_current_user),
-):
-    return user
-
-
 @router.post(
     "/auth/logout",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -226,31 +208,6 @@ async def logout(
     service: AuthService = Depends(_get_service),
 ):
     await service.logout(data.refresh_token)
-
-
-@router.post(
-    "/auth/logout-all",
-    response_model=MessageResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Logout all devices (Revoke all active sessions)",
-    description=(
-        "**Global Logout:**\n\n"
-        "- Requires `Authorization: Bearer <access_token>`.\n"
-        "- Revokes all refresh tokens across all devices/browsers for the logged-in user."
-    ),
-)
-@limiter.limit("5/minute")
-async def logout_all(
-    request: Request,
-    user: User = Depends(get_current_user),
-    service: AuthService = Depends(_get_service),
-):
-    try:
-        await service.logout_all(user.id)
-        return MessageResponse(message="All active sessions have been logged out.")
-    except Exception:
-        log.exception("Logout all failed")
-        raise ServiceUnavailableError("Logout all failed")
 
 
 # ============================================================================

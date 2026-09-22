@@ -338,6 +338,8 @@ async def report_post(
         dispatch_task(process_post_report_threshold, post_id)
     except (NotFoundError, ConflictError, ValidationFailedError):
         raise
+    except ValueError as e:
+        raise ValidationFailedError(f"Invalid report reason: {e}")
     except Exception as e:
         log.exception("Report post failed")
         raise ServiceUnavailableError("Failed to report post")

@@ -376,21 +376,6 @@ class TestAuthForgotPassword:
         assert resp2.status_code == 400
 
 
-@pytest.mark.api
-class TestAuthMeAndLogoutAll:
-    async def test_get_me_success(self, client: AsyncClient, auth_headers, test_user):
-        resp = await client.get("/api/v1/auth/me", headers=auth_headers)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["email"] == test_user.email
-        assert data["id"] == test_user.id
-
-    async def test_logout_all_success(self, client: AsyncClient, auth_headers):
-        resp = await client.post("/api/v1/auth/logout-all", headers=auth_headers)
-        assert resp.status_code == 200
-        assert "All active sessions" in resp.json()["message"]
-
-
 @pytest.mark.regression
 class TestAuthRouteRegression:
     async def test_signup_response_shape(self, client: AsyncClient):

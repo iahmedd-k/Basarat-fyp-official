@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 
 _BASE = "https://mettisglobal.news"
 _RSS_URL = f"{_BASE}/feed/"
+_LATEST_URL = f"{_BASE}/Latest"
 
 # Keywords to filter for Pakistan finance relevance
 _PAK_KEYWORDS = {
@@ -69,50 +70,61 @@ def fetch_articles(limit: int = 50) -> list[NormalizedArticle]:
 
     try:
         resp = httpx.get(_RSS_URL, timeout=15, follow_redirects=True)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "xml")
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "xml")
+            items = soup.find_all("item")[:limit * 3]
+            for item in items:
+                title_el = item.find("title")
+                link_el = item.find("link")
+                pub_date_el = item.find("pubDate")
+                desc_el = item.find("description") or item.find("summary")
 
-        for item in soup.find_all("item")[:limit * 3]:
-            title_el = item.find("title")
-            link_el = item.find("link")
-            pub_date_el = item.find("pubDate")
-            desc_el = item.find("description") or item.find("summary")
+                title = title_el.get_text(strip=True) if title_el else ""
+                url = link_el.get_text(strip=True) if link_el else ""
+                pub_date = _parse_rfc822_date(pub_date_el.get_text(strip=True) if pub_date_el else None)
+                summary = None
+                if desc_el:
+                    desc_soup = BeautifulSoup(desc_el.get_text(), "html.parser")
+                    summary = desc_soup.get_text(strip=True)[:500]
+                if title and url:
+                    articles.append(_normalized_article(title, url, pub_date, summary))
+                if len(articles) >= limit:
+                    break
+        else:
+            log.info("Mettis RSS unavailable (HTTP %s); using Latest page", resp.status_code)
 
-            title = title_el.get_text(strip=True) if title_el else ""
-            url = link_el.get_text(strip=True) if link_el else ""
-            pub_date = _parse_rfc822_date(pub_date_el.get_text(strip=True) if pub_date_el else None)
-
-            # Clean description for summary
-            summary = None
-            if desc_el:
-                desc_soup = BeautifulSoup(desc_el.get_text(), "html.parser")
-                summary = desc_soup.get_text(strip=True)[:500]
-
-            if not title or not url:
-                continue
-
-            if not _is_pakistan_finance(title, url):
-                continue
-
-            articles.append(
-                NormalizedArticle(
-                    title=title[:500],
-                    url=url,
-                    source="Mettis Global",
-                    source_key="mettis",
-                    source_type="news",
-                    published_at=pub_date,
-                    summary=summary,
-                    metadata={},
-                )
-            )
-            if len(articles) >= limit:
-                break
-
+        if not articles:
+            resp = httpx.get(_LATEST_URL, timeout=15, follow_redirects=True)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for item in soup.select(".post.PostList")[:limit * 3]:
+                title_el = item.select_one("h4.HeadlineStyle")
+                link_el = title_el.find_parent("a") if title_el else None
+                summary_el = item.select_one("p.ListnewDes")
+                title = title_el.get_text(" ", strip=True) if title_el else ""
+                url = urljoin(_BASE, link_el.get("href", "")) if link_el else ""
+                summary = summary_el.get_text(" ", strip=True)[:500] if summary_el else None
+                if title and url and _is_pakistan_finance(title, f"{url} {summary or ''}"):
+                    articles.append(_normalized_article(title, url, None, summary))
+                if len(articles) >= limit:
+                    break
     except Exception as exc:
         log.warning("Mettis Global fetch failed: %s", exc)
 
     return articles[:limit]
+
+
+def _normalized_article(title: str, url: str, published_at: datetime | None, summary: str | None) -> NormalizedArticle:
+    return NormalizedArticle(
+        title=title[:500],
+        url=url,
+        source="Mettis Global",
+        source_key="mettis",
+        source_type="news",
+        published_at=published_at,
+        summary=summary,
+        metadata={},
+    )
 
 
 # Need to import get_settings

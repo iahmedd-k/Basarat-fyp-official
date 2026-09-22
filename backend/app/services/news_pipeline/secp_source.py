@@ -1,7 +1,6 @@
 """SECP official source — regulatory / company filings.
 
-robots.txt: https://www.secp.gov.pk/robots.txt  (timed out — using public news page)
-Public page: https://www.secp.gov.pk/ (public notices section)
+Public page: https://www.secp.gov.pk/media-center/press-releases/
 
 NOTE: SECP does not expose a structured news feed.  This adapter scrapes
 the public news/notices page.  If SECP explicitly disallows scraping in the
@@ -19,7 +18,7 @@ from app.services.news_pipeline.base import NormalizedArticle
 log = logging.getLogger(__name__)
 
 _BASE = "https://www.secp.gov.pk"
-_NEWS_URL = f"{_BASE}/public/news"
+_NEWS_URL = f"{_BASE}/media-center/press-releases/"
 
 
 def _parse_date(text: str | None) -> datetime | None:
@@ -59,6 +58,7 @@ def fetch_articles(limit: int = 50) -> list[NormalizedArticle]:
                     title=title,
                     url=url,
                     source="SECP",
+                    source_key="secp",
                     source_type="official",
                     published_at=_parse_date(date_text),
                     summary=summary[:500] if summary else None,

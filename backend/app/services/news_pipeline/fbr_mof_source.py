@@ -4,7 +4,7 @@ robots.txt: Check https://www.fbr.gov.pk/robots.txt and https://www.finance.gov.
 RSS: Check for feeds
 Public pages:
   - FBR: https://www.fbr.gov.pk/notifications
-  - MoF: https://www.finance.gov.pk/press_releases
+  - MoF: https://www.finance.gov.pk/press_releases.html
 
 Keyword filter: budget, SRO, sales tax, super tax, capital gains, duty, IMF, fiscal, monetary
 Drop: routine notices, filing deadlines, enforcement drives
@@ -25,7 +25,7 @@ _FBR_BASE = "https://www.fbr.gov.pk"
 _FBR_NOTIFICATIONS = f"{_FBR_BASE}/notifications"
 
 _MOF_BASE = "https://www.finance.gov.pk"
-_MOF_PRESS = f"{_MOF_BASE}/press_releases"
+_MOF_PRESS = f"{_MOF_BASE}/press_releases.html"
 
 # Keywords to keep (Pakistan fiscal/monetary policy relevance)
 _KEEP_KEYWORDS = {
