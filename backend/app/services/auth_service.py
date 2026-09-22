@@ -17,15 +17,22 @@ from app.core.exceptions import (
 from app.core.security import (
     create_access_token,
     create_refresh_token,
-    create_email_verification_token,
-    decode_email_verification_token,
     decode_token,
     hash_password,
     verify_password,
 )
+from app.core.config import get_settings
 from app.models.user import User, RefreshToken, PasswordResetToken, EmailVerificationToken
 from app.schemas.auth import UserSummary
 from app.services.email_service import EmailService
+
+
+def _generate_otp() -> str:
+    return f"{secrets.randbelow(10**6):06d}"
+
+
+def _hash_code(code: str) -> str:
+    return hashlib.sha256(code.encode()).hexdigest()
 
 
 class AuthService:
@@ -62,22 +69,66 @@ class AuthService:
             await self.db.flush()
         await self.db.refresh(user)
 
-        # Send verification email
-        raw_token = create_email_verification_token(user.id)
-        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        # Generate and send OTP
+        await self._send_verification_otp(user)
 
-        verification_token = EmailVerificationToken(
-            token_hash=token_hash,
-            user_id=user.id,
-            expires_at=expires_at,
+        return {"message": "Account created. Please check your email for the verification code."}
+
+    async def verify_email(self, email: str, code: str) -> dict:
+        email = email.strip().lower()
+        settings = get_settings()
+
+        result = await self.db.execute(
+            select(User).where(User.email == email)
         )
-        self.db.add(verification_token)
+        user = result.scalars().first()
+        if user is None:
+            raise BadRequestError("Invalid email or code.")
+
+        if user.is_verified:
+            raise BadRequestError("Email is already verified.")
+
+        code_hash = _hash_code(code)
+        result = await self.db.execute(
+            select(EmailVerificationToken).where(
+                EmailVerificationToken.user_id == user.id,
+                EmailVerificationToken.token_hash == code_hash,
+                EmailVerificationToken.used == False,
+                EmailVerificationToken.expires_at > datetime.now(timezone.utc),
+            )
+        )
+        token = result.scalars().first()
+        if not token:
+            raise BadRequestError("Invalid or expired code.")
+
+        user.is_verified = True
+        token.used = True
         await self.db.flush()
 
-        await self.email_service.send_verification_email(user.email, raw_token)
+        return await self._create_token_pair(user)
 
-        return {"message": "Account created. Please check your email to verify your account."}
+    async def resend_verification(self, email: str) -> dict:
+        email = email.strip().lower()
+        result = await self.db.execute(
+            select(User).where(User.email == email)
+        )
+        user = result.scalars().first()
+
+        if user is None or user.is_verified:
+            return {"message": "If the email exists, a verification code has been sent."}
+
+        # Invalidate old codes
+        await self.db.execute(
+            delete(EmailVerificationToken).where(
+                EmailVerificationToken.user_id == user.id,
+                EmailVerificationToken.used == False,
+            )
+        )
+        await self.db.flush()
+
+        await self._send_verification_otp(user)
+
+        return {"message": "If the email exists, a verification code has been sent."}
 
     async def login(self, email: str, password: str) -> dict:
         email = email.strip().lower()
@@ -94,81 +145,10 @@ class AuthService:
 
         if not user.is_verified:
             raise UnauthorizedError(
-                "Email not verified. Please check your inbox or request a new verification email."
+                "Email not verified. Please check your inbox for the verification code."
             )
 
         return await self._create_token_pair(user)
-
-    async def verify_email(self, token: str) -> dict:
-        payload = decode_email_verification_token(token)
-        if payload is None:
-            raise BadRequestError("Invalid or expired verification token.")
-
-        user_id = payload.get("sub")
-        if not user_id:
-            raise BadRequestError("Invalid verification token payload.")
-
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
-        result = await self.db.execute(
-            select(EmailVerificationToken).where(
-                EmailVerificationToken.token_hash == token_hash,
-                EmailVerificationToken.used == False,
-                EmailVerificationToken.expires_at > datetime.now(timezone.utc),
-            )
-        )
-        verification_token = result.scalars().first()
-        if not verification_token:
-            raise BadRequestError("Invalid or expired verification token.")
-
-        user = await self.db.get(User, user_id)
-        if user is None:
-            raise NotFoundError("User not found.")
-
-        user.is_verified = True
-        verification_token.used = True
-        await self.db.flush()
-
-        return await self._create_token_pair(user)
-
-    async def resend_verification(self, email: str) -> dict:
-        email = email.strip().lower()
-        result = await self.db.execute(
-            select(User).where(User.email == email)
-        )
-        user = result.scalars().first()
-
-        # Always return success to prevent email enumeration
-        if user is None:
-            return {"message": "If the email exists, a verification link has been sent."}
-
-        if user.is_verified:
-            return {"message": "If the email exists, a verification link has been sent."}
-
-        # Invalidate old verification tokens
-        await self.db.execute(
-            delete(EmailVerificationToken).where(
-                EmailVerificationToken.user_id == user.id,
-                EmailVerificationToken.used == False,
-            )
-        )
-        await self.db.flush()
-
-        # Create new verification token
-        raw_token = create_email_verification_token(user.id)
-        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
-
-        verification_token = EmailVerificationToken(
-            token_hash=token_hash,
-            user_id=user.id,
-            expires_at=expires_at,
-        )
-        self.db.add(verification_token)
-        await self.db.flush()
-
-        await self.email_service.send_verification_email(user.email, raw_token)
-
-        return {"message": "If the email exists, a verification link has been sent."}
 
     async def refresh_token(self, refresh_token: str) -> dict:
         payload = decode_token(refresh_token)
@@ -180,7 +160,6 @@ class AuthService:
         if not jti or not user_id:
             raise UnauthorizedError("Invalid refresh token payload.")
 
-        # Check if refresh token exists and is not revoked
         rt = await self.db.execute(
             select(RefreshToken).where(
                 RefreshToken.jti == jti,
@@ -191,7 +170,6 @@ class AuthService:
         )
         stored_token = rt.scalars().first()
         if not stored_token:
-            # Token reuse detected - revoke all user tokens
             await self._revoke_all_user_tokens(user_id)
             raise UnauthorizedError("Invalid or reused refresh token. Please log in again.")
 
@@ -201,29 +179,23 @@ class AuthService:
         if not user.is_active:
             raise UnauthorizedError("Account is deactivated.")
 
-        # Rotate: revoke old token, create new pair
         stored_token.revoked = True
         stored_token.revoked_at = datetime.now(timezone.utc)
         await self.db.flush()
 
-        # Store new tokens
         return await self._create_token_pair(user)
 
     async def logout(self, refresh_token: str) -> None:
-        """Revoke a specific refresh token by its JWT payload."""
         payload = decode_token(refresh_token)
         if payload is None or payload.get("type") != "refresh":
-            return  # Silent success - token already invalid
-
+            return
         jti = payload.get("jti")
         user_id = payload.get("sub")
         if not jti or not user_id:
             return
-
         await self._revoke_token_by_jti(jti, user_id)
 
     async def logout_all(self, user_id: str) -> None:
-        """Revoke all refresh tokens for a user (e.g., on password change)."""
         await self._revoke_all_user_tokens(user_id)
 
     async def get_current_user(self, user_id: str) -> User:
@@ -244,7 +216,6 @@ class AuthService:
         user = await self.db.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found.")
-
         if full_name is not None:
             user.full_name = full_name
         if avatar_url is not None:
@@ -255,7 +226,6 @@ class AuthService:
             user.sector_preferences = sector_preferences
         if investment_horizon is not None:
             user.investment_horizon = investment_horizon
-
         await self.db.flush()
         await self.db.refresh(user)
         return user
@@ -283,14 +253,12 @@ class AuthService:
         user = await self.db.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found.")
-
         prefs = user.notification_preferences or {}
         if channels is not None:
             prefs["channels"] = channels
         if categories is not None:
             prefs["categories"] = categories
         user.notification_preferences = prefs
-
         await self.db.flush()
         await self.db.refresh(user)
         return user
@@ -301,14 +269,10 @@ class AuthService:
         user = await self.db.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found.")
-
         if not verify_password(current_password, user.hashed_password):
             raise UnauthorizedError("Current password is incorrect.")
-
         user.hashed_password = hash_password(new_password)
         await self.db.flush()
-
-        # Revoke all refresh tokens on password change
         await self._revoke_all_user_tokens(user_id)
 
     async def forgot_password(self, email: str) -> None:
@@ -317,57 +281,81 @@ class AuthService:
             select(User).where(User.email == email)
         )
         user = result.scalars().first()
-
-        # Always return success to prevent email enumeration
         if user is None:
             return
 
-        # Generate cryptographically random reset token
-        raw_token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        # Invalidate old reset codes
+        await self.db.execute(
+            delete(PasswordResetToken).where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.used == False,
+            )
+        )
+        await self.db.flush()
 
-        # Store hash with 1-hour expiry
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        # Generate OTP
+        settings = get_settings()
+        code = _generate_otp()
+        code_hash = _hash_code(code)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
+
         reset_token = PasswordResetToken(
-            token_hash=token_hash,
+            token_hash=code_hash,
             user_id=user.id,
             expires_at=expires_at,
         )
         self.db.add(reset_token)
         await self.db.flush()
-        # Commit before sending so a delivered link always maps to a durable token.
         await self.db.commit()
 
-        await self.email_service.send_password_reset_email(user.email, raw_token)
+        await self.email_service.send_password_reset_code(user.email, code)
 
-    async def reset_password(self, token: str, new_password: str) -> None:
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
+    async def reset_password(self, email: str, code: str, new_password: str) -> None:
+        email = email.strip().lower()
+        settings = get_settings()
 
         result = await self.db.execute(
+            select(User).where(User.email == email)
+        )
+        user = result.scalars().first()
+        if user is None:
+            raise BadRequestError("Invalid email or code.")
+
+        code_hash = _hash_code(code)
+        result = await self.db.execute(
             select(PasswordResetToken).where(
-                PasswordResetToken.token_hash == token_hash,
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.token_hash == code_hash,
                 PasswordResetToken.used == False,
-                PasswordResetToken.expires_at > datetime.now(timezone.utc)
+                PasswordResetToken.expires_at > datetime.now(timezone.utc),
             )
         )
         reset_token = result.scalars().first()
-
         if not reset_token:
-            raise ValidationFailedError("Invalid or expired reset token.")
-
-        user = await self.db.get(User, reset_token.user_id)
-        if user is None:
-            raise NotFoundError("User not found.")
+            raise BadRequestError("Invalid or expired code.")
 
         user.hashed_password = hash_password(new_password)
         reset_token.used = True
         await self.db.flush()
-
-        # Revoke all refresh tokens on password reset
         await self._revoke_all_user_tokens(user.id)
 
+    async def _send_verification_otp(self, user: User) -> None:
+        settings = get_settings()
+        code = _generate_otp()
+        code_hash = _hash_code(code)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES)
+
+        verification_token = EmailVerificationToken(
+            token_hash=code_hash,
+            user_id=user.id,
+            expires_at=expires_at,
+        )
+        self.db.add(verification_token)
+        await self.db.flush()
+
+        await self.email_service.send_verification_code(user.email, code)
+
     async def _generate_unique_username(self) -> str:
-        """Generate a random unique username."""
         for _ in range(10):
             username = f"user_{uuid4().hex[:12]}"
             existing = await self.db.execute(
@@ -375,20 +363,15 @@ class AuthService:
             )
             if not existing.scalars().first():
                 return username
-        # Fallback with timestamp
         return f"user_{uuid4().hex[:8]}_{int(datetime.now(timezone.utc).timestamp())}"
 
     async def _create_token_pair(self, user: User) -> dict:
         token_data = {"sub": user.id}
         access_token = create_access_token(token_data)
         refresh_token = create_refresh_token(token_data)
-
-        # Decode refresh token to get jti and expiry for storage
         rt_payload = decode_token(refresh_token)
         jti = rt_payload.get("jti")
         exp = rt_payload.get("exp")
-
-        # Store refresh token in DB
         rt = RefreshToken(
             jti=jti,
             user_id=user.id,
@@ -396,7 +379,6 @@ class AuthService:
         )
         self.db.add(rt)
         await self.db.flush()
-
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,

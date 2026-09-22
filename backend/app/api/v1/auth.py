@@ -70,7 +70,7 @@ async def signup(
 @router.post(
     "/auth/verify-email",
     response_model=TokenResponse,
-    summary="Verify email with token",
+    summary="Verify email with 6-digit code",
 )
 @limiter.limit("10/minute")
 async def verify_email(
@@ -79,7 +79,7 @@ async def verify_email(
     service: AuthService = Depends(_get_service),
 ):
     try:
-        return await service.verify_email(data.token)
+        return await service.verify_email(data.email, data.code)
     except BadRequestError:
         raise
     except NotFoundError:
@@ -230,7 +230,7 @@ async def change_password(
 @router.post(
     "/auth/reset-password",
     status_code=204,
-    summary="Reset password using token",
+    summary="Reset password using email + code",
 )
 @limiter.limit("3/minute")
 async def reset_password(
@@ -239,7 +239,9 @@ async def reset_password(
     service: AuthService = Depends(_get_service),
 ):
     try:
-        await service.reset_password(data.token, data.new_password)
+        await service.reset_password(data.email, data.code, data.new_password)
+    except BadRequestError:
+        raise
     except ValidationFailedError:
         raise
     except NotFoundError:

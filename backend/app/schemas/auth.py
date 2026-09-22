@@ -104,7 +104,8 @@ class ForgotPasswordRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
-    token: str
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
     new_password: str = Field(..., min_length=8, max_length=128)
 
     @field_validator("new_password")
@@ -138,7 +139,8 @@ class MessageResponse(BaseModel):
 
 
 class VerifyEmailRequest(BaseModel):
-    token: str
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
 
 
 class ResendVerificationRequest(BaseModel):

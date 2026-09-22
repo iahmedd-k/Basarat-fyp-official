@@ -59,7 +59,8 @@ class Settings(BaseSettings):
     SENDGRID_FROM_EMAIL: str = ""
 
     # Email verification
-    EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 30
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 1
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 1
 
     # Clerk Auth Webhook
     CLERK_WEBHOOK_SECRET: str = ""
