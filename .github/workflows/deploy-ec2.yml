@@ -49,4 +49,12 @@ jobs:
           docker compose -f docker-compose.production.yml config --quiet
           docker compose --parallel 1 -f docker-compose.production.yml up -d --build
           docker compose -f docker-compose.production.yml ps
-          curl --fail --retry 12 --retry-delay 5 --retry-connrefused http://127.0.0.1:8000/health
+          if ! curl --fail --retry 12 --retry-delay 5 --retry-connrefused --retry-all-errors http://127.0.0.1:8000/health; then
+            echo "API health check failed; reporting container state for diagnosis."
+            docker compose -f docker-compose.production.yml ps --all
+            app_container=$(docker compose -f docker-compose.production.yml ps --all -q app | head -n 1)
+            if [ -n "$app_container" ]; then
+              docker inspect --format 'app status={{.State.Status}} exit_code={{.State.ExitCode}} oom_killed={{.State.OOMKilled}} restart_count={{.RestartCount}}' "$app_container"
+            fi
+            exit 1
+          fi
