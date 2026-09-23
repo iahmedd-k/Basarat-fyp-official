@@ -256,8 +256,8 @@ class PSXAnnouncementService:
         if announcements:
             # Cache in Redis for 15 minutes
             await cache_set(cache_key, announcements, ttl_seconds=CACHE_TTL_SECONDS)
-            # Persist to database asynchronously
-            asyncio.create_task(save_announcements_to_db(self.db, announcements))
+            # Persist to database
+            await save_announcements_to_db(self.db, announcements)
             return announcements[:limit]
 
         # 3. Fallback to existing database records

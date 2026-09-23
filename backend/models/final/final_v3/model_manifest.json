@@ -8,5 +8,11 @@
     "Bullish",
     "Sideways"
   ],
+  "label_mapping": {
+    "bearish": 0,
+    "bullish": 1,
+    "sideways": 2
+  },
+  "probabilities_calibrated": false,
   "status": "production_ready"
 }

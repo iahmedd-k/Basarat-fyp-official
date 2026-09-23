@@ -18,7 +18,7 @@ Caching:
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -39,44 +39,91 @@ SENTIMENT_DIR = Path("data/reports/sentiment")
 SENTIMENT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ═══════════════════════════════════════════════════════════════════════
-# FinBERT via HuggingFace Inference API
+# FinBERT via HuggingFace Inference API & Local Inference
 # ═══════════════════════════════════════════════════════════════════════
 
 HF_API_URL = "https://api-inference.huggingface.co/models/ProsusAI/finbert"
 HF_API_TOKEN = getattr(get_settings(), "HF_API_TOKEN", None)
 
 
+def _extract_finbert_probabilities(result_items: list[dict] | dict) -> tuple[float, float, float, float, str]:
+    """Extract continuous score, class probabilities, and label from FinBERT outputs.
+
+    Continuous score formula:
+        Score = P(positive) - P(negative) in [-1.0, +1.0]
+
+    Returns:
+        (continuous_score, positive_score, neutral_score, negative_score, label)
+    """
+    if isinstance(result_items, dict):
+        result_items = [result_items]
+
+    pos_p = 0.0
+    neu_p = 0.0
+    neg_p = 0.0
+
+    for item in result_items:
+        if not isinstance(item, dict):
+            continue
+        lbl = str(item.get("label", "")).lower()
+        val = float(item.get("score", 0.0))
+        if lbl in ("positive", "pos", "bullish"):
+            pos_p = val
+        elif lbl in ("negative", "neg", "bearish"):
+            neg_p = val
+        elif lbl in ("neutral", "neu"):
+            neu_p = val
+
+    # If no neutral probability was explicitly returned, calculate remainder
+    total = pos_p + neg_p + neu_p
+    if total > 0:
+        pos_p /= total
+        neg_p /= total
+        neu_p /= total
+
+    # Continuous compound score formula: P(pos) - P(neg)
+    continuous_score = round(pos_p - neg_p, 4)
+
+    # Standard financial sentiment threshold (+/- 0.15)
+    if continuous_score >= 0.15:
+        label = "positive"
+    elif continuous_score <= -0.15:
+        label = "negative"
+    else:
+        label = "neutral"
+
+    return continuous_score, round(pos_p, 4), round(neu_p, 4), round(neg_p, 4), label
+
+
 def _call_hf_api(text: str) -> dict[str, Any] | None:
     """Call HuggingFace Inference API for FinBERT sentiment.
 
-    Free tier: 1M tokens/month, ~300ms latency per call.
-    No model download, no GPU needed.
+    Processes up to 2048 characters with full probability distribution extraction.
     """
     if not HF_API_TOKEN:
         return None
 
     try:
         headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-        payload = {"inputs": text[:512], "options": {"wait_for_model": True}}
+        # Allow up to 2048 chars so title + summary are preserved for subword tokenization
+        payload = {"inputs": text[:2048], "options": {"wait_for_model": True}}
 
         resp = httpx.post(HF_API_URL, json=payload, headers=headers, timeout=10.0)
         resp.raise_for_status()
 
         results = resp.json()
         if isinstance(results, list) and len(results) > 0:
-            # FinBERT returns: [{label: "positive", score: 0.95}, ...]
-            best = max(results, key=lambda x: x.get("score", 0))
-            label = best["label"].lower()
-            raw_score = best["score"]
+            raw_items = results[0] if isinstance(results[0], list) else results
+            score, pos_p, neu_p, neg_p, label = _extract_finbert_probabilities(raw_items)
 
-            if label == "positive":
-                score = raw_score
-            elif label == "negative":
-                score = -raw_score
-            else:
-                score = 0.0
-
-            return {"score": round(score, 4), "label": label, "model": "finbert_api"}
+            return {
+                "score": score,
+                "label": label,
+                "positive_score": pos_p,
+                "neutral_score": neu_p,
+                "negative_score": neg_p,
+                "model": "finbert_api",
+            }
 
     except Exception as exc:
         log.warning("HF API call failed: %s", exc)
@@ -91,8 +138,7 @@ def _call_hf_api_batch(texts: list[str]) -> list[dict[str, Any] | None]:
 
     try:
         headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-        # HF batch endpoint accepts list of strings
-        truncated = [t[:512] for t in texts]
+        truncated = [t[:2048] for t in texts]
         payload = {"inputs": truncated, "options": {"wait_for_model": True}}
 
         resp = httpx.post(HF_API_URL, json=payload, headers=headers, timeout=30.0)
@@ -105,16 +151,16 @@ def _call_hf_api_batch(texts: list[str]) -> list[dict[str, Any] | None]:
         output = []
         for result_set in results:
             if isinstance(result_set, list) and len(result_set) > 0:
-                best = max(result_set, key=lambda x: x.get("score", 0))
-                label = best["label"].lower()
-                raw_score = best["score"]
-                if label == "positive":
-                    score = raw_score
-                elif label == "negative":
-                    score = -raw_score
-                else:
-                    score = 0.0
-                output.append({"score": round(score, 4), "label": label, "model": "finbert_api"})
+                raw_items = result_set[0] if isinstance(result_set[0], list) else result_set
+                score, pos_p, neu_p, neg_p, label = _extract_finbert_probabilities(raw_items)
+                output.append({
+                    "score": score,
+                    "label": label,
+                    "positive_score": pos_p,
+                    "neutral_score": neu_p,
+                    "negative_score": neg_p,
+                    "model": "finbert_api",
+                })
             else:
                 output.append(None)
         return output
@@ -125,55 +171,136 @@ def _call_hf_api_batch(texts: list[str]) -> list[dict[str, Any] | None]:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# Sentiment Scoring
+# Sentiment Scoring — Heuristic Fallback with Negation & Phrase Matching
 # ════════════════════════════════════════════════════════════════════════
 
-# Positive/negative keyword lists for heuristic fallback
+_POSITIVE_PHRASES = [
+    "profit surge", "profit rises", "net profit up", "dividend payout",
+    "revenue growth", "beats estimate", "all-time high", "bullish momentum",
+    "record high", "outperform", "buy rating", "strong quarterly", "earning beat",
+]
+
+_NEGATIVE_PHRASES = [
+    "net loss", "profit drops", "profit declines", "profit slump",
+    "revenue miss", "circular debt rises", "downgrade", "underperform",
+    "selloff", "bearish trend", "defaults on", "legal notice", "fined by",
+    "loss widened", "earnings miss",
+]
+
 _POSITIVE_WORDS = {
     "profit", "gain", "rise", "surge", "rally", "bullish", "upgrade",
     "outperform", "buy", "strong", "growth", "revenue", "beat", "exceed",
-    "record", "dividend", "upgrade", "positive", "recovery", "boom",
+    "record", "dividend", "positive", "recovery", "boom", "jump",
 }
+
 _NEGATIVE_WORDS = {
     "loss", "fall", "drop", "crash", "bearish", "downgrade", "underperform",
-    "sell", "weak", "decline", "revenue miss", "miss", "deficit", "default",
-    "bankruptcy", "fraud", "negative", "recession", "slump", "plunge",
+    "sell", "weak", "decline", "miss", "deficit", "default",
+    "bankruptcy", "fraud", "negative", "recession", "slump", "plunge", "down",
 }
 
+_NEGATION_WORDS = {"not", "no", "never", "failed", "cannot", "neither", "hardly", "barely"}
 
-def _heuristic_score(text: str) -> float:
-    """Keyword-based sentiment score. Returns [-1, 1]."""
-    words = set(text.lower().split())
-    pos = len(words & _POSITIVE_WORDS)
-    neg = len(words & _NEGATIVE_WORDS)
-    total = pos + neg
-    if total == 0:
-        return 0.0
-    return round((pos - neg) / total, 3)
+
+def _heuristic_score(text: str) -> tuple[float, float, float, float, str]:
+    """Context-aware keyword & phrase sentiment score.
+
+    Returns:
+        (score, positive_score, neutral_score, negative_score, label)
+    """
+    text_lower = text.lower()
+
+    # Step 1: Check multi-word financial phrases
+    pos_phrase_count = sum(1 for p in _POSITIVE_PHRASES if p in text_lower)
+    neg_phrase_count = sum(1 for p in _NEGATIVE_PHRASES if p in text_lower)
+
+    # Step 2: Tokenize and apply negation window
+    tokens = [w.strip(".,;:!?\"'()[]{}") for w in text_lower.split() if w.strip(".,;:!?\"'()[]{}")]
+    pos_word_count = 0
+    neg_word_count = 0
+
+    negate = False
+    negation_window = 0
+
+    for token in tokens:
+        if token in _NEGATION_WORDS:
+            negate = True
+            negation_window = 3
+            continue
+
+        if token in _POSITIVE_WORDS:
+            if negate:
+                neg_word_count += 1
+            else:
+                pos_word_count += 1
+        elif token in _NEGATIVE_WORDS:
+            if negate:
+                pos_word_count += 1
+            else:
+                neg_word_count += 1
+
+        if negation_window > 0:
+            negation_window -= 1
+            if negation_window == 0:
+                negate = False
+
+    total_pos = pos_word_count + (pos_phrase_count * 2)
+    total_neg = neg_word_count + (neg_phrase_count * 2)
+    total_active = total_pos + total_neg
+
+    if total_active == 0:
+        return 0.0, 0.0, 1.0, 0.0, "neutral"
+
+    # Normalize continuous score between -1.0 and +1.0
+    continuous_score = round((total_pos - total_neg) / max(total_active, 1), 4)
+    pos_p = round(total_pos / (total_active + 2.0), 4)
+    neg_p = round(total_neg / (total_active + 2.0), 4)
+    neu_p = round(max(0.0, 1.0 - pos_p - neg_p), 4)
+
+    if continuous_score >= 0.15:
+        label = "positive"
+    elif continuous_score <= -0.15:
+        label = "negative"
+    else:
+        label = "neutral"
+
+    return continuous_score, pos_p, neu_p, neg_p, label
 
 
 def score_text(text: str) -> dict[str, Any]:
-    """Score a single text. Returns {score, label, model}.
+    """Score a single text. Returns {score, label, positive_score, neutral_score, negative_score, model}.
 
-    Tries HF Inference API first (free, no download).
-    Falls back to keyword heuristic if API unavailable.
+    Tries HF Inference API first (FinBERT), falls back to context-aware heuristic.
     """
     if not text or not text.strip():
-        return {"score": 0.0, "label": "neutral", "model": "empty"}
+        return {
+            "score": 0.0,
+            "label": "neutral",
+            "positive_score": 0.0,
+            "neutral_score": 1.0,
+            "negative_score": 0.0,
+            "model": "empty",
+        }
 
     # Try HF API first
     result = _call_hf_api(text)
     if result is not None:
         return result
 
-    # Fallback: keyword heuristic
-    score = _heuristic_score(text)
-    label = "positive" if score > 0.1 else "negative" if score < -0.1 else "neutral"
-    return {"score": round(score, 4), "label": label, "model": "heuristic"}
+    # Fallback: context-aware heuristic
+    score, pos_p, neu_p, neg_p, label = _heuristic_score(text)
+    return {
+        "score": score,
+        "label": label,
+        "positive_score": pos_p,
+        "neutral_score": neu_p,
+        "negative_score": neg_p,
+        "model": "heuristic",
+    }
 
 
 def score_batch(texts: list[str]) -> list[dict[str, Any]]:
-    """Score a batch of texts. Uses HF batch API for efficiency."""
+    """Score a batch of texts. Uses HF batch API with heuristic fallback."""
     if not texts:
         return []
 
@@ -185,9 +312,15 @@ def score_batch(texts: list[str]) -> list[dict[str, Any]]:
             output.append(result)
         else:
             # Fallback per text
-            score = _heuristic_score(text)
-            label = "positive" if score > 0.1 else "negative" if score < -0.1 else "neutral"
-            output.append({"score": round(score, 4), "label": label, "model": "heuristic"})
+            score, pos_p, neu_p, neg_p, label = _heuristic_score(text)
+            output.append({
+                "score": score,
+                "label": label,
+                "positive_score": pos_p,
+                "neutral_score": neu_p,
+                "negative_score": neg_p,
+                "model": "heuristic",
+            })
     return output
 
 
@@ -201,19 +334,19 @@ async def _fetch_news_for_symbol(
     days: int = 7,
 ) -> list[dict]:
     """Fetch recent news articles mentioning a symbol with sentiment results."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
     articles, _ = await repo.get_recent_news(symbol=symbol, days=days, limit=100)
 
     matched = []
     symbol_lower = symbol.lower()
     for a in articles:
         text = f"{a.title or ''} {a.summary or ''}".lower()
-        if symbol_lower in text:
+        if symbol_lower in text or (a.symbols and symbol_lower in a.symbols.lower()):
             matched.append({
                 "text": f"{a.title}. {a.summary or ''}",
                 "source": a.source or "unknown",
                 "published_at": a.published_at.isoformat() if a.published_at else None,
-                "existing_score": float(a.sentiment_score) if a.sentiment_score else None,
+                "published_at_dt": a.published_at,
+                "existing_score": float(a.sentiment_score) if a.sentiment_score is not None else None,
                 "news_article_id": a.id,
             })
     return matched
@@ -228,7 +361,7 @@ async def compute_stock_sentiment(
     symbol: str,
     days: int = 7,
 ) -> dict[str, Any]:
-    """Compute sentiment score for a single stock.
+    """Compute sentiment score for a single stock using exponential time-decay weighting.
 
     Returns:
         {symbol, score, label, article_count, source_breakdown,
@@ -244,10 +377,14 @@ async def compute_stock_sentiment(
             "symbol": symbol,
             "score": 0.0,
             "label": "neutral",
+            "confidence": 0.0,
+            "positive_ratio": 0.0,
+            "neutral_ratio": 1.0,
+            "negative_ratio": 0.0,
             "article_count": 0,
-            "source_breakdown": {"news": 0},
             "trend": "stable",
             "daily_scores": [],
+            "updated_at": datetime.utcnow().isoformat(),
             "details": [],
         }
 
@@ -264,7 +401,7 @@ async def compute_stock_sentiment(
             score = result["score"]
             model = result["model"]
 
-            # Persist sentiment result
+            # Persist sentiment result with full probability distribution
             await repo.create_sentiment_result(
                 news_article_id=item["news_article_id"],
                 symbol=symbol,
@@ -285,15 +422,34 @@ async def compute_stock_sentiment(
             "published_at": item["published_at"],
         })
 
-    # Decay-weighted average (recent items weighted more)
-    decay_weights = np.exp(-np.linspace(0, 2, len(all_scores)))
-    decay_weights = decay_weights / decay_weights.sum()
-    overall_score = float(np.average(all_scores, weights=decay_weights))
+    # Calendar time-decay weighted average (half-life = 3.0 days)
+    # Weight formula: w_i = exp(-lambda * delta_t_days)
+    now_utc = datetime.now(timezone.utc)
+    half_life_days = 3.0
+    decay_lambda = np.log(2) / half_life_days
 
-    # Label
-    if overall_score > 0.15:
+    weights = []
+    for item in news:
+        pub_dt = item.get("published_at_dt")
+        if pub_dt:
+            if pub_dt.tzinfo is None:
+                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+            age_days = max(0.0, (now_utc - pub_dt).total_seconds() / 86400.0)
+        else:
+            age_days = 1.0
+        weights.append(np.exp(-decay_lambda * age_days))
+
+    weights_arr = np.array(weights)
+    if weights_arr.sum() > 0:
+        decay_weights = weights_arr / weights_arr.sum()
+        overall_score = float(np.average(all_scores, weights=decay_weights))
+    else:
+        overall_score = float(np.mean(all_scores)) if all_scores else 0.0
+
+    # Label assignment based on continuous score
+    if overall_score >= 0.15:
         label = "positive"
-    elif overall_score < -0.15:
+    elif overall_score <= -0.15:
         label = "negative"
     else:
         label = "neutral"
@@ -325,16 +481,25 @@ async def compute_stock_sentiment(
         for day, scores in sorted(daily.items())
     ]
 
+    period_end = datetime.now(timezone.utc)
+    pos_ratio = round(sum(1 for s in all_scores if s >= 0.15) / len(all_scores), 4) if all_scores else 0.0
+    neu_ratio = round(sum(1 for s in all_scores if -0.15 < s < 0.15) / len(all_scores), 4) if all_scores else 0.0
+    neg_ratio = round(sum(1 for s in all_scores if s <= -0.15) / len(all_scores), 4) if all_scores else 0.0
+    confidence = round(min(1.0, (abs(overall_score) * 0.7) + (min(len(details), 10) / 10.0 * 0.3)), 2)
+    updated_at = period_end.isoformat()
+
     result = {
         "symbol": symbol,
         "score": round(overall_score, 4),
         "label": label,
+        "confidence": confidence,
+        "positive_ratio": pos_ratio,
+        "neutral_ratio": neu_ratio,
+        "negative_ratio": neg_ratio,
         "article_count": len(details),
-        "source_breakdown": {
-            "news": len(news),
-        },
         "trend": trend,
         "daily_scores": daily_scores,
+        "updated_at": updated_at,
         "details": details[:20],  # cap for response size
     }
 
@@ -346,9 +511,9 @@ async def compute_stock_sentiment(
     # Persist aggregate
     period_end = datetime.utcnow()
     period_start = period_end - timedelta(days=days)
-    pos_ratio = sum(1 for s in all_scores if s > 0.15) / len(all_scores) if all_scores else None
-    neu_ratio = sum(1 for s in all_scores if -0.15 <= s <= 0.15) / len(all_scores) if all_scores else None
-    neg_ratio = sum(1 for s in all_scores if s < -0.15) / len(all_scores) if all_scores else None
+    pos_ratio = sum(1 for s in all_scores if s >= 0.15) / len(all_scores) if all_scores else None
+    neu_ratio = sum(1 for s in all_scores if -0.15 < s < 0.15) / len(all_scores) if all_scores else None
+    neg_ratio = sum(1 for s in all_scores if s <= -0.15) / len(all_scores) if all_scores else None
 
     await repo.upsert_sentiment_aggregate(
         symbol=symbol,
@@ -363,7 +528,7 @@ async def compute_stock_sentiment(
         negative_ratio=neg_ratio,
         trend=trend,
         daily_scores=json.dumps(daily_scores),
-        source_breakdown=json.dumps(result["source_breakdown"]),
+        source_breakdown=None,
     )
 
     return result
@@ -452,6 +617,7 @@ async def compute_market_sentiment(db: AsyncSession) -> dict[str, Any]:
             "neutral": sum(1 for s in all_scores if -0.15 <= s <= 0.15),
             "negative": sum(1 for s in all_scores if s < -0.15),
         },
+        "updated_at": datetime.utcnow().isoformat(),
     }
 
     # Cache
@@ -509,7 +675,6 @@ async def get_sentiment_history(
             "negative_ratio": float(agg.negative_ratio) if agg.negative_ratio else None,
             "trend": agg.trend,
             "daily_scores": daily_scores,
-            "source_breakdown": source_breakdown,
         })
 
     return {
@@ -573,6 +738,9 @@ async def get_sentiment_news(
             "sentiment": label.upper(),
             "sentiment_score": score,
             "sentiment_model": model,
+            "positive_score": float(sr.positive_score) if (sr and sr.positive_score is not None) else None,
+            "neutral_score": float(sr.neutral_score) if (sr and sr.neutral_score is not None) else None,
+            "negative_score": float(sr.negative_score) if (sr and sr.negative_score is not None) else None,
         })
 
     if sentiment:

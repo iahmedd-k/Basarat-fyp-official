@@ -110,19 +110,27 @@ async def get_var(
                 method="historical_simulation",
                 num_observations=0,
                 annualized_volatility=None,
+                status="no_holdings",
+                message="Portfolio has no positive market value.",
+                portfolio_value=0,
+                covered_portfolio_value=0,
             )
 
         result = await asyncio.to_thread(
             calculate_var, holdings, confidence=confidence, horizon=horizon
         )
         return RiskVaRResponse(
-            confidence=result["confidence"],
-            horizon=result["horizon"],
-            var_value=result["var"],
-            cvar_value=result["cvar"],
-            method=result["method"],
-            num_observations=result["num_observations"],
+            confidence=result["confidence"], horizon=result["horizon"],
+            var_value=result["var"], cvar_value=result["cvar"],
+            method=result["method"], num_observations=result["num_observations"],
             annualized_volatility=result["annualized_volatility"],
+            status=result.get("status", "available"), message=result.get("message"),
+            portfolio_value=result.get("portfolio_value"),
+            covered_portfolio_value=result.get("covered_portfolio_value"),
+            var_loss_amount=result.get("var_loss_amount"), cvar_loss_amount=result.get("cvar_loss_amount"),
+            currency=result.get("currency", "PKR"), symbols_used=result.get("symbols_used", []),
+            symbols_excluded=result.get("symbols_excluded", []), data_as_of=result.get("data_as_of"),
+            lookback_start=result.get("lookback_start"),
         )
     except AppError:
         raise
@@ -158,8 +166,10 @@ async def run_monte_carlo(
             run_monte_carlo_task,
             user_id=user.id,
             symbols=symbols,
+            holdings_snapshot=[{"symbol": h.symbol, "sector": h.sector, "current_value": h.current_value, "allocation_pct": h.allocation_pct} for h in holdings],
             num_simulations=data.num_simulations,
             horizon_days=data.horizon_days,
+            seed=data.seed,
         )
         task_id = getattr(task_future, "id", uuid.uuid4().hex)
 
@@ -210,13 +220,16 @@ async def get_monte_carlo_result(
                 error="Simulation failed. Please try again.",
             )
         elif state == "SUCCESS":
+            if not isinstance(result, dict):
+                raise ServiceUnavailableError("Simulation returned an invalid result.")
             result_owner = result.get("user_id")
             if not result_owner or result_owner != user.id:
                 raise NotFoundError("Task not found.")
 
+            calc_failed = result.get("status") in {"error", "failed"}
             return MonteCarloResultResponse(
                 job_id=task_id,
-                status="completed",
+                status="failed" if calc_failed else "completed",
                 num_simulations=result.get("num_simulations"),
                 horizon_days=result.get("horizon_days"),
                 params=result.get("params"),
@@ -224,6 +237,12 @@ async def get_monte_carlo_result(
                 stats=result.get("stats"),
                 paths_sample=result.get("paths_sample"),
                 completed_at=result.get("completed_at"),
+                error=(result.get("error") or result.get("message")) if calc_failed else None,
+                message=result.get("message"), portfolio_value=result.get("portfolio_value"),
+                currency=result.get("currency"), method=result.get("method"),
+                assumptions=result.get("assumptions"), data_as_of=result.get("data_as_of"),
+                symbols_used=result.get("symbols_used", []), symbols_excluded=result.get("symbols_excluded", []),
+                tail_estimate_reliable=result.get("tail_estimate_reliable"),
             )
         else:
             return MonteCarloResultResponse(
@@ -268,6 +287,8 @@ async def run_stress_test(
                 current_value=0,
                 stressed_value=0,
                 holding_impacts=[],
+                status="no_holdings", method="illustrative_one_step_sector_shock",
+                worst_case_loss_value=0, assumption_note="No valued holdings to stress.",
             )
 
         result = await asyncio.to_thread(run_stress, holdings, scenario)

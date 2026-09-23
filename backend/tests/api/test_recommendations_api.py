@@ -34,6 +34,13 @@ class TestRecommendationsListEndpoint:
                     "ml": {"reason": "Bullish trend forecast"},
                     "technical": {"reason": "RSI oversold rebound"},
                 },
+                "signals": {"ml": 0.6, "technical": 0.4, "fundamental": 0.1},
+                "weights": {"gru": 0.4, "technical": 0.35, "fundamental": 0.25},
+                "effective_weights": {"gru": 0.4, "technical": 0.35, "fundamental": 0.25},
+                "data_as_of": "2026-09-18",
+                "decision_reason": "Composite score 0.450 crossed the BUY threshold (0.15).",
+                "target_stop_method": "atr_band",
+                "target_stop_reason": "ATR-based volatility levels.",
             }
         ]
 
@@ -53,6 +60,22 @@ class TestRecommendationsListEndpoint:
             assert rec["composite_score"] == 0.45
             assert rec["risk_reward_ratio"] == 1.75
             assert "summary" in rec
+            assert rec["horizon"] == "5 trading days"
+            assert rec["currency"] == "PKR"
+            assert rec["data_as_of"] == "2026-09-18"
+            assert rec["confidence_type"] == "heuristic_signal_strength"
+            assert rec["source_weights"]["ml"] == 0.4
+            assert rec["signals"]["ml"] == 0.6
+            assert rec["decision_reason"].startswith("Composite score")
+            assert "generated_at" in data
+
+    async def test_list_uses_persisted_custom_weights(self, client: AsyncClient, auth_headers):
+        weights = {"gru_weight": 0.5, "technical_weight": 0.3, "fundamental_weight": 0.2}
+        await client.post("/api/v1/recommendations/engine-weights", json=weights, headers=auth_headers)
+        with patch("app.services.recommendation_service.RecommendationEngine.get_all_recommendations", return_value=[] ) as get_all:
+            response = await client.get("/api/v1/recommendations", headers=auth_headers)
+        assert response.status_code == 200
+        assert get_all.call_args.kwargs["weights"] == {"gru": 0.5, "technical": 0.3, "fundamental": 0.2}
 
 
 @pytest.mark.api
@@ -81,6 +104,26 @@ class TestEngineWeightsEndpoint:
         assert data["gru_weight"] == 0.5
         assert data["technical_weight"] == 0.3
         assert data["fundamental_weight"] == 0.2
+        persisted = await client.get("/api/v1/recommendations/engine-weights", headers=auth_headers)
+        assert persisted.json() == {**payload, "ml_weight": 0.5}
+
+    async def test_set_weights_rejects_values_that_do_not_sum_to_one(self, client: AsyncClient, auth_headers):
+        response = await client.post(
+            "/api/v1/recommendations/engine-weights",
+            json={"gru_weight": 0.5, "technical_weight": 0.3, "fundamental_weight": 0.3},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+    async def test_set_weights_accepts_canonical_ml_weight(self, client: AsyncClient, auth_headers):
+        response = await client.post(
+            "/api/v1/recommendations/engine-weights",
+            json={"ml_weight": 0.5, "technical_weight": 0.3, "fundamental_weight": 0.2},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["ml_weight"] == 0.5
+        assert response.json()["gru_weight"] == 0.5
 
 
 @pytest.mark.api
@@ -111,6 +154,9 @@ class TestRecommendationDetailEndpoint:
                 "technical": {"signal": 0.4, "reason": "MACD golden cross"},
                 "fundamental": {"signal": 0.1, "reason": "Fair valuation"},
             },
+            "data_as_of": "2026-09-18",
+            "decision_reason": "Composite score 0.380 crossed the BUY threshold (0.15).",
+            "target_stop_reason": "ATR-based volatility levels.",
         }
 
         with patch("app.services.recommendation_service.RecommendationEngine.get_recommendation", return_value=sample_rec):
@@ -127,6 +173,28 @@ class TestRecommendationDetailEndpoint:
             assert data["current_price"] == 450.0
             assert data["risk_reward_ratio"] == 1.75
             assert data["risk_profile"] == "moderate"
+            assert data["data_as_of"] == "2026-09-18"
+            assert data["horizon"] == "5 trading days"
+            assert data["currency"] == "PKR"
+            assert data["confidence_type"] == "heuristic_signal_strength"
+            assert data["source_weights"]["ml"] == 0.4
+            assert data["decision_reason"].startswith("Composite score")
+            assert "generated_at" in data
+
+    async def test_detail_uses_persisted_custom_weights(self, client: AsyncClient, auth_headers):
+        await client.post(
+            "/api/v1/recommendations/engine-weights",
+            json={"gru_weight": 0.5, "technical_weight": 0.3, "fundamental_weight": 0.2},
+            headers=auth_headers,
+        )
+        sample = {
+            "signal": "hold", "confidence": 0.0, "composite_score": 0.0,
+            "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0},
+        }
+        with patch("app.services.recommendation_service.RecommendationEngine.get_recommendation", return_value=sample) as get_rec:
+            response = await client.get("/api/v1/recommendations/SYS", headers=auth_headers)
+        assert response.status_code == 200
+        assert get_rec.call_args.kwargs["weights"] == {"gru": 0.5, "technical": 0.3, "fundamental": 0.2}
 
 
 @pytest.mark.api
@@ -145,7 +213,19 @@ class TestTargetStopEndpoint:
             "atr_14": 10.0,
         }
 
-        with patch("app.services.recommendation_service.RecommendationEngine.compute_target_stop", return_value=sample_ts):
+        sample_rec = {
+            "signal": "buy",
+            "status": "available",
+            "current_price": 450.0,
+            "target_price": 480.0,
+            "stop_loss": 435.0,
+            "expected_range": None,
+            "target_stop_method": "atr_band",
+            "atr_14": 10.0,
+            "data_as_of": "2026-09-18",
+            "target_stop_reason": "ATR-based volatility levels.",
+        }
+        with patch("app.services.recommendation_service.RecommendationEngine.get_recommendation", return_value=sample_rec):
             resp = await client.get("/api/v1/recommendations/SYS/target-stop", headers=auth_headers)
             assert resp.status_code == 200
             data = resp.json()
@@ -153,5 +233,11 @@ class TestTargetStopEndpoint:
             assert data["current_price"] == 450.0
             assert data["target_price"] == 480.0
             assert data["stop_loss"] == 435.0
+            assert data["signal"] == "BUY"
+            assert data["data_as_of"] == "2026-09-18"
+            assert data["horizon"] == "5 trading days"
+            assert data["currency"] == "PKR"
+            assert data["target_stop_reason"] == "ATR-based volatility levels."
+            assert "generated_at" in data
             assert data["upside_pct"] is not None
             assert data["downside_pct"] is not None

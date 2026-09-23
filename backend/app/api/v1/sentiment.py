@@ -6,11 +6,12 @@ Rolling 7-day decay-weighted average for per-stock sentiment.
 
 import logging
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import ServiceUnavailableError
+from app.core.rate_limiter import limiter
 from app.db.session import get_db
 from app.models.user import User
 from app.ml.serving.schemas import (
@@ -30,7 +31,9 @@ router = APIRouter()
     response_model=SentimentResponse,
     summary="Get sentiment analysis for a stock",
 )
+@limiter.limit("60/minute")
 async def get_sentiment(
+    request: Request,
     symbol: str,
     days: int = Query(7, ge=1, le=90, description="Rolling window in days"),
     user: User = Depends(get_current_user),
@@ -51,10 +54,14 @@ async def get_sentiment(
                 symbol=cached["symbol"],
                 score=cached["score"],
                 label=cached["label"],
+                confidence=cached.get("confidence"),
+                positive_ratio=cached.get("positive_ratio"),
+                neutral_ratio=cached.get("neutral_ratio"),
+                negative_ratio=cached.get("negative_ratio"),
                 article_count=cached["article_count"],
                 trend=cached["trend"],
-                source_breakdown=cached.get("source_breakdown"),
                 daily_scores=cached.get("daily_scores"),
+                updated_at=cached.get("updated_at"),
             )
 
         # Compute live
@@ -63,10 +70,14 @@ async def get_sentiment(
             symbol=result["symbol"],
             score=result["score"],
             label=result["label"],
+            confidence=result.get("confidence"),
+            positive_ratio=result.get("positive_ratio"),
+            neutral_ratio=result.get("neutral_ratio"),
+            negative_ratio=result.get("negative_ratio"),
             article_count=result["article_count"],
             trend=result["trend"],
-            source_breakdown=result.get("source_breakdown"),
             daily_scores=result.get("daily_scores"),
+            updated_at=result.get("updated_at"),
         )
 
     except Exception as exc:
@@ -79,7 +90,9 @@ async def get_sentiment(
     response_model=SentimentHistoryResponse,
     summary="Get historical sentiment time series for a stock",
 )
+@limiter.limit("60/minute")
 async def get_sentiment_history(
+    request: Request,
     symbol: str,
     period: str = Query("1M", pattern="^(1D|1W|1M|3M|6M|1Y)$"),
     limit: int = Query(100, ge=1, le=500),
@@ -104,7 +117,9 @@ async def get_sentiment_history(
     response_model=SentimentNewsResponse,
     summary="Get paginated news articles with sentiment for a stock",
 )
+@limiter.limit("60/minute")
 async def get_sentiment_news(
+    request: Request,
     symbol: str,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
@@ -145,7 +160,9 @@ async def get_sentiment_news(
     response_model=MarketSentimentResponse,
     summary="Get overall market sentiment",
 )
+@limiter.limit("60/minute")
 async def get_market_sentiment(
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

@@ -1,13 +1,7 @@
-"""
-Production Retraining Script for Basarat FYP AI Alpha Engine.
-Trains the finalized XGBoost Cross-Sectional Ranking Model on all historical
-data up to the latest available market date (September 2026) using the 30 clean
-normalized technical & momentum features.
-Exports:
-1. backend/models/final/final_v3/xgb_model.ubj
-2. backend/models/final/final_v3/xgb_features.json
-3. backend/models/final/final_v3/model_manifest.json
-4. backend/data/reports/latest_stock_recommendations.json (Live stock rankings & scores)
+"""Train an experimental binary cross-sectional Buy/Avoid ranking model.
+
+This experiment is exported separately from the three-class final_v3 serving
+artifacts created by ``run_ml_pipeline.py``.
 """
 
 from pathlib import Path
@@ -23,8 +17,8 @@ log = logging.getLogger("production_retraining")
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 RAW_DATA_PATH = ROOT_DIR / "data" / "features" / "features_daily.parquet"
-MODEL_DIR = ROOT_DIR / "models" / "final" / "final_v3"
-REPORTS_DIR = ROOT_DIR / "data" / "reports"
+MODEL_DIR = ROOT_DIR / "models" / "experiments" / "alpha_rank_binary_v1"
+REPORTS_DIR = ROOT_DIR / "data" / "reports" / "experiments"
 
 
 def retrain_and_export_production_model():
@@ -197,14 +191,15 @@ def retrain_and_export_production_model():
     # Export Model Artifacts
     model_path_ubj = MODEL_DIR / "xgb_model.ubj"
     final_model.save_model(str(model_path_ubj))
-    log.info("Saved production model -> %s", model_path_ubj)
+    log.info("Saved experimental binary model -> %s", model_path_ubj)
 
     features_json_path = MODEL_DIR / "xgb_features.json"
     with open(features_json_path, "w") as f:
         json.dump(features_30, f, indent=2)
-    log.info("Saved production features list -> %s", features_json_path)
+    log.info("Saved experimental feature list -> %s", features_json_path)
 
     manifest = {
+        "model_version": "alpha_rank_binary_v1",
         "model_name": "Basarat_PSX_Production_Alpha_XGBoost_v3",
         "trained_date": datetime.now().isoformat(),
         "data_start": min_date,
@@ -212,6 +207,9 @@ def retrain_and_export_production_model():
         "total_training_rows": len(train_data),
         "features_count": len(features_30),
         "features": features_30,
+        "classes": ["Buy", "Avoid"],
+        "label_mapping": {"buy": 0, "avoid": 1},
+        "probabilities_calibrated": False,
         "parameters": {
             "n_estimators": 150,
             "learning_rate": 0.03,
@@ -274,7 +272,7 @@ def retrain_and_export_production_model():
             "all_stock_rankings": recommendations
         }, f, indent=2)
 
-    log.info("Saved latest stock recommendations -> %s", recs_output_path)
+    log.info("Saved experimental stock ranking -> %s", recs_output_path)
     return recs_output_path
 
 

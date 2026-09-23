@@ -38,6 +38,28 @@ async def get_current_user(
     return user
 
 
+async def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """Extract user if valid Authorization header present; otherwise returns None without throwing."""
+    if credentials is None:
+        return None
+    try:
+        payload = decode_token(credentials.credentials)
+        if payload is None or payload.get("type") != "access":
+            return None
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        user = await db.get(User, user_id)
+        if user is None or not user.is_active:
+            return None
+        return user
+    except Exception:
+        return None
+
+
 async def get_current_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:

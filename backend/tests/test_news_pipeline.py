@@ -376,7 +376,7 @@ class TestMarketSchedule:
             nxt = await market_schedule.next_ingestion_window()
             assert nxt is not None
             assert nxt.hour == 9
-            assert nxt.minute == 30
+            assert nxt.minute == 15
 
     async def test_next_window_after_post_market(self):
         from app.services.news_pipeline import market_schedule

@@ -113,15 +113,34 @@ def compute_stock_sentiment_sync(db, symbol: str, days: int = 7) -> dict:
             "published_at": item["published_at"],
         })
 
-    # Decay-weighted average
-    decay_weights = np.exp(-np.linspace(0, 2, len(all_scores)))
-    decay_weights = decay_weights / decay_weights.sum()
-    overall_score = float(np.average(all_scores, weights=decay_weights))
+    # Calendar time-decay weighted average (half-life = 3.0 days)
+    # Weight formula: w_i = exp(-lambda * delta_t_days)
+    now_utc = datetime.now(timezone.utc)
+    half_life_days = 3.0
+    decay_lambda = np.log(2) / half_life_days
+
+    weights = []
+    for a in articles:
+        pub_dt = a.published_at
+        if pub_dt:
+            if pub_dt.tzinfo is None:
+                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+            age_days = max(0.0, (now_utc - pub_dt).total_seconds() / 86400.0)
+        else:
+            age_days = 1.0
+        weights.append(np.exp(-decay_lambda * age_days))
+
+    weights_arr = np.array(weights)
+    if weights_arr.sum() > 0:
+        decay_weights = weights_arr / weights_arr.sum()
+        overall_score = float(np.average(all_scores, weights=decay_weights))
+    else:
+        overall_score = float(np.mean(all_scores)) if all_scores else 0.0
 
     # Label
-    if overall_score > 0.15:
+    if overall_score >= 0.15:
         label = "positive"
-    elif overall_score < -0.15:
+    elif overall_score <= -0.15:
         label = "negative"
     else:
         label = "neutral"
@@ -170,11 +189,11 @@ def compute_stock_sentiment_sync(db, symbol: str, days: int = 7) -> dict:
         json.dump(result, f, default=str, indent=2)
 
     # Persist aggregate
-    period_end = datetime.utcnow()
+    period_end = datetime.now(timezone.utc)
     period_start = period_end - timedelta(days=days)
-    pos_ratio = sum(1 for s in all_scores if s > 0.15) / len(all_scores) if all_scores else None
-    neu_ratio = sum(1 for s in all_scores if -0.15 <= s <= 0.15) / len(all_scores) if all_scores else None
-    neg_ratio = sum(1 for s in all_scores if s < -0.15) / len(all_scores) if all_scores else None
+    pos_ratio = sum(1 for s in all_scores if s >= 0.15) / len(all_scores) if all_scores else None
+    neu_ratio = sum(1 for s in all_scores if -0.15 < s < 0.15) / len(all_scores) if all_scores else None
+    neg_ratio = sum(1 for s in all_scores if s <= -0.15) / len(all_scores) if all_scores else None
 
     # Upsert aggregate
     agg = (

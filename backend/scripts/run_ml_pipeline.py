@@ -354,6 +354,8 @@ def train_production_xgboost(df: pd.DataFrame) -> None:
         "n_samples": len(X),
         "n_features": len(feature_names),
         "classes": ["Bearish", "Bullish", "Sideways"],
+        "label_mapping": {"bearish": 0, "bullish": 1, "sideways": 2},
+        "probabilities_calibrated": False,
         "status": "production_ready",
     }
     manifest_path = FINAL_MODEL_DIR / "model_manifest.json"

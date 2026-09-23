@@ -93,6 +93,7 @@ def run_monte_carlo_task(
     self,
     user_id: str,
     symbols: list[str] | None = None,
+    holdings_snapshot: list[dict] | None = None,
     num_simulations: int = 1000,
     horizon_days: int = 30,
     seed: int | None = None,
@@ -119,12 +120,17 @@ def run_monte_carlo_task(
              job_id, user_id, num_simulations, horizon_days)
 
     try:
-        holdings = _get_user_holdings_sync(user_id, symbols)
+        if holdings_snapshot is not None:
+            from types import SimpleNamespace
+            holdings = [SimpleNamespace(**item) for item in holdings_snapshot]
+        else:
+            holdings = _get_user_holdings_sync(user_id, symbols)
 
         if not holdings:
             result = {
                 "job_id": job_id,
-                "status": "completed",
+                "status": "error",
+                "user_id": user_id,
                 "message": "No holdings found",
                 "num_simulations": num_simulations,
                 "horizon_days": horizon_days,

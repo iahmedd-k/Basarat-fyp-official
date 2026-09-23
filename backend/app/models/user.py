@@ -23,6 +23,7 @@ class User(Base):
     # Risk profile
     risk_tolerance: Mapped[str | None] = mapped_column(String(20), default="moderate")
     sector_preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    recommendation_weights: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     investment_horizon: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Notification preferences

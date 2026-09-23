@@ -1,5 +1,8 @@
 {
   "last_successful_ingestion": "2026-09-16T10:30:00+00:00",
-  "updated_at": "2026-09-18T18:59:27.923794+00:00",
-  "total_runs": 11
+  "updated_at": "2026-09-23T20:35:24.014425+00:00",
+  "total_runs": 13,
+  "status": "done",
+  "last_run_started_at": "2026-09-23T20:13:46.743757+00:00",
+  "new_articles": 16
 }

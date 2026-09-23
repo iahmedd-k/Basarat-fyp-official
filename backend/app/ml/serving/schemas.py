@@ -9,7 +9,7 @@ Design principles:
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -260,22 +260,34 @@ class RecommendationItem(BaseModel):
     signal: str = Field(
         ..., description="BUY, SELL, or HOLD", examples=["buy"]
     )
+    horizon: str = Field(default="5 trading days", description="Intended signal and ATR risk-level horizon.")
+    currency: str = Field(default="PKR", description="Currency for all price and ATR fields.")
+    model_version: str | None = Field(default=None, description="XGBoost model version used for the ML component, when available.")
+    confidence_type: str = Field(default="heuristic_signal_strength", description="Confidence is composite signal strength, not a probability of success.")
+    model_probabilities: dict[str, float] | None = Field(default=None, description="Raw XGBoost class scores in [0, 1], uncalibrated unless probabilities_calibrated is true.")
+    probabilities_calibrated: bool = Field(default=False, description="Whether model class scores were calibrated; false for the current model.")
+    status: str = Field(default="available", description="available, partial, or insufficient_data")
+    weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights used.")
+    effective_weights: dict[str, float] = Field(default_factory=dict, description="Weights after omitting unavailable sources and renormalizing.")
+    source_weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights with canonical keys ml, technical, fundamental.")
+    effective_source_weights: dict[str, float] = Field(default_factory=dict, description="Effective weights with canonical keys ml, technical, fundamental.")
+    data_as_of: str | None = Field(default=None, description="Date of the daily feature row used, when available.")
     confidence: float = Field(
         ..., ge=0, le=1,
         description="Heuristic signal strength from the absolute composite score (0-1); not a probability or accuracy estimate.", examples=[0.72],
     )
+    signals: dict[str, float] = Field(default_factory=dict, description="Component signal scores in [-1, 1], keyed by ml, technical, and fundamental.")
+    reasoning: dict = Field(default_factory=dict, description="Structured component status, factors, and model diagnostics.")
     composite_score: float = Field(
         ..., description="Raw composite signal (-1 to +1). Positive = bullish.",
         examples=[0.35],
     )
     current_price: float | None = Field(default=None, description="Latest closing price, in PKR.", examples=[142.5])
-    target_price: float | None = Field(
-        default=None, description="ATR-based target price", examples=[148.0],
-    )
-    stop_loss: float | None = Field(
-        default=None, description="ATR-based stop-loss", examples=[135.0],
-    )
-    expected_range: ExpectedPriceRange | None = Field(default=None, description="ATR price range in PKR when the signal is neutral.")
+    target_price: float | None = Field(default=None, description="ATR volatility level aligned to the recommendation direction; not a price forecast.", examples=[148.0])
+    stop_loss: float | None = Field(default=None, description="ATR risk level aligned to the recommendation direction; not an execution guarantee.", examples=[135.0])
+    expected_range: ExpectedPriceRange | None = Field(default=None, description="Symmetric ATR volatility envelope for a neutral signal; not a predicted range.")
+    target_stop_method: str | None = Field(default=None, description="Method used to derive target, stop, or volatility range.")
+    target_stop_reason: str | None = Field(default=None, description="Why directional levels are absent or a short explanation of their ATR basis.")
     upside_pct: float | None = Field(default=None, description="Signed return from current price to target, in percent.")
     downside_pct: float | None = Field(default=None, description="Signed return from current price to stop-loss, in percent.")
     risk_reward_ratio: float | None = Field(default=None, description="Absolute target reward divided by stop-loss risk.")
@@ -283,6 +295,7 @@ class RecommendationItem(BaseModel):
         ..., description="One-line human-readable summary",
         examples=["Strong buy: ML+Technical agree bullish, RSI=35 oversold"],
     )
+    decision_reason: str = Field(default="", description="Plain-language reason for the final BUY, SELL, or HOLD decision.")
 
 
 class RecommendationsListResponse(BaseModel):
@@ -308,6 +321,10 @@ class RecommendationsListResponse(BaseModel):
     count: int = Field(
         ..., description="Number of recommendations returned"
     )
+    total_count: int = Field(..., description="Number of recommendations matching filters before applying limit.")
+    generated_at: datetime = Field(..., description="UTC time when this response was assembled.")
+    horizon: str = Field(default="5 trading days", description="Intended recommendation horizon.")
+    currency: str = Field(default="PKR", description="Currency used for recommendation price fields.")
     risk_profile: str = Field(
         ..., description="Risk profile used for target/stop calculation",
         examples=["moderate"],
@@ -338,6 +355,13 @@ class RecommendationDetailResponse(BaseModel):
     }
 
     symbol: str
+    generated_at: datetime = Field(..., description="UTC time when this recommendation was assembled.")
+    horizon: str = Field(default="5 trading days", description="Intended signal and ATR risk-level horizon.")
+    currency: str = Field(default="PKR", description="Currency for all price and ATR fields.")
+    model_version: str | None = Field(default=None, description="XGBoost model version used for the ML component, when available.")
+    confidence_type: str = Field(default="heuristic_signal_strength", description="Confidence is composite signal strength, not a probability of success.")
+    model_probabilities: dict[str, float] | None = Field(default=None, description="Raw XGBoost class scores in [0, 1], uncalibrated unless probabilities_calibrated is true.")
+    probabilities_calibrated: bool = Field(default=False, description="Whether model class scores were calibrated; false for the current model.")
     signal: str = Field(
         ..., description="BUY, SELL, or HOLD", examples=["buy"]
     )
@@ -357,15 +381,11 @@ class RecommendationDetailResponse(BaseModel):
     )
 
     # Target / stop
-    target_price: float | None = Field(
-        default=None, description="ATR-based target price"
-    )
-    stop_loss: float | None = Field(
-        default=None, description="ATR-based stop-loss"
-    )
+    target_price: float | None = Field(default=None, description="ATR volatility level aligned to the recommendation direction; not a price forecast.")
+    stop_loss: float | None = Field(default=None, description="ATR risk level aligned to the recommendation direction; not an execution guarantee.")
     expected_range: ExpectedPriceRange | None = Field(
         default=None,
-        description="Expected price range for sideways markets: {low, high, method}",
+        description="Symmetric ATR volatility envelope for a neutral signal; not a predicted range.",
     )
     current_price: float | None = Field(
         default=None, description="Current closing price"
@@ -377,7 +397,14 @@ class RecommendationDetailResponse(BaseModel):
     downside_pct: float | None = Field(default=None, description="Signed return from current price to stop-loss, in percent.")
     risk_reward_ratio: float | None = Field(default=None, description="Absolute target reward divided by stop-loss risk.")
     target_stop_method: str | None = Field(default=None, description="Method used to calculate price levels, e.g. atr_band.")
+    target_stop_reason: str | None = Field(default=None, description="Why directional levels are absent or a short explanation of their ATR basis.")
+    decision_reason: str = Field(default="", description="Plain-language reason for the final BUY, SELL, or HOLD decision.")
     risk_profile: str = Field(default="moderate", description="Risk profile used to calculate price levels.")
+    status: str = Field(default="available", description="available, partial, or insufficient_data")
+    effective_weights: dict[str, float] = Field(default_factory=dict, description="Weights after excluding unavailable signal sources and renormalizing.")
+    source_weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights with canonical keys ml, technical, fundamental.")
+    effective_source_weights: dict[str, float] = Field(default_factory=dict, description="Effective weights with canonical keys ml, technical, fundamental.")
+    data_as_of: str | None = Field(default=None, description="Date of the daily feature row used, when available.")
 
     # Detailed reasoning
     reasoning: dict = Field(
@@ -401,12 +428,18 @@ class TargetStopResponse(BaseModel):
     """Target price and stop-loss for a single symbol."""
 
     symbol: str
+    generated_at: datetime = Field(..., description="UTC time when these levels were assembled.")
+    data_as_of: str | None = Field(default=None, description="Latest daily market-data date used.")
+    horizon: str = Field(default="5 trading days", description="Horizon used to scale ATR levels.")
+    currency: str = Field(default="PKR", description="Currency for all price and ATR fields.")
+    signal: str | None = Field(default=None, description="Recommendation signal used to orient ATR levels.")
+    status: str = Field(default="available", description="available, partial, or insufficient_data")
     current_price: float | None = None
     target_price: float | None = None
     stop_loss: float | None = None
     expected_range: ExpectedPriceRange | None = Field(
         default=None,
-        description="Expected price range for sideways markets: {low, high, method}",
+        description="Symmetric ATR volatility envelope for a neutral signal; not a predicted range.",
         examples=[{"low": 138.5, "high": 148.5, "method": "atr_range"}],
     )
     method: str = Field(
@@ -414,6 +447,7 @@ class TargetStopResponse(BaseModel):
         description="Calculation method",
         examples=["atr_band"],
     )
+    target_stop_reason: str | None = Field(default=None, description="Explains HOLD/no-directional-target behavior and that ATR levels are not forecasts.")
     atr_14: float | None = Field(
         default=None,
         description="14-day ATR value used",
@@ -436,13 +470,31 @@ class TargetStopResponse(BaseModel):
 
 
 class EngineWeightsRequest(BaseModel):
-    gru_weight: float = Field(0.33, ge=0.0, le=1.0)
-    technical_weight: float = Field(0.33, ge=0.0, le=1.0)
-    fundamental_weight: float = Field(0.34, ge=0.0, le=1.0)
+    gru_weight: float = Field(0.40, ge=0.0, le=1.0, description="Weight for the ML signal; field name retained for API compatibility.")
+    ml_weight: float | None = Field(default=None, ge=0.0, le=1.0, description="Canonical Android/mobile field for the XGBoost ML signal weight.")
+    technical_weight: float = Field(0.35, ge=0.0, le=1.0)
+    fundamental_weight: float = Field(0.25, ge=0.0, le=1.0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_canonical_ml_weight(cls, values):
+        if isinstance(values, dict) and values.get("ml_weight") is not None:
+            if "gru_weight" in values and abs(float(values["gru_weight"]) - float(values["ml_weight"])) > 1e-6:
+                raise ValueError("gru_weight and ml_weight must match when both are provided")
+            values = {**values, "gru_weight": values["ml_weight"]}
+        return values
+
+    @model_validator(mode="after")
+    def weights_must_sum_to_one(self):
+        total = self.gru_weight + self.technical_weight + self.fundamental_weight
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError("Engine weights must sum to 1.0")
+        return self
 
 
 class EngineWeightsResponse(BaseModel):
     gru_weight: float
+    ml_weight: float = Field(..., description="Canonical alias for the legacy gru_weight field; this weights the XGBoost ML signal.")
     technical_weight: float
     fundamental_weight: float
 
@@ -485,6 +537,17 @@ class RiskVaRResponse(BaseModel):
         description="Annualized portfolio volatility (std * sqrt(252))",
         examples=[0.1856],
     )
+    status: str = "available"
+    message: str | None = None
+    portfolio_value: float | None = None
+    covered_portfolio_value: float | None = None
+    var_loss_amount: float | None = None
+    cvar_loss_amount: float | None = None
+    currency: str = "PKR"
+    symbols_used: list[str] = Field(default_factory=list)
+    symbols_excluded: list[str] = Field(default_factory=list)
+    data_as_of: str | None = None
+    lookback_start: str | None = None
 
 
 class MonteCarloRequest(BaseModel):
@@ -504,6 +567,7 @@ class MonteCarloRequest(BaseModel):
         description="Forecast horizon in trading days (e.g., 30 days = ~1.5 months)",
         examples=[30],
     )
+    seed: int | None = Field(default=None, ge=0, le=4294967295, description="Optional seed for repeatable simulations")
 
     model_config = {
         "json_schema_extra": {
@@ -557,6 +621,15 @@ class MonteCarloResultResponse(BaseModel):
     )
     error: str | None = None
     completed_at: str | None = None
+    message: str | None = None
+    portfolio_value: float | None = None
+    currency: str | None = None
+    method: str | None = None
+    assumptions: str | None = None
+    data_as_of: str | None = None
+    symbols_used: list[str] = Field(default_factory=list)
+    symbols_excluded: list[str] = Field(default_factory=list)
+    tail_estimate_reliable: bool | None = None
 
 
 class StressTestResponse(BaseModel):
@@ -601,6 +674,11 @@ class StressTestResponse(BaseModel):
     holding_impacts: list[dict] = Field(
         ..., description="Per-holding impact breakdown",
     )
+    status: str = "available"
+    method: str = "illustrative_one_step_sector_shock"
+    worst_case_loss_value: float | None = None
+    assumption_note: str | None = None
+    currency: str = "PKR"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -619,6 +697,28 @@ class SentimentResponse(BaseModel):
         ..., description="Sentiment label: positive, negative, neutral",
         examples=["positive"],
     )
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence level in the sentiment signal (0 to 1)",
+        examples=[0.82],
+    )
+    positive_ratio: float | None = Field(
+        default=None,
+        description="Proportion of positive news items (0.0 to 1.0)",
+        examples=[0.75],
+    )
+    neutral_ratio: float | None = Field(
+        default=None,
+        description="Proportion of neutral news items (0.0 to 1.0)",
+        examples=[0.15],
+    )
+    negative_ratio: float | None = Field(
+        default=None,
+        description="Proportion of negative news items (0.0 to 1.0)",
+        examples=[0.10],
+    )
     article_count: int = Field(
         ..., description="Number of articles/posts analyzed", examples=[12],
     )
@@ -626,14 +726,14 @@ class SentimentResponse(BaseModel):
         ..., description="Score trend: improving, declining, stable",
         examples=["improving"],
     )
-    source_breakdown: dict | None = Field(
-        default=None,
-        description="Count by source type: {news: N, community: M}",
-        examples=[{"news": 8, "community": 4}],
-    )
     daily_scores: list[dict] | None = Field(
         default=None,
         description="Daily aggregated scores for chart: [{date, score, count}]",
+    )
+    updated_at: str | None = Field(
+        default=None,
+        description="ISO 8601 timestamp of analysis generation",
+        examples=["2026-09-24T02:00:00Z"],
     )
 
 
@@ -650,9 +750,6 @@ class MarketSentimentResponse(BaseModel):
     article_count: int = Field(
         default=0, description="Total news articles analyzed",
     )
-    community_post_count: int = Field(
-        default=0, description="Total community posts analyzed",
-    )
     advancing: int = Field(
         ..., description="Number of stocks with positive returns", examples=[35],
     )
@@ -668,10 +765,6 @@ class MarketSentimentResponse(BaseModel):
     news_sentiment_avg: float = Field(
         default=0.0,
         description="Average news sentiment score",
-    )
-    community_sentiment_avg: float = Field(
-        default=0.0,
-        description="Average community sentiment score",
     )
     score_distribution: dict | None = Field(
         default=None,
@@ -691,7 +784,6 @@ class SentimentHistoryPoint(BaseModel):
     negative_ratio: float | None = None
     trend: str | None = None
     daily_scores: list[dict] | None = None
-    source_breakdown: dict | None = None
 
 
 class SentimentHistoryResponse(BaseModel):
@@ -713,6 +805,9 @@ class SentimentNewsItem(BaseModel):
     sentiment: str | None = None
     sentiment_score: float | None = None
     sentiment_model: str | None = None
+    positive_score: float | None = None
+    neutral_score: float | None = None
+    negative_score: float | None = None
 
 
 class SentimentNewsResponse(BaseModel):

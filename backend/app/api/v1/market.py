@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
-from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
+from app.core.rate_limiter import limiter
 from app.schemas.market import (
     GainersResponse,
     IndexConstituentsResponse,
@@ -20,9 +20,10 @@ router = APIRouter()
     response_model=IndicesResponse,
     summary="Get main market indices",
 )
+@limiter.limit("60/minute")
 async def get_market_indices(
+    request: Request,
     service: MarketService = Depends(MarketService),
-    _user=Depends(get_current_user),
 ):
     try:
         indices = await service.get_indices()
@@ -36,9 +37,10 @@ async def get_market_indices(
     response_model=IndexConstituentsResponse,
     summary="Get KSE-100 index constituents",
 )
+@limiter.limit("60/minute")
 async def get_kse_100_constituents(
+    request: Request,
     service: MarketService = Depends(MarketService),
-    _user=Depends(get_current_user),
 ):
     try:
         constituents = await service.get_index_constituents("KSE100")
@@ -56,9 +58,10 @@ async def get_kse_100_constituents(
     response_model=IndexConstituentsResponse,
     summary="Get KSE-30 index constituents",
 )
+@limiter.limit("60/minute")
 async def get_kse_30_constituents(
+    request: Request,
     service: MarketService = Depends(MarketService),
-    _user=Depends(get_current_user),
 ):
     try:
         constituents = await service.get_index_constituents("KSE30")
@@ -76,9 +79,10 @@ async def get_kse_30_constituents(
     response_model=IndexConstituentsResponse,
     summary="Get KMI-30 index constituents (Shariah compliant)",
 )
+@limiter.limit("60/minute")
 async def get_kmi_30_constituents(
+    request: Request,
     service: MarketService = Depends(MarketService),
-    _user=Depends(get_current_user),
 ):
     try:
         constituents = await service.get_index_constituents("KMI30")
@@ -97,10 +101,11 @@ async def get_kmi_30_constituents(
     response_model=GainersResponse,
     summary="Get top gaining stocks",
 )
+@limiter.limit("60/minute")
 async def get_top_gainers(
+    request: Request,
     limit: int = Query(10, ge=1, le=100),
     service: MarketService = Depends(MarketService),
-    _user=Depends(get_current_user),
 ):
     try:
         gainers = await service.get_top_gainers(limit)
@@ -114,10 +119,11 @@ async def get_top_gainers(
     response_model=LosersResponse,
     summary="Get top losing stocks",
 )
+@limiter.limit("60/minute")
 async def get_top_losers(
+    request: Request,
     limit: int = Query(10, ge=1, le=100),
     service: MarketService = Depends(MarketService),
-    _user=Depends(get_current_user),
 ):
     try:
         losers = await service.get_top_losers(limit)
@@ -131,10 +137,11 @@ async def get_top_losers(
     response_model=VolumeSpikesResponse,
     summary="Get stocks with highest volume",
 )
+@limiter.limit("60/minute")
 async def get_volume_spikes(
+    request: Request,
     limit: int = Query(10, ge=1, le=100),
     service: MarketService = Depends(MarketService),
-    _user=Depends(get_current_user),
 ):
     try:
         spikes = await service.get_volume_spikes(limit)
@@ -148,9 +155,10 @@ async def get_volume_spikes(
     response_model=SentimentOverview,
     summary="Get market sentiment overview",
 )
+@limiter.limit("60/minute")
 async def get_sentiment_overview(
+    request: Request,
     service: MarketService = Depends(MarketService),
-    _user=Depends(get_current_user),
 ):
     try:
         return await service.get_sentiment_overview()

@@ -21,7 +21,7 @@ log = logging.getLogger("train_xgb_v3")
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DEFAULT_DATA_PATH = ROOT_DIR / "data" / "processed_v3" / "features_v3.parquet"
-DEFAULT_OUTPUT_DIR = ROOT_DIR / "models" / "final" / "final_v3"
+DEFAULT_OUTPUT_DIR = ROOT_DIR / "models" / "experiments" / "v3_extremes_binary"
 
 
 def get_v3_feature_columns(df: pd.DataFrame) -> list:
@@ -139,6 +139,9 @@ def train_model(
         "model_type": "XGBoost v3 (Cross-Sectional Rank-Normalized)",
         "features": feature_cols,
         "feature_count": len(feature_cols),
+        "classes": ["buy", "avoid"],
+        "label_mapping": {"buy": 0, "avoid": 1},
+        "probabilities_calibrated": False,
         "min_child_weight": 100,
         "max_depth": 4,
         "best_iteration": int(clf.best_iteration),

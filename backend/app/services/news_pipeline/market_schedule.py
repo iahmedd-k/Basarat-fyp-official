@@ -60,18 +60,22 @@ async def _load_market_config() -> dict:
             )
             configs = result.scalars().all()
 
+        default = _default_config()
         config = {
-            "weekly": {},
-            "holidays": [],
-            "overrides": [],
+            "weekly": default["weekly"],
+            "holidays": default["holidays"],
+            "overrides": default["overrides"],
         }
         for cfg in configs:
-            if cfg.name == "default_weekly":
+            if cfg.name == "default_weekly" and cfg.config_json:
                 config["weekly"] = cfg.config_json
-            elif cfg.name == "holidays":
+            elif cfg.name == "holidays" and cfg.config_json:
                 config["holidays"] = cfg.config_json
-            elif cfg.name == "overrides":
+            elif cfg.name == "overrides" and cfg.config_json:
                 config["overrides"] = cfg.config_json
+
+        if not config.get("weekly"):
+            config["weekly"] = default["weekly"]
 
         _config_cache = config
         _config_cache_time = now
@@ -226,6 +230,17 @@ async def next_ingestion_window() -> Optional[datetime]:
 
         if next_open > now:
             return next_open
+
+        # Handle midday break resumption on the same day (e.g. Friday 12:00-14:30)
+        if "break" in schedule and days_ahead == 0:
+            break_end = _parse_time(schedule["break"]["end"])
+            break_resume = check_date.replace(
+                hour=break_end.hour,
+                minute=break_end.minute,
+                second=0, microsecond=0,
+            )
+            if break_resume > now:
+                return break_resume
 
     return None
 

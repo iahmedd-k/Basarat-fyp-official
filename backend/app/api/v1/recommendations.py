@@ -4,11 +4,10 @@ Returns clean, flat JSON optimized for frontend rendering.
 """
 
 import logging
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
-from pathlib import Path
-
-import pandas as pd
+from fastapi import APIRouter, Depends, Query, Path as PathParam
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
@@ -28,22 +27,36 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_user_weights: dict[str, dict] = {}
-
-
 def _get_user_risk_profile(user: User) -> str:
     return getattr(user, "risk_tolerance", None) or "moderate"
+
+
+def _get_user_weights(user: User, defaults: dict) -> dict[str, float]:
+    saved = getattr(user, "recommendation_weights", None)
+    if not isinstance(saved, dict):
+        return defaults.copy()
+    try:
+        weights = {key: float(saved[key]) for key in ("gru", "technical", "fundamental")}
+        total = sum(weights.values())
+        if any(value < 0 for value in weights.values()) or total <= 0:
+            return defaults.copy()
+        return {key: value / total for key, value in weights.items()}
+    except (KeyError, TypeError, ValueError):
+        return defaults.copy()
 
 
 def _summarize(r: dict) -> str:
     """One-line summary from recommendation dict."""
     signal = r.get("signal", "hold").upper()
     reasoning = r.get("reasoning", {})
-    ml_reason = reasoning.get("ml", {}).get("reason", "")
+    ml_reason = reasoning.get("ml", {}).get("reason") or (
+        f"ML {reasoning.get('ml', {}).get('signal_bias')}"
+        if reasoning.get("ml", {}).get("signal_bias") else ""
+    )
     tech_reason = reasoning.get("technical", {}).get("reason", "")
     parts = []
     if signal == "BUY":
-        parts.append("Strong buy")
+        parts.append("BUY signal")
     elif signal == "SELL":
         parts.append("Sell signal")
     else:
@@ -54,13 +67,57 @@ def _summarize(r: dict) -> str:
         for source in ("ml", "technical", "fundamental"):
             factors = reasoning.get(source, {})
             if isinstance(factors, dict):
-                detail = next((f"{key}: {value}" for key, value in factors.items() if isinstance(value, (str, int, float))), "")
+                detail = next((f"{key}: {value}" for key, value in factors.items()
+                               if key not in {"status", "model", "model_version", "method", "probabilities_calibrated"}
+                               and isinstance(value, (str, int, float))), "")
                 if detail:
                     break
     if detail:
         parts.append(detail)
 
     return ": ".join(parts[:2]) if len(parts) > 1 else parts[0]
+
+
+def _model_probabilities(rec: dict) -> dict[str, float] | None:
+    ml = (rec.get("reasoning") or {}).get("ml") or {}
+    values = {
+        "bullish": ml.get("prob_bullish"),
+        "bearish": ml.get("prob_bearish"),
+        "sideways": ml.get("prob_sideways"),
+    }
+    if not any(value is not None for value in values.values()):
+        return None
+    return {key: float(value) for key, value in values.items() if value is not None}
+
+
+def _canonical_weights(weights: dict | None) -> dict[str, float]:
+    weights = weights or {}
+    return {
+        "ml": float(weights.get("ml", weights.get("gru", 0.0))),
+        "technical": float(weights.get("technical", 0.0)),
+        "fundamental": float(weights.get("fundamental", 0.0)),
+    }
+
+
+def _target_stop_reason(rec: dict) -> str:
+    if rec.get("target_stop_reason"):
+        return rec["target_stop_reason"]
+    if str(rec.get("signal", "hold")).lower() == "hold":
+        if rec.get("expected_range"):
+            return "HOLD has no directional target or stop; the expected range is an ATR volatility envelope."
+        return "No directional target or stop is available for this HOLD recommendation."
+    if rec.get("target_price") is not None or rec.get("stop_loss") is not None:
+        return "Directional target and stop are ATR-based volatility levels, not price forecasts or execution guarantees."
+    return "Directional ATR levels are unavailable for this data."
+
+
+def _decision_reason(rec: dict) -> str:
+    reason = rec.get("decision_reason")
+    if reason:
+        return reason
+    if rec.get("status") in {"partial", "insufficient_data"}:
+        return "Recommendation is based on partial or insufficient data; review component availability before acting."
+    return "Decision reason is unavailable for this cached recommendation."
 
 
 @router.get(
@@ -73,32 +130,33 @@ async def get_recommendations(
     sector: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     try:
-        from app.services.recommendation_service import (
-            RecommendationEngine,
-            get_cached_recommendations,
-        )
+        from app.services.recommendation_service import DEFAULT_WEIGHTS, RecommendationEngine, get_cached_recommendations
 
         effective_risk = risk_profile or _get_user_risk_profile(user)
 
-        cached = get_cached_recommendations() if effective_risk == "moderate" else None
+        weights = _get_user_weights(user, DEFAULT_WEIGHTS)
+        uses_default_weights = all(abs(weights[key] - DEFAULT_WEIGHTS[key]) < 1e-9 for key in DEFAULT_WEIGHTS)
+        cached = get_cached_recommendations() if effective_risk == "moderate" and uses_default_weights else None
         if cached is not None:
             recommendations = cached
         else:
-            engine = RecommendationEngine()
-            recommendations = engine.get_all_recommendations(
+            engine = RecommendationEngine(weights=weights)
+            recommendations = await run_in_threadpool(
+                engine.get_all_recommendations,
                 risk_tolerance=effective_risk,
                 sector_filter=sector,
+                weights=weights,
             )
 
         if sector:
             recommendations = [
                 r for r in recommendations
-                if r.get("sector", "").lower() == sector.lower()
+                if str(r.get("sector") or "").casefold() == sector.casefold()
             ]
 
+        total_count = len(recommendations)
         recommendations = recommendations[:limit]
 
         items = [
@@ -107,29 +165,50 @@ async def get_recommendations(
                 name=r.get("name"),
                 sector=r.get("sector"),
                 signal=r["signal"].upper(),
+                status=r.get("status", "available"),
+                weights=r.get("weights", weights),
+                effective_weights=r.get("effective_weights", {}),
+                source_weights=_canonical_weights(r.get("weights", weights)),
+                effective_source_weights=_canonical_weights(r.get("effective_weights", {})),
+                data_as_of=r.get("data_as_of"),
+                horizon="5 trading days",
+                currency="PKR",
+                model_version=((r.get("reasoning") or {}).get("ml") or {}).get("model_version"),
+                confidence_type="heuristic_signal_strength",
+                model_probabilities=_model_probabilities(r),
+                probabilities_calibrated=bool(((r.get("reasoning") or {}).get("ml") or {}).get("probabilities_calibrated", False)),
                 confidence=round(r["confidence"], 3),
                 composite_score=round(r.get("composite_score", 0), 3),
+                signals=r.get("signals", {}),
+                reasoning=r.get("reasoning", {}),
                 current_price=r.get("current_price"),
                 target_price=r.get("target_price"),
                 stop_loss=r.get("stop_loss"),
                 expected_range=r.get("expected_range"),
+                target_stop_method=r.get("target_stop_method"),
+                target_stop_reason=_target_stop_reason(r),
                 upside_pct=r.get("upside_pct"),
                 downside_pct=r.get("downside_pct"),
                 risk_reward_ratio=r.get("risk_reward_ratio"),
                 summary=_summarize(r),
+                decision_reason=_decision_reason(r),
             )
             for r in recommendations
         ]
 
         return RecommendationsListResponse(
             count=len(items),
+            total_count=total_count,
+            generated_at=datetime.now(timezone.utc),
+            horizon="5 trading days",
+            currency="PKR",
             risk_profile=effective_risk,
             recommendations=items,
         )
 
     except Exception as exc:
         log.exception("Failed to fetch recommendations")
-        raise ServiceUnavailableError(f"Failed to fetch recommendations: {exc}")
+        raise ServiceUnavailableError("Failed to fetch recommendations")
 
 
 @router.get(
@@ -142,14 +221,16 @@ async def get_engine_weights(
 ):
     try:
         from app.services.recommendation_service import DEFAULT_WEIGHTS
-        user_w = _user_weights.get(user.id, {})
+        user_w = _get_user_weights(user, DEFAULT_WEIGHTS)
         return EngineWeightsResponse(
-            gru_weight=user_w.get("gru_weight", DEFAULT_WEIGHTS.get("gru", 0.40)),
-            technical_weight=user_w.get("technical_weight", DEFAULT_WEIGHTS.get("technical", 0.35)),
-            fundamental_weight=user_w.get("fundamental_weight", DEFAULT_WEIGHTS.get("fundamental", 0.25)),
+            gru_weight=user_w["gru"],
+            ml_weight=user_w["gru"],
+            technical_weight=user_w["technical"],
+            fundamental_weight=user_w["fundamental"],
         )
-    except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to get engine weights: {exc}")
+    except Exception:
+        log.exception("Failed to get engine weights")
+        raise ServiceUnavailableError("Failed to get engine weights")
 
 
 @router.post(
@@ -160,20 +241,23 @@ async def get_engine_weights(
 async def set_engine_weights(
     data: EngineWeightsRequest,
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
-        _user_weights[user.id] = {
-            "gru_weight": data.gru_weight,
-            "technical_weight": data.technical_weight,
-            "fundamental_weight": data.fundamental_weight,
+        user.recommendation_weights = {
+            "gru": data.gru_weight,
+            "technical": data.technical_weight,
+            "fundamental": data.fundamental_weight,
         }
+        db.add(user)
         return EngineWeightsResponse(
             gru_weight=data.gru_weight,
+            ml_weight=data.gru_weight,
             technical_weight=data.technical_weight,
             fundamental_weight=data.fundamental_weight,
         )
     except Exception as exc:
-        raise ServiceUnavailableError(f"Failed to set engine weights: {exc}")
+        raise ServiceUnavailableError("Failed to set engine weights")
 
 
 @router.get(
@@ -182,7 +266,7 @@ async def set_engine_weights(
     summary="Get detailed recommendation for a stock",
 )
 async def get_recommendation_detail(
-    symbol: str,
+    symbol: str = PathParam(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.&-]+$"),
     user: User = Depends(get_current_user),
 ):
     try:
@@ -190,10 +274,12 @@ async def get_recommendation_detail(
 
         from app.services.recommendation_service import RecommendationEngine, DEFAULT_WEIGHTS
 
-        engine = RecommendationEngine()
-        rec = engine.get_recommendation(
+        engine = RecommendationEngine(weights=_get_user_weights(user, DEFAULT_WEIGHTS))
+        rec = await run_in_threadpool(
+            engine.get_recommendation,
             symbol,
             risk_tolerance=_get_user_risk_profile(user),
+            weights=engine.weights,
         )
 
         reasoning = rec.get("reasoning", {})
@@ -202,6 +288,13 @@ async def get_recommendation_detail(
 
         return RecommendationDetailResponse(
             symbol=symbol,
+            generated_at=datetime.now(timezone.utc),
+            horizon="5 trading days",
+            currency="PKR",
+            model_version=((reasoning.get("ml") or {}).get("model_version")),
+            confidence_type="heuristic_signal_strength",
+            model_probabilities=_model_probabilities(rec),
+            probabilities_calibrated=bool((reasoning.get("ml") or {}).get("probabilities_calibrated", False)),
             signal=rec["signal"].upper(),
             confidence=round(rec["confidence"], 3),
             composite_score=round(rec.get("composite_score", 0), 3),
@@ -215,14 +308,21 @@ async def get_recommendation_detail(
             downside_pct=rec.get("downside_pct"),
             risk_reward_ratio=rec.get("risk_reward_ratio"),
             target_stop_method=rec.get("target_stop_method"),
+            target_stop_reason=_target_stop_reason(rec),
+            decision_reason=_decision_reason(rec),
             risk_profile=_get_user_risk_profile(user),
             reasoning=reasoning,
             weights=rec.get("weights", getattr(engine, "weights", DEFAULT_WEIGHTS)),
+            effective_weights=rec.get("effective_weights", {}),
+            source_weights=_canonical_weights(rec.get("weights", getattr(engine, "weights", DEFAULT_WEIGHTS))),
+            effective_source_weights=_canonical_weights(rec.get("effective_weights", {})),
+            status=rec.get("status", "available"),
+            data_as_of=rec.get("data_as_of"),
         )
 
     except Exception as exc:
         log.exception("Failed to fetch recommendation for %s", symbol)
-        raise ServiceUnavailableError(f"Failed to fetch recommendation: {exc}")
+        raise ServiceUnavailableError("Failed to fetch recommendation")
 
 
 @router.get(
@@ -231,34 +331,25 @@ async def get_recommendation_detail(
     summary="Get target price and stop loss",
 )
 async def get_target_stop(
-    symbol: str,
+    symbol: str = PathParam(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.&-]+$"),
     user: User = Depends(get_current_user),
 ):
     try:
         symbol = symbol.upper()
 
-        from app.services.recommendation_service import RecommendationEngine
+        from app.services.recommendation_service import RecommendationEngine, DEFAULT_WEIGHTS
 
-        features_path = Path("data/features/features_daily.parquet")
-        sym_df = pd.DataFrame()
-        if features_path.exists():
-            try:
-                df = pd.read_parquet(features_path)
-                df["date"] = pd.to_datetime(df["date"])
-                sym_df = df[df["symbol"] == symbol].copy().sort_values("date").reset_index(drop=True)
-            except Exception as parquet_err:
-                log.warning("Error reading parquet in get_target_stop: %s", parquet_err)
-
-        engine = RecommendationEngine()
-        result = engine.compute_target_stop(
+        engine = RecommendationEngine(weights=_get_user_weights(user, DEFAULT_WEIGHTS))
+        rec = await run_in_threadpool(
+            engine.get_recommendation,
             symbol,
-            sym_df,
             risk_tolerance=_get_user_risk_profile(user),
+            weights=engine.weights,
         )
 
-        current = result.get("current_price")
-        target = result.get("target_price")
-        stop = result.get("stop_loss")
+        current = rec.get("current_price")
+        target = rec.get("target_price")
+        stop = rec.get("stop_loss")
 
         upside = round((target - current) / current * 100, 1) if current and target else None
         downside = round((stop - current) / current * 100, 1) if current and stop else None
@@ -268,18 +359,25 @@ async def get_target_stop(
 
         return TargetStopResponse(
             symbol=symbol,
+            generated_at=datetime.now(timezone.utc),
+            data_as_of=rec.get("data_as_of"),
+            horizon="5 trading days",
+            currency="PKR",
             current_price=current,
             target_price=target,
             stop_loss=stop,
-            method=result.get("method", "atr_band"),
-            atr_14=result.get("atr_14"),
+            signal=rec.get("signal", "hold").upper(),
+            status=rec.get("status", "available"),
+            method=rec.get("target_stop_method", "atr_band"),
+            target_stop_reason=_target_stop_reason(rec),
+            atr_14=rec.get("atr_14"),
             risk_tolerance=_get_user_risk_profile(user),
             upside_pct=upside,
             downside_pct=downside,
-            expected_range=result.get("expected_range"),
+            expected_range=rec.get("expected_range"),
             risk_reward_ratio=risk_reward,
         )
 
     except Exception as exc:
         log.exception("Failed to fetch target/stop for %s", symbol)
-        raise ServiceUnavailableError(f"Failed to fetch target/stop: {exc}")
+        raise ServiceUnavailableError("Failed to fetch target/stop")

@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, Query, HTTPException, BackgroundTasks, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authorization import get_current_user
+from app.core.authorization import get_current_user, get_optional_current_user
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError, AppError
+from app.core.rate_limiter import limiter
 from app.db.session import get_db, async_session_factory
 from app.models.user import User
 from app.schemas.news import (
@@ -56,7 +57,9 @@ async def _run_pipeline_background(db_factory, limit_per_source: int = 50):
     response_model=NewsListResponse,
     summary="Get paginated news feed with cursor pagination",
 )
+@limiter.limit("60/minute")
 async def get_news(
+    request: Request,
     row: str = Query("news", description="Row type: 'news' or 'portfolio'"),
     symbol: Optional[str] = Query(None, description="Filter by PSX symbol"),
     sentiment: Optional[str] = Query(None, description="Filter by sentiment: bullish|bearish|neutral"),
@@ -66,7 +69,7 @@ async def get_news(
     q: Optional[str] = Query(None, description="Text search (max 100 chars)", max_length=100),
     limit: int = Query(20, ge=1, le=50),
     cursor: Optional[str] = Query(None, description="Opaque cursor from previous page"),
-    user: User = Depends(get_current_user),
+    user: Optional[User] = Depends(get_optional_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -77,10 +80,19 @@ async def get_news(
         if sentiment and sentiment not in ("bullish", "bearish", "neutral"):
             raise BadRequestError("sentiment must be 'bullish', 'bearish', or 'neutral'")
 
-        user_id = user.id if row == "portfolio" else None
+        user_id = user.id if (user and row == "portfolio") else None
         empty_reason = None
 
         if row == "portfolio":
+            if not user:
+                return NewsListResponse(
+                    items=[],
+                    next_cursor=None,
+                    has_more=False,
+                    row="portfolio",
+                    last_updated_at=None,
+                    empty_reason="unauthenticated",
+                )
             from app.services.psx_announcement_service import PSXAnnouncementService
             psx_svc = PSXAnnouncementService(db)
             items, empty_reason = await psx_svc.get_portfolio_announcements(user_id=user_id, limit=limit)
@@ -126,10 +138,12 @@ async def get_news(
     response_model=NewsRefreshResponse,
     summary="Manually refresh news feed (async, cooldown-protected)",
 )
+@limiter.limit("5/minute")
 async def refresh_news(
+    request: Request,
     background_tasks: BackgroundTasks,
     force: bool = Query(False, description="Admin only: bypass cooldown"),
-    user: User = Depends(get_current_user),
+    user: Optional[User] = Depends(get_optional_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger a manual news ingestion with cooldown protection.
@@ -145,7 +159,7 @@ async def refresh_news(
     m_status = await market_status()
 
     # Check admin for force
-    is_admin = getattr(user, "is_admin", False)
+    is_admin = getattr(user, "is_admin", False) if user else False
 
     # ── Check 1: Cooldown ────────────────────────────────────────────────
     if last_run and not (force and is_admin):
@@ -189,8 +203,9 @@ async def refresh_news(
     response_model=NewsRefreshStatusResponse,
     summary="Get refresh job status for polling",
 )
+@limiter.limit("60/minute")
 async def refresh_status(
-    user: User = Depends(get_current_user),
+    request: Request,
 ):
     """Get current refresh job status for client polling after pull-to-refresh."""
     state = ingestion_state.get_ingestion_status()
@@ -203,7 +218,10 @@ async def refresh_status(
     "/news/market-status",
     summary="Get current market schedule and ingestion status",
 )
-async def get_market_status_endpoint(user: User = Depends(get_current_user)):
+@limiter.limit("60/minute")
+async def get_market_status_endpoint(
+    request: Request,
+):
     """Return current PKT time, market window, and next ingestion window."""
     return await market_status()
 
@@ -225,8 +243,9 @@ REGISTERED_SOURCES = [
     response_model=SourcesResponse,
     summary="Get per-source health status (admin/ops)",
 )
+@limiter.limit("30/minute")
 async def get_sources(
-    user: User = Depends(get_current_user),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Per-source health status for all configured data sources."""
@@ -266,9 +285,10 @@ async def get_sources(
     response_model=NewsArticleResponse,
     summary="Get a single news article",
 )
+@limiter.limit("60/minute")
 async def get_news_article(
+    request: Request,
     article_id: str,
-    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -290,14 +310,15 @@ async def get_news_article(
     response_model=NewsListResponse,
     summary="Get news for a specific stock (stock page News tab)",
 )
+@limiter.limit("60/minute")
 async def get_stock_news(
+    request: Request,
     symbol: str,
     sentiment: Optional[str] = Query(None, description="Filter by sentiment: bullish|bearish|neutral"),
     source_type: Optional[str] = Query(None, description="Filter by source_type: official|news"),
     event_type: Optional[str] = Query(None, description="Filter by event type"),
     limit: int = Query(20, ge=1, le=50),
     cursor: Optional[str] = Query(None, description="Opaque cursor from previous page"),
-    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Stock page News tab - retrieves live official announcements from PSX with Redis cache & DB fallback."""

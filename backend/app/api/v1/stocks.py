@@ -53,7 +53,6 @@ async def search_stocks(
     limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     service: StockService = Depends(StockService),
-    _user=Depends(get_current_user),
 ):
     clean_q = q.strip()
     if not clean_q:
@@ -113,7 +112,6 @@ async def get_stock_overview(
     request: Request,
     symbol: str = Path(..., description="PSX stock symbol (e.g. HBL, OGDC)"),
     service: StockService = Depends(StockService),
-    _user=Depends(get_current_user),
 ):
     try:
         symbol = _validate_symbol(symbol)
@@ -143,7 +141,6 @@ async def get_stock_price_history(
     symbol: str = Path(..., description="PSX stock symbol (e.g. HBL, OGDC)"),
     range: str = Query("1M", pattern="^(1D|1W|1M|1Y)$"),
     service: StockService = Depends(StockService),
-    _user=Depends(get_current_user),
 ):
     try:
         symbol = _validate_symbol(symbol)
@@ -175,7 +172,6 @@ async def get_stock_technical_indicators(
     period: int = Query(14, ge=1, le=200, description="Calculation window period"),
     limit: int = Query(30, ge=1, le=365, description="Number of historical indicator data points to return (default: 30 bars / ~1 month)"),
     service: StockService = Depends(StockService),
-    _user=Depends(get_current_user),
 ):
     try:
         symbol = _validate_symbol(symbol)
@@ -206,7 +202,6 @@ async def get_stock_fundamentals(
     request: Request,
     symbol: str = Path(..., description="PSX stock symbol (e.g. HBL, OGDC)"),
     service: StockService = Depends(StockService),
-    _user=Depends(get_current_user),
 ):
     try:
         symbol = _validate_symbol(symbol)
