@@ -510,8 +510,17 @@ class RecommendationEngine:
                     "symbol": symbol,
                     "signal": "hold",
                     "confidence": 0.0,
+                    "composite_score": 0.0,
+                    "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0},
+                    "weights": (weights or self.weights).copy(),
                     "target_price": None,
                     "stop_loss": None,
+                    "current_price": None,
+                    "expected_range": None,
+                    "upside_pct": None,
+                    "downside_pct": None,
+                    "risk_reward_ratio": None,
+                    "target_stop_method": "atr_band",
                     "reasoning": {"error": "features not available"},
                     "technical_score": 0.0,
                     "fundamental_score": 0.0,
@@ -534,8 +543,17 @@ class RecommendationEngine:
                     "symbol": symbol,
                     "signal": "hold",
                     "confidence": 0.0,
+                    "composite_score": 0.0,
+                    "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0},
+                    "weights": (weights or self.weights).copy(),
                     "target_price": None,
                     "stop_loss": None,
+                    "current_price": None,
+                    "expected_range": None,
+                    "upside_pct": None,
+                    "downside_pct": None,
+                    "risk_reward_ratio": None,
+                    "target_stop_method": "atr_band",
                     "reasoning": {"error": f"no data for {symbol}"},
                     "technical_score": 0.0,
                     "fundamental_score": 0.0,
@@ -549,8 +567,17 @@ class RecommendationEngine:
                 "symbol": symbol,
                 "signal": "hold",
                 "confidence": 0.0,
+                "composite_score": 0.0,
+                "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0},
+                "weights": (weights or self.weights).copy(),
                 "target_price": None,
                 "stop_loss": None,
+                "current_price": None,
+                "expected_range": None,
+                "upside_pct": None,
+                "downside_pct": None,
+                "risk_reward_ratio": None,
+                "target_stop_method": "atr_band",
                 "reasoning": {"error": f"no data for {symbol}"},
                 "technical_score": 0.0,
                 "fundamental_score": 0.0,
@@ -565,16 +592,27 @@ class RecommendationEngine:
 
         return {
             "symbol": symbol,
-            "name": symbol,
+            "name": (overview_data or {}).get("name") or symbol,
+            "sector": (overview_data or {}).get("sector"),
             "signal": composite["verdict"],
             "confidence": composite["confidence"],
+            "composite_score": composite["composite_score"],
+            "signals": {
+                "ml": composite["ml_signal"],
+                "technical": composite["technical_signal"],
+                "fundamental": composite["fundamental_signal"],
+            },
+            "weights": composite["weights_used"],
             "target_price": target_stop.get("target_price"),
             "stop_loss": target_stop.get("stop_loss"),
             "expected_range": target_stop.get("expected_range"),
+            "upside_pct": target_stop.get("upside_pct"),
+            "downside_pct": target_stop.get("downside_pct"),
+            "risk_reward_ratio": target_stop.get("risk_reward_ratio"),
+            "target_stop_method": target_stop.get("method"),
             "reasoning": composite["reasoning"],
             "current_price": target_stop.get("current_price"),
             "atr_14": target_stop.get("atr_14"),
-            "target_stop_method": target_stop.get("method"),
         }
 
     def get_all_recommendations(
@@ -650,7 +688,16 @@ def get_cached_recommendations() -> list[dict] | None:
         # Cache valid for 1 hour
         if (datetime.utcnow() - cached_at).total_seconds() > 3600:
             return None
-        return data.get("recommendations", [])
+        recommendations = data.get("recommendations", [])
+        # Reject older cache files created before the API had real component
+        # scores and composite scores; otherwise clients would see misleading zeros.
+        if any(
+            not isinstance(item, dict)
+            or not {"composite_score", "signals", "weights"}.issubset(item)
+            for item in recommendations
+        ):
+            return None
+        return recommendations
     except Exception:
         return None
 

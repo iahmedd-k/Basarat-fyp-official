@@ -22,10 +22,14 @@ class TestRecommendationsListEndpoint:
                 "signal": "buy",
                 "confidence": 0.85,
                 "composite_score": 0.45,
+                "name": "SYS",
+                "sector": "Technology",
                 "current_price": 450.0,
                 "target_price": 485.0,
                 "stop_loss": 430.0,
-                "sector": "Technology",
+                "upside_pct": 7.78,
+                "downside_pct": -4.44,
+                "risk_reward_ratio": 1.75,
                 "reasoning": {
                     "ml": {"reason": "Bullish trend forecast"},
                     "technical": {"reason": "RSI oversold rebound"},
@@ -44,6 +48,10 @@ class TestRecommendationsListEndpoint:
             assert rec["symbol"] == "SYS"
             assert rec["signal"] == "BUY"
             assert rec["target_price"] == 485.0
+            assert rec["current_price"] == 450.0
+            assert rec["sector"] == "Technology"
+            assert rec["composite_score"] == 0.45
+            assert rec["risk_reward_ratio"] == 1.75
             assert "summary" in rec
 
 
@@ -87,9 +95,16 @@ class TestRecommendationDetailEndpoint:
             "signal": "buy",
             "confidence": 0.82,
             "composite_score": 0.38,
+            "signals": {"ml": 0.6, "technical": 0.4, "fundamental": 0.1},
+            "weights": {"gru": 0.4, "technical": 0.35, "fundamental": 0.25},
             "current_price": 450.0,
             "target_price": 485.0,
             "stop_loss": 430.0,
+            "expected_range": None,
+            "upside_pct": 7.78,
+            "downside_pct": -4.44,
+            "risk_reward_ratio": 1.75,
+            "target_stop_method": "atr_band",
             "atr_14": 12.5,
             "reasoning": {
                 "ml": {"signal": 0.6, "reason": "Positive momentum"},
@@ -107,7 +122,11 @@ class TestRecommendationDetailEndpoint:
             assert "signals" in data
             assert data["signals"]["ml"] == 0.6
             assert data["signals"]["technical"] == 0.4
+            assert data["signals"]["fundamental"] == 0.1
             assert data["target_price"] == 485.0
+            assert data["current_price"] == 450.0
+            assert data["risk_reward_ratio"] == 1.75
+            assert data["risk_profile"] == "moderate"
 
 
 @pytest.mark.api

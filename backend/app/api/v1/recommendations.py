@@ -41,8 +41,6 @@ def _summarize(r: dict) -> str:
     reasoning = r.get("reasoning", {})
     ml_reason = reasoning.get("ml", {}).get("reason", "")
     tech_reason = reasoning.get("technical", {}).get("reason", "")
-    core_score = r.get("composite_score", 0)
-
     parts = []
     if signal == "BUY":
         parts.append("Strong buy")
@@ -51,10 +49,16 @@ def _summarize(r: dict) -> str:
     else:
         parts.append("Hold")
 
-    if ml_reason:
-        parts.append(ml_reason)
-    if tech_reason:
-        parts.append(tech_reason)
+    detail = ml_reason or tech_reason
+    if not detail:
+        for source in ("ml", "technical", "fundamental"):
+            factors = reasoning.get(source, {})
+            if isinstance(factors, dict):
+                detail = next((f"{key}: {value}" for key, value in factors.items() if isinstance(value, (str, int, float))), "")
+                if detail:
+                    break
+    if detail:
+        parts.append(detail)
 
     return ": ".join(parts[:2]) if len(parts) > 1 else parts[0]
 
@@ -65,7 +69,7 @@ def _summarize(r: dict) -> str:
     summary="Get stock recommendations",
 )
 async def get_recommendations(
-    risk_profile: str = Query("moderate", pattern="^(conservative|moderate|aggressive)$"),
+    risk_profile: str | None = Query(None, pattern="^(conservative|moderate|aggressive)$"),
     sector: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
@@ -79,7 +83,7 @@ async def get_recommendations(
 
         effective_risk = risk_profile or _get_user_risk_profile(user)
 
-        cached = get_cached_recommendations()
+        cached = get_cached_recommendations() if effective_risk == "moderate" else None
         if cached is not None:
             recommendations = cached
         else:
@@ -100,11 +104,18 @@ async def get_recommendations(
         items = [
             RecommendationItem(
                 symbol=r["symbol"],
+                name=r.get("name"),
+                sector=r.get("sector"),
                 signal=r["signal"].upper(),
                 confidence=round(r["confidence"], 3),
                 composite_score=round(r.get("composite_score", 0), 3),
+                current_price=r.get("current_price"),
                 target_price=r.get("target_price"),
                 stop_loss=r.get("stop_loss"),
+                expected_range=r.get("expected_range"),
+                upside_pct=r.get("upside_pct"),
+                downside_pct=r.get("downside_pct"),
+                risk_reward_ratio=r.get("risk_reward_ratio"),
                 summary=_summarize(r),
             )
             for r in recommendations
@@ -187,14 +198,7 @@ async def get_recommendation_detail(
 
         reasoning = rec.get("reasoning", {})
 
-        signals = {
-            "ml": round(reasoning.get("ml", {}).get("signal", 0), 3)
-                  if isinstance(reasoning.get("ml"), dict) else 0,
-            "technical": round(reasoning.get("technical", {}).get("signal", 0), 3)
-                         if isinstance(reasoning.get("technical"), dict) else 0,
-            "fundamental": round(reasoning.get("fundamental", {}).get("signal", 0), 3)
-                           if isinstance(reasoning.get("fundamental"), dict) else 0,
-        }
+        signals = rec.get("signals") or {"ml": 0.0, "technical": 0.0, "fundamental": 0.0}
 
         return RecommendationDetailResponse(
             symbol=symbol,
@@ -206,8 +210,14 @@ async def get_recommendation_detail(
             stop_loss=rec.get("stop_loss"),
             current_price=rec.get("current_price"),
             atr_14=rec.get("atr_14"),
+            expected_range=rec.get("expected_range"),
+            upside_pct=rec.get("upside_pct"),
+            downside_pct=rec.get("downside_pct"),
+            risk_reward_ratio=rec.get("risk_reward_ratio"),
+            target_stop_method=rec.get("target_stop_method"),
+            risk_profile=_get_user_risk_profile(user),
             reasoning=reasoning,
-            weights=getattr(engine, "weights", DEFAULT_WEIGHTS),
+            weights=rec.get("weights", getattr(engine, "weights", DEFAULT_WEIGHTS)),
         )
 
     except Exception as exc:
@@ -252,6 +262,9 @@ async def get_target_stop(
 
         upside = round((target - current) / current * 100, 1) if current and target else None
         downside = round((stop - current) / current * 100, 1) if current and stop else None
+        risk = abs(current - stop) if current and stop else 0
+        reward = abs(target - current) if current and target else 0
+        risk_reward = round(reward / risk, 2) if risk > 0 and reward > 0 else None
 
         return TargetStopResponse(
             symbol=symbol,
@@ -263,6 +276,8 @@ async def get_target_stop(
             risk_tolerance=_get_user_risk_profile(user),
             upside_pct=upside,
             downside_pct=downside,
+            expected_range=result.get("expected_range"),
+            risk_reward_ratio=risk_reward,
         )
 
     except Exception as exc:

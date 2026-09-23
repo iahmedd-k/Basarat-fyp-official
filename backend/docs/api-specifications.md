@@ -121,6 +121,101 @@ Query params `?page=1&limit=20` — response carries `meta: { page, limit, total
 | GET | `/recommendations/{symbol}/target-stop` | — | `target_price, stop_loss, method` |
 | POST | `/recommendations/engine-weights` | `{gru_weight, technical_weight, fundamental_weight}` | optional/advanced |
 
+### Forecast and recommendation response examples (Android)
+
+These endpoints return the JSON object shown below directly; they do not wrap it in a `success`/`data` envelope. Fields with no available market or price data are present as `null`. Keep null-aware UI states for targets, ranges, and market context.
+
+#### `GET /forecast/OGDC?horizon=1D`
+
+```json
+{
+  "symbol": "OGDC",
+  "horizon": "1D",
+  "direction": "bullish",
+  "confidence": 0.584,
+  "probabilities": { "bullish": 58.4, "bearish": 22.0, "sideways": 19.6 },
+  "as_of_date": "2026-09-22",
+  "target_date": "2026-09-23",
+  "current_price": 142.5,
+  "target_price": 148.0,
+  "expected_range": null,
+  "stop_loss": 138.0,
+  "signal_rating": "Strong Buy",
+  "upside_pct": 3.86,
+  "downside_pct": -3.16,
+  "risk_reward_ratio": 1.22,
+  "model_version": "ensemble",
+  "gate_reason": "agree(bullish)",
+  "models": {
+    "gru": { "direction": "bullish", "bullish_pct": 61.0, "bearish_pct": 20.0, "sideways_pct": 19.0, "gap_pp": 41.0 },
+    "xgb": { "direction": "bullish", "bullish_pct": 56.0, "bearish_pct": 24.0, "sideways_pct": 20.0, "gap_pp": 32.0 }
+  },
+  "market_context": {
+    "market_return_5d": 0.012,
+    "market_return_20d": 0.034,
+    "stock_return_20d": -0.058,
+    "stock_relative_return_20d": -0.092
+  }
+}
+```
+
+#### `GET /recommendations?risk_profile=moderate&limit=20`
+
+```json
+{
+  "count": 1,
+  "risk_profile": "moderate",
+  "recommendations": [
+    {
+      "symbol": "OGDC",
+      "name": "OGDC",
+      "sector": "Energy",
+      "signal": "BUY",
+      "confidence": 0.72,
+      "composite_score": 0.36,
+      "current_price": 142.5,
+      "target_price": 148.0,
+      "stop_loss": 138.0,
+      "expected_range": null,
+      "upside_pct": 3.86,
+      "downside_pct": -3.16,
+      "risk_reward_ratio": 1.22,
+      "summary": "Strong buy: rsi: RSI=35.2"
+    }
+  ]
+}
+```
+
+#### `GET /recommendations/OGDC`
+
+```json
+{
+  "symbol": "OGDC",
+  "signal": "BUY",
+  "confidence": 0.72,
+  "composite_score": 0.36,
+  "signals": { "ml": 0.45, "technical": 0.38, "fundamental": 0.15 },
+  "target_price": 148.0,
+  "stop_loss": 138.0,
+  "expected_range": null,
+  "current_price": 142.5,
+  "atr_14": 2.75,
+  "upside_pct": 3.86,
+  "downside_pct": -3.16,
+  "risk_reward_ratio": 1.22,
+  "target_stop_method": "atr_band",
+  "risk_profile": "moderate",
+  "reasoning": {
+    "ml": { "rsi": "RSI=35.2", "macd": "MACD_hist=0.0012" },
+    "technical": { "rsi": "RSI=35.2", "macd": "MACD_cross=0.0012" },
+    "fundamental": { "pe": "P/E=8.5" }
+  },
+  "weights": { "gru": 0.4, "technical": 0.35, "fundamental": 0.25 }
+}
+```
+
+**Screen mapping and units:** `signal`/`direction` drive the badge; `confidence` is a 0–1 score (multiply by 100 for display); forecast `probabilities` and model percentages are already 0–100; `composite_score` and `signals.*` are signed scores in -1..1; price fields are PKR; `upside_pct`/`downside_pct` are signed percentages; `risk_reward_ratio` is unitless; forecast market returns are decimal ratios (0.012 = 1.2%). Dates are ISO `YYYY-MM-DD`. Forecast confidence is an uncalibrated model score, not a promise of accuracy. `expected_range` is an object with `low`, `high`, and `method` when the signal is sideways; otherwise it is `null`.
+
 ### 3.6 Module 6 — Portfolio Management
 
 | Method | Endpoint | Body | Notes |

@@ -255,23 +255,30 @@ class RecommendationItem(BaseModel):
     """Single stock recommendation — used in list view."""
 
     symbol: str = Field(..., examples=["OGDC"])
+    name: str | None = Field(default=None, description="Display name, when available.", examples=["Oil and Gas Development Company"])
+    sector: str | None = Field(default=None, description="Company sector, when available.", examples=["Energy"])
     signal: str = Field(
         ..., description="BUY, SELL, or HOLD", examples=["buy"]
     )
     confidence: float = Field(
         ..., ge=0, le=1,
-        description="Signal confidence (0-1)", examples=[0.72],
+        description="Heuristic signal strength from the absolute composite score (0-1); not a probability or accuracy estimate.", examples=[0.72],
     )
     composite_score: float = Field(
         ..., description="Raw composite signal (-1 to +1). Positive = bullish.",
         examples=[0.35],
     )
+    current_price: float | None = Field(default=None, description="Latest closing price, in PKR.", examples=[142.5])
     target_price: float | None = Field(
         default=None, description="ATR-based target price", examples=[148.0],
     )
     stop_loss: float | None = Field(
         default=None, description="ATR-based stop-loss", examples=[135.0],
     )
+    expected_range: ExpectedPriceRange | None = Field(default=None, description="ATR price range in PKR when the signal is neutral.")
+    upside_pct: float | None = Field(default=None, description="Signed return from current price to target, in percent.")
+    downside_pct: float | None = Field(default=None, description="Signed return from current price to stop-loss, in percent.")
+    risk_reward_ratio: float | None = Field(default=None, description="Absolute target reward divided by stop-loss risk.")
     summary: str = Field(
         ..., description="One-line human-readable summary",
         examples=["Strong buy: ML+Technical agree bullish, RSI=35 oversold"],
@@ -280,6 +287,23 @@ class RecommendationItem(BaseModel):
 
 class RecommendationsListResponse(BaseModel):
     """List of stock recommendations, sorted by composite score."""
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "count": 1,
+                "risk_profile": "moderate",
+                "recommendations": [{
+                    "symbol": "OGDC", "name": "OGDC", "sector": "Energy",
+                    "signal": "BUY", "confidence": 0.72, "composite_score": 0.36,
+                    "current_price": 142.5, "target_price": 148.0, "stop_loss": 138.0,
+                    "expected_range": None, "upside_pct": 3.86, "downside_pct": -3.16,
+                    "risk_reward_ratio": 1.22,
+                    "summary": "Strong buy: rsi: RSI=35.2",
+                }],
+            }],
+        }
+    }
 
     count: int = Field(
         ..., description="Number of recommendations returned"
@@ -294,12 +318,32 @@ class RecommendationsListResponse(BaseModel):
 class RecommendationDetailResponse(BaseModel):
     """Full recommendation detail for a single symbol."""
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "symbol": "OGDC", "signal": "BUY", "confidence": 0.72, "composite_score": 0.36,
+                "signals": {"ml": 0.45, "technical": 0.38, "fundamental": 0.15},
+                "current_price": 142.5, "target_price": 148.0, "stop_loss": 138.0,
+                "expected_range": None, "atr_14": 2.75, "upside_pct": 3.86,
+                "downside_pct": -3.16, "risk_reward_ratio": 1.22,
+                "target_stop_method": "atr_band", "risk_profile": "moderate",
+                "reasoning": {
+                    "ml": {"rsi": "RSI=35.2", "macd": "MACD_hist=0.0012"},
+                    "technical": {"rsi": "RSI=35.2", "macd": "MACD_cross=0.0012"},
+                    "fundamental": {"pe": "P/E=8.5"},
+                },
+                "weights": {"gru": 0.4, "technical": 0.35, "fundamental": 0.25},
+            }],
+        }
+    }
+
     symbol: str
     signal: str = Field(
         ..., description="BUY, SELL, or HOLD", examples=["buy"]
     )
     confidence: float = Field(
-        ..., ge=0, le=1, description="Signal confidence (0-1)"
+        ..., ge=0, le=1,
+        description="Heuristic signal strength from the absolute composite score (0-1); not a probability or accuracy estimate.",
     )
     composite_score: float = Field(
         ..., description="Raw composite signal (-1 to +1)"
@@ -319,7 +363,7 @@ class RecommendationDetailResponse(BaseModel):
     stop_loss: float | None = Field(
         default=None, description="ATR-based stop-loss"
     )
-    expected_range: dict | None = Field(
+    expected_range: ExpectedPriceRange | None = Field(
         default=None,
         description="Expected price range for sideways markets: {low, high, method}",
     )
@@ -329,6 +373,11 @@ class RecommendationDetailResponse(BaseModel):
     atr_14: float | None = Field(
         default=None, description="14-day ATR used for target/stop"
     )
+    upside_pct: float | None = Field(default=None, description="Signed return from current price to target, in percent.")
+    downside_pct: float | None = Field(default=None, description="Signed return from current price to stop-loss, in percent.")
+    risk_reward_ratio: float | None = Field(default=None, description="Absolute target reward divided by stop-loss risk.")
+    target_stop_method: str | None = Field(default=None, description="Method used to calculate price levels, e.g. atr_band.")
+    risk_profile: str = Field(default="moderate", description="Risk profile used to calculate price levels.")
 
     # Detailed reasoning
     reasoning: dict = Field(
@@ -355,7 +404,7 @@ class TargetStopResponse(BaseModel):
     current_price: float | None = None
     target_price: float | None = None
     stop_loss: float | None = None
-    expected_range: dict | None = Field(
+    expected_range: ExpectedPriceRange | None = Field(
         default=None,
         description="Expected price range for sideways markets: {low, high, method}",
         examples=[{"low": 138.5, "high": 148.5, "method": "atr_range"}],
@@ -383,6 +432,7 @@ class TargetStopResponse(BaseModel):
         description="Stop-loss downside as % of current price",
         examples=[-5.2],
     )
+    risk_reward_ratio: float | None = Field(default=None, description="Absolute target reward divided by stop-loss risk.")
 
 
 class EngineWeightsRequest(BaseModel):
