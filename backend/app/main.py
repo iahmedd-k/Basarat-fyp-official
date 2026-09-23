@@ -96,8 +96,15 @@ app = FastAPI(
 register_error_handlers(app)
 add_rate_limiting(app)
 
-# CORS configuration - explicit allowlist from settings
-cors_origins = settings.CORS_ORIGINS if settings.CORS_ORIGINS else ["http://localhost:3000", "http://localhost:5173"]
+# CORS configuration - explicit allowlist including required frontend origins
+configured_origins = list(settings.CORS_ORIGINS) if settings.CORS_ORIGINS else []
+required_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+cors_origins = list(dict.fromkeys(configured_origins + required_origins))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
