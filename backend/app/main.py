@@ -55,6 +55,24 @@ async def lifespan(app: FastAPI):
     from app.ml.serving.model_loader import load_artifacts
     load_artifacts()
 
+    # ── Background Pre-Warm Market Cache in Redis ──────────────────────
+    import asyncio
+    from app.services.market_service import MarketService
+
+    async def _warm_market_cache():
+        try:
+            svc = MarketService()
+            await svc.get_indices()
+            await svc.get_index_constituents("KSE100")
+            await svc.get_index_constituents("KSE30")
+            await svc.get_index_constituents("KMI30")
+            await svc.get_market_data()
+            log.info("Market cache pre-warmed successfully on startup")
+        except Exception as exc:
+            log.warning("Market cache pre-warming encounter: %s", exc)
+
+    asyncio.create_task(_warm_market_cache())
+
     yield
 
     await engine.dispose()

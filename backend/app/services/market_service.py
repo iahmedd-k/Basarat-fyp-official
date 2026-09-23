@@ -65,28 +65,25 @@ class MarketService:
             log.warning("External fetch of indices failed: %s", e)
 
         if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
-            dropped = [
-                code for code in raw.index
-                if code not in self.MAIN_INDICES
-            ]
-            if dropped:
-                log.warning("Dropping indices not in MAIN_INDICES: %s", dropped)
+            results = []
+            for code, row in raw.iterrows():
+                code_str = str(code).strip()
+                results.append({
+                    "index": self.MAIN_INDICES.get(code_str, code_str),
+                    "code": code_str,
+                    "current": self._safe_float(row.get("CURRENT")),
+                    "change": self._safe_float(row.get("CHANGE")),
+                    "change_pct": self._safe_float(row.get("PERCENTAGE_CHANGE")),
+                    "high": self._safe_float(row.get("HIGH")),
+                    "low": self._safe_float(row.get("LOW")),
+                })
 
-            results = [
-                {
-                    "index": self.MAIN_INDICES.get(code, code),
-                    "code": code,
-                    "current": self._safe_float(row["CURRENT"]),
-                    "change": self._safe_float(row["CHANGE"]),
-                    "change_pct": self._safe_float(row["PERCENTAGE_CHANGE"]),
-                    "high": self._safe_float(row["HIGH"]),
-                    "low": self._safe_float(row["LOW"]),
-                }
-                for code, row in raw.iterrows()
-                if code in self.MAIN_INDICES
-            ]
+            # Prioritize core benchmark indices first (KSE100, KSE30, KMI30, ALLSHR)
+            priority_order = {"KSE100": 0, "KSE30": 1, "KMI30": 2, "ALLSHR": 3, "KMIALLSHR": 4, "BKTI": 5, "OGTI": 6, "PSXDIV20": 7}
+            results.sort(key=lambda x: priority_order.get(x["code"], 99))
+
             if results:
-                await cache_set(cache_key, results, CACHE_TTL_SECONDS)
+                await cache_set(cache_key, results, CONSTITUENTS_TTL_SECONDS)
                 await cache_set(fallback_key, results, FALLBACK_TTL_SECONDS)
                 log.info("Stored %d indices in centralized cache", len(results))
                 return results
