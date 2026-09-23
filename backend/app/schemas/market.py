@@ -65,7 +65,8 @@ class MarketQuotesResponse(BaseModel):
     stocks: list[MarketQuoteItem]
     total: int
     limit: int
-    filtered: bool
+    offset: int = 0
+    filtered: bool = False
 
 
 class SectorPerformance(BaseModel):

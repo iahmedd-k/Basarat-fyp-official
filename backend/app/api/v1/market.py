@@ -171,13 +171,23 @@ async def get_sentiment_overview(
 @router.get(
     "/market/quotes",
     response_model=MarketQuotesResponse,
-    summary="Get market quotes with optional limit and manual symbol filter (public)",
+    summary="Get all PSX listed stocks (~500 stocks) with manual count limit, search, and sector filters (public)",
+)
+@router.get(
+    "/market/all-stocks",
+    response_model=MarketQuotesResponse,
+    summary="Get all PSX listed stocks (~500 stocks) - alias (public)",
 )
 @limiter.limit("30/minute")
 async def get_market_quotes(
     request: Request,
-    limit: int = Query(500, ge=1, le=500, description="Number of stocks to return (default 500, max 500)"),
+    limit: int = Query(500, ge=1, le=1000, description="Number of stocks to return (e.g., 10, 50, 100, 500)"),
+    offset: int = Query(0, ge=0, description="Pagination offset (default 0)"),
     symbols: str | None = Query(None, description="Comma-separated list of symbols to filter (e.g., 'OGDC,PPL,HBL')"),
+    sector: str | None = Query(None, description="Filter by sector name"),
+    search: str | None = Query(None, description="Search keyword in symbol or sector"),
+    sort_by: str = Query("volume", description="Field to sort by: 'volume', 'change_pct', 'current', 'ldcp', 'symbol'"),
+    order: str = Query("desc", description="Sort order: 'desc' or 'asc'"),
     service: MarketService = Depends(MarketService),
 ):
     try:
@@ -189,10 +199,31 @@ async def get_market_quotes(
             data = [d for d in data if d["symbol"] in symbol_list]
             filtered = True
 
+        if sector:
+            sec_lower = sector.strip().lower()
+            data = [d for d in data if sec_lower in d["sector"].lower()]
+            filtered = True
+
+        if search:
+            q = search.strip().lower()
+            data = [d for d in data if q in d["symbol"].lower() or q in d["sector"].lower()]
+            filtered = True
+
+        # Sort data
+        reverse = (order.lower() != "asc")
+        if sort_by in ["volume", "change_pct", "current", "ldcp"]:
+            data = sorted(data, key=lambda x: x.get(sort_by, 0.0), reverse=reverse)
+        elif sort_by == "symbol":
+            data = sorted(data, key=lambda x: x.get("symbol", ""), reverse=reverse)
+
+        total_matches = len(data)
+        paginated_stocks = data[offset : offset + limit]
+
         return MarketQuotesResponse(
-            stocks=data[:limit],
-            total=len(data),
+            stocks=paginated_stocks,
+            total=total_matches,
             limit=limit,
+            offset=offset,
             filtered=filtered,
         )
     except Exception:
