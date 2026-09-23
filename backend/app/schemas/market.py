@@ -61,6 +61,13 @@ class VolumeSpikesResponse(BaseModel):
     volume_spikes: list[MarketQuoteItem]
 
 
+class MarketQuotesResponse(BaseModel):
+    stocks: list[MarketQuoteItem]
+    total: int
+    limit: int
+    filtered: bool
+
+
 class SectorPerformance(BaseModel):
     sector: str
     avg_change_pct: float

@@ -7,6 +7,8 @@ from app.schemas.market import (
     IndexConstituentsResponse,
     IndicesResponse,
     LosersResponse,
+    MarketQuotesResponse,
+    MarketQuoteItem,
     SentimentOverview,
     VolumeSpikesResponse,
 )
@@ -164,3 +166,34 @@ async def get_sentiment_overview(
         return await service.get_sentiment_overview()
     except Exception:
         raise ServiceUnavailableError("Failed to fetch sentiment overview")
+
+
+@router.get(
+    "/market/quotes",
+    response_model=MarketQuotesResponse,
+    summary="Get market quotes with optional limit and manual symbol filter (public)",
+)
+@limiter.limit("30/minute")
+async def get_market_quotes(
+    request: Request,
+    limit: int = Query(500, ge=1, le=500, description="Number of stocks to return (default 500, max 500)"),
+    symbols: str | None = Query(None, description="Comma-separated list of symbols to filter (e.g., 'OGDC,PPL,HBL')"),
+    service: MarketService = Depends(MarketService),
+):
+    try:
+        data = await service.get_market_data()
+
+        filtered = False
+        if symbols:
+            symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+            data = [d for d in data if d["symbol"] in symbol_list]
+            filtered = True
+
+        return MarketQuotesResponse(
+            stocks=data[:limit],
+            total=len(data),
+            limit=limit,
+            filtered=filtered,
+        )
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch market quotes")
