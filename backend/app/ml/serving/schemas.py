@@ -16,8 +16,77 @@ from pydantic import BaseModel, Field
 # Forecast Schemas
 # ═══════════════════════════════════════════════════════════════════════
 
+class ForecastProbabilities(BaseModel):
+    """Class probabilities as percentages; the three values sum to about 100."""
+
+    bullish: float = Field(..., description="Bullish class probability, percent (0–100).", examples=[58.4])
+    bearish: float = Field(..., description="Bearish class probability, percent (0–100).", examples=[22.0])
+    sideways: float = Field(..., description="Sideways class probability, percent (0–100).", examples=[19.6])
+
+
+class ForecastModelDetail(BaseModel):
+    """One component model's prediction; gap_pp is measured in percentage points."""
+
+    direction: str = Field(..., description="This model's predicted direction.", examples=["bullish"])
+    bullish_pct: float = Field(..., description="Bullish probability, percent (0–100).", examples=[61.0])
+    bearish_pct: float = Field(..., description="Bearish probability, percent (0–100).", examples=[20.0])
+    sideways_pct: float = Field(..., description="Sideways probability, percent (0–100).", examples=[19.0])
+    gap_pp: float = Field(..., description="Gap between this model's highest and second-highest class probabilities, in percentage points.", examples=[41.0])
+
+
+class ExpectedPriceRange(BaseModel):
+    """ATR-derived price interval, present when the direction is sideways/uncertain."""
+
+    low: float = Field(..., description="Lower price bound, in PKR.", examples=[139.5])
+    high: float = Field(..., description="Upper price bound, in PKR.", examples=[145.5])
+    method: str = Field(..., description="Method used to derive the range.", examples=["atr_range"])
+
+
+class ForecastMarketContext(BaseModel):
+    """Recent market and relative returns. Values are decimal returns, not percentages."""
+
+    market_return_5d: float | None = Field(None, description="PSX market return over five trading days; 0.012 means 1.2%.", examples=[0.012])
+    market_return_20d: float | None = Field(None, description="PSX market return over 20 trading days; 0.034 means 3.4%.", examples=[0.034])
+    stock_return_20d: float | None = Field(None, description="Stock return over 20 trading days; -0.058 means -5.8%.", examples=[-0.058])
+    stock_relative_return_20d: float | None = Field(None, description="Stock return minus market return over 20 trading days, as a decimal.", examples=[-0.092])
+
+
 class ForecastResponse(BaseModel):
-    """Forecast output — flat, self-contained, ready for the frontend."""
+    """Forecast response. Probabilities are percentages; confidence is a 0–1 score."""
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "symbol": "UBL",
+                "horizon": "1D",
+                "direction": "bullish",
+                "confidence": 0.584,
+                "probabilities": {"bullish": 58.4, "bearish": 22.0, "sideways": 19.6},
+                "as_of_date": "2026-09-22",
+                "target_date": "2026-09-23",
+                "current_price": 142.5,
+                "target_price": 148.0,
+                "expected_range": None,
+                "stop_loss": 138.0,
+                "signal_rating": "Strong Buy",
+                "upside_pct": 3.86,
+                "downside_pct": -3.16,
+                "risk_reward_ratio": 1.22,
+                "model_version": "ensemble",
+                "gate_reason": "agree(bullish)",
+                "models": {
+                    "gru": {"direction": "bullish", "bullish_pct": 61.0, "bearish_pct": 20.0, "sideways_pct": 19.0, "gap_pp": 42.0},
+                    "xgb": {"direction": "bullish", "bullish_pct": 56.0, "bearish_pct": 24.0, "sideways_pct": 20.0, "gap_pp": 32.0},
+                },
+                "market_context": {
+                    "market_return_5d": 0.012,
+                    "market_return_20d": 0.034,
+                    "stock_return_20d": -0.058,
+                    "stock_relative_return_20d": -0.092,
+                },
+            }],
+        }
+    }
 
     symbol: str = Field(
         ..., description="PSX stock ticker", examples=["OGDC"]
@@ -28,52 +97,52 @@ class ForecastResponse(BaseModel):
     )
     direction: str = Field(
         ...,
-        description="Predicted direction: 'bullish', 'bearish', 'sideways', or 'uncertain'",
+        description="Ensemble direction: bullish, bearish, sideways, or uncertain.",
         examples=["bullish"],
     )
     confidence: float = Field(
         ...,
         ge=0, le=1,
-        description="Top predicted class probability mass in range [0, 1]. Uncalibrated model probability mass (Task 4).",
+        description="Top-class probability on a 0–1 scale (0.584 = 58.4%). Uncalibrated model score; not a guaranteed accuracy estimate.",
         examples=[0.72],
     )
 
     # Probability breakdown
-    probabilities: dict[str, float] = Field(
+    probabilities: ForecastProbabilities = Field(
         ...,
-        description="Probability for each direction (0-100). Keys: bullish, bearish, sideways.",
+        description="Class probabilities as percentages (0–100); expected to sum to approximately 100.",
         examples=[{"bullish": 42.3, "bearish": 28.7, "sideways": 29.0}],
     )
 
     # Dates
     as_of_date: date = Field(
-        ..., description="Latest date in the input data window",
+        ..., description="Latest date represented in the input market-data window.",
         examples=["2026-09-12"],
     )
     target_date: date = Field(
-        ..., description="Date this forecast targets (next trading day for 1D)",
+        ..., description="Target trading date: 1, 5, or 22 trading days ahead for 1D, 1W, or 1M.",
         examples=["2026-09-15"],
     )
 
     # Price context
     current_price: float | None = Field(
         default=None,
-        description="Stock's closing price on as_of_date",
+        description="Stock's closing price on as_of_date, in PKR.",
         examples=[142.50],
     )
     target_price: float | None = Field(
         default=None,
-        description="Projected directional target price (null for sideways or uncertain, Task 5)",
+        description="ATR-based target price in PKR; null for sideways or uncertain directions.",
         examples=[148.00],
     )
-    expected_range: dict | None = Field(
+    expected_range: ExpectedPriceRange | None = Field(
         default=None,
-        description="Quantitative expected price range (low, high, method) for sideways direction (Task 5)",
+        description="ATR-based price interval in PKR, returned for sideways or uncertain directions.",
         examples=[{"low": 139.5, "high": 145.5, "method": "atr_range"}],
     )
     stop_loss: float | None = Field(
         default=None,
-        description="Suggested stop-loss (ATR-based)",
+        description="ATR-based stop-loss level in PKR.",
         examples=[135.00],
     )
     signal_rating: str | None = Field(
@@ -83,36 +152,36 @@ class ForecastResponse(BaseModel):
     )
     upside_pct: float | None = Field(
         default=None,
-        description="Target upside percentage relative to current price",
+        description="Signed target-price return relative to current_price, in percent (not a decimal ratio).",
         examples=[+5.2],
     )
     downside_pct: float | None = Field(
         default=None,
-        description="Stop-loss risk downside percentage relative to current price",
+        description="Signed stop-loss return relative to current_price, in percent (not a decimal ratio).",
         examples=[-3.5],
     )
     risk_reward_ratio: float | None = Field(
         default=None,
-        description="Risk-to-reward ratio (target upside / stop risk)",
+        description="Absolute target reward divided by stop-loss risk; unitless. Null when no target exists.",
         examples=[1.49],
     )
 
     # Model source
     model_version: str = Field(
         default="ensemble",
-        description="Source: 'gru_v1', 'xgb_weighted', 'ensemble', or 'none'",
+        description="Model source/version label. 'ensemble' means the GRU and XGBoost outputs were combined.",
         examples=["ensemble"],
     )
     gate_reason: str = Field(
         default="",
-        description="Ensemble decision reason. 'agree(direction)' denotes matching categorical predicted direction (Task 17).",
+        description="Machine-readable ensemble gating reason; for example, agree(bullish). Treat as diagnostic text.",
         examples=["agree(bullish)"],
     )
 
     # Individual model breakdown (optional, for transparency)
-    models: dict[str, dict] | None = Field(
+    models: dict[str, ForecastModelDetail] | None = Field(
         default=None,
-        description="Individual model predictions. Keys: 'gru', 'xgb'. Each has direction, probabilities, gap_pp (Task 16: top-2 probability gap in percentage points).",
+        description="Component predictions keyed by model ('gru', 'xgb'). Probability fields use percent; gap_pp is percentage points.",
         examples=[{
             "gru": {"direction": "bullish", "bullish_pct": 45.0, "bearish_pct": 25.0, "sideways_pct": 30.0, "gap_pp": 20.0},
             "xgb": {"direction": "bullish", "bullish_pct": 39.6, "bearish_pct": 32.4, "sideways_pct": 28.0, "gap_pp": 7.2},
@@ -120,9 +189,9 @@ class ForecastResponse(BaseModel):
     )
 
     # Market context (optional, informational)
-    market_context: dict | None = Field(
+    market_context: ForecastMarketContext | None = Field(
         default=None,
-        description="How this stock performs relative to PSX market. Informational only.",
+        description="Recent PSX and stock returns as decimal ratios (0.012 = 1.2%). Informational context, not a model input/output guarantee.",
         examples=[{
             "market_return_5d": 0.012,
             "market_return_20d": 0.034,
