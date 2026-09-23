@@ -1,6 +1,7 @@
 services:
   # Uses the managed Supabase and Upstash URLs provided by backend/.env.
   migrate:
+    image: basarat-backend:latest
     build: { context: ., dockerfile: dockerfile }
     command: alembic upgrade head
     env_file: .env
@@ -10,7 +11,7 @@ services:
     restart: "no"
 
   app:
-    build: { context: ., dockerfile: dockerfile }
+    image: basarat-backend:latest
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
     env_file: .env
     environment:
@@ -28,7 +29,7 @@ services:
     restart: unless-stopped
 
   celery-worker:
-    build: { context: ., dockerfile: dockerfile }
+    image: basarat-backend:latest
     command: celery -A app.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=1
     env_file: .env
     environment:
@@ -45,7 +46,7 @@ services:
     restart: unless-stopped
 
   celery-beat:
-    build: { context: ., dockerfile: dockerfile }
+    image: basarat-backend:latest
     command: celery -A app.celery_app beat --loglevel=info --schedule=/var/lib/celery/celerybeat-schedule
     volumes:
       - beat-state:/var/lib/celery
