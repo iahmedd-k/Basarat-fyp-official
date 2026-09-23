@@ -2,7 +2,7 @@
 
 Supports two modes configured via settings:
 1. USE_CELERY=True (Default/Docker): Dispatches tasks asynchronously via Celery + Redis broker.
-2. USE_CELERY=False (Cloud/Render/In-Process): Dispatches tasks directly in a background thread pool without Redis or Celery.
+2. USE_CELERY=False (Cloud/In-Process): Dispatches tasks directly in a background thread pool without Redis or Celery.
 """
 
 import logging
@@ -55,7 +55,7 @@ def dispatch_task(task_obj: Any, *args: Any, **kwargs: Any) -> Any:
     with _local_jobs_lock:
         _local_jobs[job_id] = future
         # Keep the process-local registry bounded. The API is single-instance
-        # on Render Free, and jobs do not survive a restart or spin-down.
+        # in-process deployments, and jobs do not survive a restart.
         completed = [key for key, value in _local_jobs.items() if value.done()]
         for key in completed[:-100]:
             _local_jobs.pop(key, None)

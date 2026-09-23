@@ -34,11 +34,14 @@ def sync_database_url(async_url: str, configured_sync_url: str = "") -> URL:
     url = _as_url(configured_sync_url or async_url)
     if url.drivername in {"postgresql", "postgresql+asyncpg", "postgresql+psycopg"}:
         url = url.set(drivername="postgresql+psycopg2")
-    if (
-        (url.host or "").endswith((".supabase.co", ".pooler.supabase.com"))
-        and "sslmode" not in url.query
-    ):
-        query = dict(url.query)
+    query = dict(url.query)
+    # Some providers (notably Neon) document `ssl=require`; psycopg2 expects
+    # the libpq name `sslmode=require` instead.
+    provider_ssl = query.pop("ssl", None)
+    sslmode = query.get("sslmode") or provider_ssl
+    if sslmode:
+        query["sslmode"] = sslmode
+    elif (url.host or "").endswith((".supabase.co", ".pooler.supabase.com", ".neon.tech")):
         query["sslmode"] = "require"
-        url = url.set(query=query)
+    url = url.set(query=query)
     return url

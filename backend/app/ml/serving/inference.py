@@ -329,12 +329,11 @@ def get_forecast(symbol: str, horizon: str = "1D") -> dict:
         )
 
     # ── Load feature data ──────────────────────────────────────────────
-    # Render's filesystem is ephemeral, and the startup asset step may not have
-    # run (for example, when the API is started outside render_start.py). Keep
-    # forecast inference self-healing from the tracked, checksummed chunks.
+    # Container filesystems can be ephemeral, and the startup asset step may not
+    # have run. Rebuild the tracked, checksummed chunks on demand.
     if not FEATURES_PATH.is_file():
         try:
-            from scripts.prepare_render_assets import prepare_features
+            from scripts.prepare_feature_assets import prepare_features
 
             prepare_features()
         except (FileNotFoundError, RuntimeError) as exc:

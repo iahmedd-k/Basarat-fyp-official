@@ -46,3 +46,6 @@ backend/data/reports/
 
 # Temporary files
 *_tmp.*
+
+# Local EC2 SSH private key
+/basarat.pem

@@ -1,0 +1,33 @@
+name: Deploy to Basarat EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: basarat-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, basarat-demo]
+    timeout-minutes: 60
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Copy app files to EC2 deployment directory
+        run: rsync -a --exclude='.git/' --exclude='.env' "$GITHUB_WORKSPACE/" /opt/basarat/
+
+      - name: Deploy Compose stack
+        working-directory: /opt/basarat/backend
+        run: |
+          test -s .env || { echo "Missing /opt/basarat/backend/.env; configure it on EC2 before deploying."; exit 1; }
+          docker compose -f docker-compose.production.yml config --quiet
+          docker compose -f docker-compose.production.yml up -d --build
+          docker compose -f docker-compose.production.yml ps
+          curl --fail --retry 12 --retry-delay 5 --retry-connrefused http://127.0.0.1:8000/health

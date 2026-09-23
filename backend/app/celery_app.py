@@ -10,10 +10,11 @@ celery = Celery(
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
-        # Existing tasks
         "app.tasks.scrape_news",
         "app.tasks.news_tasks",
         "app.tasks.run_forecast_inference",
+        "app.tasks.daily_workflow",
+        "app.tasks.weekly_retraining",
         "app.tasks.model_monitoring",
         "app.tasks.recommendation_cache",
         "app.tasks.risk_tasks",
@@ -48,7 +49,7 @@ celery.conf.update(
         # ── Weekly: retraining pipeline ──
         "weekly-retraining": {
             "task": "app.tasks.weekly_retraining.run_weekly_pipeline",
-            "schedule": crontab(day_of_week=0, hour=1, minute=0),  # Sunday 01:00
+            "schedule": crontab(day_of_week=0, hour=4, minute=0),  # Sunday 04:00 PKT
         },
         # ── Monitoring: daily ──
         "daily-performance-monitoring": {

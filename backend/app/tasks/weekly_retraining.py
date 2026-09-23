@@ -7,10 +7,10 @@ Implements the weekly retraining workflow:
   4. Train XGBoost candidate
   5. Evaluate candidates on held-out test set
   6. Compare candidates vs production models
-  7. Promote if criteria are met
+  7. Save candidates that meet the promotion criteria
 
-Production models are NEVER automatically overwritten. Candidates are
-trained to separate directories and only promoted after validation.
+Production models are NEVER automatically overwritten. Validated candidates
+are saved separately for a later deployment step.
 """
 
 import json
@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from celery import chord, group
+from celery import chord
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.celery_app import celery
@@ -29,37 +29,8 @@ log = logging.getLogger(__name__)
 
 
 def _get_sync_session():
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from app.core.config import get_settings
-    settings = get_settings()
-    engine = create_engine(settings.DATABASE_URL_SYNC, pool_pre_ping=True)
-    return sessionmaker(bind=engine)()
-
-
-def _generate_version(model_type: str) -> str:
-    """Generate a version string like gru_v2, xgb_v2."""
-    session = _get_sync_session()
-    from sqlalchemy import text
-    result = session.execute(
-        text("SELECT model_version FROM model_registry WHERE model_type = :type ORDER BY created_at DESC LIMIT 1"),
-        {"type": model_type},
-    ).fetchone()
-    session.close()
-
-    if not result:
-        return f"{model_type}_v1" if model_type in ("gru", "xgboost") else f"{model_type}_v1"
-
-    current = result[0]
-    # Extract version number and increment
-    parts = current.rsplit("_v", 1)
-    if len(parts) == 2:
-        try:
-            num = int(parts[1]) + 1
-            return f"{parts[0]}_v{num}"
-        except ValueError:
-            pass
-    return f"{current}_candidate"
+    from app.db.base import get_sync_session_factory
+    return get_sync_session_factory()()
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +63,11 @@ def check_training_data_task():
     total_resolved = result[0] if result else 0
     first_date = result[1]
     last_date = result[2]
+
+    # Training rebuilds from this persisted market history, not from predictions.
+    if not Path("data/raw/ohlcv/all_symbols.parquet").is_file():
+        log.warning("[RETRAIN] Market history is missing; daily scraper must populate it first")
+        return {"status": "skip", "reason": "missing_market_history"}
 
     # Check config
     from app.core.config import get_settings
@@ -159,7 +135,7 @@ def train_gru_candidate_task(self):
 
         SEQUENCES_DIR = Path("data/sequences")
         FEATURES_DIR = Path("data/features")
-        MODEL_DIR = Path("models/gru_candidate")
+        MODEL_DIR = Path("models/gru_candidate") / f"gru_{datetime.utcnow():%Y%m%d%H%M%S}"
         REPORTS_DIR = Path("data/reports")
 
         # Load data
@@ -182,6 +158,8 @@ def train_gru_candidate_task(self):
         X_train = apply_scaler(X_train, scaler)
         X_val = apply_scaler(X_val, scaler)
         X_test = apply_scaler(X_test, scaler)
+        MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         save_scaler(scaler, path=MODEL_DIR / "scaler.pkl")
 
         # Build and train
@@ -230,6 +208,9 @@ def train_gru_candidate_task(self):
                 "per_class": eval_report["per_class"],
                 "confusion_matrix": eval_report["confusion_matrix"],
                 "weighted_avg_f1": _w_f1,
+                "train_samples": len(X_train),
+                "val_samples": len(X_val),
+                "test_samples": len(X_test),
             },
             "model_path": str(model_path),
             "scaler_path": str(MODEL_DIR / "scaler.pkl"),
@@ -272,7 +253,7 @@ def train_xgb_candidate_task(self):
         from app.ml.training_xgb.evaluate_xgb import evaluate_xgb
 
         FEATURES_DIR = Path("data/features")
-        MODEL_DIR = Path("models/xgb_candidate")
+        MODEL_DIR = Path("models/xgb_candidate") / f"xgb_{datetime.utcnow():%Y%m%d%H%M%S}"
         REPORTS_DIR = Path("data/reports")
 
         # Load label mapping
@@ -294,7 +275,7 @@ def train_xgb_candidate_task(self):
                  len(X_train), len(X_val), len(X_test), len(feature_names))
 
         # Train weighted variant (best performing)
-        model = build_xgb_classifier()
+        model = build_xgb_classifier(params={"n_jobs": 1})
         sample_weights = compute_sample_weights(y_train)
         model.fit(
             X=X_train,
@@ -351,6 +332,9 @@ def train_xgb_candidate_task(self):
                 "per_class": eval_report["per_class"],
                 "confusion_matrix": eval_report["confusion_matrix"],
                 "weighted_avg_f1": _w_f1,
+                "train_samples": len(X_train),
+                "val_samples": len(X_val),
+                "test_samples": len(X_test),
             },
             "model_path": str(model_path),
         }
@@ -368,17 +352,19 @@ def train_xgb_candidate_task(self):
 # ---------------------------------------------------------------------------
 
 @celery.task(name="app.tasks.weekly_retraining.compare_and_promote")
-def compare_and_promote_task(gru_result: dict, xgb_result: dict):
-    """Compare GRU and XGB candidates against production, promote if better.
+def compare_and_promote_task(training_results: list[dict]):
+    """Compare GRU and XGB candidates against production metrics.
 
-    This task runs after both training tasks complete (via chord callback).
+    Celery chord callbacks receive the header return values as one list argument.
     """
+    if not isinstance(training_results, list) or len(training_results) != 2:
+        raise ValueError("Expected GRU and XGB results from the training chord")
+    gru_result, xgb_result = training_results
     log.info("[RETRAIN] Comparing candidates vs production")
 
     from app.core.config import get_settings
     from app.ml.serving.model_registry import (
         get_production_model,
-        promote_model,
         reject_model,
         register_model,
     )
@@ -419,8 +405,10 @@ def compare_and_promote_task(gru_result: dict, xgb_result: dict):
         )
 
         if gru_comparison["decision"] == "promoted":
-            promote_model(session, gru_version)
-            log.info("[PROMOTION] GRU candidate %s promoted", gru_version)
+            # Serving loads fixed model paths at startup, so keep this as a candidate.
+            gru_comparison["decision"] = "candidate_ready"
+            gru_comparison["deployment"] = "manual_artifact_deployment_required"
+            log.info("[PROMOTION] GRU candidate %s passed; saved for deployment", gru_version)
         else:
             reject_model(session, gru_version, gru_comparison["reason"])
             log.info("[PROMOTION] GRU candidate %s rejected: %s", gru_version, gru_comparison["reason"])
@@ -449,8 +437,9 @@ def compare_and_promote_task(gru_result: dict, xgb_result: dict):
         )
 
         if xgb_comparison["decision"] == "promoted":
-            promote_model(session, xgb_version)
-            log.info("[PROMOTION] XGB candidate %s promoted", xgb_version)
+            xgb_comparison["decision"] = "candidate_ready"
+            xgb_comparison["deployment"] = "manual_artifact_deployment_required"
+            log.info("[PROMOTION] XGB candidate %s passed; saved for deployment", xgb_version)
         else:
             reject_model(session, xgb_version, xgb_comparison["reason"])
             log.info("[PROMOTION] XGB candidate %s rejected: %s", xgb_version, xgb_comparison["reason"])
@@ -489,13 +478,14 @@ def run_weekly_pipeline():
     log.info("[RETRAIN] Starting weekly retraining pipeline")
 
     # Step 1: Check data
-    check_result = check_training_data_task.apply_async().get(timeout=60)
+    # Inline setup prevents a self-deadlock with the production concurrency-1 worker.
+    check_result = check_training_data_task.run()
     if check_result.get("status") == "skip":
         log.info("[RETRAIN] Skipping — %s", check_result.get("reason"))
         return check_result
 
     # Step 2: Rebuild features
-    rebuild_features_task.apply_async().get(timeout=600)
+    rebuild_features_task.run()
 
     # Step 3: Train both models in parallel, then compare
     callback = compare_and_promote_task.s()
