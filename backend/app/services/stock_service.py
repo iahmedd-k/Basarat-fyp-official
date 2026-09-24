@@ -476,7 +476,7 @@ class StockService:
                 log.warning("Could not write shared OHLCV cache for %s: %s", symbol, exc)
         return df
 
-    def get_overview(self, symbol: str):
+def get_overview(self, symbol: str):
         symbol = str(symbol).upper()
         batch = self.get_quote_batch([symbol])
         if not batch:
@@ -487,23 +487,50 @@ class StockService:
             return {"symbol": symbol, "message": "no data"}
         quote = self._get_quote_frame(symbol)
         quote_freshness = self._market.quote_freshness()
+        market_cap_m = self._market_cap_m(symbol)
+        pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
+        year_change_pct = self._quote_field(quote, "1-YEAR CHANGE * ^")
+        ytd_change_pct = self._quote_field(quote, "YTD CHANGE * ^")
+
+        # When the dps.psx.com.pk quote/fundamentals pages are unreachable
+        # (cloud/datacenter IPs), fill the gaps from StockAnalysis.com, which
+        # is reachable from those environments.
+        if market_cap_m is None or pe_ratio is None or year_change_pct is None:
+            try:
+                sa = fetch_stockanalysis_fundamentals(symbol)
+                sa_eq = sa.get("equity_profile") or {}
+                sa_ratio = sa.get("ratios") or {}
+                sa_limits = sa.get("trading_limits") or {}
+                if market_cap_m is None:
+                    market_cap_m = sa_eq.get("market_cap_pkr_m")
+                if pe_ratio is None:
+                    pe_ratio = sa_ratio.get("pe_ratio")
+                if year_change_pct is None:
+                    year_change_pct = sa_limits.get("year_change_pct")
+            except Exception as exc:
+                log.warning("StockAnalysis fallback failed for %s overview: %s", symbol, exc)
+
+        if ytd_change_pct is None:
+            ytd_change_pct = self._ytd_change_from_history(symbol)
+
         return {
             "symbol": symbol,
             "name": symbol,
             "sector": q["sector"],
-            # Do not label a cached fallback value as the current market price.
-            "current_price": q["current"] if not quote_freshness["is_stale"] else None,
+            # market-watch snapshot may be from the last session (market closed /
+            # cache refreshed by Celery), but it is still the most current price.
+            "current_price": q["current"],
             "ltp": q["current"],
             "ldcp": q["ldcp"],
             "change": q["change"],
             "change_pct": q["change_pct"],
             "day_range": {"low": q["low"], "high": q["high"]},
             "volume": q["volume"],
-            "market_cap_m": self._market_cap_m(symbol),
-            "market_cap": self._market_cap_m(symbol),
-            "pe_ratio": self._quote_field(quote, "P/E RATIO (TTM) **"),
-            "year_change_pct": self._quote_field(quote, "1-YEAR CHANGE * ^"),
-            "ytd_change_pct": self._quote_field(quote, "YTD CHANGE * ^"),
+            "market_cap_m": market_cap_m,
+            "market_cap": market_cap_m,
+            "pe_ratio": pe_ratio,
+            "year_change_pct": year_change_pct,
+            "ytd_change_pct": ytd_change_pct,
             "quote_as_of": quote_freshness["as_of"],
             "quote_is_stale": quote_freshness["is_stale"],
         }
