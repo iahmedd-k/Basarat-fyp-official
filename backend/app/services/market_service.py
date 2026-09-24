@@ -26,6 +26,113 @@ SECTOR_MAP_TTL_SECONDS = 86400  # PSX classifications rarely change; refresh dai
 PSX_SCREENER_URL = "https://dps.psx.com.pk/screener"
 
 
+_STATIC_SECTOR_MAP: dict[str, str] = {
+    "ABL": "COMMERCIAL BANKS",
+    "AKBL": "COMMERCIAL BANKS",
+    "BAFL": "COMMERCIAL BANKS",
+    "BAHL": "COMMERCIAL BANKS",
+    "BOP": "COMMERCIAL BANKS",
+    "FABL": "COMMERCIAL BANKS",
+    "HBL": "COMMERCIAL BANKS",
+    "HMB": "COMMERCIAL BANKS",
+    "MCB": "COMMERCIAL BANKS",
+    "MEBL": "COMMERCIAL BANKS",
+    "NBP": "COMMERCIAL BANKS",
+    "SCBPL": "COMMERCIAL BANKS",
+    "UBL": "COMMERCIAL BANKS",
+    "OGDC": "OIL & GAS EXPLORATION COMPANIES",
+    "PPL": "OIL & GAS EXPLORATION COMPANIES",
+    "MARI": "OIL & GAS EXPLORATION COMPANIES",
+    "POL": "OIL & GAS EXPLORATION COMPANIES",
+    "APL": "OIL & GAS MARKETING COMPANIES",
+    "PSO": "OIL & GAS MARKETING COMPANIES",
+    "SNGP": "OIL & GAS MARKETING COMPANIES",
+    "SSGC": "OIL & GAS MARKETING COMPANIES",
+    "ATRL": "REFINERY",
+    "CNERGY": "REFINERY",
+    "NRL": "REFINERY",
+    "PRL": "REFINERY",
+    "EFERT": "FERTILIZER",
+    "ENGROH": "FERTILIZER",
+    "FATIMA": "FERTILIZER",
+    "FFC": "FERTILIZER",
+    "BWCL": "CEMENT",
+    "CHCC": "CEMENT",
+    "DGKC": "CEMENT",
+    "FCCL": "CEMENT",
+    "KOHC": "CEMENT",
+    "LUCK": "CEMENT",
+    "MLCF": "CEMENT",
+    "PIOC": "CEMENT",
+    "POWER": "CEMENT",
+    "HUBC": "POWER GENERATION & DISTRIBUTION",
+    "KAPCO": "POWER GENERATION & DISTRIBUTION",
+    "KEL": "POWER GENERATION & DISTRIBUTION",
+    "NPL": "POWER GENERATION & DISTRIBUTION",
+    "AIRLINK": "TECHNOLOGY & COMMUNICATION",
+    "HUMNL": "TECHNOLOGY & COMMUNICATION",
+    "PTC": "TECHNOLOGY & COMMUNICATION",
+    "SYS": "TECHNOLOGY & COMMUNICATION",
+    "TRG": "TECHNOLOGY & COMMUNICATION",
+    "ABOT": "PHARMACEUTICALS",
+    "AGP": "PHARMACEUTICALS",
+    "CPHL": "PHARMACEUTICALS",
+    "GLAXO": "PHARMACEUTICALS",
+    "HALEON": "PHARMACEUTICALS",
+    "HINOON": "PHARMACEUTICALS",
+    "SEARL": "PHARMACEUTICALS",
+    "SHFA": "PHARMACEUTICALS",
+    "ATLH": "AUTOMOBILE ASSEMBLER",
+    "HCAR": "AUTOMOBILE ASSEMBLER",
+    "INDU": "AUTOMOBILE ASSEMBLER",
+    "MTL": "AUTOMOBILE ASSEMBLER",
+    "SAZEW": "AUTOMOBILE ASSEMBLER",
+    "THALL": "AUTOMOBILE ASSEMBLER",
+    "BNWM": "TEXTILE COMPOSITE",
+    "GADT": "TEXTILE COMPOSITE",
+    "IBFL": "TEXTILE COMPOSITE",
+    "ILP": "TEXTILE COMPOSITE",
+    "KTML": "TEXTILE COMPOSITE",
+    "MEHT": "TEXTILE COMPOSITE",
+    "NML": "TEXTILE COMPOSITE",
+    "YOUW": "TEXTILE COMPOSITE",
+    "GAL": "CHEMICAL",
+    "GHGL": "CHEMICAL",
+    "GHNI": "CHEMICAL",
+    "LCI": "CHEMICAL",
+    "LOTCHEM": "CHEMICAL",
+    "TGL": "CHEMICAL",
+    "INIL": "ENGINEERING",
+    "ISL": "ENGINEERING",
+    "PAEL": "ENGINEERING",
+    "PABC": "ENGINEERING",
+    "COLG": "FOOD & PERSONAL CARE PRODUCTS",
+    "FFL": "FOOD & PERSONAL CARE PRODUCTS",
+    "JDWS": "FOOD & PERSONAL CARE PRODUCTS",
+    "MUREB": "FOOD & PERSONAL CARE PRODUCTS",
+    "NATF": "FOOD & PERSONAL CARE PRODUCTS",
+    "NESTLE": "FOOD & PERSONAL CARE PRODUCTS",
+    "PAKT": "FOOD & PERSONAL CARE PRODUCTS",
+    "RMPL": "FOOD & PERSONAL CARE PRODUCTS",
+    "TREET": "FOOD & PERSONAL CARE PRODUCTS",
+    "UPFL": "FOOD & PERSONAL CARE PRODUCTS",
+    "AHCL": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "AICL": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "DCR": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "FHAM": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "HGFA": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "JVDC": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "PGLC": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "PIBTL": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "PKGS": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "PSEL": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "PSX": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "SRVI": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "SSOM": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "TPLRF1": "INV. BANKS / INV. COS. / SECURITIES COS.",
+}
+
+
 class MarketService:
     MAIN_INDICES = {
         "KSE100": "KSE-100",
@@ -97,7 +204,7 @@ class MarketService:
             "0836": "REAL ESTATE INVESTMENT TRUST",
             "0837": "EXCHANGE TRADED FUNDS",
             "0838": "PROPERTY",
-        })
+            })
 
         sector_map: dict[str, str] = {}
         for table in soup.find_all("table"):
@@ -138,7 +245,10 @@ class MarketService:
         except Exception as exc:
             log.warning("PSX screener sector map unavailable: %s", exc)
             cache_set_sync(cache_key, {}, 300)
-        return {}
+
+        # Fallback to static sector map when PSX screener is unreachable
+        log.info("Using static sector map fallback with %d symbols", len(_STATIC_SECTOR_MAP))
+        return _STATIC_SECTOR_MAP.copy()
 
     @staticmethod
     def quote_freshness() -> dict:
@@ -364,9 +474,14 @@ class MarketService:
                 reported_change = self._safe_float(row.get("CHANGE"))
                 change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+                sector_val = (
+                    row.get("SECTOR")
+                    or previous_sectors.get(str(symbol).upper())
+                    or sector_map.get(str(symbol).upper())
+                )
                 rows.append({
                     "symbol": str(symbol),
-                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "") or sector_map.get(str(symbol).upper(), "")) or "Unclassified",
+                    "sector": sector_val if sector_val else "Unclassified",
                     "ldcp": ldcp,
                     "open": self._safe_float(row.get("OPEN")),
                     "high": self._safe_float(row.get("HIGH")),
@@ -433,9 +548,14 @@ class MarketService:
                 reported_change = self._safe_float(row.get("CHANGE"))
                 change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+                sector_val = (
+                    row.get("SECTOR")
+                    or previous_sectors.get(str(symbol).upper())
+                    or sector_map.get(str(symbol).upper())
+                )
                 rows.append({
                     "symbol": str(symbol),
-                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "") or sector_map.get(str(symbol).upper(), "")) or "Unclassified",
+                    "sector": sector_val if sector_val else "Unclassified",
                     "ldcp": ldcp,
                     "open": self._safe_float(row.get("OPEN")),
                     "high": self._safe_float(row.get("HIGH")),
