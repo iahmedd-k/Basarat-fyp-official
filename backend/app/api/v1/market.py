@@ -207,8 +207,12 @@ async def get_market_quotes(
     symbols: str | None = Query(None, description="Comma-separated list of symbols to filter (e.g., 'OGDC,PPL,HBL')"),
     sector: str | None = Query(None, description="Filter by sector name"),
     search: str | None = Query(None, description="Search keyword in symbol or sector"),
-    sort_by: str = Query("volume", description="Field to sort by: 'volume', 'change_pct', 'current', 'ldcp', 'symbol'"),
-    order: str = Query("desc", description="Sort order: 'desc' or 'asc'"),
+    sort_by: str = Query(
+        "volume",
+        pattern="^(volume|change_pct|current|ldcp|symbol)$",
+        description="Field to sort by: 'volume', 'change_pct', 'current', 'ldcp', 'symbol'",
+    ),
+    order: str = Query("desc", pattern="^(desc|asc)$", description="Sort order: 'desc' or 'asc'"),
     service: MarketService = Depends(MarketService),
 ):
     try:
@@ -233,7 +237,9 @@ async def get_market_quotes(
         # Sort data
         reverse = (order.lower() != "asc")
         if sort_by in ["volume", "change_pct", "current", "ldcp"]:
-            data = sorted(data, key=lambda x: x.get(sort_by, 0.0), reverse=reverse)
+            available = [row for row in data if row.get(sort_by) is not None]
+            unavailable = [row for row in data if row.get(sort_by) is None]
+            data = sorted(available, key=lambda row: row[sort_by], reverse=reverse) + unavailable
         elif sort_by == "symbol":
             data = sorted(data, key=lambda x: x.get("symbol", ""), reverse=reverse)
 

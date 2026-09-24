@@ -287,15 +287,23 @@ class MarketService:
 
     @staticmethod
     def _normalize_quotes(rows: list[dict]) -> list[dict]:
-        """Reconcile provider change fields with the actual current and LDCP prices."""
+        """Normalize cached quotes without presenting missing OHLC as real zero prices."""
         for row in rows:
             row.setdefault("name", row.get("symbol"))
-            current = MarketService._safe_float(row.get("current"))
-            ldcp = MarketService._safe_float(row.get("ldcp"))
-            if current > 0 and ldcp > 0:
+            for field in ("open", "high", "low"):
+                value = MarketService._safe_float(row.get(field), default=None)
+                row[field] = value if value is not None and value > 0 else None
+            current = MarketService._positive_or_none(row.get("current"))
+            ldcp = MarketService._positive_or_none(row.get("ldcp"))
+            row["current"] = current
+            row["ldcp"] = ldcp
+            if current is not None and ldcp is not None:
                 change = round(current - ldcp, 4)
                 row["change"] = change
                 row["change_pct"] = round(change / ldcp * 100, 2)
+            else:
+                row["change"] = None
+                row["change_pct"] = None
         return rows
 
     @staticmethod
@@ -307,6 +315,11 @@ class MarketService:
             return default if math.isnan(v) or math.isinf(v) else v
         except (TypeError, ValueError):
             return default
+
+    @classmethod
+    def _positive_or_none(cls, value):
+        number = cls._safe_float(value, default=None)
+        return number if number is not None and number > 0 else None
 
     @staticmethod
     def _safe_int(value, default=0):
@@ -498,25 +511,18 @@ class MarketService:
             sector_map = self._load_sector_map_sync()
             rows = []
             for symbol, row in raw.iterrows():
-                ldcp = self._safe_float(row.get("LDCP"))
-                current = self._safe_float(row.get("CURRENT"))
-                reported_change = self._safe_float(row.get("CHANGE"))
-                change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
-                change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+                ldcp = self._positive_or_none(row.get("LDCP"))
+                current = self._positive_or_none(row.get("CURRENT"))
+                change = round(current - ldcp, 4) if current is not None and ldcp is not None else None
+                change_pct = round(change / ldcp * 100, 2) if change is not None and ldcp else None
                 sector_val = (
                     row.get("SECTOR")
                     or previous_sectors.get(str(symbol).upper())
                     or sector_map.get(str(symbol).upper())
                 )
-                open_val = self._safe_float(row.get("OPEN"))
-                high_val = self._safe_float(row.get("HIGH"))
-                low_val = self._safe_float(row.get("LOW"))
-                if open_val == 0.0:
-                    open_val = ldcp
-                if high_val == 0.0:
-                    high_val = max(ldcp, current)
-                if low_val == 0.0:
-                    low_val = min(ldcp, current)
+                open_val = self._positive_or_none(row.get("OPEN"))
+                high_val = self._positive_or_none(row.get("HIGH"))
+                low_val = self._positive_or_none(row.get("LOW"))
                 rows.append({
                     "symbol": str(symbol),
                     "name": str(row.get("NAME") or row.get("COMPANY NAME") or symbol),
@@ -582,25 +588,18 @@ class MarketService:
             sector_map = await asyncio.to_thread(self._load_sector_map_sync)
             rows = []
             for symbol, row in raw.iterrows():
-                ldcp = self._safe_float(row.get("LDCP"))
-                current = self._safe_float(row.get("CURRENT"))
-                reported_change = self._safe_float(row.get("CHANGE"))
-                change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
-                change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+                ldcp = self._positive_or_none(row.get("LDCP"))
+                current = self._positive_or_none(row.get("CURRENT"))
+                change = round(current - ldcp, 4) if current is not None and ldcp is not None else None
+                change_pct = round(change / ldcp * 100, 2) if change is not None and ldcp else None
                 sector_val = (
                     row.get("SECTOR")
                     or previous_sectors.get(str(symbol).upper())
                     or sector_map.get(str(symbol).upper())
                 )
-                open_val = self._safe_float(row.get("OPEN"))
-                high_val = self._safe_float(row.get("HIGH"))
-                low_val = self._safe_float(row.get("LOW"))
-                if open_val == 0.0:
-                    open_val = ldcp
-                if high_val == 0.0:
-                    high_val = max(ldcp, current)
-                if low_val == 0.0:
-                    low_val = min(ldcp, current)
+                open_val = self._positive_or_none(row.get("OPEN"))
+                high_val = self._positive_or_none(row.get("HIGH"))
+                low_val = self._positive_or_none(row.get("LOW"))
                 rows.append({
                     "symbol": str(symbol),
                     "name": str(row.get("NAME") or row.get("COMPANY NAME") or symbol),
@@ -633,22 +632,36 @@ class MarketService:
 
     async def get_top_gainers(self, limit: int = 10) -> list[dict]:
         data = await self.get_market_data()
-        return sorted(data, key=lambda d: d["change_pct"], reverse=True)[:limit]
+        traded = self._traded_quotes(data)
+        return sorted(traded, key=lambda d: d["change_pct"], reverse=True)[:limit]
 
     async def get_top_losers(self, limit: int = 10) -> list[dict]:
         data = await self.get_market_data()
-        return sorted(data, key=lambda d: d["change_pct"])[:limit]
+        traded = self._traded_quotes(data)
+        return sorted(traded, key=lambda d: d["change_pct"])[:limit]
+
+    @classmethod
+    def _traded_quotes(cls, data: list[dict]) -> list[dict]:
+        """Exclude no-trade rows from mover lists; their prices may be stale."""
+        return [
+            row for row in data
+            if cls._safe_int(row.get("volume")) > 0
+            and cls._safe_float(row.get("current")) > 0
+            and cls._safe_float(row.get("ldcp")) > 0
+        ]
 
     async def get_volume_spikes(self, limit: int = 10) -> list[dict]:
         data = await self.get_market_data()
-        return sorted(data, key=lambda d: d["volume"], reverse=True)[:limit]
+        traded = [row for row in data if self._safe_int(row.get("volume")) > 0]
+        return sorted(traded, key=lambda d: d["volume"], reverse=True)[:limit]
 
     async def get_sentiment_overview(self) -> dict:
         data = await self.get_market_data()
-        advancing = sum(1 for d in data if d["change_pct"] > 0)
-        declining = sum(1 for d in data if d["change_pct"] < 0)
-        unchanged = len(data) - advancing - declining
-        total = len(data)
+        traded = self._traded_quotes(data)
+        advancing = sum(1 for d in traded if d["change_pct"] > 0)
+        declining = sum(1 for d in traded if d["change_pct"] < 0)
+        unchanged = len(traded) - advancing - declining
+        total = len(traded)
 
         if declining == 0:
             ratio = float(advancing) if advancing > 0 else 1.0
@@ -671,7 +684,7 @@ class MarketService:
             market_mood = "neutral"
 
         grouped = defaultdict(list)
-        for quote in data:
+        for quote in traded:
             sector = str(quote.get("sector") or "").strip()
             if not sector or sector.casefold() in {"unclassified", "unknown"}:
                 continue
@@ -703,7 +716,7 @@ class MarketService:
         sector_performance.sort(key=lambda x: x["avg_change_pct"], reverse=True)
 
         top_movers = sorted(
-            data,
+            traded,
             key=lambda d: abs(d["change_pct"]),
             reverse=True,
         )[:5]
@@ -747,28 +760,29 @@ class MarketService:
 
         sectors = []
         for sector, quotes in grouped.items():
-            changes = [self._safe_float(quote.get("change_pct")) for quote in quotes]
-            gainers = [quote for quote, change in zip(quotes, changes) if change > 0]
-            losers = [quote for quote, change in zip(quotes, changes) if change < 0]
-            unchanged = len(quotes) - len(gainers) - len(losers)
+            sector_traded = self._traded_quotes(quotes)
+            changes = [self._safe_float(quote.get("change_pct")) for quote in sector_traded]
+            gainers = [quote for quote, change in zip(sector_traded, changes) if change > 0]
+            losers = [quote for quote, change in zip(sector_traded, changes) if change < 0]
+            unchanged = len(sector_traded) - len(gainers) - len(losers)
             cap_values = [self._safe_float(quote.get("market_cap_m")) for quote in quotes]
             market_caps = [value for value in cap_values if value > 0]
-            top_gainer = max(quotes, key=lambda quote: self._safe_float(quote.get("change_pct")))
-            top_loser = min(quotes, key=lambda quote: self._safe_float(quote.get("change_pct")))
+            top_gainer = max(sector_traded, key=lambda quote: quote["change_pct"]) if sector_traded else None
+            top_loser = min(sector_traded, key=lambda quote: quote["change_pct"]) if sector_traded else None
             sectors.append({
                 "sector": sector,
-                "avg_change_pct": round(sum(changes) / len(changes), 2),
+                "avg_change_pct": round(sum(changes) / len(changes), 2) if changes else None,
                 "companies": len(quotes),
                 "advancing": len(gainers),
                 "declining": len(losers),
                 "unchanged": unchanged,
                 "total_volume": sum(self._safe_int(quote.get("volume")) for quote in quotes),
                 "market_cap_m": round(sum(market_caps), 2) if market_caps else None,
-                "top_gainer_symbol": top_gainer.get("symbol"),
-                "top_loser_symbol": top_loser.get("symbol"),
+                "top_gainer_symbol": top_gainer.get("symbol") if top_gainer else None,
+                "top_loser_symbol": top_loser.get("symbol") if top_loser else None,
             })
 
-        sectors.sort(key=lambda item: item["avg_change_pct"], reverse=order.lower() != "asc")
+        sectors.sort(key=lambda item: item["avg_change_pct"] or 0.0, reverse=order.lower() != "asc")
         classified = sum(len(quotes) for quotes in grouped.values())
         return {
             "sectors": sectors,

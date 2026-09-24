@@ -96,14 +96,31 @@ class StockService:
         frame = self._get_market_frame()
         if frame is None:
             return []
-        matches = [s for s in frame.index if q in str(s).upper()]
+        # The quote feed contains tickers but usually no company names. Reuse
+        # the aliases already maintained for news tagging so common company
+        # name searches still resolve when the stock master is unavailable.
+        from app.services.news_pipeline.symbol_tagger import _STATIC_ALIASES
+
+        symbol_matches = [s for s in frame.index if q in str(s).upper()]
+        alias_matches = [
+            symbol for symbol, aliases in _STATIC_ALIASES.items()
+            if any(q in alias.upper() for alias in aliases)
+            and symbol in frame.index
+            and symbol not in symbol_matches
+        ]
+        matches = (symbol_matches + alias_matches)[:limit]
+        aliases_by_symbol = {symbol: aliases for symbol, aliases in _STATIC_ALIASES.items()}
         return [
             {
                 "symbol": str(symbol),
-                "name": str(symbol),  # market_watch data lacks company names
+                "name": (
+                    str(aliases_by_symbol[str(symbol)][0]).title()
+                    if str(symbol) in aliases_by_symbol
+                    else str(symbol)
+                ),
                 "sector": self._sector_of(symbol),
             }
-            for symbol in matches[:limit]
+            for symbol in matches
         ]
 
     def _sector_of(self, symbol):
@@ -205,7 +222,7 @@ class StockService:
             current = self._num(self._get_field(row, "Current", "current", "price", "Price", default=0.0))
             reported_change = self._num(self._get_field(row, "Change", "change", default=0.0))
             change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
-            change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+            change_pct = round(change / ldcp * 100, 2) if change is not None and ldcp else None
             volume = self._safe_int(self._get_field(row, "Volume", "volume", "Vol", "vol", default=0))
             sector = self._get_field(row, "Sector", "sector", "SECTOR", default=None)
             open_val = self._num(self._get_field(row, "Open", "open", default=0.0))
@@ -483,7 +500,7 @@ class StockService:
             return {"symbol": symbol, "message": "no data"}
         q = batch[0]
         # Validate that we got real data (not an empty/default quote)
-        if q.get("current") == 0.0 and q.get("volume") == 0:
+        if q.get("current") in (None, 0.0) and q.get("volume") == 0:
             return {"symbol": symbol, "message": "no data"}
         quote = self._get_quote_frame(symbol)
         high = q["high"] or self._quote_field(quote, "HIGH")

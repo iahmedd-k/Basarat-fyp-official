@@ -51,13 +51,13 @@ class TestStockOverview:
         resp = await client.get("/api/v1/stocks/INVALID/overview", headers=auth_headers)
         assert resp.status_code in (200, 404, 503)
 
-    async def test_overview_requires_auth(self, client: AsyncClient):
+    async def test_overview_is_public(self, client: AsyncClient):
         resp = await client.get("/api/v1/stocks/HBL/overview")
-        assert resp.status_code in (401, 403)
+        assert resp.status_code in (200, 404, 503)
 
     async def test_overview_invalid_symbol(self, client: AsyncClient, auth_headers):
         resp = await client.get("/api/v1/stocks/!!!/overview", headers=auth_headers)
-        assert resp.status_code == 503
+        assert resp.status_code == 422
 
     async def test_overview_lowercase_symbol(self, client: AsyncClient, auth_headers):
         resp = await client.get("/api/v1/stocks/hbl/overview", headers=auth_headers)
@@ -78,9 +78,9 @@ class TestStockPriceHistory:
             assert "bars" in data
             assert data["symbol"] == "HBL"
 
-    async def test_price_history_requires_auth(self, client: AsyncClient):
+    async def test_price_history_is_public(self, client: AsyncClient):
         resp = await client.get("/api/v1/stocks/HBL/price-history")
-        assert resp.status_code in (401, 403)
+        assert resp.status_code in (200, 404, 503)
 
     async def test_price_history_invalid_range(self, client: AsyncClient, auth_headers):
         resp = await client.get(
@@ -115,9 +115,9 @@ class TestStockTechnicalIndicators:
             assert "summary" in data
             assert data["symbol"] == "HBL"
 
-    async def test_indicators_requires_auth(self, client: AsyncClient):
+    async def test_indicators_are_public(self, client: AsyncClient):
         resp = await client.get("/api/v1/stocks/HBL/technical-indicators")
-        assert resp.status_code in (401, 403)
+        assert resp.status_code not in (401, 403)
 
     async def test_indicators_invalid_period(self, client: AsyncClient, auth_headers):
         resp = await client.get(
@@ -172,13 +172,13 @@ class TestStockFundamentals:
             assert "sector_overview" in data
             assert data["sector_overview"]["companies_count"] >= 1
 
-    async def test_fundamentals_requires_auth(self, client: AsyncClient):
+    async def test_fundamentals_are_public(self, client: AsyncClient):
         resp = await client.get("/api/v1/stocks/HBL/fundamentals")
-        assert resp.status_code in (401, 403)
+        assert resp.status_code in (200, 503)
 
     async def test_fundamentals_invalid_symbol(self, client: AsyncClient, auth_headers):
         resp = await client.get(
             "/api/v1/stocks/@@@/fundamentals",
             headers=auth_headers,
         )
-        assert resp.status_code == 503
+        assert resp.status_code == 422

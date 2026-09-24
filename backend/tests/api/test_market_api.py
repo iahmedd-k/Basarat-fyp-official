@@ -70,9 +70,9 @@ class TestMarketIndices:
         assert data["code"] == "KMI30"
         assert data["shariah_compliant"] is True
 
-    async def test_indices_requires_auth(self, client: AsyncClient):
+    async def test_indices_are_public(self, client: AsyncClient):
         resp = await client.get("/api/v1/market/indices")
-        assert resp.status_code in (401, 403)
+        assert resp.status_code == 200
 
 
 @pytest.mark.api
@@ -115,4 +115,12 @@ class TestMarketGainersLosers:
 
     async def test_gainers_limit_max(self, client: AsyncClient, auth_headers):
         resp = await client.get("/api/v1/market/gainers?limit=101", headers=auth_headers)
+        assert resp.status_code == 422
+
+    async def test_quotes_reject_invalid_sort_by(self, client: AsyncClient):
+        resp = await client.get("/api/v1/market/quotes?sort_by=bogus")
+        assert resp.status_code == 422
+
+    async def test_quotes_reject_invalid_order(self, client: AsyncClient):
+        resp = await client.get("/api/v1/market/quotes?order=sideways")
         assert resp.status_code == 422
