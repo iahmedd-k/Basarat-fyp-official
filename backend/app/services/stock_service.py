@@ -66,7 +66,11 @@ class StockService:
         if frame is None:
             return None
         try:
-            return frame.loc[symbol, "Sector"]
+            if "Sector" in frame.columns:
+                return frame.loc[symbol, "Sector"]
+            if "sector" in frame.columns:
+                return frame.loc[symbol, "sector"]
+            return None
         except Exception:
             return None
 
@@ -610,7 +614,7 @@ class StockService:
 
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
-        cache_key = f"fund:{symbol}"
+        cache_key = f"fund:v2:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
