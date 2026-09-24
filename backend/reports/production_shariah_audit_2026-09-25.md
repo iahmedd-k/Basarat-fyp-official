@@ -66,10 +66,12 @@ The product owner confirmed that purification is calculated as **dividend income
 - Replaced the manual live audit script's embedded test login with anonymous public-route checks and a configurable `AUDIT_BASE_URL`; it does not contain or use credentials.
 - Updated endpoint and frontend integration documentation to specify the dividend-income basis and unavailable-rate behavior.
 
-Local verification: **20/20** tests passed in `tests/api/test_shariah_api.py`; edited Python modules and the manual smoke script passed `py_compile`; `git diff --check` passed. The production retest above describes the deployed pre-follow-up version. A post-deployment public smoke run is still required after this change is released.
+Local verification: **20/20** tests passed in `tests/api/test_shariah_api.py`; edited Python modules and the manual smoke script passed `py_compile`; `git diff --check` passed. After commit `f7618cf` reached GitHub, the anonymous AWS smoke check passed all **7** route/data-contract checks.
+
+The AWS response currently reports KMI-30 `total_constituents=30`, `as_of=null`, `is_stale=true`; accordingly OGDC screening is unavailable/unverified, criteria values are null, and purification returns 404 until fresh membership data arrives. HBL remains classified non-compliant by known business activity. The deployed service is behaving as intended for stale source data; a successful smoke run does not make the Shariah financial-ratio/purification feed complete.
 
 ### Readiness decision
 
-The Shariah API now fails safely and reports uncertainty honestly, but the Shariah module is **not fully feature-ready for production use**: verified current financial ratios and purification rates are not available from the connected data feed. The separate historical Stocks/Market audit also documents source-data gaps, including stale OHLCV and missing financial fundamentals. The user confirmed PSX redistribution rights, which addresses the license question but does not supply a dated Shariah screening dataset.
+The Shariah API now fails safely and reports uncertainty honestly, but the Shariah module is **not fully feature-ready for production use**: the deployed constituent snapshot is stale and verified current financial ratios/purification rates are not available from the connected data feed. The separate historical Stocks/Market audit also documents source-data gaps, including stale OHLCV and missing financial fundamentals. The user confirmed PSX redistribution rights, which addresses the license question but does not supply a dated Shariah screening dataset.
 
 Security follow-up: the previous live test script was already committed with an inline test account password. The working-tree version no longer contains it, but prior Git revisions retain it. Do not reuse that account; rotate or disable it, and consider repository history cleanup if the credential was valid outside test environments. No credential was used during this work.
