@@ -49,6 +49,33 @@ def test_normalize_quotes_marks_zero_current_and_change_unavailable():
     assert result[0]["change_pct"] is None
 
 
+def test_normalize_quotes_preserves_missing_metadata_without_failing_response_schema():
+    from app.schemas.market import MarketQuoteItem
+
+    rows = [{
+        "symbol": "AAL",
+        "sector": None,
+        "ldcp": 16,
+        "current": 0,
+        "open": 0,
+        "high": 0,
+        "low": 0,
+        "change": 0,
+        "change_pct": 0,
+        "volume": None,
+        "market_cap_m": 0,
+    }]
+
+    normalized = MarketService._normalize_quotes(rows)
+    response_item = MarketQuoteItem.model_validate(normalized[0])
+
+    assert response_item.sector is None
+    assert response_item.current is None
+    assert response_item.open is None
+    assert response_item.volume == 0
+    assert response_item.market_cap_m is None
+
+
 async def test_top_losers_excludes_zero_volume_stale_quotes(monkeypatch):
     service = MarketService()
     monkeypatch.setattr(service, "get_market_data", AsyncMock(return_value=[

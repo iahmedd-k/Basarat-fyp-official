@@ -288,8 +288,20 @@ class MarketService:
     @staticmethod
     def _normalize_quotes(rows: list[dict]) -> list[dict]:
         """Normalize cached quotes without presenting missing OHLC as real zero prices."""
+        normalized = []
         for row in rows:
-            row.setdefault("name", row.get("symbol"))
+            if not isinstance(row, dict):
+                continue
+            symbol = str(row.get("symbol") or "").strip()
+            if not symbol or symbol.casefold() == "nan":
+                continue
+            row["symbol"] = symbol.upper()
+            row["name"] = str(row.get("name") or symbol)
+            sector = row.get("sector")
+            row["sector"] = str(sector).strip() if sector not in (None, "") else None
+            row["volume"] = MarketService._safe_int(row.get("volume"))
+            market_cap = MarketService._positive_or_none(row.get("market_cap_m"))
+            row["market_cap_m"] = market_cap
             for field in ("open", "high", "low"):
                 value = MarketService._safe_float(row.get(field), default=None)
                 row[field] = value if value is not None and value > 0 else None
@@ -304,7 +316,8 @@ class MarketService:
             else:
                 row["change"] = None
                 row["change_pct"] = None
-        return rows
+            normalized.append(row)
+        return normalized
 
     @staticmethod
     def _safe_float(value, default=0.0):

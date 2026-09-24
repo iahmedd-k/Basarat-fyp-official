@@ -226,12 +226,16 @@ async def get_market_quotes(
 
         if sector:
             sec_lower = sector.strip().lower()
-            data = [d for d in data if sec_lower in d["sector"].lower()]
+            data = [d for d in data if sec_lower in str(d.get("sector") or "").lower()]
             filtered = True
 
         if search:
             q = search.strip().lower()
-            data = [d for d in data if q in d["symbol"].lower() or q in d["sector"].lower()]
+            data = [
+                d for d in data
+                if q in str(d.get("symbol") or "").lower()
+                or q in str(d.get("sector") or "").lower()
+            ]
             filtered = True
 
         # Sort data

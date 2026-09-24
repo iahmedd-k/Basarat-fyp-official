@@ -124,3 +124,14 @@ class TestMarketGainersLosers:
     async def test_quotes_reject_invalid_order(self, client: AsyncClient):
         resp = await client.get("/api/v1/market/quotes?order=sideways")
         assert resp.status_code == 422
+
+    async def test_quotes_sector_filter_handles_unclassified_rows(
+        self, client: AsyncClient, override_market
+    ):
+        override_market.get_market_data.return_value = [
+            {"symbol": "AAL", "sector": None, "volume": 0, "current": None, "ldcp": 16,
+             "change": None, "change_pct": None, "open": None, "high": None, "low": None}
+        ]
+        resp = await client.get("/api/v1/market/quotes?sector=bank")
+        assert resp.status_code == 200
+        assert resp.json()["stocks"] == []

@@ -4,9 +4,9 @@ from pydantic import BaseModel, Field
 class IndexItem(BaseModel):
     index: str
     code: str
-    current: float | None = None
-    change: float | None = None
-    change_pct: float | None = None
+    current: float
+    change: float
+    change_pct: float
     high: float
     low: float
 
@@ -20,7 +20,7 @@ class IndicesResponse(BaseModel):
 class ConstituentItem(BaseModel):
     symbol: str
     name: str
-    ldcp: float | None = None
+    ldcp: float
     current: float
     change: float
     change_pct: float
@@ -42,15 +42,15 @@ class IndexConstituentsResponse(BaseModel):
 
 class MarketQuoteItem(BaseModel):
     symbol: str
-    sector: str
+    sector: str | None = None
     name: str | None = None
-    ldcp: float
+    ldcp: float | None = None
     open: float | None = None
     high: float | None = None
     low: float | None = None
-    current: float
-    change: float
-    change_pct: float
+    current: float | None = None
+    change: float | None = None
+    change_pct: float | None = None
     volume: int
     market_cap_m: float | None = None
 

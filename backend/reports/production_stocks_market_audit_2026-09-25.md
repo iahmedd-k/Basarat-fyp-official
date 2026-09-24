@@ -78,10 +78,16 @@ The live AWS app still returned 503 for an invalid symbol and 200 for invalid so
 
 ## Verification
 
-Focused backend suite: **39 passed** (`tests/api/test_stocks_api.py`, `tests/api/test_market_api.py`, `tests/unit/test_market_service.py`, `tests/unit/test_stock_search.py`).
+Focused backend suite before deployment: **39 passed** (`tests/api/test_stocks_api.py`, `tests/api/test_market_api.py`, `tests/unit/test_market_service.py`, `tests/unit/test_stock_search.py`). The follow-up sparse-row regression suite passes **41 tests**.
 
 Read-only production probes were saved as reproducible PowerShell runners in `backend/scripts/production_stocks_market_audit.ps1` and `backend/scripts/production_market_quality_summary.ps1`.
 
 ## Production follow-up
 
 Deploy the workspace changes, then rerun the invalid-symbol/sort probes. Separately repair or refresh market quote and OHLC/history ingestion, reconcile stale price history and SWL's large price discontinuity, and populate canonical company names in the stock search index/database.
+
+## Post-deployment retest
+
+Commit `bfbb40c` was pushed to `main`, and production health returned 200. The same 29 route/input probes were rerun against the deployed app: **all 29 returned valid JSON**, with valid requests returning 200 and invalid symbol, sort, range, and bound requests returning 422. The previously invalid `Habib` search returned HBL.
+
+The first full-universe (`limit=1000`) quote request after deployment returned 503 even though all 29 probes passed. Pagination isolated the response-validation failure to quote offset 485, a sparse/unclassified row; all other 50-row pages tested returned 200. A follow-up workspace fix normalizes missing symbol/name/sector/volume/market-cap metadata, permits null market values in the response schema, and keeps sector/search filters safe for unclassified records. That follow-up passes the full focused suite (**41 passed**) and is awaiting its deployment and production retest.
