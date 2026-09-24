@@ -515,7 +515,7 @@ class StockService:
         if ytd_change_pct is None:
             ytd_change_pct = self._ytd_change_from_history(symbol)
 
-return {
+        return {
             "symbol": symbol,
             "name": symbol,
             "sector": q["sector"],
@@ -571,7 +571,7 @@ return {
         value = frame.iloc[0][column]
         return self._latest_number(value)
 
-RANGE_MAP = {
+    RANGE_MAP = {
         "1D": ("1D", timedelta(days=10)),
         "1W": ("1W", timedelta(days=8)),
         "1M": ("1M", timedelta(days=32)),
