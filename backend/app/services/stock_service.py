@@ -940,8 +940,8 @@ class StockService:
 
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
-        # v4 avoids reusing null results produced by the old toolkit adapter.
-        cache_key = f"fund:v5:{symbol}"
+        # v6 refreshes cached profiles that contain only a ticker as the name.
+        cache_key = f"fund:v6:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
