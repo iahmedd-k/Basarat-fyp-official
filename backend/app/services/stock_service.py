@@ -486,10 +486,13 @@ class StockService:
         if q.get("current") == 0.0 and q.get("volume") == 0:
             return {"symbol": symbol, "message": "no data"}
         quote = self._get_quote_frame(symbol)
+        quote_freshness = self._market.quote_freshness()
         return {
             "symbol": symbol,
             "name": symbol,
             "sector": q["sector"],
+            # Do not label a cached fallback value as the current market price.
+            "current_price": q["current"] if not quote_freshness["is_stale"] else None,
             "ltp": q["current"],
             "ldcp": q["ldcp"],
             "change": q["change"],
@@ -501,8 +504,8 @@ class StockService:
             "pe_ratio": self._quote_field(quote, "P/E RATIO (TTM) **"),
             "year_change_pct": self._quote_field(quote, "1-YEAR CHANGE * ^"),
             "ytd_change_pct": self._quote_field(quote, "YTD CHANGE * ^"),
-            "quote_as_of": self._market.quote_freshness()["as_of"],
-            "quote_is_stale": self._market.quote_freshness()["is_stale"],
+            "quote_as_of": quote_freshness["as_of"],
+            "quote_is_stale": quote_freshness["is_stale"],
         }
 
     def _market_cap_m(self, symbol):
@@ -1154,6 +1157,8 @@ class StockService:
                     ratios["gross_profit_margin_pct"] = sa_ratio.get("gross_profit_margin_pct")
                 if not ratios.get("dividend_yield_pct"):
                     ratios["dividend_yield_pct"] = sa_ratio.get("dividend_yield_pct")
+                if not ratios.get("eps_growth_pct"):
+                    ratios["eps_growth_pct"] = sa_ratio.get("eps_growth_pct")
 
                 if not trading_limits.get("year_high"):
                     trading_limits["year_high"] = sa_limits.get("year_high")
@@ -1178,6 +1183,15 @@ class StockService:
                         m["value"] = equity_profile.get("market_cap_pkr_m")
             except Exception as exc:
                 log.warning("StockAnalysis fallback failed for %s: %s", symbol, exc)
+
+        # Rebuild extras from the live dicts so fallback values propagate here too.
+        extras = {
+            "year_change_pct": trading_limits.get("year_change_pct"),
+            "ytd_change_pct": ytd_change,
+            "gross_profit_margin_pct": ratios.get("gross_profit_margin_pct"),
+            "net_profit_margin_pct": ratios.get("net_profit_margin_pct"),
+            "eps_growth_pct": ratios.get("eps_growth_pct"),
+        }
 
         result = {
             "symbol": symbol,

@@ -34,6 +34,20 @@ _TIMEOUT = 20.0
 _CACHE_TTL = 6 * 60 * 60  # 6 hours; fundamentals change slowly
 
 
+def _parse_percent_change(value: str | None) -> float | None:
+    """Parse the trailing percentage change with sign, e.g. 'EPS 50.88 +42.6%' -> 42.6."""
+    if not value:
+        return None
+    text = str(value)
+    match = re.search(r"([+\-]?[0-9]+(?:\.[0-9]+)?)\s*%", text)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
 def _parse_number(value: str | None) -> float | None:
     """Parse StockAnalysis values like '4.30B', '1.37T', '16.90%', '5.67', '56.35 +42.6%'."""
     if not value:
@@ -152,6 +166,7 @@ def fetch_stockanalysis_fundamentals(symbol: str) -> dict[str, Any]:
     shares_out = _parse_money(quote_rows.get("Shares Out"))
     pe_ratio = _parse_number(quote_rows.get("PE Ratio"))
     eps = _parse_number(quote_rows.get("EPS"))
+    eps_growth = _parse_percent_change(quote_rows.get("EPS"))
     year_high, year_low = _parse_range(quote_rows.get("52-Week Range"))
     result["business_description"] = _business_description(quote_soup, symbol)
 
@@ -161,11 +176,13 @@ def fetch_stockanalysis_fundamentals(symbol: str) -> dict[str, Any]:
     result["equity_profile"]["total_shares"] = int(shares_out) if shares_out else None
     result["ratios"]["pe_ratio"] = pe_ratio
     result["ratios"]["eps"] = eps
+    result["ratios"]["eps_growth_pct"] = eps_growth
     result["trading_limits"]["year_high"] = year_high
     result["trading_limits"]["year_low"] = year_low
     result["metrics"]["market_cap_m"] = result["equity_profile"]["market_cap_pkr_m"]
     result["metrics"]["pe_ratio"] = pe_ratio
     result["metrics"]["eps"] = eps
+    result["metrics"]["eps_growth_pct"] = eps_growth
 
     stats_resp = _fetch(_BASE + _STATS_PATH.format(symbol=symbol))
     if stats_resp is not None:
