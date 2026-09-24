@@ -75,6 +75,23 @@ class SectorPerformance(BaseModel):
     sector: str
     avg_change_pct: float
     companies: int
+    advancing: int = 0
+    declining: int = 0
+    unchanged: int = 0
+    total_volume: int = 0
+    market_cap_m: float | None = None
+    top_gainer_symbol: str | None = None
+    top_loser_symbol: str | None = None
+
+
+class SectorPerformanceResponse(BaseModel):
+    sectors: list[SectorPerformance]
+    total_sectors: int
+    total_companies: int
+    classified_companies: int
+    unclassified_companies: int
+    as_of: str | None = None
+    is_stale: bool = True
 
 
 class SentimentOverview(BaseModel):

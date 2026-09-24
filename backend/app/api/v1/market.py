@@ -10,11 +10,29 @@ from app.schemas.market import (
     MarketQuotesResponse,
     MarketQuoteItem,
     SentimentOverview,
+    SectorPerformanceResponse,
     VolumeSpikesResponse,
 )
 from app.services.market_service import MarketService
 
 router = APIRouter()
+
+
+@router.get(
+    "/market/sectors/performance",
+    response_model=SectorPerformanceResponse,
+    summary="Get overall PSX sector performance",
+)
+@limiter.limit("60/minute")
+async def get_sector_performance(
+    request: Request,
+    order: str = Query("desc", pattern="^(asc|desc)$", description="Sort by average sector price change"),
+    service: MarketService = Depends(MarketService),
+):
+    try:
+        return await service.get_sector_performance(order=order)
+    except Exception:
+        raise ServiceUnavailableError("Failed to fetch sector performance")
 
 
 @router.get(

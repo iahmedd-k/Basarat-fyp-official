@@ -253,7 +253,7 @@ class MarketService:
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
                 rows.append({
                     "symbol": str(symbol),
-                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "")) or None,
+                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "")) or "Unclassified",
                     "ldcp": ldcp,
                     "open": self._safe_float(row.get("OPEN")),
                     "high": self._safe_float(row.get("HIGH")),
@@ -262,6 +262,7 @@ class MarketService:
                     "change": change,
                     "change_pct": change_pct,
                     "volume": self._safe_int(row.get("VOLUME")),
+                    "market_cap_m": self._safe_float(row.get("MARKET CAP (M)")),
                 })
 
             cache_set_sync(cache_key, rows, QUOTES_TTL_SECONDS)
@@ -320,7 +321,7 @@ class MarketService:
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
                 rows.append({
                     "symbol": str(symbol),
-                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "")) or None,
+                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "")) or "Unclassified",
                     "ldcp": ldcp,
                     "open": self._safe_float(row.get("OPEN")),
                     "high": self._safe_float(row.get("HIGH")),
@@ -329,6 +330,7 @@ class MarketService:
                     "change": change,
                     "change_pct": change_pct,
                     "volume": self._safe_int(row.get("VOLUME")),
+                    "market_cap_m": self._safe_float(row.get("MARKET CAP (M)")),
                 })
 
             if rows:
@@ -387,7 +389,10 @@ class MarketService:
 
         sectors = defaultdict(lambda: {"total_change_pct": 0.0, "count": 0})
         for d in data:
-            s = sectors[d["sector"]]
+            sector = d.get("sector")
+            if not sector or sector in {"Unclassified", "Unknown"}:
+                continue
+            s = sectors[sector]
             s["total_change_pct"] += d["change_pct"]
             s["count"] += 1
 
@@ -420,4 +425,48 @@ class MarketService:
             "losers_pct": round(declining / total * 100, 1) if total else 0,
             "sector_performance": sector_performance,
             "top_movers": top_movers,
+        }
+
+    async def get_sector_performance(self, order: str = "desc") -> dict:
+        """Aggregate daily price performance and breadth for each classified sector."""
+        data = await self.get_market_data()
+        grouped = defaultdict(list)
+        for quote in data:
+            sector = str(quote.get("sector") or "").strip()
+            if not sector or sector.casefold() in {"unclassified", "unknown"}:
+                continue
+            grouped[sector].append(quote)
+
+        sectors = []
+        for sector, quotes in grouped.items():
+            changes = [self._safe_float(quote.get("change_pct")) for quote in quotes]
+            gainers = [quote for quote, change in zip(quotes, changes) if change > 0]
+            losers = [quote for quote, change in zip(quotes, changes) if change < 0]
+            unchanged = len(quotes) - len(gainers) - len(losers)
+            cap_values = [self._safe_float(quote.get("market_cap_m")) for quote in quotes]
+            market_caps = [value for value in cap_values if value > 0]
+            top_gainer = max(quotes, key=lambda quote: self._safe_float(quote.get("change_pct")))
+            top_loser = min(quotes, key=lambda quote: self._safe_float(quote.get("change_pct")))
+            sectors.append({
+                "sector": sector,
+                "avg_change_pct": round(sum(changes) / len(changes), 2),
+                "companies": len(quotes),
+                "advancing": len(gainers),
+                "declining": len(losers),
+                "unchanged": unchanged,
+                "total_volume": sum(self._safe_int(quote.get("volume")) for quote in quotes),
+                "market_cap_m": round(sum(market_caps), 2) if market_caps else None,
+                "top_gainer_symbol": top_gainer.get("symbol"),
+                "top_loser_symbol": top_loser.get("symbol"),
+            })
+
+        sectors.sort(key=lambda item: item["avg_change_pct"], reverse=order.lower() != "asc")
+        classified = sum(len(quotes) for quotes in grouped.values())
+        return {
+            "sectors": sectors,
+            "total_sectors": len(sectors),
+            "total_companies": len(data),
+            "classified_companies": classified,
+            "unclassified_companies": len(data) - classified,
+            **self.quote_freshness(),
         }
