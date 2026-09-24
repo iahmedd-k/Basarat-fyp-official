@@ -95,3 +95,17 @@ The first full-universe (`limit=1000`) request after `bfbb40c` returned 503 even
 After `170afd9` deployed, all 29 route/input probes passed again with valid JSON. The offset-485 record and the full-universe request returned 200; all 560 quote items were serialized. `Habib` search returned `{symbol: "HBL", name: "Habib Bank"}`, and ascending sort by current price worked with unavailable prices placed last.
 
 Post-fix data summary: all 560 quotes have null open/high/low values because the source feed supplies no OHLC; one quote (AAL) has null current/change values; zero rows fail arithmetic reconciliation when unavailable values are excluded; 75 rows still have zero volume; two zero market caps were converted to null; and the top-10 losers response contains no zero-volume rows. The quote snapshot itself is still marked stale, HBL history is still six days old, the HBL day range remains unavailable, and annual/quarterly fundamentals remain null. These are upstream refresh/source gaps and are correctly exposed as stale/null; the API cannot reconstruct true market prices or missing financial statements.
+
+## Final deployment verification (2026-09-25)
+
+Commits `eb8704f` and `289c01e` were pushed to `main`. The latter increments the fundamentals cache key so older ticker-only HBL profiles are not reused. After deployment, the same **29** Stocks/Market route and validation cases were run again against AWS. All 29 returned the expected HTTP status and valid JSON: valid requests returned 200; invalid range, period, symbol, sort, and bounds returned 422. The response keys were checked for all endpoint families. The entire quote endpoint returned **560 of 560** items.
+
+The final quality pass confirmed:
+
+- HBL overview and fundamentals now both return `Habib Bank Limited`; overview day range is `{low: 299.0, high: 312.05}`.
+- All 560 quotes still have unavailable OHLC values; the API returns null instead of fabricated zeros. One quote has unavailable current price. There are no arithmetic mismatches among available price/change values.
+- Zero-volume rows remain in the full market quote universe, but none appears in the top-10 losers endpoint.
+- The quote snapshot remains marked stale. HBL history/indicators still use the 2026-09-18 data point (six days old at verification time).
+- HBL annual and quarterly fundamentals remain null and the response remains explicitly `partial`; the upstream source does not provide those statement sets.
+
+Final focused backend regression suite: **43 passed** (`tests/api/test_stocks_api.py`, `tests/api/test_market_api.py`, `tests/unit/test_market_service.py`, `tests/unit/test_stock_search.py`). The final production pass covers every documented public Stocks and Market GET operation plus representative valid filters and validation failures. No POST operation is documented for these public modules in the OpenAPI spec.
