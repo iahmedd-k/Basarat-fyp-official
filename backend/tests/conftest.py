@@ -357,6 +357,22 @@ def mock_stock_service():
             ],
             "metrics": [],
             "extras": {},
+            "sector_overview": {
+                "sector": "Commercial Banks",
+                "companies_count": 3,
+                "avg_change_pct": 1.2,
+                "advancing": 2,
+                "declining": 1,
+                "unchanged": 0,
+                "stock": {"symbol": symbol.upper(), "name": symbol.upper(), "current": 154.0, "ldcp": 150.0, "change_pct": 2.67, "volume": 1000000},
+                "stock_rank": 1,
+                "top_gainers": [
+                    {"symbol": symbol.upper(), "name": symbol.upper(), "current": 154.0, "ldcp": 150.0, "change_pct": 2.67, "volume": 1000000}
+                ],
+                "top_losers": [
+                    {"symbol": "MCB", "name": "MCB", "current": 290.0, "ldcp": 295.0, "change_pct": -1.69, "volume": 400000}
+                ],
+            },
         }
 
     def mock_search_symbols(q, limit=10):

@@ -153,6 +153,28 @@ class AnnouncementItem(BaseModel):
     pdf_link: str | None = None
 
 
+class SectorPeerItem(BaseModel):
+    symbol: str | None = None
+    name: str | None = None
+    current: float | None = None
+    ldcp: float | None = None
+    change_pct: float | None = None
+    volume: int | None = None
+
+
+class SectorOverview(BaseModel):
+    sector: str | None = None
+    companies_count: int | None = None
+    avg_change_pct: float | None = None
+    advancing: int | None = None
+    declining: int | None = None
+    unchanged: int | None = None
+    stock: SectorPeerItem | None = None
+    stock_rank: int | None = None
+    top_gainers: list[SectorPeerItem] | None = None
+    top_losers: list[SectorPeerItem] | None = None
+
+
 class FundamentalsResponse(BaseModel):
     symbol: str
     company_profile: CompanyProfile | None = None
@@ -165,3 +187,4 @@ class FundamentalsResponse(BaseModel):
     announcements: list[AnnouncementItem] | None = None
     metrics: list[FundamentalMetric] | None = None
     extras: FundamentalsExtras | None = None
+    sector_overview: SectorOverview | None = None

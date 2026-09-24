@@ -70,6 +70,53 @@ class StockService:
         except Exception:
             return None
 
+    def get_sector_overview(self, symbol: str, limit: int = 5):
+        symbol = str(symbol).upper()
+        sector = self._sector_of(symbol)
+        if sector is None:
+            return None
+
+        data = self._market.get_market_data_sync()
+        if not data:
+            return None
+
+        peers = [d for d in data if str(d.get("sector", "")) == str(sector)]
+        if not peers:
+            return None
+
+        peers = sorted(peers, key=lambda d: d.get("change_pct", 0.0), reverse=True)
+        valid = [d for d in peers if d.get("change_pct") is not None]
+        avg_change = round(sum(d["change_pct"] for d in valid) / len(valid), 2) if valid else 0.0
+        advancing = sum(1 for d in peers if d.get("change_pct", 0.0) > 0)
+        declining = sum(1 for d in peers if d.get("change_pct", 0.0) < 0)
+        unchanged = len(peers) - advancing - declining
+
+        rank = next((i + 1 for i, d in enumerate(peers) if d.get("symbol") == symbol), None)
+        stock = next((d for d in peers if d.get("symbol") == symbol), None)
+
+        def _peer(d):
+            return {
+                "symbol": d.get("symbol"),
+                "name": d.get("name", d.get("symbol")),
+                "current": d.get("current"),
+                "ldcp": d.get("ldcp"),
+                "change_pct": d.get("change_pct"),
+                "volume": d.get("volume"),
+            }
+
+        return {
+            "sector": sector,
+            "companies_count": len(peers),
+            "avg_change_pct": avg_change,
+            "advancing": advancing,
+            "declining": declining,
+            "unchanged": unchanged,
+            "stock": _peer(stock) if stock else None,
+            "stock_rank": rank,
+            "top_gainers": [_peer(d) for d in peers[:limit]],
+            "top_losers": [_peer(d) for d in peers[-limit:][::-1]],
+        }
+
     def get_quote(self, symbol: str):
         rows = self.get_quote_batch([symbol])
         return rows[0] if rows else None
@@ -573,20 +620,43 @@ class StockService:
         self._get_fund_frame(symbol)  # populate cache for _fund_metric
         div = self._get_dividend_frame(symbol)
 
-        # 1. Company Profile & Governance
-        desc = None
+        info_dict = {}
         try:
-            desc = pypsx_toolkit.get_business_description(symbol)
+            t = pypsx_toolkit.Ticker(symbol)
+            if hasattr(t, "info") and isinstance(t.info, dict):
+                info_dict = t.info
         except Exception:
             pass
+
+        # 1. Company Profile & Governance
+        prof = info_dict.get("Profile", {}) if isinstance(info_dict.get("Profile"), dict) else {}
+        gov = info_dict.get("Governance", {}) if isinstance(info_dict.get("Governance"), dict) else {}
+
+        desc = prof.get("Business Description")
+        if not desc:
+            try:
+                desc = pypsx_toolkit.get_business_description(symbol)
+            except Exception:
+                pass
         if not desc:
             desc = self._fund_raw_string(symbol, "Profile", "Business Description")
 
-        ceo = self._fund_raw_string(symbol, "Governance", "CEO")
-        chairperson = self._fund_raw_string(symbol, "Governance", "Chairperson")
-        secretary = self._fund_raw_string(symbol, "Governance", "Company Secretary")
-        website = self._fund_raw_string(symbol, "Profile", "Website")
-        address = self._fund_raw_string(symbol, "Profile", "Address")
+        # Parse Governance dict where key is person name and value is title, or vice versa
+        ceo, chairperson, secretary = None, None, None
+        for k, v in gov.items():
+            k_str, v_str = str(k).upper(), str(v).upper()
+            if "CEO" in v_str or "CHIEF EXECUTIVE" in v_str: ceo = k
+            elif "CEO" in k_str or "CHIEF EXECUTIVE" in k_str: ceo = v
+            if "CHAIR" in v_str: chairperson = k
+            elif "CHAIR" in k_str: chairperson = v
+            if "SECRETARY" in v_str: secretary = k
+            elif "SECRETARY" in k_str: secretary = v
+
+        if not ceo: ceo = self._fund_raw_string(symbol, "Governance", "CEO")
+        if not chairperson: chairperson = self._fund_raw_string(symbol, "Governance", "Chairperson")
+        if not secretary: secretary = self._fund_raw_string(symbol, "Governance", "Company Secretary")
+        website = prof.get("Website") or self._fund_raw_string(symbol, "Profile", "Website")
+        address = prof.get("Address") or self._fund_raw_string(symbol, "Profile", "Address")
         sector = self._sector_of(symbol)
 
         company_profile = {
@@ -601,26 +671,52 @@ class StockService:
         }
 
         # 2. Equity Profile
+        eq = info_dict.get("Equity Profile", {}) if isinstance(info_dict.get("Equity Profile"), dict) else {}
         market_cap_k = self._fund_metric(symbol, "Equity Profile", "Market Cap (000's)")
+        if not market_cap_k and eq.get("Market Cap (000's)"):
+            try: market_cap_k = float(str(eq["Market Cap (000's)"]).replace(",", "").strip())
+            except Exception: pass
+
         market_cap_pkr = (market_cap_k * 1000.0) if market_cap_k else None
         market_cap_m = round(market_cap_k / 1000.0, 2) if market_cap_k else None
+
         total_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Shares"))
+        if not total_shares and eq.get("Shares"):
+            try: total_shares = int(float(str(eq["Shares"]).replace(",", "").strip()))
+            except Exception: pass
+
         free_float_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Free Float"))
         free_float_pct = self._fund_metric(symbol, "Equity Profile", "Free Float")
-        if free_float_pct and free_float_pct > 100:  # If raw shares was returned instead of pct
+        if not free_float_pct and eq.get("Free Float"):
+            ff_str = str(eq["Free Float"])
+            if "%" in ff_str:
+                try: free_float_pct = float(ff_str.replace("%", "").strip())
+                except Exception: pass
+
+        if free_float_pct and free_float_pct > 100:
             free_float_pct = round((free_float_shares / total_shares * 100), 2) if total_shares else None
+        elif free_float_pct and not free_float_shares and total_shares:
+            free_float_shares = int(total_shares * (free_float_pct / 100.0))
 
         equity_profile = {
             "market_cap_pkr": market_cap_pkr,
             "market_cap_pkr_m": market_cap_m,
-            "total_shares": total_shares if total_shares > 0 else None,
-            "free_float_shares": free_float_shares if free_float_shares > 0 else None,
+            "total_shares": total_shares if total_shares and total_shares > 0 else None,
+            "free_float_shares": free_float_shares if free_float_shares and free_float_shares > 0 else None,
             "free_float_pct": free_float_pct,
         }
 
         # 3. Ratios & Valuation
         pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
         eps = self._fund_metric(symbol, "Financials Annual", "EPS")
+
+        fin_ann = info_dict.get("Financials Annual", {}) if isinstance(info_dict.get("Financials Annual"), dict) else {}
+        if not eps and fin_ann.get("EPS"):
+            try:
+                eps_parts = str(fin_ann["EPS"]).split("|")
+                eps = float(eps_parts[0].strip())
+            except Exception: pass
+
         div_yield = self._div_yield(div)
         peg = self._fund_metric(symbol, "Ratios", "PEG")
         eps_growth = self._fund_metric(symbol, "Ratios", "EPS Growth (%)")
@@ -636,6 +732,7 @@ class StockService:
             "gross_profit_margin_pct": gross_margin,
             "dividend_yield_pct": div_yield,
         }
+
 
         # 4. Trading Limits & 52-Week Range (via snapshot)
         year_high, year_low = None, None
@@ -728,6 +825,7 @@ class StockService:
             "announcements": announcements,
             "metrics": metrics,
             "extras": extras,
+            "sector_overview": self.get_sector_overview(symbol),
         }
 
         # Cache in Redis (1800s / 30m TTL)

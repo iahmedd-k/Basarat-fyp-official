@@ -169,6 +169,8 @@ class TestStockFundamentals:
             assert "trading_limits" in data
             assert "dividend_history" in data
             assert "announcements" in data
+            assert "sector_overview" in data
+            assert data["sector_overview"]["companies_count"] >= 1
 
     async def test_fundamentals_requires_auth(self, client: AsyncClient):
         resp = await client.get("/api/v1/stocks/HBL/fundamentals")
