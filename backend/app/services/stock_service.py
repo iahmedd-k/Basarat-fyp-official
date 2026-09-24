@@ -517,9 +517,8 @@ class StockService:
             "symbol": symbol,
             "name": symbol,
             "sector": q["sector"],
-            # market-watch snapshot may be from the last session (market closed /
-            # cache refreshed by Celery), but it is still the most current price.
-            "current_price": q["current"],
+            # A fallback quote can be from a prior session; never label it current.
+            "current_price": q["current"] if not quote_freshness["is_stale"] else None,
             "ltp": q["current"],
             "ldcp": q["ldcp"],
             "change": q["change"],
