@@ -13,6 +13,8 @@ class IndexItem(BaseModel):
 
 class IndicesResponse(BaseModel):
     indices: list[IndexItem]
+    as_of: str | None = None
+    is_stale: bool = True
 
 
 class ConstituentItem(BaseModel):
@@ -34,11 +36,14 @@ class IndexConstituentsResponse(BaseModel):
     code: str
     shariah_compliant: bool | None = None
     constituents: list[ConstituentItem]
+    as_of: str | None = None
+    is_stale: bool = True
 
 
 class MarketQuoteItem(BaseModel):
     symbol: str
     sector: str
+    name: str | None = None
     ldcp: float
     open: float
     high: float
@@ -47,18 +52,25 @@ class MarketQuoteItem(BaseModel):
     change: float
     change_pct: float
     volume: int
+    market_cap_m: float | None = None
 
 
 class GainersResponse(BaseModel):
     gainers: list[MarketQuoteItem]
+    as_of: str | None = None
+    is_stale: bool = True
 
 
 class LosersResponse(BaseModel):
     losers: list[MarketQuoteItem]
+    as_of: str | None = None
+    is_stale: bool = True
 
 
 class VolumeSpikesResponse(BaseModel):
     volume_spikes: list[MarketQuoteItem]
+    as_of: str | None = None
+    is_stale: bool = True
 
 
 class MarketQuotesResponse(BaseModel):
@@ -104,3 +116,5 @@ class SentimentOverview(BaseModel):
     losers_pct: float
     sector_performance: list[SectorPerformance]
     top_movers: list[MarketQuoteItem]
+    as_of: str | None = None
+    is_stale: bool = True

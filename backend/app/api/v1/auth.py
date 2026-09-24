@@ -32,7 +32,7 @@ from app.schemas.auth import (
 )
 from app.services.auth_service import AuthService
 
-router = APIRouter(tags=["Authentication"])
+router = APIRouter()
 log = logging.getLogger(__name__)
 
 

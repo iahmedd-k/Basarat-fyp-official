@@ -476,7 +476,7 @@ class StockService:
                 log.warning("Could not write shared OHLCV cache for %s: %s", symbol, exc)
         return df
 
-def get_overview(self, symbol: str):
+    def get_overview(self, symbol: str):
         symbol = str(symbol).upper()
         batch = self.get_quote_batch([symbol])
         if not batch:
@@ -534,7 +534,7 @@ def get_overview(self, symbol: str):
 
         return {
             "symbol": symbol,
-            "name": symbol,
+            "name": self._company_name(symbol),
             "sector": q["sector"],
             "current_price": q["current"],
             "ltp": q["current"],
@@ -551,6 +551,28 @@ def get_overview(self, symbol: str):
             "quote_as_of": quote_freshness["as_of"],
             "quote_is_stale": quote_freshness["is_stale"],
         }
+
+    @staticmethod
+    def _company_name(symbol: str) -> str:
+        """Return the provider company name when available, falling back to ticker."""
+        info_key = f"stock:ticker_info:{symbol}"
+        info = cache_get_sync(info_key)
+        if isinstance(info, dict):
+            name = info.get("company_name") or info.get("name")
+            if name:
+                return str(name)
+        try:
+            ticker = pypsx_toolkit.Ticker(symbol)
+            ticker_info = getattr(ticker, "info", None)
+            info = ticker_info if isinstance(ticker_info, dict) else {}
+            if info:
+                cache_set_sync(info_key, info, FUND_TTL_SECONDS)
+                name = info.get("company_name") or info.get("name")
+                if name:
+                    return str(name)
+        except Exception as exc:
+            log.debug("Company name lookup failed for %s: %s", symbol, exc)
+        return symbol
 
     def _ytd_change_from_history(self, symbol: str):
         """Calculate year-to-date price change from the available daily bars."""
@@ -683,6 +705,7 @@ def get_overview(self, symbol: str):
                     signals["sell"] += 1
                 elif latest_rsi <= 30:
                     sig, desc = "BUY", "RSI is in oversold territory (<=30); potential bullish rebound."
+                    signals["buy"] += 1
                 elif latest_rsi >= 50:
                     sig, desc = "BUY", "RSI indicates positive upward momentum (50-70)."
                     signals["buy"] += 1

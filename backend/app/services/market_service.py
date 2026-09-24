@@ -264,9 +264,32 @@ class MarketService:
             return {"as_of": None, "is_stale": True}
 
     @staticmethod
+    def _cache_freshness(timestamp_key: str, ttl_seconds: int) -> dict:
+        fetched_at = cache_get_sync(timestamp_key)
+        if not fetched_at:
+            return {"as_of": None, "is_stale": True}
+        try:
+            stamp = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+            age = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
+            return {"as_of": fetched_at, "is_stale": age > ttl_seconds}
+        except (TypeError, ValueError):
+            return {"as_of": None, "is_stale": True}
+
+    @classmethod
+    def indices_freshness(cls) -> dict:
+        return cls._cache_freshness("market:indices:fetched_at", INDICES_TTL_SECONDS)
+
+    @classmethod
+    def constituents_freshness(cls, index_code: str) -> dict:
+        return cls._cache_freshness(
+            f"market:constituents:{index_code}:fetched_at", CONSTITUENTS_TTL_SECONDS
+        )
+
+    @staticmethod
     def _normalize_quotes(rows: list[dict]) -> list[dict]:
         """Reconcile provider change fields with the actual current and LDCP prices."""
         for row in rows:
+            row.setdefault("name", row.get("symbol"))
             current = MarketService._safe_float(row.get("current"))
             ldcp = MarketService._safe_float(row.get("ldcp"))
             if current > 0 and ldcp > 0:
@@ -364,6 +387,7 @@ class MarketService:
             if results:
                 await cache_set(cache_key, results, INDICES_TTL_SECONDS)
                 await cache_set(fallback_key, results, FALLBACK_TTL_SECONDS)
+                await cache_set("market:indices:fetched_at", datetime.now(timezone.utc).isoformat(), FALLBACK_TTL_SECONDS)
                 log.info("Stored %d indices in centralized cache", len(results))
                 return results
 
@@ -427,6 +451,11 @@ class MarketService:
             if results:
                 await cache_set(cache_key, results, CONSTITUENTS_TTL_SECONDS)
                 await cache_set(fallback_key, results, FALLBACK_TTL_SECONDS)
+                await cache_set(
+                    f"market:constituents:{index_code}:fetched_at",
+                    datetime.now(timezone.utc).isoformat(),
+                    FALLBACK_TTL_SECONDS,
+                )
                 log.info("Stored %d constituents for %s in centralized cache", len(results), index_code)
                 return results
 
@@ -490,6 +519,7 @@ class MarketService:
                     low_val = min(ldcp, current)
                 rows.append({
                     "symbol": str(symbol),
+                    "name": str(row.get("NAME") or row.get("COMPANY NAME") or symbol),
                     "sector": sector_val if sector_val else "Unclassified",
                     "ldcp": ldcp,
                     "open": open_val,
@@ -573,6 +603,7 @@ class MarketService:
                     low_val = min(ldcp, current)
                 rows.append({
                     "symbol": str(symbol),
+                    "name": str(row.get("NAME") or row.get("COMPANY NAME") or symbol),
                     "sector": sector_val if sector_val else "Unclassified",
                     "ldcp": ldcp,
                     "open": open_val,
@@ -687,6 +718,7 @@ class MarketService:
             "losers_pct": round(declining / total * 100, 1) if total else 0,
             "sector_performance": sector_performance,
             "top_movers": top_movers,
+            **self.quote_freshness(),
         }
 
     async def get_sector_performance(self, order: str = "desc") -> dict:

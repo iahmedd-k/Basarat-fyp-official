@@ -47,7 +47,7 @@ async def get_market_indices(
 ):
     try:
         indices = await service.get_indices()
-        return {"indices": indices}
+        return {"indices": indices, **service.indices_freshness()}
     except Exception:
         raise ServiceUnavailableError("Failed to fetch market indices")
 
@@ -68,6 +68,7 @@ async def get_kse_100_constituents(
             "index": "KSE-100",
             "code": "KSE100",
             "constituents": constituents,
+            **service.constituents_freshness("KSE100"),
         }
     except Exception:
         raise ServiceUnavailableError("Failed to fetch KSE-100 constituents")
@@ -89,6 +90,7 @@ async def get_kse_30_constituents(
             "index": "KSE-30",
             "code": "KSE30",
             "constituents": constituents,
+            **service.constituents_freshness("KSE30"),
         }
     except Exception:
         raise ServiceUnavailableError("Failed to fetch KSE-30 constituents")
@@ -111,6 +113,7 @@ async def get_kmi_30_constituents(
             "code": "KMI30",
             "shariah_compliant": True,
             "constituents": constituents,
+            **service.constituents_freshness("KMI30"),
         }
     except Exception:
         raise ServiceUnavailableError("Failed to fetch KMI-30 constituents")
@@ -129,7 +132,7 @@ async def get_top_gainers(
 ):
     try:
         gainers = await service.get_top_gainers(limit)
-        return {"gainers": gainers}
+        return {"gainers": gainers, **service.quote_freshness()}
     except Exception:
         raise ServiceUnavailableError("Failed to fetch gainers")
 
@@ -147,7 +150,7 @@ async def get_top_losers(
 ):
     try:
         losers = await service.get_top_losers(limit)
-        return {"losers": losers}
+        return {"losers": losers, **service.quote_freshness()}
     except Exception:
         raise ServiceUnavailableError("Failed to fetch losers")
 
@@ -165,7 +168,7 @@ async def get_volume_spikes(
 ):
     try:
         spikes = await service.get_volume_spikes(limit)
-        return {"volume_spikes": spikes}
+        return {"volume_spikes": spikes, **service.quote_freshness()}
     except Exception:
         raise ServiceUnavailableError("Failed to fetch volume spikes")
 
