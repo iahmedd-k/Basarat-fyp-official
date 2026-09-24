@@ -462,20 +462,37 @@ class StockService:
         cached_at = _cache_ttl.get(key, 0.0)
         if key in _cache and now - cached_at <= OHLCV_TTL_SECONDS:
             return _cache[key]
+        stale_shared = None
         shared = cache_get_sync(shared_key)
         if isinstance(shared, str):
             try:
                 df = pd.read_json(StringIO(shared), orient="split")
                 df.index = pd.to_datetime(df.index)
-                _cache[key] = df
-                _cache_ttl[key] = now
-                return df
+                if not self._ohlcv_frame_is_stale(df):
+                    _cache[key] = df
+                    _cache_ttl[key] = now
+                    return df
+                stale_shared = df
             except Exception as exc:
                 log.warning("Could not decode shared OHLCV cache for %s: %s", symbol, exc)
         # The daily Celery data job maintains shared parquet history. Prefer it
         # so every API request does not issue its own upstream history fetch.
         df = self._get_ohlcv_from_file(symbol, start, end)
         if df is None or (hasattr(df, "empty") and df.empty):
+            df = stale_shared
+        if df is not None and self._ohlcv_frame_is_stale(df):
+            latest = self._latest_ohlcv_date(df)
+            refresh_start = max(start, latest + timedelta(days=1)) if latest else start
+            try:
+                refreshed = None
+                if refresh_start <= end:
+                    refreshed = pypsx_toolkit.get_historical(
+                        symbol, start_date=refresh_start.isoformat(), end_date=end.isoformat()
+                    )
+                df = self._merge_ohlcv_frames(df, refreshed, start, end)
+            except Exception as exc:
+                log.warning("PSX history fetch failed for %s: %s", symbol, exc)
+        elif df is None:
             try:
                 df = pypsx_toolkit.get_historical(
                     symbol, start_date=start.isoformat(), end_date=end.isoformat()
@@ -492,6 +509,41 @@ class StockService:
             except Exception as exc:
                 log.warning("Could not write shared OHLCV cache for %s: %s", symbol, exc)
         return df
+
+    @staticmethod
+    def _latest_ohlcv_date(frame):
+        if frame is None or getattr(frame, "empty", True):
+            return None
+        try:
+            return pd.to_datetime(frame.index).max().date()
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _ohlcv_frame_is_stale(cls, frame):
+        latest = cls._latest_ohlcv_date(frame)
+        return latest is None or (date.today() - latest).days > 3
+
+    @staticmethod
+    def _merge_ohlcv_frames(existing, refreshed, start, end):
+        import pandas as pd
+
+        frames = []
+        for frame in (existing, refreshed):
+            if frame is None or getattr(frame, "empty", True):
+                continue
+            current = frame.copy()
+            if "date" in current.columns:
+                current["date"] = pd.to_datetime(current["date"])
+                current = current.set_index("date")
+            current.index = pd.to_datetime(current.index)
+            current.columns = [str(column).upper() for column in current.columns]
+            frames.append(current)
+        if not frames:
+            return existing
+        merged = pd.concat(frames).sort_index()
+        merged = merged[~merged.index.duplicated(keep="last")]
+        return merged.loc[(merged.index >= pd.to_datetime(start)) & (merged.index <= pd.to_datetime(end))]
 
     def get_overview(self, symbol: str):
         symbol = str(symbol).upper()
@@ -662,11 +714,11 @@ class StockService:
             bars.append(
                 {
                     "date": str(ts.date()),
-                    "open": self._num(row["OPEN"]),
-                    "high": self._num(row["HIGH"]),
-                    "low": self._num(row["LOW"]),
-                    "close": self._num(row["CLOSE"]),
-                    "volume": self._safe_int(row["VOLUME"]),
+                    "open": self._num(row.get("OPEN")),
+                    "high": self._num(row.get("HIGH")),
+                    "low": self._num(row.get("LOW")),
+                    "close": self._num(row.get("CLOSE")),
+                    "volume": self._safe_int(row.get("VOLUME")),
                 }
             )
         as_of = df.index[-1].date()

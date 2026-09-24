@@ -109,3 +109,13 @@ The final quality pass confirmed:
 - HBL annual and quarterly fundamentals remain null and the response remains explicitly `partial`; the upstream source does not provide those statement sets.
 
 Final focused backend regression suite: **43 passed** (`tests/api/test_stocks_api.py`, `tests/api/test_market_api.py`, `tests/unit/test_market_service.py`, `tests/unit/test_stock_search.py`). The final production pass covers every documented public Stocks and Market GET operation plus representative valid filters and validation failures. No POST operation is documented for these public modules in the OpenAPI spec.
+
+## Production-readiness follow-up — 2026-09-25
+
+- Replaced the Market Pulse page's hard-coded quote/index lists and generated sparklines with public Market API requests for quotes, indices, sentiment, and index constituents. Gainers, losers, active-volume sorting, search, and index filters now operate on API records.
+- Stale OHLCV snapshots now trigger an incremental fetch from the last stored bar and a sorted/deduplicated merge. If the PSX history source fails, the last known bars are retained and their existing `is_stale`/age metadata continues to expose the gap. Missing optional bar columns serialize as null rather than raising.
+- Added quote and index freshness indicators, stale-constituent suppression for KMI-30 badges, explicit errors/loading/empty states, and null-aware numeric rendering. Stock detail shows only fields present in the API and no longer presents placeholder charts/financial data as if available.
+- Frontend production configuration still requires `VITE_API_URL` ending in `/api/v1`. The local frontend env file has no such setting and the repository has no frontend build/deploy workflow, so the page intentionally shows a configuration error in production until the web host/build environment supplies the API URL. Development falls back to localhost.
+- Validation: **45** Stocks/Market tests passed across API, market service, stock search, and OHLCV refresh suites; `npm run build` passed. `npm run lint` passed with existing warnings in `News_Seciton.jsx` and `Stockperview.jsx`; the changed Market Pulse file introduced no lint warnings.
+
+The AWS API continues to expose source freshness; quote/history staleness and unavailable financial fundamentals remain upstream data-quality limitations. This follow-up improves frontend behavior but does not eliminate missing source records, and the frontend is not production-connected until its build environment configures `VITE_API_URL`.

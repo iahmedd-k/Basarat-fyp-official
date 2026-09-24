@@ -57,6 +57,10 @@ Once logged in, the user enters the main workstation with a **Collapsible Sideba
 
 ## 3. Tech Stack & Recommended Packages
 
+### Market Pulse data configuration
+
+`VITE_API_URL` must be set to the deployed public API base ending in `/api/v1` when building the web app. In development the page defaults to `http://localhost:8000/api/v1`; production builds fail visibly when the API URL is missing. Market Pulse reads live quote, index, sentiment, and index-constituent endpoints. It shows the API freshness timestamp and stale state and does not substitute sample prices.
+
 | Layer | Technology | Rationale |
 |---|---|---|
 | **Framework** | **React 19 + Vite** | Blazing-fast HMR, lightweight SPA bundle without SSR overhead. |
