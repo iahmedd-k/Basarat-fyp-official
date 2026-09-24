@@ -476,7 +476,7 @@ class StockService:
                 log.warning("Could not write shared OHLCV cache for %s: %s", symbol, exc)
         return df
 
-    def get_overview(self, symbol: str):
+def get_overview(self, symbol: str):
         symbol = str(symbol).upper()
         batch = self.get_quote_batch([symbol])
         if not batch:
@@ -488,6 +488,23 @@ class StockService:
         quote = self._get_quote_frame(symbol)
         high = q["high"] or self._quote_field(quote, "HIGH")
         low = q["low"] or self._quote_field(quote, "LOW")
+
+        # If market data doesn't have valid high/low, compute from today's OHLCV bar
+        if (high is None or high == 0.0) or (low is None or low == 0.0):
+            today = date.today()
+            try:
+                ohlcv = self._get_ohlcv(symbol, today - timedelta(days=5), today)
+                if ohlcv is not None and not ohlcv.empty and "HIGH" in ohlcv.columns and "LOW" in ohlcv.columns:
+                    latest_bar = ohlcv.iloc[-1]
+                    ohlcv_high = self._num(latest_bar.get("HIGH"))
+                    ohlcv_low = self._num(latest_bar.get("LOW"))
+                    if ohlcv_high and ohlcv_high > 0:
+                        high = ohlcv_high
+                    if ohlcv_low and ohlcv_low > 0:
+                        low = ohlcv_low
+            except Exception as exc:
+                log.warning("Failed to compute day_range from OHLCV for %s: %s", symbol, exc)
+
         quote_freshness = self._market.quote_freshness()
         market_cap_m = self._market_cap_m(symbol)
         pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
