@@ -476,7 +476,7 @@ class StockService:
                 log.warning("Could not write shared OHLCV cache for %s: %s", symbol, exc)
         return df
 
-def get_overview(self, symbol: str):
+    def get_overview(self, symbol: str):
         symbol = str(symbol).upper()
         batch = self.get_quote_batch([symbol])
         if not batch:
@@ -534,6 +534,18 @@ def get_overview(self, symbol: str):
             "quote_as_of": quote_freshness["as_of"],
             "quote_is_stale": quote_freshness["is_stale"],
         }
+
+    def _ytd_change_from_history(self, symbol: str):
+        """Calculate year-to-date price change from the available daily bars."""
+        start = date(date.today().year, 1, 1)
+        frame = self._get_ohlcv(str(symbol).upper(), start, date.today())
+        if frame is None or frame.empty or "CLOSE" not in frame.columns:
+            return None
+        first_close = self._num(frame.iloc[0].get("CLOSE"))
+        last_close = self._num(frame.iloc[-1].get("CLOSE"))
+        if first_close is None or first_close <= 0 or last_close is None:
+            return None
+        return round((last_close / first_close - 1) * 100, 2)
 
     def _market_cap_m(self, symbol):
         raw = self._fund_metric(symbol, "Equity Profile", "Market Cap (000's)")
