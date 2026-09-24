@@ -7,13 +7,14 @@ class ShariahCriterion(BaseModel):
     name: str
     threshold: float
     value: float | None = None
-    passed: bool
+    passed: bool | None
     description: str | None = None
 
 
 class ShariahScreeningResponse(BaseModel):
     symbol: str
-    is_shariah_compliant: bool
+    screening_available: bool = True
+    is_shariah_compliant: bool | None
     overall_score: float | None = None
     screening_method: str | None = None
     screened_at: datetime | None = None
@@ -24,7 +25,8 @@ class ShariahScreeningResponse(BaseModel):
 
 class ShariahCriteriaResponse(BaseModel):
     symbol: str
-    is_shariah_compliant: bool = True
+    screening_available: bool = True
+    is_shariah_compliant: bool | None = True
     criteria: list[ShariahCriterion]
 
 

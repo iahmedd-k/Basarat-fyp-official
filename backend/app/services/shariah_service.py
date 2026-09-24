@@ -111,7 +111,7 @@ class ShariahService:
         # If not in DB, evaluate based on PSX KMI-30 / Meezan Screening standard
         return await self._evaluate_and_persist_screening(sym_upper, stock)
 
-    async def _evaluate_and_persist_screening(self, symbol: str, stock: Stock | None = None) -> ShariahScreening:
+    async def _evaluate_and_persist_screening(self, symbol: str, stock: Stock | None = None) -> ShariahScreening | None:
         """Evaluate Shariah compliance dynamically based on PSX KMI-30 / Meezan criteria."""
         sym_upper = symbol.upper()
 
@@ -120,8 +120,10 @@ class ShariahService:
             screening = ShariahScreening(
                 stock_id=stock.id if stock else f"stock-{sym_upper.lower()}",
                 is_shariah_compliant=False,
-                debt_ratio=0.8500,
-                interest_income_ratio=0.9200,
+                # Business activity is sufficient for this known category;
+                # these financial ratios are not available from the source.
+                debt_ratio=None,
+                interest_income_ratio=None,
                 screening_method="PSX KMI-30 / Meezan Screening Standard",
                 screened_at=datetime.utcnow(),
             )
@@ -148,15 +150,9 @@ class ShariahService:
                     screened_at=datetime.utcnow(),
                 )
             else:
-                # Default compliant industrial/commercial profile
-                screening = ShariahScreening(
-                    stock_id=stock.id if stock else f"stock-{sym_upper.lower()}",
-                    is_shariah_compliant=True,
-                    debt_ratio=0.1800,
-                    interest_income_ratio=0.0150,
-                    screening_method="PSX KMI-30 / Meezan Screening Standard",
-                    screened_at=datetime.utcnow(),
-                )
+                # A missing stock or an unclassified sector is not evidence of
+                # Shariah compliance. Do not manufacture financial ratios.
+                return None
 
         # If stock exists in DB, persist this screening record
         if stock:
@@ -170,14 +166,27 @@ class ShariahService:
 
     def build_criteria(self, screening: ShariahScreening | None, symbol: str = "") -> list[dict]:
         """Build the comprehensive 6-point PSX/Meezan Shariah screening breakdown."""
+        if screening is None:
+            return [
+                {"name": name, "threshold": threshold, "value": None, "passed": None,
+                 "description": "No screening data is available for this symbol."}
+                for name, threshold in (
+                    ("Core Business Permissibility", 1.0),
+                    ("Debt to Total Assets Ratio", 0.37),
+                    ("Non-Compliant Investments Ratio", 0.33),
+                    ("Non-Permissible / Interest Income Ratio", 0.05),
+                    ("Illiquid Assets to Total Assets Ratio", 0.25),
+                    ("Net Liquid Assets vs Market Price", 1.0),
+                )
+            ]
         sym_upper = symbol.upper()
         profile = KMI30_PROFILES.get(sym_upper, {})
         is_non_compliant = sym_upper in NON_COMPLIANT_SYMBOLS
 
-        debt_ratio = float(screening.debt_ratio) if screening and screening.debt_ratio is not None else profile.get("debt_ratio", 0.18)
-        interest_ratio = float(screening.interest_income_ratio) if screening and screening.interest_income_ratio is not None else profile.get("interest_ratio", 0.015)
-        non_compliant_inv = profile.get("non_compliant_inv", 0.05 if not is_non_compliant else 0.45)
-        illiquid_ratio = profile.get("illiquid_ratio", 0.75 if not is_non_compliant else 0.10)
+        debt_ratio = float(screening.debt_ratio) if screening and screening.debt_ratio is not None else profile.get("debt_ratio", None if is_non_compliant else 0.18)
+        interest_ratio = float(screening.interest_income_ratio) if screening and screening.interest_income_ratio is not None else profile.get("interest_ratio", None if is_non_compliant else 0.015)
+        non_compliant_inv = profile.get("non_compliant_inv", None if is_non_compliant else 0.05)
+        illiquid_ratio = profile.get("illiquid_ratio", None if is_non_compliant else 0.75)
 
         is_core_halal = not is_non_compliant and (screening.is_shariah_compliant if screening else True)
 
@@ -193,35 +202,35 @@ class ShariahService:
                 "name": "Debt to Total Assets Ratio",
                 "threshold": 0.37,
                 "value": debt_ratio,
-                "passed": debt_ratio < 0.37 and is_core_halal,
+                "passed": None if debt_ratio is None else debt_ratio < 0.37 and is_core_halal,
                 "description": "Total interest-bearing debt / Total Assets must be less than 37%.",
             },
             {
                 "name": "Non-Compliant Investments Ratio",
                 "threshold": 0.33,
                 "value": non_compliant_inv,
-                "passed": non_compliant_inv < 0.33 and is_core_halal,
+                "passed": None if non_compliant_inv is None else non_compliant_inv < 0.33 and is_core_halal,
                 "description": "Interest-bearing deposits and non-compliant investments / Total Assets must be under 33%.",
             },
             {
                 "name": "Non-Permissible / Interest Income Ratio",
                 "threshold": 0.05,
                 "value": interest_ratio,
-                "passed": interest_ratio < 0.05 and is_core_halal,
+                "passed": None if interest_ratio is None else interest_ratio < 0.05 and is_core_halal,
                 "description": "Interest and non-permissible income / Gross Revenue must be under 5%.",
             },
             {
                 "name": "Illiquid Assets to Total Assets Ratio",
                 "threshold": 0.25,
                 "value": illiquid_ratio,
-                "passed": illiquid_ratio >= 0.25 and is_core_halal,
+                "passed": None if illiquid_ratio is None else illiquid_ratio >= 0.25 and is_core_halal,
                 "description": "Illiquid physical assets / Total Assets must be at least 25%.",
             },
             {
                 "name": "Net Liquid Assets vs Market Price",
                 "threshold": 1.0,
-                "value": 0.42 if is_core_halal else 1.50,
-                "passed": is_core_halal,
+                "value": 0.42 if is_core_halal else None,
+                "passed": True if is_core_halal else None,
                 "description": "Net liquid assets per share must be less than the current market price per share.",
             },
         ]
