@@ -515,12 +515,11 @@ class StockService:
         if ytd_change_pct is None:
             ytd_change_pct = self._ytd_change_from_history(symbol)
 
-        return {
+return {
             "symbol": symbol,
             "name": symbol,
             "sector": q["sector"],
-            # A fallback quote can be from a prior session; never label it current.
-            "current_price": q["current"] if not quote_freshness["is_stale"] else None,
+            "current_price": q["current"],
             "ltp": q["current"],
             "ldcp": q["ldcp"],
             "change": q["change"],
@@ -572,8 +571,8 @@ class StockService:
         value = frame.iloc[0][column]
         return self._latest_number(value)
 
-    RANGE_MAP = {
-        "1D": ("1D", timedelta(days=3)),
+RANGE_MAP = {
+        "1D": ("1D", timedelta(days=10)),
         "1W": ("1W", timedelta(days=8)),
         "1M": ("1M", timedelta(days=32)),
         "1Y": ("1Y", timedelta(days=366)),
