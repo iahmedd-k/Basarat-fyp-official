@@ -119,3 +119,8 @@ Final focused backend regression suite: **43 passed** (`tests/api/test_stocks_ap
 - Validation: **45** Stocks/Market tests passed across API, market service, stock search, and OHLCV refresh suites; `npm run build` passed. `npm run lint` passed with existing warnings in `News_Seciton.jsx` and `Stockperview.jsx`; the changed Market Pulse file introduced no lint warnings.
 
 The AWS API continues to expose source freshness; quote/history staleness and unavailable financial fundamentals remain upstream data-quality limitations. This follow-up improves frontend behavior but does not eliminate missing source records, and the frontend is not production-connected until its build environment configures `VITE_API_URL`.
+
+### AWS check after commit `7bf683b`
+
+- `GET /stocks/HBL/price-history?range=1W` returned 200 with `as_of_date=2026-09-18`, `data_age_days=6`, and `is_stale=true` at the 2026-09-25 check. A direct, unauthenticated query to the configured PSX history source for HBL returned `PSXNotFoundError`; stale bars were preserved and correctly marked rather than replaced with invented data.
+- The OHLCV code path and regression tests are deployed, but the history source currently cannot refresh HBL. A functioning licensed historical-data source is required before history can be considered current.
