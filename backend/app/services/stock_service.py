@@ -486,6 +486,8 @@ class StockService:
         if q.get("current") == 0.0 and q.get("volume") == 0:
             return {"symbol": symbol, "message": "no data"}
         quote = self._get_quote_frame(symbol)
+        high = q["high"] or self._quote_field(quote, "HIGH")
+        low = q["low"] or self._quote_field(quote, "LOW")
         quote_freshness = self._market.quote_freshness()
         market_cap_m = self._market_cap_m(symbol)
         pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
@@ -523,7 +525,7 @@ class StockService:
             "ldcp": q["ldcp"],
             "change": q["change"],
             "change_pct": q["change_pct"],
-            "day_range": {"low": q["low"], "high": q["high"]},
+            "day_range": {"low": low, "high": high},
             "volume": q["volume"],
             "market_cap_m": market_cap_m,
             "market_cap": market_cap_m,

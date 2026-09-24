@@ -73,6 +73,29 @@ class MarketService:
         except (TypeError, ValueError):
             return default
 
+    @staticmethod
+    def _fetch_market_watch_frame():
+        """Fetch quotes, falling back to PSX all-share constituents if needed."""
+        try:
+            raw = pypsx_toolkit.market_watch()
+            if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
+                frame = raw.copy()
+                frame.columns = [str(column).strip().upper() for column in frame.columns]
+                return frame
+        except Exception as exc:
+            log.warning("PSX market watch failed; trying all-share quotes: %s", exc)
+
+        try:
+            raw = pypsx_toolkit.index_constituents("ALLSHR")
+            if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
+                log.info("Loaded quote rows from PSX ALLSHR constituents fallback")
+                frame = raw.copy()
+                frame.columns = [str(column).strip().upper() for column in frame.columns]
+                return frame
+        except Exception as exc:
+            log.warning("PSX all-share quote fallback failed: %s", exc)
+        return None
+
     async def get_indices(self, force_refresh: bool = False, read_only: bool = True) -> list[dict]:
         cache_key = "market:indices"
         fallback_key = "market:indices:last_known"
@@ -212,31 +235,33 @@ class MarketService:
             return []
 
         log.info("Fetching market watch from external API (sync)")
-        raw = None
-        try:
-            raw = pypsx_toolkit.market_watch()
-        except Exception as exc:
-            log.warning("External fetch of market watch failed (sync): %s", exc)
+        raw = self._fetch_market_watch_frame()
 
         if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
+            previous_rows = cache_get_sync(fallback_key) or []
+            previous_sectors = {
+                str(item.get("symbol", "")).upper(): item.get("sector")
+                for item in previous_rows
+                if isinstance(item, dict) and item.get("sector")
+            }
             rows = []
             for symbol, row in raw.iterrows():
                 ldcp = self._safe_float(row.get("LDCP"))
-                current = self._safe_float(row.get("Current"))
-                reported_change = self._safe_float(row.get("Change"))
+                current = self._safe_float(row.get("CURRENT"))
+                reported_change = self._safe_float(row.get("CHANGE"))
                 change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
                 rows.append({
                     "symbol": str(symbol),
-                    "sector": str(row.get("Sector", "")),
+                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "")) or None,
                     "ldcp": ldcp,
-                    "open": self._safe_float(row.get("Open")),
-                    "high": self._safe_float(row.get("High")),
-                    "low": self._safe_float(row.get("Low")),
+                    "open": self._safe_float(row.get("OPEN")),
+                    "high": self._safe_float(row.get("HIGH")),
+                    "low": self._safe_float(row.get("LOW")),
                     "current": current,
                     "change": change,
                     "change_pct": change_pct,
-                    "volume": self._safe_int(row.get("Volume")),
+                    "volume": self._safe_int(row.get("VOLUME")),
                 })
 
             cache_set_sync(cache_key, rows, QUOTES_TTL_SECONDS)
@@ -273,31 +298,37 @@ class MarketService:
         raw = None
         try:
             raw = await asyncio.wait_for(
-                asyncio.to_thread(pypsx_toolkit.market_watch),
-                timeout=15.0,
+                asyncio.to_thread(self._fetch_market_watch_frame),
+                timeout=20.0,
             )
         except Exception as e:
-            log.warning("External fetch of market watch failed: %s", e)
+            log.warning("External fetch of market watch and ALLSHR fallback failed: %s", e)
 
         if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
+            previous_rows = await cache_get(fallback_key) or []
+            previous_sectors = {
+                str(item.get("symbol", "")).upper(): item.get("sector")
+                for item in previous_rows
+                if isinstance(item, dict) and item.get("sector")
+            }
             rows = []
             for symbol, row in raw.iterrows():
                 ldcp = self._safe_float(row.get("LDCP"))
-                current = self._safe_float(row.get("Current"))
-                reported_change = self._safe_float(row.get("Change"))
+                current = self._safe_float(row.get("CURRENT"))
+                reported_change = self._safe_float(row.get("CHANGE"))
                 change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
                 rows.append({
                     "symbol": str(symbol),
-                    "sector": str(row.get("Sector", "")),
+                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "")) or None,
                     "ldcp": ldcp,
-                    "open": self._safe_float(row.get("Open")),
-                    "high": self._safe_float(row.get("High")),
-                    "low": self._safe_float(row.get("Low")),
+                    "open": self._safe_float(row.get("OPEN")),
+                    "high": self._safe_float(row.get("HIGH")),
+                    "low": self._safe_float(row.get("LOW")),
                     "current": current,
                     "change": change,
                     "change_pct": change_pct,
-                    "volume": self._safe_int(row.get("Volume")),
+                    "volume": self._safe_int(row.get("VOLUME")),
                 })
 
             if rows:
