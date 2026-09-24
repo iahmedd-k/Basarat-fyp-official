@@ -13,10 +13,7 @@ env/
 .vscode/
 .DS_Store
 tests/
-data/raw/
 data/sequences/
-data/processed/
 data/reports/
-# Keep models/, *.keras, *.npz, *.pkl, and inference data in the image.
-# They include runtime artifacts (GRU/XGBoost models and the fitted scaler).
+# Keep models/, *.keras, *.npz, *.pkl, and data/raw/ohlcv parquet files in the image.
 *_tmp.*

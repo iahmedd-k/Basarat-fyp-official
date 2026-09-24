@@ -154,36 +154,51 @@ class MarketService:
     def get_market_data_sync(self, force_refresh: bool = False) -> list[dict]:
         """Synchronous market data fetch with centralized Redis caching."""
         cache_key = "market:quotes"
+        fallback_key = "market:quotes:last_known"
         if not force_refresh:
             cached = cache_get_sync(cache_key)
-            if cached is not None:
+            if cached is not None and len(cached) > 0:
                 log.debug("Market data cache hit from Redis (sync)")
                 return cached
 
         log.info("Fetching market watch from external API (sync)")
-        raw = pypsx_toolkit.market_watch()
+        raw = None
+        try:
+            raw = pypsx_toolkit.market_watch()
+        except Exception as exc:
+            log.warning("External fetch of market watch failed (sync): %s", exc)
 
-        rows = []
-        for symbol, row in raw.iterrows():
-            ldcp = self._safe_float(row.get("LDCP"))
-            change = self._safe_float(row.get("Change"))
-            change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
-            rows.append({
-                "symbol": str(symbol),
-                "sector": str(row.get("Sector", "")),
-                "ldcp": ldcp,
-                "open": self._safe_float(row.get("Open")),
-                "high": self._safe_float(row.get("High")),
-                "low": self._safe_float(row.get("Low")),
-                "current": self._safe_float(row.get("Current")),
-                "change": change,
-                "change_pct": change_pct,
-                "volume": self._safe_int(row.get("Volume")),
-            })
+        if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
+            rows = []
+            for symbol, row in raw.iterrows():
+                ldcp = self._safe_float(row.get("LDCP"))
+                change = self._safe_float(row.get("Change"))
+                change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
+                rows.append({
+                    "symbol": str(symbol),
+                    "sector": str(row.get("Sector", "")),
+                    "ldcp": ldcp,
+                    "open": self._safe_float(row.get("Open")),
+                    "high": self._safe_float(row.get("High")),
+                    "low": self._safe_float(row.get("Low")),
+                    "current": self._safe_float(row.get("Current")),
+                    "change": change,
+                    "change_pct": change_pct,
+                    "volume": self._safe_int(row.get("Volume")),
+                })
 
-        cache_set_sync(cache_key, rows, CACHE_TTL_SECONDS)
-        log.info("Stored %d market quotes in centralized cache (sync)", len(rows))
-        return rows
+            cache_set_sync(cache_key, rows, CACHE_TTL_SECONDS)
+            cache_set_sync(fallback_key, rows, FALLBACK_TTL_SECONDS)
+            log.info("Stored %d market quotes in centralized cache (sync)", len(rows))
+            return rows
+
+        # Fallback to last known if available
+        last_known = cache_get_sync(fallback_key)
+        if last_known and len(last_known) > 0:
+            log.info("Serving %d market quotes from sync fallback cache", len(last_known))
+            return last_known
+
+        return []
 
     async def get_market_data(self, force_refresh: bool = False) -> list[dict]:
         cache_key = "market:quotes"

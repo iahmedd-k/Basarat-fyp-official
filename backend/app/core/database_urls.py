@@ -23,8 +23,8 @@ def async_database_url(value: str) -> tuple[URL, dict]:
         sslmode = "require"
     if sslmode:
         connect_args["ssl"] = sslmode
-    if url.port == 6543:
-        # Supabase/Supavisor transaction mode does not support prepared stmts.
+    if url.port == 6543 or "-pooler" in (url.host or "") or "pooler" in (url.host or ""):
+        # Supabase/Neon transaction poolers do not support prepared statements.
         connect_args["statement_cache_size"] = 0
     return url.set(query=query), connect_args
 

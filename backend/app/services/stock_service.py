@@ -209,6 +209,29 @@ class StockService:
         _cache_ttl[cache_key] = now
         return frame
 
+    def _get_ohlcv_from_file(self, symbol: str, start: date, end: date):
+        import pandas as pd
+        from pathlib import Path
+        for p in [Path(f"data/raw/ohlcv/{symbol}.parquet"), Path(f"/app/data/raw/ohlcv/{symbol}.parquet")]:
+            if p.exists():
+                try:
+                    df = pd.read_parquet(p)
+                    if "date" in df.columns:
+                        df["date"] = pd.to_datetime(df["date"])
+                        df = df.set_index("date")
+                    df.columns = [c.upper() for c in df.columns]
+                    start_ts = pd.to_datetime(start)
+                    end_ts = pd.to_datetime(end)
+                    filtered = df.loc[(df.index >= start_ts) & (df.index <= end_ts)]
+                    if not filtered.empty:
+                        return filtered
+                    lookback_days = (end - start).days
+                    n_rows = max(5, int(lookback_days * 0.75))
+                    return df.tail(n_rows)
+                except Exception:
+                    pass
+        return None
+
     def _get_ohlcv(self, symbol, start: date, end: date):
         symbol = str(symbol).upper()
         key = f"ohlcv:{symbol}:{start.isoformat()}:{end.isoformat()}"
@@ -216,12 +239,17 @@ class StockService:
         cached_at = _cache_ttl.get(key, 0.0)
         if key in _cache and now - cached_at <= OHLCV_TTL_SECONDS:
             return _cache[key]
+        df = None
         try:
             df = pypsx_toolkit.get_historical(
                 symbol, start_date=start.isoformat(), end_date=end.isoformat()
             )
         except Exception:
             df = None
+
+        if df is None or (hasattr(df, "empty") and df.empty):
+            df = self._get_ohlcv_from_file(symbol, start, end)
+
         _cache[key] = df
         _cache_ttl[key] = now
         return df
