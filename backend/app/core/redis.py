@@ -60,6 +60,17 @@ def get_sync_redis_client():
     return _sync_redis_client
 
 
+async def close_async_redis_client() -> None:
+    """Close and reset the async pool when a short-lived worker loop exits."""
+    global _redis_client
+    client, _redis_client = _redis_client, None
+    if client is not None:
+        try:
+            await client.aclose()
+        except Exception as exc:
+            log.debug("Redis close error: %s", exc)
+
+
 async def cache_get(key: str) -> Any | None:
     """Get item from Redis, falling back to local memory cache."""
     client = get_redis_client()

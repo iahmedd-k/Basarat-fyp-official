@@ -1,0 +1,12 @@
+{
+  "model": "xgboost_directional_binary",
+  "variant": "event_augmented",
+  "target_semantics": {
+    "0": "down",
+    "1": "up"
+  },
+  "horizon_sessions": 5,
+  "training_metadata": "dataset_metadata.json",
+  "model_sha256": "8a8e67e307f943a270059dc2d24129a363ddf7e80615887fc950a1c864c61834",
+  "metrics_file": "metrics.json"
+}

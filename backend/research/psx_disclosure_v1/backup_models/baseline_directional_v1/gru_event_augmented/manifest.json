@@ -1,0 +1,11 @@
+{
+  "model": "bidirectional_gru_directional_binary",
+  "variant": "event_augmented",
+  "target_semantics": {
+    "0": "down",
+    "1": "up"
+  },
+  "horizon_sessions": 5,
+  "model_sha256": "3d2d11f7254dfe489034cd63c18945379c499781b378ebf5a1d85e7696b74a86",
+  "metrics_file": "metrics.json"
+}

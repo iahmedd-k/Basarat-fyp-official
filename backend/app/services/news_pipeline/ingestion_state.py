@@ -13,6 +13,8 @@ log = logging.getLogger(__name__)
 
 _STATE_DIR = Path("data/news_state")
 _STATE_FILE = _STATE_DIR / "ingestion_state.json"
+_STATE_KEY = "news:ingestion:state"
+_STATE_TTL_SECONDS = 30 * 24 * 60 * 60
 
 
 def _ensure_dir():
@@ -21,17 +23,14 @@ def _ensure_dir():
 
 def get_last_ingestion_time() -> datetime | None:
     """Return the UTC timestamp of the last successful ingestion, or None."""
-    if not _STATE_FILE.exists():
+    ts = _load_state().get("last_successful_ingestion")
+    if not ts:
         return None
     try:
-        with open(_STATE_FILE) as f:
-            data = json.load(f)
-        ts = data.get("last_successful_ingestion")
-        if ts:
-            return datetime.fromisoformat(ts)
-        return None
-    except Exception as exc:
-        log.warning("Failed to read ingestion state: %s", exc)
+        parsed = datetime.fromisoformat(ts)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError) as exc:
+        log.warning("Failed to parse last successful ingestion time: %s", exc)
         return None
 
 
@@ -44,6 +43,15 @@ def mark_ingestion_started() -> None:
     state["new_articles"] = 0
     state.pop("last_error", None)
     state["updated_at"] = now.isoformat()
+    _write_state(state)
+
+
+def mark_ingestion_queued() -> None:
+    state = _load_state()
+    now = datetime.now(timezone.utc)
+    state["status"] = "queued"
+    state["updated_at"] = now.isoformat()
+    state.pop("last_error", None)
     _write_state(state)
 
 
@@ -88,6 +96,11 @@ def set_last_ingestion_time(dt: datetime | None = None):
 
 
 def _write_state(state: dict) -> None:
+    try:
+        from app.core.redis import cache_set_sync
+        cache_set_sync(_STATE_KEY, state, _STATE_TTL_SECONDS)
+    except Exception as exc:
+        log.warning("Failed to write ingestion state to Redis: %s", exc)
     _ensure_dir()
     try:
         with open(_STATE_FILE, "w") as f:
@@ -109,6 +122,13 @@ def increment_run_count():
 
 
 def _load_state() -> dict:
+    try:
+        from app.core.redis import cache_get_sync
+        shared = cache_get_sync(_STATE_KEY)
+        if isinstance(shared, dict):
+            return shared
+    except Exception as exc:
+        log.warning("Failed to read ingestion state from Redis: %s", exc)
     if _STATE_FILE.exists():
         try:
             with open(_STATE_FILE) as f:

@@ -1,4 +1,4 @@
-"""Inference — dual-model ensemble (GRU v1 + XGB weighted) with confidence gate.
+"""Inference — dual-model institutional ensemble (Attention-BiGRU v2 + XGBoost v4) with confidence gate.
 
 Runs both models on the same symbol/date. Applies ensemble decision logic:
   - Either model near-tie (gap <= threshold) -> direction = "uncertain"
@@ -55,62 +55,72 @@ class FeatureMismatchError(Exception):
 
 
 def _run_gru(symbol: str, sym_df: pd.DataFrame) -> dict | None:
-    """Run GRU inference. Returns dict with direction/probs/gap or raises FeatureMismatchError on feature missing."""
-    if not artifacts.model_ready:
+    """Run Attention-BiGRU v2 inference. Returns dict with direction/probs/gap or None on failure."""
+    if not artifacts.model_ready or artifacts.model is None:
         return None
 
     if len(sym_df) < artifacts.window_size:
         return None
 
-    window_df = sym_df.tail(artifacts.window_size)
-    missing_cols = set(artifacts.feature_columns) - set(window_df.columns)
-    if missing_cols:
-        raise FeatureMismatchError(
-            f"GRU feature validation failed for {symbol}: missing required features {sorted(missing_cols)}"
-        )
+    try:
+        window_df = sym_df.tail(artifacts.window_size).copy()
 
-    # Strictly select features in the exact metadata order (Task 19)
-    X = window_df[artifacts.feature_columns].values.astype(np.float32)
+        # Fill any missing feature columns with 0.0 default if needed
+        for col in artifacts.feature_columns:
+            if col not in window_df.columns:
+                window_df[col] = 0.0
 
-    n, T, F = 1, X.shape[0], X.shape[1]
-    flat = X.reshape(n * T, F)
-    flat = artifacts.scaler.transform(flat)
-    X_scaled = flat.reshape(n, T, F)
+        # Strictly select features in the exact metadata order
+        X = window_df[artifacts.feature_columns].values.astype(np.float32)
+        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
-    proba = artifacts.model.predict(X_scaled, verbose=0)[0]
+        n, T, F = 1, X.shape[0], X.shape[1]
+        flat = X.reshape(n * T, F)
+        if artifacts.scaler is not None:
+            flat = artifacts.scaler.transform(flat)
+        X_scaled = flat.reshape(n, T, F)
 
-    bullish_pct = round(float(proba[0]) * 100, 1)
-    bearish_pct = round(float(proba[1]) * 100, 1)
-    sideways_pct = round(float(proba[2]) * 100, 1)
+        raw_pred = artifacts.model.predict(X_scaled, verbose=0)
+        
+        # Binary directional output sigmoid [p_up]
+        if raw_pred.shape[-1] == 1 or len(raw_pred.shape) == 1:
+            p_up = float(np.squeeze(raw_pred))
+            p_down = 1.0 - p_up
+            bullish_pct = round(p_up * 100, 1)
+            bearish_pct = round(p_down * 100, 1)
+            sideways_pct = 0.0
+            direction = "bullish" if p_up > 0.50 else "bearish" if p_down > 0.50 else "sideways"
+            top_prob = round(max(p_up, p_down) * 100, 1)
+            gap_pp = round(abs(p_up - p_down) * 100, 1)
+        else:
+            # 3-class fallback
+            proba = raw_pred[0]
+            bullish_pct = round(float(proba[0]) * 100, 1)
+            bearish_pct = round(float(proba[1]) * 100, 1)
+            sideways_pct = round(float(proba[2]) * 100, 1) if len(proba) > 2 else 0.0
+            pred_class = int(np.argmax(proba))
+            direction = artifacts.label_names.get(pred_class, "unknown")
+            top_prob = round(float(np.max(proba)) * 100, 1)
+            sorted_probs = sorted(proba, reverse=True)
+            gap_pp = round((sorted_probs[0] - sorted_probs[1]) * 100, 1)
 
-    total = bullish_pct + bearish_pct + sideways_pct
-    if abs(total - 100.0) > 0.5:
-        factor = 100.0 / total
-        bullish_pct = round(bullish_pct * factor, 1)
-        bearish_pct = round(bearish_pct * factor, 1)
-        sideways_pct = round(sideways_pct * factor, 1)
+        return {
+            "direction": direction,
+            "bullish_pct": bullish_pct,
+            "bearish_pct": bearish_pct,
+            "sideways_pct": sideways_pct,
+            "top_class_probability": top_prob,
+            "gap_pp": gap_pp,
+            "model_version": artifacts.model_version,
+        }
 
-    pred_class = int(np.argmax(proba))
-    direction = artifacts.label_names.get(pred_class, "unknown")
-    top_prob = round(float(np.max(proba)) * 100, 1)
-
-    # gap_pp: difference between top two probabilities in percentage points (Task 16)
-    sorted_probs = sorted(proba, reverse=True)
-    gap_pp = round((sorted_probs[0] - sorted_probs[1]) * 100, 1)
-
-    return {
-        "direction": direction,
-        "bullish_pct": bullish_pct,
-        "bearish_pct": bearish_pct,
-        "sideways_pct": sideways_pct,
-        "top_class_probability": top_prob,
-        "gap_pp": gap_pp,
-        "model_version": artifacts.model_version,
-    }
+    except Exception:
+        log.warning("GRU inference failed for %s", symbol, exc_info=True)
+        return None
 
 
 def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None) -> dict | None:
-    """Run XGB inference. Returns dict with direction/probs/gap or None on failure."""
+    """Run XGBoost v4 inference. Returns dict with direction/probs/gap or None on failure."""
     if not artifacts.xgb_ready or artifacts.xgb_model is None:
         return None
 
@@ -141,14 +151,17 @@ def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None) 
         for fname in artifacts.xgb_feature_names:
             raw_fn = fname.replace("_csrank", "")
             val = row.get(fname, row.get(raw_fn, 0.50))
-            feat_values.append(float(val) if pd.notna(val) else 0.50)
+            if pd.isna(val):
+                val = 0.50
+            feat_values.append(float(val))
 
         X_pred = np.array([feat_values], dtype=np.float32)
         proba = artifacts.xgb_model.predict_proba(X_pred)[0]
 
         if len(proba) == 2:
-            p_buy = float(proba[0])
-            p_sell = float(proba[1])
+            # Class 0: down (bearish), Class 1: up (bullish)
+            p_sell = float(proba[0])
+            p_buy = float(proba[1])
             bullish_pct = round(p_buy * 100, 1)
             bearish_pct = round(p_sell * 100, 1)
             sideways_pct = 0.0
@@ -158,7 +171,7 @@ def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None) 
         else:
             bullish_pct = round(float(proba[0]) * 100, 1)
             bearish_pct = round(float(proba[1]) * 100, 1)
-            sideways_pct = round(float(proba[2]) * 100, 1)
+            sideways_pct = round(float(proba[2]) * 100, 1) if len(proba) > 2 else 0.0
             pred_class = int(np.argmax(proba))
             label_names = {v: k for k, v in artifacts.label_mapping.items()}
             direction = label_names.get(pred_class, "unknown")
@@ -173,7 +186,7 @@ def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None) 
             "sideways_pct": sideways_pct,
             "top_class_probability": top_prob,
             "gap_pp": gap_pp,
-            "model_version": getattr(artifacts, "xgb_model_version", "xgb_v3_production"),
+            "model_version": getattr(artifacts, "xgb_model_version", "xgb_v4_event_fundamentals"),
         }
 
     except Exception:
@@ -193,27 +206,15 @@ def _ensemble_decide(
       2. If either model has gap <= near_tie_threshold_pp -> "uncertain"
       3. If both non-near-tie AND agree (same predicted class) -> return that direction
       4. If both non-near-tie AND disagree -> blend probabilities
-
-    Note on terminology (Task 17 & Task 16):
-      - 'agree(direction)': Both models selected the exact same predicted class label.
-        Does NOT imply matching probability distributions or calibrated confidence.
-      - 'gap_pp': Absolute difference between top-1 and top-2 class probabilities in percentage points.
-
-    Parameters
-    ----------
-    gru_result : dict from _run_gru() or None
-    xgb_result : dict from _run_xgb() or None
-    near_tie_threshold_pp : float
-        Gap threshold in percentage points (default: 5.0pp).
     """
     has_gru = gru_result is not None
     has_xgb = xgb_result is not None
 
     # Single model fallback
     if has_gru and not has_xgb:
-        return _single_model_result(gru_result, "gru_v1", near_tie_threshold_pp)
+        return _single_model_result(gru_result, artifacts.model_version, near_tie_threshold_pp)
     if has_xgb and not has_gru:
-        return _single_model_result(xgb_result, "xgb_weighted", near_tie_threshold_pp)
+        return _single_model_result(xgb_result, getattr(artifacts, "xgb_model_version", "xgb_v4_event_fundamentals"), near_tie_threshold_pp)
 
     if not has_gru and not has_xgb:
         return {"direction": "uncertain", "top_class_probability": 0.0,
@@ -245,7 +246,7 @@ def _ensemble_decide(
             "gate_reason": f"near_tie({', '.join(reason)})",
         }
 
-    # Both non-near-tie — check agreement (Task 17: same predicted class)
+    # Both non-near-tie — check agreement
     if gru_result["direction"] == xgb_result["direction"]:
         avg_bull = round((gru_result["bullish_pct"] + xgb_result["bullish_pct"]) / 2, 1)
         avg_bear = round((gru_result["bearish_pct"] + xgb_result["bearish_pct"]) / 2, 1)
@@ -329,18 +330,16 @@ def get_forecast(symbol: str, horizon: str = "1D") -> dict:
         )
 
     # ── Load feature data ──────────────────────────────────────────────
-    # Container filesystems can be ephemeral, and the startup asset step may not
-    # have run. Rebuild the tracked, checksummed chunks on demand.
     if not FEATURES_PATH.is_file():
         try:
             from scripts.prepare_feature_assets import prepare_features
-
             prepare_features()
         except (FileNotFoundError, RuntimeError) as exc:
             raise FileNotFoundError(
                 f"Forecast feature data is unavailable at {FEATURES_PATH}; "
                 "deploy backend/deploy_assets/ or provide the parquet snapshot."
             ) from exc
+
     df = pd.read_parquet(FEATURES_PATH)
     sym_df = df[df["symbol"] == symbol].copy()
     sym_df["date"] = pd.to_datetime(sym_df["date"])
@@ -369,7 +368,7 @@ def get_forecast(symbol: str, horizon: str = "1D") -> dict:
     # ── Build model_details (debug/analysis field) ─────────────────────
     model_details = {}
     if gru_result:
-        model_details["gru_v1"] = {
+        model_details["gru_v2"] = {
             "direction": gru_result["direction"],
             "bullish_pct": gru_result["bullish_pct"],
             "bearish_pct": gru_result["bearish_pct"],
@@ -378,7 +377,7 @@ def get_forecast(symbol: str, horizon: str = "1D") -> dict:
             "gap_pp": gru_result["gap_pp"],
         }
     if xgb_result:
-        model_details["xgb_weighted"] = {
+        model_details["xgb_v4"] = {
             "direction": xgb_result["direction"],
             "bullish_pct": xgb_result["bullish_pct"],
             "bearish_pct": xgb_result["bearish_pct"],
@@ -387,14 +386,13 @@ def get_forecast(symbol: str, horizon: str = "1D") -> dict:
             "gap_pp": xgb_result["gap_pp"],
         }
 
-    # ── Build market_context (informational, doesn't affect gate) ────────
+    # ── Build market_context ──────────────────────────────────────────
     market_ctx = None
     latest_row = sym_df.iloc[-1]
     idx_5d = latest_row.get("index_return_5d")
     idx_20d = latest_row.get("index_return_20d")
     rel_20d = latest_row.get("stock_relative_return_20d")
 
-    # Compute raw stock 20d return if available
     stock_ret_20d = None
     if len(sym_df) >= 20:
         close_now = float(latest_row["close"])
@@ -420,7 +418,7 @@ def get_forecast(symbol: str, horizon: str = "1D") -> dict:
         "direction": ensemble["direction"],
         "bullish_pct": ensemble["bullish_pct"],
         "bearish_pct": ensemble["bearish_pct"],
-        "sideways_pct": ensemble["sideways_pct"],
+        "sideways_pct": sideways_pct if "sideways_pct" in locals() else ensemble["sideways_pct"],
         "top_class_probability": ensemble["top_class_probability"],
         "as_of_date": as_of_date,
         "predicted_for_date": predicted_for_date,

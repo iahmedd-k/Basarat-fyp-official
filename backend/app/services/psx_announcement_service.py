@@ -241,26 +241,32 @@ class PSXAnnouncementService:
         self.db = db
 
     async def get_stock_announcements(self, symbol: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """Get announcements for a stock with Redis caching + on-demand live fetch."""
+        """Read announcements for a stock from Redis/DB; API reads never scrape PSX."""
         sym = symbol.strip().upper()
         cache_key = f"psx:announcements:{sym}"
 
-        # 1. Check Redis cache
+        # The scheduled news-ingestion worker owns all PSX requests. Serve the
+        # shared cache or durable DB rows from API processes.
         cached = await cache_get(cache_key)
         if cached and isinstance(cached, list) and len(cached) > 0:
             log.info("PSX announcements cache hit for %s (%d items)", sym, len(cached))
             return cached[:limit]
 
-        # 2. Live on-demand fetch from PSX DPS
+        return await self._read_stock_announcements_from_db(sym, limit)
+
+    async def refresh_stock_announcements(self, symbol: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Worker-only refresh path; call from a controlled ingestion job."""
+        sym = symbol.strip().upper()
+        cache_key = f"psx:announcements:{sym}"
         announcements = await fetch_psx_announcements(symbol=sym, count=limit)
         if announcements:
-            # Cache in Redis for 15 minutes
             await cache_set(cache_key, announcements, ttl_seconds=CACHE_TTL_SECONDS)
-            # Persist to database
             await save_announcements_to_db(self.db, announcements)
             return announcements[:limit]
 
-        # 3. Fallback to existing database records
+        return await self._read_stock_announcements_from_db(sym, limit)
+
+    async def _read_stock_announcements_from_db(self, sym: str, limit: int) -> List[Dict[str, Any]]:
         from app.services.news_service import NewsService
         news_svc = NewsService(self.db)
         articles, _, _ = await news_svc.get_articles(symbol=sym, limit=limit)

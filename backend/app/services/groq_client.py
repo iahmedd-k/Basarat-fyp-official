@@ -114,7 +114,7 @@ class GroqClient:
         Stream chat completion tokens from Groq.
 
         Yields:
-            str: Token chunks from the LLM
+            str: Buffered text chunks suitable for rendering in a chat UI.
         """
         import json
 
@@ -139,6 +139,8 @@ class GroqClient:
                         raise GroqError("Groq rate limit exceeded", 429)
                     raise GroqError(f"Groq API error: {error_msg}", response.status_code)
 
+                pending: list[str] = []
+                pending_chars = 0
                 async for line in response.aiter_lines():
                     line = line.strip()
                     if not line:
@@ -152,9 +154,18 @@ class GroqClient:
                             delta = data["choices"][0].get("delta", {})
                             content = delta.get("content", "")
                             if content:
-                                yield content
+                                pending.append(content)
+                                pending_chars += len(content)
+                                # Providers often emit tiny tokenizer fragments. Batch them
+                                # into useful UI updates while flushing promptly at line breaks.
+                                if pending_chars >= 48 or "\n" in content:
+                                    yield "".join(pending)
+                                    pending.clear()
+                                    pending_chars = 0
                         except (KeyError, IndexError, json.JSONDecodeError):
                             continue
+                if pending:
+                    yield "".join(pending)
         except httpx.TimeoutException:
             log.error("Groq API streaming timeout")
             raise GroqError("Groq API timeout", 504)

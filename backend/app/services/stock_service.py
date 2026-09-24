@@ -1,4 +1,6 @@
+import logging
 import time
+from io import StringIO
 from datetime import date, timedelta
 
 import pandas as pd
@@ -11,6 +13,8 @@ from app.services.market_service import MarketService
 QUOTE_TTL_SECONDS = 300
 FUND_TTL_SECONDS = 1800
 OHLCV_TTL_SECONDS = 600
+FAILED_SOURCE_TTL_SECONDS = 30
+log = logging.getLogger(__name__)
 
 # Unified in-process TTL cache: key -> (value, timestamp).
 # NOTE: Per-process only. Not safe across multiple workers.
@@ -21,6 +25,46 @@ _cache_ttl: dict[str, float] = {}
 
 def _now():
     return time.monotonic()
+
+
+def _is_empty_frame(value):
+    """Treat failed and empty upstream responses as short-lived negative cache entries."""
+    if isinstance(value, dict):
+        data_fields = [
+            item for key, item in value.items()
+            if str(key).lower() not in {"symbol", "ticker", "name", "company_name", "sector"}
+        ]
+        return not any(item not in (None, "", [], {}) for item in data_fields)
+    return value is None or bool(getattr(value, "empty", False))
+
+
+def _cache_source_frame(key, value, ttl_seconds):
+    # PSX failures should be briefly damped to avoid hammering the source, but
+    # must not mask recovery for the full successful-data TTL.
+    _cache[key] = value
+    _cache_ttl[key] = _now() - max(0, ttl_seconds - FAILED_SOURCE_TTL_SECONDS) if _is_empty_frame(value) else _now()
+
+
+def _get_shared_dataframe(key, loader, ttl_seconds=FUND_TTL_SECONDS):
+    """Share toolkit DataFrame responses across API replicas through Redis."""
+    cached = cache_get_sync(key)
+    if isinstance(cached, str):
+        try:
+            return pd.read_json(StringIO(cached), orient="split")
+        except Exception as exc:
+            log.warning("Could not decode shared DataFrame cache %s: %s", key, exc)
+    try:
+        frame = loader()
+    except Exception as exc:
+        log.warning("External DataFrame fetch failed for %s: %s", key, exc)
+        return None
+    if frame is not None and hasattr(frame, "to_json"):
+        ttl = ttl_seconds if not bool(getattr(frame, "empty", False)) else FAILED_SOURCE_TTL_SECONDS
+        try:
+            cache_set_sync(key, frame.to_json(orient="split", date_format="iso"), ttl)
+        except Exception as exc:
+            log.warning("Could not write shared DataFrame cache %s: %s", key, exc)
+    return frame
 
 
 class StockService:
@@ -202,36 +246,97 @@ class StockService:
         symbol = str(symbol).upper()
         now = _now()
         cache_key = f"quote:{symbol}"
+        shared_key = f"stock:raw_quote:{symbol}"
         cached_at = _cache_ttl.get(cache_key, 0.0)
         if cache_key in _cache and now - cached_at <= QUOTE_TTL_SECONDS:
             return _cache[cache_key]
+        shared = cache_get_sync(shared_key)
+        if isinstance(shared, dict):
+            _cache[cache_key] = shared
+            _cache_ttl[cache_key] = now
+            return shared
         try:
-            frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
-        except Exception:
+            frame = pypsx_toolkit.get_quote(symbol, as_dict=True)
+        except TypeError:
+            try:
+                frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
+            except Exception as exc:
+                log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
+                frame = None
+        except Exception as exc:
+            log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
             frame = None
-        _cache[cache_key] = frame
-        _cache_ttl[cache_key] = now
+        _cache_source_frame(cache_key, frame, QUOTE_TTL_SECONDS)
+        if isinstance(frame, dict):
+            cache_set_sync(shared_key, frame, QUOTE_TTL_SECONDS)
         return frame
 
     def _get_fund_frame(self, symbol):
         symbol = str(symbol).upper()
         now = _now()
         cache_key = f"fund:{symbol}"
+        shared_key = f"stock:raw_fundamentals:{symbol}"
         cached_at = _cache_ttl.get(cache_key, 0.0)
         if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
             return _cache[cache_key]
+        shared = cache_get_sync(shared_key)
+        if isinstance(shared, dict):
+            _cache[cache_key] = shared
+            _cache_ttl[cache_key] = now
+            return shared
         try:
-            frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
-        except Exception:
+            frame = pypsx_toolkit.get_company_fundamentals(symbol, as_dict=True)
+        except TypeError:
+            try:
+                frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
+            except Exception as exc:
+                log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
+                frame = None
+        except Exception as exc:
+            log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
             frame = None
-        _cache[cache_key] = frame
-        _cache_ttl[cache_key] = now
+        _cache_source_frame(cache_key, frame, FUND_TTL_SECONDS)
+        if isinstance(frame, dict):
+            ttl = FUND_TTL_SECONDS if not _is_empty_frame(frame) else FAILED_SOURCE_TTL_SECONDS
+            cache_set_sync(shared_key, frame, ttl)
         return frame
 
     def _fund_metric(self, symbol, category, metric):
         frame = self._get_fund_frame(symbol)
         if frame is None:
             return None
+        if isinstance(frame, dict):
+            metric_keys = {
+                "Market Cap (000's)": ("market_cap",),
+                "Shares": ("shares_outstanding", "shares"),
+                "Free Float": ("free_float", "free_float_shares", "free_float_pct"),
+                "EPS": ("eps",),
+                "PEG": ("peg_ratio", "peg"),
+                "EPS Growth (%)": ("eps_growth_pct", "eps_growth"),
+                "Net Profit Margin (%)": ("net_profit_margin_pct", "net_profit_margin"),
+                "Gross Profit Margin (%)": ("gross_profit_margin_pct", "gross_profit_margin"),
+                "Business Description": ("business_description",),
+                "Website": ("website",),
+                "Address": ("address",),
+            }
+            for key in metric_keys.get(metric, ()):
+                value = frame.get(key)
+                if value not in (None, ""):
+                    return self._latest_number(value)
+            return None
+        flat_metric_keys = {
+            "Market Cap (000's)": "market_cap",
+            "Shares": "shares_outstanding",
+            "Free Float": "free_float",
+            "EPS": "eps",
+            "PEG": "peg_ratio",
+            "EPS Growth (%)": "eps_growth_pct",
+            "Net Profit Margin (%)": "net_profit_margin_pct",
+            "Gross Profit Margin (%)": "gross_profit_margin_pct",
+        }
+        flat_key = flat_metric_keys.get(metric)
+        if flat_key and flat_key in getattr(frame, "columns", ()) and len(frame):
+            return self._latest_number(frame.iloc[0][flat_key])
         try:
             mask = (
                 (frame.index.get_level_values(0) == symbol)
@@ -249,15 +354,26 @@ class StockService:
         symbol = str(symbol).upper()
         now = _now()
         cache_key = f"div:{symbol}"
+        shared_key = f"stock:dividends:{symbol}"
         cached_at = _cache_ttl.get(cache_key, 0.0)
         if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
             return _cache[cache_key]
+        shared = cache_get_sync(shared_key)
+        if isinstance(shared, dict) and shared.get("__dataframe__"):
+            frame = pd.DataFrame(shared.get("rows", []), columns=shared.get("columns"))
+            _cache[cache_key] = frame
+            _cache_ttl[cache_key] = now
+            return frame
         try:
             frame = pypsx_toolkit.get_dividend_info(symbol, format="dataframe")
         except Exception:
             frame = None
-        _cache[cache_key] = frame
-        _cache_ttl[cache_key] = now
+        _cache_source_frame(cache_key, frame, FUND_TTL_SECONDS)
+        if frame is not None and hasattr(frame, "to_dict"):
+            rows = frame.to_dict(orient="records")
+            columns = [str(column) for column in frame.columns]
+            ttl = FUND_TTL_SECONDS if rows else FAILED_SOURCE_TTL_SECONDS
+            cache_set_sync(shared_key, {"__dataframe__": True, "columns": columns, "rows": rows}, ttl)
         return frame
 
     def _get_ohlcv_from_file(self, symbol: str, start: date, end: date):
@@ -276,9 +392,6 @@ class StockService:
                     filtered = df.loc[(df.index >= start_ts) & (df.index <= end_ts)]
                     if not filtered.empty:
                         return filtered
-                    lookback_days = (end - start).days
-                    n_rows = max(5, int(lookback_days * 0.75))
-                    return df.tail(n_rows)
                 except Exception:
                     pass
         return None
@@ -286,23 +399,40 @@ class StockService:
     def _get_ohlcv(self, symbol, start: date, end: date):
         symbol = str(symbol).upper()
         key = f"ohlcv:{symbol}:{start.isoformat()}:{end.isoformat()}"
+        shared_key = f"stock:ohlcv:{symbol}:{start.isoformat()}:{end.isoformat()}"
         now = _now()
         cached_at = _cache_ttl.get(key, 0.0)
         if key in _cache and now - cached_at <= OHLCV_TTL_SECONDS:
             return _cache[key]
-        df = None
-        try:
-            df = pypsx_toolkit.get_historical(
-                symbol, start_date=start.isoformat(), end_date=end.isoformat()
-            )
-        except Exception:
-            df = None
-
+        shared = cache_get_sync(shared_key)
+        if isinstance(shared, str):
+            try:
+                df = pd.read_json(StringIO(shared), orient="split")
+                df.index = pd.to_datetime(df.index)
+                _cache[key] = df
+                _cache_ttl[key] = now
+                return df
+            except Exception as exc:
+                log.warning("Could not decode shared OHLCV cache for %s: %s", symbol, exc)
+        # The daily Celery data job maintains shared parquet history. Prefer it
+        # so every API request does not issue its own upstream history fetch.
+        df = self._get_ohlcv_from_file(symbol, start, end)
         if df is None or (hasattr(df, "empty") and df.empty):
-            df = self._get_ohlcv_from_file(symbol, start, end)
+            try:
+                df = pypsx_toolkit.get_historical(
+                    symbol, start_date=start.isoformat(), end_date=end.isoformat()
+                )
+            except Exception as exc:
+                log.warning("PSX history fetch failed for %s: %s", symbol, exc)
+                df = None
 
-        _cache[key] = df
-        _cache_ttl[key] = now
+        _cache_source_frame(key, df, OHLCV_TTL_SECONDS)
+        if df is not None:
+            ttl = OHLCV_TTL_SECONDS if not df.empty else FAILED_SOURCE_TTL_SECONDS
+            try:
+                cache_set_sync(shared_key, df.to_json(orient="split", date_format="iso"), ttl)
+            except Exception as exc:
+                log.warning("Could not write shared OHLCV cache for %s: %s", symbol, exc)
         return df
 
     def get_overview(self, symbol: str):
@@ -339,7 +469,19 @@ class StockService:
         return round(raw / 1000.0, 2)
 
     def _quote_field(self, frame, column):
-        if frame is None or frame.empty or column not in frame.columns:
+        if frame is None:
+            return None
+        if isinstance(frame, dict):
+            aliases = {
+                "P/E RATIO (TTM) **": ("pe_ratio", "pe"),
+                "1-YEAR CHANGE * ^": ("year_change_pct", "year_change"),
+                "YTD CHANGE * ^": ("ytd_change_pct", "ytd_change"),
+            }
+            for key in aliases.get(column, (column,)):
+                if frame.get(key) not in (None, ""):
+                    return self._latest_number(frame[key])
+            return None
+        if frame.empty or column not in frame.columns:
             return None
         value = frame.iloc[0][column]
         return self._latest_number(value)
@@ -614,7 +756,8 @@ class StockService:
 
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
-        cache_key = f"fund:v2:{symbol}"
+        # v4 avoids reusing null results produced by the old toolkit adapter.
+        cache_key = f"fund:v4:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
@@ -625,19 +768,38 @@ class StockService:
         div = self._get_dividend_frame(symbol)
 
         info_dict = {}
-        try:
-            t = pypsx_toolkit.Ticker(symbol)
-            if hasattr(t, "info") and isinstance(t.info, dict):
-                info_dict = t.info
-        except Exception:
-            pass
+        info_key = f"stock:ticker_info:{symbol}"
+        cached_info = cache_get_sync(info_key)
+        if isinstance(cached_info, dict):
+            info_dict = cached_info
+        else:
+            try:
+                t = pypsx_toolkit.Ticker(symbol)
+                if hasattr(t, "info") and isinstance(t.info, dict):
+                    info_dict = t.info
+                    info_ttl = FUND_TTL_SECONDS if any(
+                        value not in (None, "", [], {})
+                        for key, value in info_dict.items()
+                        if key.lower() not in {"symbol", "name", "company_name", "sector"}
+                    ) else FAILED_SOURCE_TTL_SECONDS
+                    cache_set_sync(info_key, info_dict, info_ttl)
+            except Exception as exc:
+                log.warning("PSX ticker info fetch failed for %s: %s", symbol, exc)
 
         # 1. Company Profile & Governance
         prof = info_dict.get("Profile", {}) if isinstance(info_dict.get("Profile"), dict) else {}
         gov = info_dict.get("Governance", {}) if isinstance(info_dict.get("Governance"), dict) else {}
 
-        desc = prof.get("Business Description")
-        if not desc:
+        fund_data = self._get_fund_frame(symbol)
+        flat_info = fund_data if isinstance(fund_data, dict) else info_dict
+        desc = (
+            prof.get("Business Description")
+            or flat_info.get("business_description")
+            or flat_info.get("description")
+            or info_dict.get("business_description")
+            or info_dict.get("description")
+        )
+        if not desc and not isinstance(fund_data, dict):
             try:
                 desc = pypsx_toolkit.get_business_description(symbol)
             except Exception:
@@ -659,12 +821,12 @@ class StockService:
         if not ceo: ceo = self._fund_raw_string(symbol, "Governance", "CEO")
         if not chairperson: chairperson = self._fund_raw_string(symbol, "Governance", "Chairperson")
         if not secretary: secretary = self._fund_raw_string(symbol, "Governance", "Company Secretary")
-        website = prof.get("Website") or self._fund_raw_string(symbol, "Profile", "Website")
-        address = prof.get("Address") or self._fund_raw_string(symbol, "Profile", "Address")
-        sector = self._sector_of(symbol)
+        website = prof.get("Website") or flat_info.get("website") or info_dict.get("website") or self._fund_raw_string(symbol, "Profile", "Website")
+        address = prof.get("Address") or flat_info.get("address") or info_dict.get("address") or self._fund_raw_string(symbol, "Profile", "Address")
+        sector = self._sector_of(symbol) or info_dict.get("sector")
 
         company_profile = {
-            "name": symbol,
+            "name": info_dict.get("company_name") or info_dict.get("name") or symbol,
             "sector": sector,
             "business_description": desc,
             "ceo": ceo,
@@ -681,10 +843,19 @@ class StockService:
             try: market_cap_k = float(str(eq["Market Cap (000's)"]).replace(",", "").strip())
             except Exception: pass
 
-        market_cap_pkr = (market_cap_k * 1000.0) if market_cap_k else None
-        market_cap_m = round(market_cap_k / 1000.0, 2) if market_cap_k else None
+        # v3 of pypsx-toolkit returns market_cap in PKR; the legacy dataframe
+        # field is explicitly denominated in thousands of PKR.
+        if isinstance(fund_data, dict) or "market_cap" in info_dict:
+            fund_values = fund_data if isinstance(fund_data, dict) else {}
+            market_cap_pkr = self._num(fund_values.get("market_cap") or info_dict.get("market_cap"))
+            market_cap_m = round(market_cap_pkr / 1_000_000, 2) if market_cap_pkr else None
+        else:
+            market_cap_pkr = (market_cap_k * 1000.0) if market_cap_k else None
+            market_cap_m = round(market_cap_k / 1000.0, 2) if market_cap_k else None
 
         total_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Shares"))
+        if not total_shares:
+            total_shares = self._safe_int(flat_info.get("shares_outstanding") or info_dict.get("shares_outstanding"))
         if not total_shares and eq.get("Shares"):
             try: total_shares = int(float(str(eq["Shares"]).replace(",", "").strip()))
             except Exception: pass
@@ -712,7 +883,11 @@ class StockService:
 
         # 3. Ratios & Valuation
         pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
+        if pe_ratio is None:
+            pe_ratio = self._num(flat_info.get("pe_ratio") or info_dict.get("pe_ratio"))
         eps = self._fund_metric(symbol, "Financials Annual", "EPS")
+        if eps is None:
+            eps = self._num(flat_info.get("eps") or info_dict.get("eps"))
 
         fin_ann = info_dict.get("Financials Annual", {}) if isinstance(info_dict.get("Financials Annual"), dict) else {}
         if not eps and fin_ann.get("EPS"):
@@ -743,7 +918,12 @@ class StockService:
         cb_low, cb_up = None, None
         year_change, ytd_change = None, None
         try:
-            snap = pypsx_toolkit.get_snapshot(symbol)
+            snap = cache_get_sync(f"stock:snapshot:{symbol}")
+            if not isinstance(snap, dict):
+                snap = pypsx_toolkit.get_snapshot(symbol)
+                if isinstance(snap, dict):
+                    ttl = FUND_TTL_SECONDS if snap else FAILED_SOURCE_TTL_SECONDS
+                    cache_set_sync(f"stock:snapshot:{symbol}", snap, ttl)
             if isinstance(snap, dict):
                 reg = snap.get("REG", {})
                 cb = reg.get("CIRCUIT BREAKER")
@@ -774,7 +954,10 @@ class StockService:
         # 5. Dividend History
         dividend_history = []
         try:
-            div_df = pypsx_toolkit.get_dividend_history(symbol)
+            div_df = _get_shared_dataframe(
+                f"stock:dividend_history:{symbol}",
+                lambda: pypsx_toolkit.get_dividend_history(symbol),
+            )
             if div_df is not None and not div_df.empty:
                 for _, drow in div_df.head(5).iterrows():
                     dividend_history.append({
@@ -789,7 +972,10 @@ class StockService:
         # 6. Official Announcements
         announcements = []
         try:
-            ann_df = pypsx_toolkit.get_announcements(symbol)
+            ann_df = _get_shared_dataframe(
+                f"stock:announcements:{symbol}",
+                lambda: pypsx_toolkit.get_announcements(symbol),
+            )
             if ann_df is not None and not ann_df.empty:
                 for idx, arow in ann_df.head(5).iterrows():
                     ann_date = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else str(idx)
@@ -832,8 +1018,16 @@ class StockService:
             "sector_overview": self.get_sector_overview(symbol),
         }
 
-        # Cache in Redis (1800s / 30m TTL)
-        cache_set_sync(cache_key, result, 1800)
+        # Keep useful fundamentals for 30m. When the upstream source is
+        # blocked/unavailable, don't pin an all-null response for that long.
+        useful_fields = (
+            company_profile.get("business_description"), company_profile.get("ceo"),
+            company_profile.get("website"), company_profile.get("address"),
+            equity_profile.get("market_cap_pkr"), equity_profile.get("total_shares"),
+            eps, pe_ratio, peg, eps_growth, net_margin, gross_margin, year_high, year_low,
+        )
+        cache_ttl = FUND_TTL_SECONDS if any(value not in (None, [], "") for value in useful_fields) else FAILED_SOURCE_TTL_SECONDS
+        cache_set_sync(cache_key, result, cache_ttl)
         return result
 
     def _div_yield(self, div):

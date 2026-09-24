@@ -11,6 +11,7 @@ celery = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "app.tasks.scrape_news",
+        "app.tasks.refresh_market_cache",
         "app.tasks.news_tasks",
         "app.tasks.run_forecast_inference",
         "app.tasks.daily_workflow",
@@ -75,10 +76,21 @@ celery.conf.update(
             "task": "app.tasks.scrape_news.run",
             "schedule": crontab(minute="*/30"),  # Every 30 min on the clock
         },
-        # ── PSX Portfolio Announcements: every 10 min during active hours ──
-        "sync-portfolio-announcements": {
-            "task": "app.tasks.news_tasks.sync_portfolio_announcements",
-            "schedule": crontab(minute="*/10"),
+        # ── One shared PSX quote refresh; API requests read Redis snapshots ──
+        "refresh-market-quotes": {
+            "task": "app.tasks.refresh_market_cache.refresh_market_cache",
+            "schedule": crontab(minute="*/5"),
+        },
+        # ── Reference data changes much less often than quotes ──
+        "refresh-market-reference": {
+            "task": "app.tasks.refresh_market_cache.refresh_market_cache",
+            "kwargs": {"refresh_reference": True},
+            "schedule": crontab(minute=0, hour="*/6"),
+        },
+        "refresh-market-constituents": {
+            "task": "app.tasks.refresh_market_cache.refresh_market_cache",
+            "kwargs": {"refresh_reference": True, "refresh_constituents": True},
+            "schedule": crontab(minute=15, hour=4),
         },
         # ── Rescore failed sentiment: hourly ──
         "rescore-failed-sentiment": {

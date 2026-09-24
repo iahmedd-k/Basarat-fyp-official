@@ -293,6 +293,9 @@ class ContextBuilder:
             "Treat model forecasts as probabilistic outputs, not guarantees.",
             "Clearly distinguish: factual data, historical information, model predictions, "
             "general financial education, and uncertainty.",
+            "Keep answers concise and easy to read on a phone. Start with the direct answer, "
+            "use short paragraphs and a few bullets when useful, and avoid Markdown tables. "
+            "Use simple Markdown headings only for longer answers; do not add filler or repeat the question.",
             "Only answer within the application's supported scope.",
             "For unrelated questions, politely explain the assistant's focus on stocks, "
             "portfolios, financial education, and the application.",

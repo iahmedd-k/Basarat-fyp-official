@@ -13,6 +13,7 @@ Manual trigger via POST /news/refresh uses the SAME pipeline.
 import asyncio
 import logging
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from celery import shared_task
 
@@ -33,6 +34,11 @@ def _run_async(coro):
         except Exception:
             log.exception("Failed to dispose async database connections")
         finally:
+            try:
+                from app.core.redis import close_async_redis_client
+                loop.run_until_complete(close_async_redis_client())
+            except Exception:
+                log.exception("Failed to close worker-local async Redis pool")
             loop.close()
 
 
@@ -66,7 +72,6 @@ def run(self, force: bool = False, limit_per_source: int = 50):
         }
 
     # ── Check 2: Cooldown — avoid overlapping runs ───────────────────────
-    from app.services.news_pipeline.ingestion_state import set_last_ingestion_time
     last_run = get_last_ingestion_time()
     cooldown = get_settings().NEWS_REFRESH_COOLDOWN
     now = datetime.now(timezone.utc)
@@ -83,9 +88,22 @@ def run(self, force: bool = False, limit_per_source: int = 50):
                 "market_status": status,
             }
 
+    lock_client = None
+    lock_token = uuid4().hex
+    lock_key = "news:ingestion:worker-lock"
+    try:
+        from app.core.redis import get_sync_redis_client
+        lock_client = get_sync_redis_client()
+        if lock_client and not lock_client.set(lock_key, lock_token, nx=True, ex=1800):
+            return {"status": "skipped", "reason": "already_running", "market_status": status}
+    except Exception as exc:
+        log.warning("Redis ingestion lock unavailable; continuing without lock: %s", exc)
+        lock_client = None
+
     # ── Run the pipeline ─────────────────────────────────────────────────
     from app.services.news_pipeline.pipeline import run_pipeline
     from app.db.session import async_session_factory
+    from app.services.news_pipeline.ingestion_state import mark_ingestion_failed, mark_ingestion_started
 
     async def _execute():
         async with async_session_factory() as db:
@@ -93,6 +111,7 @@ def run(self, force: bool = False, limit_per_source: int = 50):
             return result
 
     try:
+        mark_ingestion_started()
         pipeline_result = _run_async(_execute())
 
         log.info(
@@ -126,5 +145,15 @@ def run(self, force: bool = False, limit_per_source: int = 50):
         }
 
     except Exception as exc:
+        mark_ingestion_failed(str(exc))
         log.exception("News ingestion task failed")
         raise self.retry(exc=exc, countdown=120)
+    finally:
+        if lock_client:
+            try:
+                lock_client.eval(
+                    "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+                    1, lock_key, lock_token,
+                )
+            except Exception:
+                log.warning("Could not release news ingestion lock", exc_info=True)

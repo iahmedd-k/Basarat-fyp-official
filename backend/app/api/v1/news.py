@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +9,7 @@ from app.core.authorization import get_current_user, get_optional_current_user
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError, AppError
 from app.core.rate_limiter import limiter
-from app.db.session import get_db, async_session_factory
+from app.db.session import get_db
 from app.models.user import User
 from app.schemas.news import (
     NewsArticleResponse,
@@ -22,13 +22,9 @@ from app.schemas.news import (
 from app.services.news_service import NewsService
 from app.services.news_pipeline import ingestion_state
 from app.services.news_pipeline.market_schedule import (
-    is_ingestion_allowed,
     market_status,
     next_ingestion_window,
-    ingestion_lock,
 )
-from app.services.news_pipeline.pipeline import run_pipeline
-from app.services.event_service import extract_events_from_news
 
 router = APIRouter()
 
@@ -36,20 +32,6 @@ router = APIRouter()
 def _encode_cursor(published_at: datetime, article_id: str) -> str:
     """Encode cursor as published_at|id."""
     return f"{published_at.isoformat()}|{article_id}"
-
-
-async def _run_pipeline_background(db_factory, limit_per_source: int = 50):
-    """Background task to run pipeline without blocking the request."""
-    from app.db.session import async_session_factory
-    async with async_session_factory() as db:
-        try:
-            await run_pipeline(db, limit_per_source=limit_per_source)
-            # Extract events
-            await extract_events_from_news(db)
-        except Exception as exc:
-            import logging
-            ingestion_state.mark_ingestion_failed(str(exc))
-            logging.getLogger(__name__).exception("Background pipeline failed: %s", exc)
 
 
 @router.get(
@@ -141,10 +123,8 @@ async def get_news(
 @limiter.limit("5/minute")
 async def refresh_news(
     request: Request,
-    background_tasks: BackgroundTasks,
     force: bool = Query(False, description="Admin only: bypass cooldown"),
     user: Optional[User] = Depends(get_optional_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     """Trigger a manual news ingestion with cooldown protection.
 
@@ -175,27 +155,31 @@ async def refresh_news(
                 market_status=m_status,
             )
 
-    # ── Check 2: Already running? ────────────────────────────────────────
-    async with ingestion_lock() as acquired:
-        if not acquired:
-            return NewsRefreshResponse(
-                status="already_running",
-                last_updated=last_run.isoformat() if last_run else None,
-                refresh_available=False,
-                market_status=m_status,
-            )
-
-        # ── Run pipeline in background ───────────────────────────────────
-        ingestion_state.mark_ingestion_started()
-        background_tasks.add_task(_run_pipeline_background, async_session_factory, 50)
-
+    # API replicas only enqueue work; the Celery worker owns source fetches.
+    current = ingestion_state.get_ingestion_status()
+    if current["state"] in {"queued", "running"}:
         return NewsRefreshResponse(
-            status="started",
-            last_updated=now.isoformat(),
-            refresh_available=True,
-            next_refresh_at=None,
+            status="already_running",
+            last_updated=last_run.isoformat() if last_run else None,
+            refresh_available=False,
             market_status=m_status,
         )
+
+    try:
+        from app.tasks.scrape_news import run as news_ingestion_task
+        ingestion_state.mark_ingestion_queued()
+        news_ingestion_task.apply_async(kwargs={"force": True, "limit_per_source": 50})
+    except Exception as exc:
+        ingestion_state.mark_ingestion_failed(str(exc))
+        raise ServiceUnavailableError("Could not queue news refresh") from exc
+
+    return NewsRefreshResponse(
+        status="started",
+        last_updated=now.isoformat(),
+        refresh_available=True,
+        next_refresh_at=None,
+        market_status=m_status,
+    )
 
 
 @router.get(

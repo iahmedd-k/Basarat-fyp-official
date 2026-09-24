@@ -729,11 +729,12 @@ class RecommendationEngine:
 # ───────────────────────────────────────────────────────────────────────
 
 def get_cached_recommendations() -> list[dict] | None:
-    """Load cached recommendations from disk."""
-    if not RECOMMENDATIONS_CACHE.exists():
-        return None
+    """Load the shared default-profile recommendation snapshot from Redis."""
     try:
-        data = json.loads(RECOMMENDATIONS_CACHE.read_text(encoding="utf-8"))
+        from app.core.redis import cache_get_sync
+        data = cache_get_sync("recommendations:default:v2")
+        if not isinstance(data, dict):
+            return None
         cached_at = datetime.fromisoformat(data.get("timestamp", "2000-01-01"))
         if cached_at.tzinfo is not None:
             cached_at = cached_at.astimezone(timezone.utc).replace(tzinfo=None)
@@ -758,13 +759,13 @@ def get_cached_recommendations() -> list[dict] | None:
 
 
 def save_recommendations_cache(recommendations: list[dict]) -> None:
-    """Save recommendations to disk cache."""
-    RECOMMENDATIONS_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    """Publish recommendations for API containers through shared Redis."""
     data = {
         "timestamp": datetime.utcnow().isoformat(),
         "cache_version": 2,
         "count": len(recommendations),
         "recommendations": recommendations,
     }
-    RECOMMENDATIONS_CACHE.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    from app.core.redis import cache_set_sync
+    cache_set_sync("recommendations:default:v2", data, 4 * 3600)
     log.info("Saved %d recommendations to cache", len(recommendations))

@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
     default_retry_delay=300,
 )
 def refresh_recommendations_task(self):
-    """Recompute recommendations for all active symbols and cache to disk.
+    """Recompute recommendations for all active symbols and cache to Redis.
 
     This task runs every 4 hours via Celery Beat. The API endpoints
     read from the cache, not from live computation.

@@ -38,6 +38,11 @@ backend/data/scalers/*
 backend/data/reports/
 
 # Inference model artifacts under backend/models are intentionally tracked.
+backend/research/**/data/
+backend/research/**/*.parquet
+backend/research/**/*.csv
+backend/research/backup_models/
+
 
 
 # Log files

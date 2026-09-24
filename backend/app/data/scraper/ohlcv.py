@@ -9,20 +9,26 @@ without touching calling code.
 """
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from calendar import monthrange
+import time
 from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from app.core.config import get_settings
 
 log = logging.getLogger(__name__)
 
 _PSX_HISTORY_URL = "https://dps.psx.com.pk/historical"
-_SESSION_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; OHLCVScraper/1.0)"}
+_SESSION_HEADERS = {
+    "User-Agent": "BasaratMarketData/1.0 (+https://basarat.pk)",
+    "Referer": "https://dps.psx.com.pk/",
+    "Origin": "https://dps.psx.com.pk",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 
 
 def _month_range(start: date, end: date) -> List[Tuple[int, int]]:
@@ -69,7 +75,7 @@ def _fetch_symbol_direct(
     symbol: str,
     start: date,
     end: date,
-    max_workers: int = 4,
+    request_interval_seconds: float = 1.0,
 ) -> pd.DataFrame:
     """Fetch OHLCV by scraping PSX historical endpoint month-by-month."""
     months = _month_range(start, end)
@@ -78,20 +84,22 @@ def _fetch_symbol_direct(
     session = requests.Session()
     session.headers.update(_SESSION_HEADERS)
 
-    def _fetch_one(args):
-        y, m = args
+    for index, (y, m) in enumerate(months):
+        if index:
+            # A single sequential request stream avoids burst traffic from a
+            # cloud worker's shared IP. Stop on 403/429; never retry a denied
+            # request or switch identities/proxies.
+            time.sleep(max(0.0, request_interval_seconds))
         try:
-            return _fetch_month(session, symbol, y, m)
-        except Exception as exc:
-            log.debug("  %s %d-%02d fetch failed: %s", symbol, y, m, exc)
-            return pd.DataFrame()
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_fetch_one, args): args for args in months}
-        for future in as_completed(futures):
-            df = future.result()
+            df = _fetch_month(session, symbol, y, m)
             if not df.empty:
                 all_dfs.append(df)
+        except Exception as exc:
+            log.debug("  %s %d-%02d fetch failed: %s", symbol, y, m, exc)
+            response = getattr(exc, "response", None)
+            if response is not None and response.status_code in (403, 429):
+                log.warning("PSX denied requests for %s (HTTP %d); stopping this symbol", symbol, response.status_code)
+                break
 
     if not all_dfs:
         return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
@@ -152,7 +160,8 @@ def fetch_ohlcv(
 
     log.info("Fetching OHLCV for %s  %s -> %s", symbol, start, end)
 
-    # Try psx-data-reader first, fall back to direct scraping
+    # Try psx-data-reader first. A denial is a signal to stop contacting PSX;
+    # retrying through a second client only increases pressure on the same host.
     try:
         from psx import stocks
         df = stocks(symbol, start=start, end=end)
@@ -170,10 +179,17 @@ def fetch_ohlcv(
             log.info("  %s: %d rows (%s to %s) [psx-data-reader]", symbol, len(df), df["date"].min(), df["date"].max())
             return df
     except Exception as exc:
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None) or getattr(exc, "status_code", None)
+        if status_code in (403, 429):
+            log.warning("PSX denied historical data for %s (HTTP %s); skipping direct fallback", symbol, status_code)
+            return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
         log.info("  psx-data-reader failed (%s), using direct scraper", exc)
 
     # Direct scraper fallback
-    df = _fetch_symbol_direct(symbol, start, end)
+    settings = get_settings()
+    interval = max(2.0, float(getattr(settings, "PSX_MIN_REQUEST_INTERVAL_SECONDS", 2)))
+    df = _fetch_symbol_direct(symbol, start, end, request_interval_seconds=interval)
     if df.empty:
         log.warning("No data returned for %s", symbol)
         return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])

@@ -1,18 +1,35 @@
 {
-  "model_version": "xgb_v3_production",
-  "trained_at": "2026-09-22T17:32:42.039101+00:00",
-  "n_samples": 79451,
-  "n_features": 30,
-  "classes": [
-    "Bearish",
-    "Bullish",
-    "Sideways"
-  ],
-  "label_mapping": {
-    "bearish": 0,
-    "bullish": 1,
-    "sideways": 2
+  "pipeline_version": "final_v3_institutional_ensemble",
+  "deployed_at": "2026-09-24T19:38:00+00:00",
+  "horizon": "5D",
+  "classes": ["down", "up"],
+  "models": {
+    "xgboost": {
+      "version": "xgb_v4_event_fundamentals_directional",
+      "model_file": "xgb_model.ubj",
+      "features_file": "xgb_features.json",
+      "n_features": 70,
+      "test_samples": 33730,
+      "actionable_accuracy": "55.30% to 59.70%",
+      "spearman_rank_ic": 0.080,
+      "status": "production_active"
+    },
+    "bigru": {
+      "version": "attention_bigru_v2_event_fundamentals_directional",
+      "weights_file": "gru_best_weights.weights.h5",
+      "features_file": "gru_features.json",
+      "scaler_file": "gru_scaler.joblib",
+      "n_features": 79,
+      "sequence_length": 45,
+      "test_samples": 33686,
+      "actionable_accuracy": "51.34% to 65.22%",
+      "spearman_rank_ic": 0.093,
+      "status": "production_active"
+    }
   },
-  "probabilities_calibrated": false,
-  "status": "production_ready"
+  "rejection_decision_gate": {
+    "tau_standard": 0.55,
+    "tau_sniper": 0.60
+  },
+  "status": "production_active"
 }

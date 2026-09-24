@@ -55,23 +55,14 @@ async def lifespan(app: FastAPI):
     from app.ml.serving.model_loader import load_artifacts
     load_artifacts()
 
-    # ── Background Pre-Warm Market Cache in Redis ──────────────────────
-    import asyncio
-    from app.services.market_service import MarketService
-
-    async def _warm_market_cache():
+    # Ask the shared Celery worker to warm market snapshots. Never scrape
+    # from every API container's startup hook.
+    if settings.USE_CELERY:
         try:
-            svc = MarketService()
-            await svc.get_indices()
-            await svc.get_index_constituents("KSE100")
-            await svc.get_index_constituents("KSE30")
-            await svc.get_index_constituents("KMI30")
-            await svc.get_market_data()
-            log.info("Market cache pre-warmed successfully on startup")
+            from app.tasks.refresh_market_cache import refresh_market_cache
+            refresh_market_cache.delay(refresh_reference=True, refresh_constituents=True)
         except Exception as exc:
-            log.warning("Market cache pre-warming encounter: %s", exc)
-
-    asyncio.create_task(_warm_market_cache())
+            log.warning("Could not enqueue initial market cache refresh: %s", exc)
 
     yield
 

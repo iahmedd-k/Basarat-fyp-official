@@ -41,9 +41,9 @@ _psx_circuit_open_until = 0
 _PSX_MAX_FAILURES = 5
 _PSX_CIRCUIT_TIMEOUT = 1800  # 30 minutes
 _psx_last_request_time = 0
-_PSX_MIN_INTERVAL = 2.0  # seconds
+_PSX_MIN_INTERVAL = 2.0  # conservative default; configurable below
 
-_USER_AGENT = "Basarat/1.0 (+https://basarat.pk; marketdatarequest@psx.com.pk)"
+_USER_AGENT = "Basarat/1.0 (+https://basarat.pk)"
 
 
 def _circuit_check() -> None:
@@ -77,8 +77,12 @@ def _rate_limit() -> None:
     global _psx_last_request_time
     now = time.time()
     elapsed = now - _psx_last_request_time
-    if elapsed < _PSX_MIN_INTERVAL:
-        time.sleep(_PSX_MIN_INTERVAL - elapsed)
+    try:
+        interval = max(2.0, float(getattr(get_settings(), "PSX_MIN_REQUEST_INTERVAL_SECONDS", _PSX_MIN_INTERVAL)))
+    except (TypeError, ValueError):
+        interval = _PSX_MIN_INTERVAL
+    if elapsed < interval:
+        time.sleep(interval - elapsed)
     _psx_last_request_time = time.time()
 
 
@@ -238,17 +242,17 @@ def _parse_announcement_rows(soup: BeautifulSoup, announcement_type: str) -> lis
     return articles
 
 
-def fetch_companies_announcements(limit: int = 50) -> list[NormalizedArticle]:
+def fetch_companies_announcements(limit: int = 50, offset: int = 0) -> list[NormalizedArticle]:
     """Fetch Companies Announcements (type C)."""
-    return _fetch_announcements(_TYPE_COMPANIES, limit)
+    return _fetch_announcements(_TYPE_COMPANIES, limit, offset)
 
 
-def fetch_psx_notices(limit: int = 50) -> list[NormalizedArticle]:
+def fetch_psx_notices(limit: int = 50, offset: int = 0) -> list[NormalizedArticle]:
     """Fetch PSX Notices (type E) - no symbol, appear in News row only."""
-    return _fetch_announcements(_TYPE_PSX_NOTICES, limit)
+    return _fetch_announcements(_TYPE_PSX_NOTICES, limit, offset)
 
 
-def _fetch_announcements(announcement_type: str, limit: int) -> list[NormalizedArticle]:
+def _fetch_announcements(announcement_type: str, limit: int, offset: int = 0) -> list[NormalizedArticle]:
     """Fetch announcements of a specific type from dps.psx.com.pk."""
     settings = get_settings()
 
@@ -267,7 +271,7 @@ def _fetch_announcements(announcement_type: str, limit: int) -> list[NormalizedA
         form_data = {
             "type": announcement_type,
             "count": min(limit, 100),
-            "offset": 0,
+            "offset": max(0, offset),
         }
 
         # For incremental fetch, we don't filter by symbol - get all and let pipeline dedupe
@@ -339,7 +343,7 @@ def fetch_articles(limit: int = 50) -> list[NormalizedArticle]:
 
     # Fetch Companies Announcements (have symbols - for Portfolio row)
     for page in range(max_pages):
-        articles = fetch_companies_announcements(limit=50)
+        articles = fetch_companies_announcements(limit=50, offset=page * 50)
         if not articles:
             break
         all_articles.extend(articles)
@@ -349,7 +353,7 @@ def fetch_articles(limit: int = 50) -> list[NormalizedArticle]:
 
     # Fetch PSX Notices (no symbols - for News row only)
     for page in range(max_pages):
-        articles = fetch_psx_notices(limit=50)
+        articles = fetch_psx_notices(limit=50, offset=page * 50)
         if not articles:
             break
         all_articles.extend(articles)

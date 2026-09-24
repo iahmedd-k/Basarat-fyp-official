@@ -14,8 +14,9 @@ from app.core.redis import (
 
 log = logging.getLogger(__name__)
 
-CACHE_TTL_SECONDS = 120
-CONSTITUENTS_TTL_SECONDS = 14400  # 4 hours (index constituents change only quarterly/semi-annually)
+QUOTES_TTL_SECONDS = 600  # refreshed by Celery every 5 minutes
+INDICES_TTL_SECONDS = 28800  # 8 hours; Celery refreshes every 6 hours
+CONSTITUENTS_TTL_SECONDS = 86400  # 24 hours; Celery refreshes daily
 FALLBACK_TTL_SECONDS = 86400 * 7  # 7 days persistent fallback
 
 
@@ -46,13 +47,20 @@ class MarketService:
         except (TypeError, ValueError):
             return default
 
-    async def get_indices(self) -> list[dict]:
+    async def get_indices(self, force_refresh: bool = False, read_only: bool = True) -> list[dict]:
         cache_key = "market:indices"
         fallback_key = "market:indices:last_known"
-        cached = await cache_get(cache_key)
+        cached = None if force_refresh else await cache_get(cache_key)
         if cached is not None and len(cached) > 0:
             log.debug("Indices cache hit from Redis")
             return cached
+
+        if read_only and not force_refresh:
+            last_known = await cache_get(fallback_key)
+            if last_known:
+                log.info("Serving %d indices from stale fallback cache", len(last_known))
+                return last_known
+            return []
 
         log.info("Fetching indices from external API")
         raw = None
@@ -83,7 +91,7 @@ class MarketService:
             results.sort(key=lambda x: priority_order.get(x["code"], 99))
 
             if results:
-                await cache_set(cache_key, results, CONSTITUENTS_TTL_SECONDS)
+                await cache_set(cache_key, results, INDICES_TTL_SECONDS)
                 await cache_set(fallback_key, results, FALLBACK_TTL_SECONDS)
                 log.info("Stored %d indices in centralized cache", len(results))
                 return results
@@ -96,13 +104,22 @@ class MarketService:
 
         return []
 
-    async def get_index_constituents(self, index_code: str) -> list[dict]:
+    async def get_index_constituents(
+        self, index_code: str, force_refresh: bool = False, read_only: bool = True
+    ) -> list[dict]:
         cache_key = f"market:constituents:{index_code}"
         fallback_key = f"market:constituents:last_known:{index_code}"
-        cached = await cache_get(cache_key)
+        cached = None if force_refresh else await cache_get(cache_key)
         if cached is not None and len(cached) > 0:
             log.debug("Constituents cache hit from Redis for %s", index_code)
             return cached
+
+        if read_only and not force_refresh:
+            last_known = await cache_get(fallback_key)
+            if last_known:
+                log.info("Serving %d stale constituents for %s", len(last_known), index_code)
+                return last_known
+            return []
 
         log.info("Fetching constituents for %s from external API", index_code)
         raw = None
@@ -151,7 +168,7 @@ class MarketService:
         log.warning("No constituents data available for %s", index_code)
         return []
 
-    def get_market_data_sync(self, force_refresh: bool = False) -> list[dict]:
+    def get_market_data_sync(self, force_refresh: bool = False, read_only: bool = True) -> list[dict]:
         """Synchronous market data fetch with centralized Redis caching."""
         cache_key = "market:quotes"
         fallback_key = "market:quotes:last_known"
@@ -160,6 +177,13 @@ class MarketService:
             if cached is not None and len(cached) > 0:
                 log.debug("Market data cache hit from Redis (sync)")
                 return cached
+
+        if read_only and not force_refresh:
+            last_known = cache_get_sync(fallback_key)
+            if last_known:
+                log.info("Serving %d market quotes from sync stale fallback", len(last_known))
+                return last_known
+            return []
 
         log.info("Fetching market watch from external API (sync)")
         raw = None
@@ -187,7 +211,7 @@ class MarketService:
                     "volume": self._safe_int(row.get("Volume")),
                 })
 
-            cache_set_sync(cache_key, rows, CACHE_TTL_SECONDS)
+            cache_set_sync(cache_key, rows, QUOTES_TTL_SECONDS)
             cache_set_sync(fallback_key, rows, FALLBACK_TTL_SECONDS)
             log.info("Stored %d market quotes in centralized cache (sync)", len(rows))
             return rows
@@ -200,7 +224,7 @@ class MarketService:
 
         return []
 
-    async def get_market_data(self, force_refresh: bool = False) -> list[dict]:
+    async def get_market_data(self, force_refresh: bool = False, read_only: bool = True) -> list[dict]:
         cache_key = "market:quotes"
         fallback_key = "market:quotes:last_known"
         if not force_refresh:
@@ -208,6 +232,13 @@ class MarketService:
             if cached is not None and len(cached) > 0:
                 log.debug("Market data cache hit from Redis (async)")
                 return cached
+
+        if read_only and not force_refresh:
+            last_known = await cache_get(fallback_key)
+            if last_known:
+                log.info("Serving %d market quotes from stale fallback", len(last_known))
+                return last_known
+            return []
 
         log.info("Fetching market watch from external API")
         raw = None
@@ -239,7 +270,7 @@ class MarketService:
                 })
 
             if rows:
-                await cache_set(cache_key, rows, CACHE_TTL_SECONDS)
+                await cache_set(cache_key, rows, QUOTES_TTL_SECONDS)
                 await cache_set(fallback_key, rows, FALLBACK_TTL_SECONDS)
                 log.info("Stored %d market quotes in centralized cache", len(rows))
                 return rows
