@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, Path, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError
+from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError, ValidationFailedError
 from app.core.rate_limiter import limiter
 from app.db.session import get_db
 from app.schemas.shariah import (
@@ -155,9 +155,13 @@ async def get_shariah_purification(
         screening = await service.get_screening(sym_upper)
         if screening is None:
             raise NotFoundError(f"No Shariah screening data is available for {sym_upper}.")
+        if not screening.is_shariah_compliant:
+            raise ValidationFailedError(
+                f"Purification is unavailable for {sym_upper} because it is screened as non-compliant."
+            )
 
         custom_rate = None
-        if screening and screening.interest_income_ratio is not None:
+        if screening.interest_income_ratio is not None:
             custom_rate = float(screening.interest_income_ratio)
 
         purification_amount, purification_rate = service.calculate_purification(

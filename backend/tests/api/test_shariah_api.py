@@ -110,6 +110,12 @@ class TestShariahPurification:
         )
         assert resp.status_code == 404
 
+    async def test_purification_rejects_non_compliant_symbol(self, client: AsyncClient):
+        resp = await client.get(
+            "/api/v1/shariah/HBL/purification?holding_qty=100&holding_value=15000.0",
+        )
+        assert resp.status_code == 422
+
     async def test_purification_invalid_qty(self, client: AsyncClient, auth_headers):
         resp = await client.get(
             "/api/v1/shariah/OGDC/purification?holding_qty=0&holding_value=15000.0",
