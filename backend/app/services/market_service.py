@@ -1,10 +1,13 @@
 import asyncio
 import logging
 import math
+import re
 from datetime import datetime, timezone
 from collections import defaultdict
 
+import httpx
 import pypsx_toolkit
+from bs4 import BeautifulSoup
 
 from app.core.redis import (
     cache_get,
@@ -19,6 +22,8 @@ QUOTES_TTL_SECONDS = 600  # refreshed by Celery every 5 minutes
 INDICES_TTL_SECONDS = 28800  # 8 hours; Celery refreshes every 6 hours
 CONSTITUENTS_TTL_SECONDS = 86400  # 24 hours; Celery refreshes daily
 FALLBACK_TTL_SECONDS = 86400 * 7  # 7 days persistent fallback
+SECTOR_MAP_TTL_SECONDS = 86400  # PSX classifications rarely change; refresh daily
+PSX_SCREENER_URL = "https://dps.psx.com.pk/screener"
 
 
 class MarketService:
@@ -27,6 +32,113 @@ class MarketService:
         "KSE30": "KSE-30",
         "KMI30": "KMI-30",
     }
+
+    @staticmethod
+    def _fetch_sector_map_sync() -> dict[str, str]:
+        """Read PSX's public screener once to map symbols to sector names.
+
+        The ALLSHR quote feed contains prices but omits sector labels. PSX's
+        screener includes each symbol's sector code and the sector filter's
+        code-to-name options, so combine those two fields here.
+        """
+        response = httpx.get(
+            PSX_SCREENER_URL,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; BasaratMarketData/1.0)"},
+            timeout=12.0,
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        sector_names: dict[str, str] = {}
+        for option in soup.select("select option"):
+            code = str(option.get("value") or "").strip()
+            name = option.get_text(" ", strip=True)
+            if re.fullmatch(r"08\d{2}", code) and name:
+                sector_names[code] = name.upper()
+
+        # PSX's current sector codes are stable; this table lets the screener
+        # still classify rows if its sector select is rendered client-side.
+        sector_names.update({
+            "0801": "AUTOMOBILE ASSEMBLER",
+            "0802": "AUTOMOBILE PARTS & ACCESSORIES",
+            "0803": "CABLE & ELECTRICAL GOODS",
+            "0804": "CEMENT",
+            "0805": "CHEMICAL",
+            "0806": "CLOSE - END MUTUAL FUND",
+            "0807": "COMMERCIAL BANKS",
+            "0808": "ENGINEERING",
+            "0809": "FERTILIZER",
+            "0810": "FOOD & PERSONAL CARE PRODUCTS",
+            "0811": "GLASS & CERAMICS",
+            "0812": "INSURANCE",
+            "0813": "INV. BANKS / INV. COS. / SECURITIES COS.",
+            "0814": "JUTE",
+            "0815": "LEASING COMPANIES",
+            "0816": "LEATHER & TANNERIES",
+            "0818": "MISCELLANEOUS",
+            "0819": "MODARABAS",
+            "0820": "OIL & GAS EXPLORATION COMPANIES",
+            "0821": "OIL & GAS MARKETING COMPANIES",
+            "0822": "PAPER, BOARD & PACKAGING",
+            "0823": "PHARMACEUTICALS",
+            "0824": "POWER GENERATION & DISTRIBUTION",
+            "0825": "REFINERY",
+            "0826": "SUGAR & ALLIED INDUSTRIES",
+            "0827": "SYNTHETIC & RAYON",
+            "0828": "TECHNOLOGY & COMMUNICATION",
+            "0829": "TEXTILE COMPOSITE",
+            "0830": "TEXTILE SPINNING",
+            "0831": "TEXTILE WEAVING",
+            "0832": "TOBACCO",
+            "0833": "TRANSPORT",
+            "0834": "VANASPATI & ALLIED INDUSTRIES",
+            "0835": "WOOLLEN",
+            "0836": "REAL ESTATE INVESTMENT TRUST",
+            "0837": "EXCHANGE TRADED FUNDS",
+            "0838": "PROPERTY",
+        })
+
+        sector_map: dict[str, str] = {}
+        for table in soup.find_all("table"):
+            headers = [cell.get_text(" ", strip=True).upper() for cell in table.select("thead th")]
+            if not headers:
+                first_row = table.find("tr")
+                headers = [cell.get_text(" ", strip=True).upper() for cell in first_row.find_all(["th", "td"])] if first_row else []
+            if "SYMBOL" not in headers or "SECTOR" not in headers:
+                continue
+            symbol_index, sector_index = headers.index("SYMBOL"), headers.index("SECTOR")
+            for row in table.select("tbody tr") or table.find_all("tr")[1:]:
+                cells = row.find_all("td")
+                if max(symbol_index, sector_index) >= len(cells):
+                    continue
+                symbol = cells[symbol_index].get_text(" ", strip=True).upper().split()[0]
+                code = cells[sector_index].get_text(" ", strip=True)
+                sector = sector_names.get(code)
+                if symbol and sector:
+                    sector_map[symbol] = sector
+            if sector_map:
+                break
+        return sector_map
+
+    @staticmethod
+    def _load_sector_map_sync() -> dict[str, str]:
+        """Use the daily cached PSX symbol-sector map, refreshing when absent."""
+        cache_key = "market:sectors:symbol_map"
+        cached = cache_get_sync(cache_key)
+        if isinstance(cached, dict):
+            return cached
+        try:
+            sector_map = MarketService._fetch_sector_map_sync()
+            if sector_map:
+                cache_set_sync(cache_key, sector_map, SECTOR_MAP_TTL_SECONDS)
+                log.info("Loaded PSX sectors for %d symbols", len(sector_map))
+                return sector_map
+            cache_set_sync(cache_key, {}, 300)
+        except Exception as exc:
+            log.warning("PSX screener sector map unavailable: %s", exc)
+            cache_set_sync(cache_key, {}, 300)
+        return {}
 
     @staticmethod
     def quote_freshness() -> dict:
@@ -244,6 +356,7 @@ class MarketService:
                 for item in previous_rows
                 if isinstance(item, dict) and item.get("sector")
             }
+            sector_map = self._load_sector_map_sync()
             rows = []
             for symbol, row in raw.iterrows():
                 ldcp = self._safe_float(row.get("LDCP"))
@@ -253,7 +366,7 @@ class MarketService:
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
                 rows.append({
                     "symbol": str(symbol),
-                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "")) or "Unclassified",
+                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "") or sector_map.get(str(symbol).upper(), "")) or "Unclassified",
                     "ldcp": ldcp,
                     "open": self._safe_float(row.get("OPEN")),
                     "high": self._safe_float(row.get("HIGH")),
@@ -312,6 +425,7 @@ class MarketService:
                 for item in previous_rows
                 if isinstance(item, dict) and item.get("sector")
             }
+            sector_map = await asyncio.to_thread(self._load_sector_map_sync)
             rows = []
             for symbol, row in raw.iterrows():
                 ldcp = self._safe_float(row.get("LDCP"))
@@ -321,7 +435,7 @@ class MarketService:
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
                 rows.append({
                     "symbol": str(symbol),
-                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "")) or "Unclassified",
+                    "sector": str(row.get("SECTOR", "") or previous_sectors.get(str(symbol).upper(), "") or sector_map.get(str(symbol).upper(), "")) or "Unclassified",
                     "ldcp": ldcp,
                     "open": self._safe_float(row.get("OPEN")),
                     "high": self._safe_float(row.get("HIGH")),
@@ -430,6 +544,20 @@ class MarketService:
     async def get_sector_performance(self, order: str = "desc") -> dict:
         """Aggregate daily price performance and breadth for each classified sector."""
         data = await self.get_market_data()
+        # Existing quote caches may predate sector enrichment. Fill them from
+        # the bulk PSX screener in one request instead of leaving every group
+        # empty until a scheduled quote refresh occurs.
+        if data and not any(
+            str(quote.get("sector") or "").strip().casefold() not in {"", "unclassified", "unknown"}
+            for quote in data
+        ):
+            sector_map = await asyncio.to_thread(self._load_sector_map_sync)
+            if sector_map:
+                for quote in data:
+                    quote["sector"] = sector_map.get(str(quote.get("symbol", "")).upper(), "Unclassified")
+                await cache_set("market:quotes", data, QUOTES_TTL_SECONDS)
+                await cache_set("market:quotes:last_known", data, FALLBACK_TTL_SECONDS)
+
         grouped = defaultdict(list)
         for quote in data:
             sector = str(quote.get("sector") or "").strip()
