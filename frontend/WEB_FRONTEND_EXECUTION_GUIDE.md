@@ -251,7 +251,7 @@ frontend/
   - `GET /api/v1/shariah/kmi30` — List of all KMI-30 Shariah-compliant companies.
   - `GET /api/v1/shariah/{symbol}` — Screening result for a specific stock (compliance boolean, sector, purification rate).
   - `GET /api/v1/shariah/{symbol}/criteria` — Detailed itemized breakdown of all 6 compliance criteria.
-  - `GET /api/v1/shariah/{symbol}/purification?holding_qty={qty}&holding_value={value}` — Calculates exact purification charity amount and notes for user holdings.
+  - `GET /api/v1/shariah/{symbol}/purification?dividend_income={amount}` — Calculates purification as dividend income multiplied by a verified rate; total holding market value is not a valid substitute, and the API reports unavailable if no verified rate exists.
 
 ---
 

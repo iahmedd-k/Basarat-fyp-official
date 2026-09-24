@@ -322,7 +322,7 @@ Errors use the shared app error shape: `{error, message, field?, extras?}` (e.g.
 |---|---|---|---|
 | GET | `/shariah/{symbol}` | — | overall score + compliance label |
 | GET | `/shariah/{symbol}/criteria` | — | per-criterion pass/fail + ratios |
-| GET | `/shariah/{symbol}/purification` | `holding_qty, holding_value` | computed purification amount |
+| GET | `/shariah/{symbol}/purification` | `dividend_income` (PKR) | `dividend_income × verified purification_rate`; returns validation error when a current verified rate is unavailable |
 | GET | `/shariah/kmi30` | — | KMI-30 constituent symbols |
 
 ### 3.12 Module 12 — Personal AI Assistant

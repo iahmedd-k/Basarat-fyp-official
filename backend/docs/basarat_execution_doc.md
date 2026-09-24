@@ -777,14 +777,14 @@ Each module below gives the React page's data needs alongside the Android screen
 |---|---|---|---|
 | GET | `/shariah/{symbol}` | — | overall score + compliance label |
 | GET | `/shariah/{symbol}/criteria` | — | per-criterion pass/fail with actual ratio values |
-| GET | `/shariah/{symbol}/purification` | `holding_qty, holding_value` | computed purification amount |
+| GET | `/shariah/{symbol}/purification` | `dividend_income` (PKR) | `dividend_income × verified purification_rate`; unavailable if no verified rate exists |
 | GET | `/shariah/kmi30` | — | list of KMI-30 constituent symbols |
 
 **Android Screens & Data**
 | Screen | Purpose | Data fields shown | ViewModel State | API calls |
 |---|---|---|---|---|
 | Shariah Screener | Compliance check | `symbol, overall_score, compliance_label (Compliant/Questionable/Non-Compliant), KMI-30 badge if applicable`; criteria checklist: `business_activity: pass/fail, debt_ratio: value vs threshold, interest_income_ratio: value vs threshold, receivables_ratio: value vs threshold` | `screenerData: ShariahData?, isLoading` | `GET /shariah/{symbol}`, `/criteria` |
-| Purification Calculator | Compute purification | inputs: `holding_qty, holding_value (pre-filled from Portfolio if navigated from there)`; output: `purification_amount, method_note` | `input: PurificationInput, result: PurificationResult?` | `GET /shariah/{symbol}/purification` |
+| Purification Calculator | Compute purification | input: `dividend_income` (PKR; may be calculated by the client from a holding and dividend per share); output: `purification_amount, method_note`. Never substitute total holding market value for dividend income; display unavailable when no verified rate exists. | `input: PurificationInput, result: PurificationResult?` | `GET /shariah/{symbol}/purification` |
 | KMI-30 List | Browse benchmark | rows: `symbol, name, sector, ltp` | `constituents: List<StockSummary>` | `GET /shariah/kmi30` |
 
 **Navigation flow:** Entry is Stock Detail's Shariah badge (carrying `symbol`), or a dedicated "Shariah Screener" entry point if you add one to Home/Profile. From the screener: "Calculate Purification" navigates to the Purification Calculator (pre-filled with quantity/value if the user arrived from a Portfolio holding, otherwise blank inputs); "View KMI-30" navigates to the KMI-30 List, whose rows tap through back into Stock Detail like any other stock row.

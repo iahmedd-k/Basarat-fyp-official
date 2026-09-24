@@ -9,44 +9,7 @@ from app.services.market_service import MarketService
 
 log = logging.getLogger(__name__)
 
-# Official KMI-30 Index constituents and known Shariah-compliant profile defaults
-KMI30_PROFILES: dict[str, dict] = {
-    "OGDC": {"sector": "OIL & GAS EXPLORATION COMPANIES", "debt_ratio": 0.021, "interest_ratio": 0.012, "non_compliant_inv": 0.084, "illiquid_ratio": 0.785},
-    "PPL": {"sector": "OIL & GAS EXPLORATION COMPANIES", "debt_ratio": 0.035, "interest_ratio": 0.014, "non_compliant_inv": 0.072, "illiquid_ratio": 0.760},
-    "MARI": {"sector": "OIL & GAS EXPLORATION COMPANIES", "debt_ratio": 0.015, "interest_ratio": 0.011, "non_compliant_inv": 0.065, "illiquid_ratio": 0.810},
-    "POL": {"sector": "OIL & GAS EXPLORATION COMPANIES", "debt_ratio": 0.018, "interest_ratio": 0.013, "non_compliant_inv": 0.058, "illiquid_ratio": 0.790},
-    "LUCK": {"sector": "CEMENT", "debt_ratio": 0.145, "interest_ratio": 0.008, "non_compliant_inv": 0.052, "illiquid_ratio": 0.821},
-    "DGKC": {"sector": "CEMENT", "debt_ratio": 0.285, "interest_ratio": 0.015, "non_compliant_inv": 0.041, "illiquid_ratio": 0.840},
-    "MLCF": {"sector": "CEMENT", "debt_ratio": 0.220, "interest_ratio": 0.011, "non_compliant_inv": 0.038, "illiquid_ratio": 0.835},
-    "FCCL": {"sector": "CEMENT", "debt_ratio": 0.195, "interest_ratio": 0.009, "non_compliant_inv": 0.045, "illiquid_ratio": 0.815},
-    "CHCC": {"sector": "CEMENT", "debt_ratio": 0.240, "interest_ratio": 0.012, "non_compliant_inv": 0.035, "illiquid_ratio": 0.820},
-    "ENGRO": {"sector": "FERTILIZER", "debt_ratio": 0.210, "interest_ratio": 0.018, "non_compliant_inv": 0.095, "illiquid_ratio": 0.690},
-    "ENGROH": {"sector": "FERTILIZER", "debt_ratio": 0.210, "interest_ratio": 0.018, "non_compliant_inv": 0.095, "illiquid_ratio": 0.690},
-    "EFERT": {"sector": "FERTILIZER", "debt_ratio": 0.224, "interest_ratio": 0.009, "non_compliant_inv": 0.062, "illiquid_ratio": 0.745},
-    "FFC": {"sector": "FERTILIZER", "debt_ratio": 0.186, "interest_ratio": 0.011, "non_compliant_inv": 0.078, "illiquid_ratio": 0.720},
-    "FFL": {"sector": "FOOD & PERSONAL CARE PRODUCTS", "debt_ratio": 0.265, "interest_ratio": 0.014, "non_compliant_inv": 0.042, "illiquid_ratio": 0.710},
-    "SYS": {"sector": "TECHNOLOGY & COMMUNICATION", "debt_ratio": 0.038, "interest_ratio": 0.015, "non_compliant_inv": 0.041, "illiquid_ratio": 0.456},
-    "AIRLINK": {"sector": "TECHNOLOGY & COMMUNICATION", "debt_ratio": 0.115, "interest_ratio": 0.012, "non_compliant_inv": 0.035, "illiquid_ratio": 0.420},
-    "MEBL": {"sector": "ISLAMIC COMMERCIAL BANKS", "debt_ratio": 0.000, "interest_ratio": 0.000, "non_compliant_inv": 0.000, "illiquid_ratio": 0.320},
-    "HUBC": {"sector": "POWER GENERATION & DISTRIBUTION", "debt_ratio": 0.312, "interest_ratio": 0.021, "non_compliant_inv": 0.065, "illiquid_ratio": 0.892},
-    "PSO": {"sector": "OIL & GAS MARKETING COMPANIES", "debt_ratio": 0.295, "interest_ratio": 0.024, "non_compliant_inv": 0.088, "illiquid_ratio": 0.650},
-    "SNGP": {"sector": "OIL & GAS MARKETING COMPANIES", "debt_ratio": 0.330, "interest_ratio": 0.019, "non_compliant_inv": 0.055, "illiquid_ratio": 0.780},
-    "SSGC": {"sector": "OIL & GAS MARKETING COMPANIES", "debt_ratio": 0.340, "interest_ratio": 0.022, "non_compliant_inv": 0.048, "illiquid_ratio": 0.770},
-    "ATRL": {"sector": "REFINERY", "debt_ratio": 0.160, "interest_ratio": 0.015, "non_compliant_inv": 0.050, "illiquid_ratio": 0.810},
-    "PRL": {"sector": "REFINERY", "debt_ratio": 0.210, "interest_ratio": 0.017, "non_compliant_inv": 0.045, "illiquid_ratio": 0.790},
-    "NRL": {"sector": "REFINERY", "debt_ratio": 0.185, "interest_ratio": 0.014, "non_compliant_inv": 0.052, "illiquid_ratio": 0.805},
-    "SEARL": {"sector": "PHARMACEUTICALS", "debt_ratio": 0.245, "interest_ratio": 0.010, "non_compliant_inv": 0.040, "illiquid_ratio": 0.680},
-    "CPHL": {"sector": "PHARMACEUTICALS", "debt_ratio": 0.190, "interest_ratio": 0.008, "non_compliant_inv": 0.035, "illiquid_ratio": 0.710},
-    "PAEL": {"sector": "CABLE & ELECTRICAL GOODS", "debt_ratio": 0.275, "interest_ratio": 0.016, "non_compliant_inv": 0.038, "illiquid_ratio": 0.730},
-    "SAZEW": {"sector": "AUTOMOBILE ASSEMBLER", "debt_ratio": 0.085, "interest_ratio": 0.011, "non_compliant_inv": 0.042, "illiquid_ratio": 0.620},
-    "HCAR": {"sector": "AUTOMOBILE ASSEMBLER", "debt_ratio": 0.050, "interest_ratio": 0.013, "non_compliant_inv": 0.060, "illiquid_ratio": 0.580},
-    "NML": {"sector": "TEXTILE COMPOSITE", "debt_ratio": 0.280, "interest_ratio": 0.014, "non_compliant_inv": 0.045, "illiquid_ratio": 0.760},
-    "TREET": {"sector": "PERSONAL CARE PRODUCTS", "debt_ratio": 0.290, "interest_ratio": 0.015, "non_compliant_inv": 0.039, "illiquid_ratio": 0.670},
-    "GAL": {"sector": "GLASS & CERAMICS", "debt_ratio": 0.230, "interest_ratio": 0.012, "non_compliant_inv": 0.041, "illiquid_ratio": 0.740},
-    "GHNI": {"sector": "GLASS & CERAMICS", "debt_ratio": 0.210, "interest_ratio": 0.010, "non_compliant_inv": 0.038, "illiquid_ratio": 0.750},
-    "UNITY": {"sector": "FOOD & PERSONAL CARE PRODUCTS", "debt_ratio": 0.250, "interest_ratio": 0.013, "non_compliant_inv": 0.044, "illiquid_ratio": 0.690},
-}
-
+# Compliance outcomes use source-backed index membership or known business activity.
 # Non-compliant conventional institutions & sectors
 NON_COMPLIANT_SECTORS = {
     "BANKING",
@@ -103,12 +66,8 @@ class ShariahService:
         sym_upper = symbol.upper()
         stock = await self.get_stock_by_symbol(sym_upper)
 
-        if stock:
-            db_screening = await self.get_latest_screening(stock.id)
-            if db_screening:
-                return db_screening
-
-        # If not in DB, evaluate based on PSX KMI-30 / Meezan Screening standard
+        # Legacy database rows were populated from static profiles. They have no
+        # source/as-of metadata, so their ratios cannot be presented as current.
         return await self._evaluate_and_persist_screening(sym_upper, stock)
 
     async def _evaluate_and_persist_screening(self, symbol: str, stock: Stock | None = None) -> ShariahScreening | None:
@@ -124,17 +83,16 @@ class ShariahService:
                 # these financial ratios are not available from the source.
                 debt_ratio=None,
                 interest_income_ratio=None,
-                screening_method="PSX KMI-30 / Meezan Screening Standard",
+                screening_method="Known business activity classification; financial ratios unavailable",
                 screened_at=datetime.utcnow(),
             )
-        elif sym_upper in KMI30_PROFILES:
-            profile = KMI30_PROFILES[sym_upper]
+        elif await self._is_current_kmi30_member(sym_upper):
             screening = ShariahScreening(
                 stock_id=stock.id if stock else f"stock-{sym_upper.lower()}",
                 is_shariah_compliant=True,
-                debt_ratio=profile["debt_ratio"],
-                interest_income_ratio=profile["interest_ratio"],
-                screening_method="PSX KMI-30 / Meezan Screening Standard",
+                debt_ratio=None,
+                interest_income_ratio=None,
+                screening_method="Cached PSX KMI-30 constituent membership; financial ratios unavailable",
                 screened_at=datetime.utcnow(),
             )
         else:
@@ -144,9 +102,9 @@ class ShariahService:
                 screening = ShariahScreening(
                     stock_id=stock.id if stock else f"stock-{sym_upper.lower()}",
                     is_shariah_compliant=False,
-                    debt_ratio=0.7500,
-                    interest_income_ratio=0.8000,
-                    screening_method="PSX KMI-30 / Meezan Screening Standard",
+                    debt_ratio=None,
+                    interest_income_ratio=None,
+                    screening_method="Known business activity classification; financial ratios unavailable",
                     screened_at=datetime.utcnow(),
                 )
             else:
@@ -154,15 +112,19 @@ class ShariahService:
                 # Shariah compliance. Do not manufacture financial ratios.
                 return None
 
-        # If stock exists in DB, persist this screening record
-        if stock:
-            try:
-                self.db.add(screening)
-                await self.db.flush()
-            except Exception as e:
-                log.warning("Could not persist ShariahScreening for %s: %s", sym_upper, e)
-
         return screening
+
+    async def _is_current_kmi30_member(self, symbol: str) -> bool:
+        """Use the current source-backed constituent cache, never a static profile."""
+        try:
+            freshness = MarketService.constituents_freshness("KMI30")
+            if freshness.get("is_stale", True):
+                return False
+            rows = await MarketService().get_index_constituents("KMI30")
+            return any(str(row.get("symbol", "")).upper() == symbol for row in (rows or []))
+        except Exception as exc:
+            log.warning("KMI-30 membership unavailable while screening %s: %s", symbol, exc)
+            return False
 
     def build_criteria(self, screening: ShariahScreening | None, symbol: str = "") -> list[dict]:
         """Build the comprehensive 6-point PSX/Meezan Shariah screening breakdown."""
@@ -180,13 +142,12 @@ class ShariahService:
                 )
             ]
         sym_upper = symbol.upper()
-        profile = KMI30_PROFILES.get(sym_upper, {})
         is_non_compliant = sym_upper in NON_COMPLIANT_SYMBOLS
 
-        debt_ratio = float(screening.debt_ratio) if screening and screening.debt_ratio is not None else profile.get("debt_ratio", None if is_non_compliant else 0.18)
-        interest_ratio = float(screening.interest_income_ratio) if screening and screening.interest_income_ratio is not None else profile.get("interest_ratio", None if is_non_compliant else 0.015)
-        non_compliant_inv = profile.get("non_compliant_inv", None if is_non_compliant else 0.05)
-        illiquid_ratio = profile.get("illiquid_ratio", None if is_non_compliant else 0.75)
+        debt_ratio = float(screening.debt_ratio) if screening and screening.debt_ratio is not None else None
+        interest_ratio = float(screening.interest_income_ratio) if screening and screening.interest_income_ratio is not None else None
+        non_compliant_inv = None
+        illiquid_ratio = None
 
         is_core_halal = not is_non_compliant and (screening.is_shariah_compliant if screening else True)
 
@@ -229,61 +190,36 @@ class ShariahService:
             {
                 "name": "Net Liquid Assets vs Market Price",
                 "threshold": 1.0,
-                "value": 0.42 if is_core_halal else None,
-                "passed": True if is_core_halal else None,
+                "value": None,
+                "passed": None,
                 "description": "Net liquid assets per share must be less than the current market price per share.",
             },
         ]
 
-    def calculate_purification(self, holding_value: float, symbol: str = "", rate: float | None = None) -> tuple[float, float]:
+    def calculate_purification(self, dividend_income: float, symbol: str = "", rate: float | None = None) -> tuple[float, float]:
         """Calculate purification amount and return (purification_amount, purification_rate)."""
         sym_upper = symbol.upper()
 
         if rate is not None:
             effective_rate = rate
-        elif sym_upper in KMI30_PROFILES:
-            effective_rate = KMI30_PROFILES[sym_upper]["interest_ratio"]
-        elif sym_upper in NON_COMPLIANT_SYMBOLS:
-            effective_rate = 1.0  # 100% non-compliant
         else:
-            effective_rate = 0.015  # standard 1.5% PSX benchmark
+            raise ValueError(f"No verified purification rate is available for {sym_upper}.")
 
-        amount = round(holding_value * effective_rate, 2)
+        amount = round(dividend_income * effective_rate, 2)
         return amount, effective_rate
 
     async def get_kmi30_constituents(self) -> list[dict]:
-        """Fetch real KMI-30 constituents via MarketService with fallback."""
+        """Fetch source-backed KMI-30 constituents without inventing prices or ratios."""
         market_service = MarketService()
         try:
             constituents = await market_service.get_index_constituents("KMI30")
             if constituents and len(constituents) > 0:
-                enhanced = []
-                for c in constituents:
-                    sym = c.get("symbol", "").upper()
-                    profile = KMI30_PROFILES.get(sym, {})
-                    enhanced.append({
-                        **c,
-                        "is_shariah_compliant": True,
-                        "sector": profile.get("sector", "Shariah Compliant Universe"),
-                        "purification_rate": profile.get("interest_ratio", 0.015),
-                        "debt_ratio": profile.get("debt_ratio", 0.15),
-                    })
-                return enhanced
+                return [{**c, "is_shariah_compliant": True, "purification_rate": None, "debt_ratio": None}
+                        for c in constituents if c.get("symbol")]
         except Exception as e:
-            log.warning("MarketService.get_index_constituents(KMI30) failed, using profile fallback: %s", e)
+            log.warning("MarketService.get_index_constituents(KMI30) unavailable: %s", e)
+        return []
 
-        # Fallback list of top KMI-30 constituents
-        fallback = []
-        for sym, prof in KMI30_PROFILES.items():
-            fallback.append({
-                "symbol": sym,
-                "name": sym,
-                "sector": prof["sector"],
-                "is_shariah_compliant": True,
-                "purification_rate": prof["interest_ratio"],
-                "debt_ratio": prof["debt_ratio"],
-                "current": 100.0,
-                "change": 0.0,
-                "change_pct": 0.0,
-            })
-        return fallback
+    @staticmethod
+    def market_constituents_freshness() -> dict:
+        return MarketService.constituents_freshness("KMI30")

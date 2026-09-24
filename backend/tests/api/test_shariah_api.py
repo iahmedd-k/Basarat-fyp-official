@@ -5,6 +5,26 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.shariah import ShariahScreening
+from app.services.shariah_service import ShariahService
+
+
+@pytest.fixture(autouse=True)
+def source_backed_kmi_fixture(monkeypatch):
+    """Make the external index source deterministic without static service fallbacks."""
+    from app.services.market_service import MarketService
+
+    rows = [{"symbol": symbol, "name": symbol, "current": 100 + i}
+            for i, symbol in enumerate(["OGDC"] + [f"T{i:02d}" for i in range(29)])]
+
+    async def get_index_constituents(self, index_code):
+        return rows if index_code == "KMI30" else []
+
+    monkeypatch.setattr(MarketService, "get_index_constituents", get_index_constituents)
+    monkeypatch.setattr(
+        MarketService,
+        "constituents_freshness",
+        classmethod(lambda cls, index_code: {"as_of": "2026-09-25T08:00:00+00:00", "is_stale": False}),
+    )
 
 
 @pytest.mark.api
@@ -84,48 +104,56 @@ class TestShariahCriteria:
 
 @pytest.mark.api
 class TestShariahPurification:
-    async def test_purification(self, client: AsyncClient, auth_headers):
+    def test_calculation_applies_verified_rate_to_dividend_income(self):
+        service = ShariahService(None)
+        amount, rate = service.calculate_purification(
+            dividend_income=15000.0, symbol="OGDC", rate=0.012
+        )
+        assert rate == 0.012
+        assert amount == 180.0
+
+    async def test_purification_requires_verified_rate(self, client: AsyncClient, auth_headers):
         resp = await client.get(
-            "/api/v1/shariah/OGDC/purification?holding_qty=100&holding_value=15000.0",
+            "/api/v1/shariah/OGDC/purification?dividend_income=15000.0",
             headers=auth_headers,
         )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["symbol"] == "OGDC"
-        assert data["holding_qty"] == 100
-        assert data["holding_value"] == 15000.0
-        assert data["purification_amount"] > 0
-        assert data["purification_rate"] > 0
-        assert "notes" in data
+        assert resp.status_code == 422
+        assert "verified purification rate" in resp.json()["error"]["message"].lower()
 
-    async def test_purification_is_public(self, client: AsyncClient):
+    async def test_purification_is_public_and_uses_dividend_income(self, client: AsyncClient):
         resp = await client.get(
-            "/api/v1/shariah/OGDC/purification?holding_qty=100&holding_value=15000.0",
+            "/api/v1/shariah/OGDC/purification?dividend_income=15000.0",
         )
-        assert resp.status_code == 200
+        assert resp.status_code in (200, 422)
+
+    async def test_purification_requires_dividend_income(self, client: AsyncClient):
+        resp = await client.get(
+            "/api/v1/shariah/OGDC/purification?holding_value=15000.0",
+        )
+        assert resp.status_code == 422
 
     async def test_purification_unknown_symbol_has_no_default_rate(self, client: AsyncClient):
         resp = await client.get(
-            "/api/v1/shariah/ZZZ999/purification?holding_qty=100&holding_value=15000.0",
+            "/api/v1/shariah/ZZZ999/purification?dividend_income=15000.0",
         )
         assert resp.status_code == 404
 
     async def test_purification_rejects_non_compliant_symbol(self, client: AsyncClient):
         resp = await client.get(
-            "/api/v1/shariah/HBL/purification?holding_qty=100&holding_value=15000.0",
+            "/api/v1/shariah/HBL/purification?dividend_income=15000.0",
         )
         assert resp.status_code == 422
 
     async def test_purification_invalid_qty(self, client: AsyncClient, auth_headers):
         resp = await client.get(
-            "/api/v1/shariah/OGDC/purification?holding_qty=0&holding_value=15000.0",
+            "/api/v1/shariah/OGDC/purification?dividend_income=-1",
             headers=auth_headers,
         )
         assert resp.status_code == 422
 
     async def test_purification_invalid_value(self, client: AsyncClient, auth_headers):
         resp = await client.get(
-            "/api/v1/shariah/OGDC/purification?holding_qty=100&holding_value=-100",
+            "/api/v1/shariah/OGDC/purification?dividend_income=0",
             headers=auth_headers,
         )
         assert resp.status_code == 422

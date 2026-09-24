@@ -18,6 +18,8 @@ class ShariahScreeningResponse(BaseModel):
     overall_score: float | None = None
     screening_method: str | None = None
     screened_at: datetime | None = None
+    data_as_of: datetime | None = None
+    data_is_stale: bool | None = None
     sector: str | None = None
     purification_rate: float | None = None
     compliance_summary: str | None = None
@@ -32,8 +34,7 @@ class ShariahCriteriaResponse(BaseModel):
 
 class ShariahPurificationResponse(BaseModel):
     symbol: str
-    holding_qty: int
-    holding_value: float
+    dividend_income: float
     purification_amount: float
     purification_rate: float
     notes: str | None = None
@@ -42,5 +43,7 @@ class ShariahPurificationResponse(BaseModel):
 class ShariahKMI30Response(BaseModel):
     index: str = "KMI-30"
     total_constituents: int | None = None
+    as_of: datetime | None = None
+    is_stale: bool = True
     constituents: list[dict]
 

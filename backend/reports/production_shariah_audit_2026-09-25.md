@@ -54,3 +54,22 @@ The final focused test suite passed **18/18**: `tests/api/test_shariah_api.py`.
 - The live KMI-30 constituent payload was structurally valid and contained 30 records. This audit did not independently reconcile the full constituent roster or ratios against an authoritative dated PSX/Meezan publication.
 
 These items need a product-approved data source/definition; this audit intentionally did not invent dates, ratios, or religious determinations.
+
+## Production-readiness follow-up — 2026-09-25
+
+The product owner confirmed that purification is calculated as **dividend income × rate** and that the organization has a PSX redistribution license. The following local changes address the audit findings; they have not yet been deployed to the AWS service.
+
+- Removed the hard-coded KMI-30 financial-profile table. Screening no longer uses those static ratios or old database screening rows without source/as-of metadata.
+- KMI-30 membership is accepted as a limited membership-based signal only when the cached constituent feed is fresh. The KMI response now includes `as_of` and `is_stale`; empty/unavailable membership data returns 503 rather than a fabricated list.
+- Constituents are no longer enriched with fabricated prices, sectors, ratios, or purification rates. Financial criteria not present in a dated source remain null, including the overall score.
+- Purification now accepts `dividend_income` only and applies an explicitly available screening rate to that amount. It returns 422 when a verified rate is unavailable rather than using a profile/default rate. At present, the production dataset does not provide verified rates, so this calculation remains unavailable pending a dated authoritative Shariah financial-screening feed.
+- Replaced the manual live audit script's embedded test login with anonymous public-route checks and a configurable `AUDIT_BASE_URL`; it does not contain or use credentials.
+- Updated endpoint and frontend integration documentation to specify the dividend-income basis and unavailable-rate behavior.
+
+Local verification: **20/20** tests passed in `tests/api/test_shariah_api.py`; edited Python modules and the manual smoke script passed `py_compile`; `git diff --check` passed. The production retest above describes the deployed pre-follow-up version. A post-deployment public smoke run is still required after this change is released.
+
+### Readiness decision
+
+The Shariah API now fails safely and reports uncertainty honestly, but the Shariah module is **not fully feature-ready for production use**: verified current financial ratios and purification rates are not available from the connected data feed. The separate historical Stocks/Market audit also documents source-data gaps, including stale OHLCV and missing financial fundamentals. The user confirmed PSX redistribution rights, which addresses the license question but does not supply a dated Shariah screening dataset.
+
+Security follow-up: the previous live test script was already committed with an inline test account password. The working-tree version no longer contains it, but prior Git revisions retain it. Do not reuse that account; rotate or disable it, and consider repository history cleanup if the credential was valid outside test environments. No credential was used during this work.

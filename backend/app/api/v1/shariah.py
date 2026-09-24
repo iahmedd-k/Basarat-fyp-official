@@ -12,11 +12,7 @@ from app.schemas.shariah import (
     ShariahPurificationResponse,
     ShariahScreeningResponse,
 )
-from app.services.shariah_service import (
-    KMI30_PROFILES,
-    NON_COMPLIANT_SYMBOLS,
-    ShariahService,
-)
+from app.services.shariah_service import NON_COMPLIANT_SYMBOLS, ShariahService
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +36,12 @@ async def get_kmi30_shariah(
     """Retrieve all constituent companies of the PSX KMI-30 Shariah Index."""
     try:
         constituents = await service.get_kmi30_constituents()
+        if not constituents:
+            raise ServiceUnavailableError("KMI-30 constituent data is temporarily unavailable.")
         return ShariahKMI30Response(
             index="KMI-30",
             total_constituents=len(constituents),
+            **service.market_constituents_freshness(),
             constituents=constituents,
         )
     except Exception:
@@ -77,23 +76,30 @@ async def get_shariah_screening(
                 compliance_summary=f"No Shariah screening data is available for {sym_upper}; compliance is unverified.",
             )
 
-        _, purif_rate = service.calculate_purification(100.0, symbol=sym_upper)
-        profile = KMI30_PROFILES.get(sym_upper) or NON_COMPLIANT_SYMBOLS.get(sym_upper, {})
-        sector = profile.get("sector")
+        profile = NON_COMPLIANT_SYMBOLS.get(sym_upper, {})
+        purif_rate = (
+            float(screening.interest_income_ratio)
+            if screening.is_shariah_compliant and screening.interest_income_ratio is not None
+            else None
+        )
 
         summary = (
-            f"{sym_upper} is Shariah-compliant according to PSX KMI-30 / Meezan criteria."
+            f"{sym_upper} is a current PSX KMI-30 constituent; current financial screening ratios are unavailable."
             if screening.is_shariah_compliant
             else f"{sym_upper} does not satisfy PSX Shariah screening criteria ({profile.get('reason', 'Financial or business non-compliance')})."
         )
+        member_data = screening.screening_method.startswith("Cached PSX KMI-30")
+        freshness = service.market_constituents_freshness() if member_data else {}
 
         return ShariahScreeningResponse(
             symbol=sym_upper,
             is_shariah_compliant=screening.is_shariah_compliant,
-            overall_score=float(screening.debt_ratio) if screening.debt_ratio is not None else None,
+            overall_score=None,
             screening_method=screening.screening_method or "PSX KMI-30 / Meezan Screening Standard",
             screened_at=screening.screened_at,
-            sector=sector,
+            data_as_of=freshness.get("as_of"),
+            data_is_stale=freshness.get("is_stale") if member_data else None,
+            sector=profile.get("sector"),
             purification_rate=purif_rate if screening.is_shariah_compliant else None,
             compliance_summary=summary,
         )
@@ -139,14 +145,13 @@ async def get_shariah_criteria(
 @router.get(
     "/shariah/{symbol}/purification",
     response_model=ShariahPurificationResponse,
-    summary="Calculate purification amount for a holding",
+    summary="Calculate purification amount from dividend income",
 )
 @limiter.limit("60/minute")
 async def get_shariah_purification(
     request: Request,
     symbol: str = Path(..., min_length=1, max_length=15, pattern=r"^[A-Za-z0-9][A-Za-z0-9.-]*$"),
-    holding_qty: int = Query(..., gt=0),
-    holding_value: float = Query(..., gt=0),
+    dividend_income: float = Query(..., gt=0),
     service: ShariahService = Depends(_get_service),
 ):
     """Calculate the Shariah purification (charitable deduction) required for a holding."""
@@ -163,22 +168,25 @@ async def get_shariah_purification(
         custom_rate = None
         if screening.interest_income_ratio is not None:
             custom_rate = float(screening.interest_income_ratio)
+        if custom_rate is None:
+            raise ValidationFailedError(
+                f"A verified purification rate is not available for {sym_upper}."
+            )
 
         purification_amount, purification_rate = service.calculate_purification(
-            holding_value=holding_value,
+            dividend_income=dividend_income,
             symbol=sym_upper,
             rate=custom_rate,
         )
 
         notes = (
             f"To purify income from {sym_upper}, donate PKR {purification_amount:,.2f} "
-            f"({purification_rate * 100:.2f}% of dividend/holding value) to an approved Islamic charity."
+            f"({purification_rate * 100:.2f}% of dividend income) to an approved Islamic charity."
         )
 
         return ShariahPurificationResponse(
             symbol=sym_upper,
-            holding_qty=holding_qty,
-            holding_value=holding_value,
+            dividend_income=dividend_income,
             purification_amount=purification_amount,
             purification_rate=purification_rate,
             notes=notes,
