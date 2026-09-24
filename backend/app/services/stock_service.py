@@ -1108,7 +1108,7 @@ class StockService:
                 equity_profile.get("market_cap_pkr"), equity_profile.get("total_shares"), eps, pe_ratio,
                 peg, eps_growth, net_margin, gross_margin, year_high, year_low, dividend_history,
             )) else "unavailable",
-            "data_message": None if any(value not in (None, [], "") for value in (
+            "data_message": "Some company fundamentals are missing from the upstream PSX feed; blank fields are not estimated." if any(value not in (None, [], "") for value in (
                 equity_profile.get("market_cap_pkr"), equity_profile.get("total_shares"), eps, pe_ratio,
                 peg, eps_growth, net_margin, gross_margin, year_high, year_low, dividend_history,
             )) else "Fundamentals provider returned no usable company data; unavailable values are left blank.",
