@@ -531,7 +531,10 @@ class StockService:
         # When the dps.psx.com.pk quote/fundamentals pages are unreachable
         # (cloud/datacenter IPs), fill the gaps from StockAnalysis.com, which
         # is reachable from those environments.
-        if market_cap_m is None or pe_ratio is None or year_change_pct is None:
+        if (
+            market_cap_m is None or pe_ratio is None or year_change_pct is None
+            or high is None or low is None
+        ):
             try:
                 sa = fetch_stockanalysis_fundamentals(symbol)
                 sa_eq = sa.get("equity_profile") or {}
@@ -543,6 +546,10 @@ class StockService:
                     pe_ratio = sa_ratio.get("pe_ratio")
                 if year_change_pct is None:
                     year_change_pct = sa_limits.get("year_change_pct")
+                if high is None:
+                    high = sa_limits.get("day_high")
+                if low is None:
+                    low = sa_limits.get("day_low")
             except Exception as exc:
                 log.warning("StockAnalysis fallback failed for %s overview: %s", symbol, exc)
 
@@ -576,7 +583,7 @@ class StockService:
         info = cache_get_sync(info_key)
         if isinstance(info, dict):
             name = info.get("company_name") or info.get("name")
-            if name:
+            if name and str(name).strip().upper() not in {symbol, f"{symbol} PAKISTAN"}:
                 return str(name)
         try:
             ticker = pypsx_toolkit.Ticker(symbol)
@@ -585,10 +592,17 @@ class StockService:
             if info:
                 cache_set_sync(info_key, info, FUND_TTL_SECONDS)
                 name = info.get("company_name") or info.get("name")
-                if name:
+                if name and str(name).strip().upper() not in {symbol, f"{symbol} PAKISTAN"}:
                     return str(name)
         except Exception as exc:
             log.debug("Company name lookup failed for %s: %s", symbol, exc)
+        try:
+            profile = fetch_stockanalysis_fundamentals(symbol).get("company_profile") or {}
+            name = profile.get("name")
+            if name and str(name).strip().upper() not in {symbol, f"{symbol} PAKISTAN"}:
+                return str(name)
+        except Exception as exc:
+            log.debug("StockAnalysis company name lookup failed for %s: %s", symbol, exc)
         return symbol
 
     def _ytd_change_from_history(self, symbol: str):
@@ -1005,6 +1019,8 @@ class StockService:
             "website": website,
             "address": address,
         }
+        if str(company_profile["name"]).strip().upper() in {symbol, f"{symbol} PAKISTAN"}:
+            company_profile["name"] = self._company_name(symbol)
 
         # 2. Equity Profile
         eq = info_dict.get("Equity Profile", {}) if isinstance(info_dict.get("Equity Profile"), dict) else {}

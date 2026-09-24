@@ -49,6 +49,12 @@ def test_normalize_quotes_marks_zero_current_and_change_unavailable():
     assert result[0]["change_pct"] is None
 
 
+def test_stockanalysis_range_parser_returns_high_then_low():
+    from app.services.stockanalysis_fundamentals import _parse_range
+
+    assert _parse_range("299.00 - 312.05") == (312.05, 299.0)
+
+
 def test_normalize_quotes_preserves_missing_metadata_without_failing_response_schema():
     from app.schemas.market import MarketQuoteItem
 

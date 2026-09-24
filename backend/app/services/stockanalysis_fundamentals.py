@@ -141,7 +141,7 @@ def _business_description(soup, symbol: str) -> str | None:
 def fetch_stockanalysis_fundamentals(symbol: str) -> dict[str, Any]:
     """Fetch fundamentals for a PSX symbol from StockAnalysis, cached in Redis."""
     symbol = str(symbol).upper()
-    cache_key = f"sa:fundamentals:{symbol}"
+    cache_key = f"sa:v2:fundamentals:{symbol}"
 
     cached = cache_get_sync(cache_key)
     if isinstance(cached, dict) and cached:
@@ -161,6 +161,11 @@ def fetch_stockanalysis_fundamentals(symbol: str) -> dict[str, Any]:
         return result
     quote_soup = BeautifulSoup(quote_resp.text, "html.parser")
     quote_rows = _table_rows(quote_soup)
+    headline = quote_soup.select_one("h1")
+    company_name = headline.get_text(" ", strip=True) if headline else None
+    if company_name:
+        company_name = re.sub(r"\s*\(PSX:[A-Z0-9]+\)\s*$", "", company_name).strip()
+        result["company_profile"]["name"] = company_name or None
 
     market_cap = _parse_money(quote_rows.get("Market Cap"))
     shares_out = _parse_money(quote_rows.get("Shares Out"))
@@ -168,6 +173,7 @@ def fetch_stockanalysis_fundamentals(symbol: str) -> dict[str, Any]:
     eps = _parse_number(quote_rows.get("EPS"))
     eps_growth = _parse_percent_change(quote_rows.get("EPS"))
     year_high, year_low = _parse_range(quote_rows.get("52-Week Range"))
+    day_high, day_low = _parse_range(quote_rows.get("Day's Range"))
     result["business_description"] = _business_description(quote_soup, symbol)
 
     result["company_profile"]["sector"] = None  # PSX sector via market watch preferred
@@ -179,6 +185,8 @@ def fetch_stockanalysis_fundamentals(symbol: str) -> dict[str, Any]:
     result["ratios"]["eps_growth_pct"] = eps_growth
     result["trading_limits"]["year_high"] = year_high
     result["trading_limits"]["year_low"] = year_low
+    result["trading_limits"]["day_high"] = day_high
+    result["trading_limits"]["day_low"] = day_low
     result["metrics"]["market_cap_m"] = result["equity_profile"]["market_cap_pkr_m"]
     result["metrics"]["pe_ratio"] = pe_ratio
     result["metrics"]["eps"] = eps
