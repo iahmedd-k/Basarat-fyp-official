@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import sqlite3
 import sys
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,10 +27,11 @@ LEDGER = DATA / "forecast_ledger.sqlite3"
 HORIZONS = (1, 3, 7)
 CLASSES = ("bearish", "neutral", "bullish")
 VERSION = "psx-volband-xgb-v1"
-TRAIN_END = pd.Timestamp("2023-12-31")
-CAL_END = pd.Timestamp("2024-12-31")
-TEST_START = pd.Timestamp("2025-01-01")
+TRAIN_END = pd.Timestamp("2024-12-31")
+CAL_END = pd.Timestamp("2025-12-31")
+TEST_START = pd.Timestamp("2026-01-01")
 FETCH_START = "2020-01-01"
+MAX_FRESHNESS_SESSIONS = 5
 FEATURES = [
     "ret_1", "ret_3", "ret_7", "ret_14", "ret_21", "vol_5", "vol_20",
     "close_sma5", "close_sma20", "close_sma50", "rsi_14", "range_pct",
@@ -105,7 +108,7 @@ def fetch() -> None:
         "fetched_at_utc": datetime.now(timezone.utc).isoformat(),
         "symbols_requested": len(symbols), "symbols_received": len(results),
         "rows": len(combined), "date_min": str(combined.date.min().date()),
-        "date_max": str(combined.date.max().date()), "errors": errors,
+        "date_max": str(combined.date.max().date()), "ignored_repository_entries": ["all_symbols (metadata file, not a PSX ticker)"], "errors": errors,
     }
     (DATA / "fetch_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     LOG.info("Saved %s rows. Failures: %s", len(combined), len(errors))
@@ -167,7 +170,8 @@ def build_frame(path: Path | None = None) -> pd.DataFrame:
     src = df.get("is_anomaly", pd.Series(False, index=df.index)).fillna(False).astype(bool)
     df["price_anomaly"] = jump | src
     # Features after a flagged price discontinuity are excluded for 50 sessions.
-    df["clean_feature_window"] = ~df.groupby("symbol").price_anomaly.transform(lambda s: s.astype(int).rolling(50, min_periods=1).max().shift(1).fillna(0).astype(bool))
+    prior_anomaly = df.groupby("symbol").price_anomaly.transform(lambda s: s.astype(int).rolling(50, min_periods=1).max().shift(1).fillna(0).astype(bool))
+    df["clean_feature_window"] = ~prior_anomaly & ~df.price_anomaly
     for h in HORIZONS:
         future = g.close.shift(-h)
         forward = future / df.close - 1
@@ -229,7 +233,8 @@ def fit_temperature(probs: np.ndarray, y: np.ndarray) -> float:
 def evaluate() -> None:
     ensure_dirs()
     df = build_frame()
-    report = {"model_version": VERSION, "train_end": str(TRAIN_END.date()), "calibration_period": ["2024-01-01", str(CAL_END.date())], "test_start": str(TEST_START.date()), "target": "forward return versus +/- 0.5 * point-in-time 20-session volatility * sqrt(horizon)", "horizons": {}}
+    calibration_start = (TRAIN_END + pd.Timedelta(days=1)).date().isoformat()
+    report = {"model_version": VERSION, "train_end": str(TRAIN_END.date()), "calibration_period": [calibration_start, str(CAL_END.date())], "test_start": str(TEST_START.date()), "target": "forward return versus +/- 0.5 * point-in-time 20-session volatility * sqrt(horizon)", "horizons": {}}
     temperatures = {}
     for h in HORIZONS:
         d = eligible(df, h)
@@ -259,26 +264,32 @@ def evaluate() -> None:
         # XGBoost can omit a class if training has none; require all three.
         if list(mdl.classes_) != [0, 1, 2]:
             raise RuntimeError(f"Training labels for {h}d do not include all classes: {mdl.classes_}")
+        yearly = {}
+        for year, yearly_rows in test.groupby(test.date.dt.year):
+            if len(yearly_rows) < 100:
+                continue
+            yearly_probs = apply_temperature(mdl.predict_proba(yearly_rows[FEATURES]), temperature)
+            yearly[ str(year) ] = metrics(yearly_rows[f"label_{h}"].astype(int).to_numpy(), yearly_probs)
         report["horizons"][f"{h}d"] = {
             "n_train": len(train), "n_calibration": len(calibration), "n_test": len(test), "temperature": temperature,
             "calibration_log_loss": float(__import__("sklearn.metrics", fromlist=["log_loss"]).log_loss(yc, apply_temperature(calibration_probs, temperature), labels=[0, 1, 2])),
             "train_class_counts": {c: int((ytr == i).sum()) for i, c in enumerate(CLASSES)},
             "test_class_counts": {c: int((yte == i).sum()) for i, c in enumerate(CLASSES)},
             "xgboost": metrics(yte, probs), "majority_baseline": metrics(yte, dummy_probs),
-            "test_dates": [str(test.date.min().date()), str(test.date.max().date())],
+            "test_dates": [str(test.date.min().date()), str(test.date.max().date())], "holdout_by_year": yearly,
         }
         LOG.info("%sd holdout macro-F1 %.4f balanced-accuracy %.4f (n=%s)", h, report["horizons"][f"{h}d"]["xgboost"]["macro_f1"], report["horizons"][f"{h}d"]["xgboost"]["balanced_accuracy"], len(test))
     report["data_rows"] = int(len(df))
     report["symbols"] = int(df.symbol.nunique())
     report["anomaly_rows"] = int(df.price_anomaly.sum())
     report["interpretation"] = "Calibrated historical holdout metrics; not evidence of tradable excess return. Existing project experiments have already examined overlapping historical dates."
-    (MODELS / "calibration.json").write_text(json.dumps({"model_version": VERSION, "method": "single scalar temperature fitted on 2024 time-separated calibration set", "temperatures": temperatures}, indent=2), encoding="utf-8")
+    (MODELS / "calibration.json").write_text(json.dumps({"model_version": VERSION, "method": f"single scalar temperature fitted on {CAL_END.year} time-separated calibration set", "temperatures": temperatures}, indent=2), encoding="utf-8")
     (REPORTS / "evaluation.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     (REPORTS / "evaluation.md").write_text(render_report(report), encoding="utf-8")
 
 
 def render_report(report: dict) -> str:
-    lines = ["# Forecast model evaluation", "", f"Version: `{report['model_version']}`  ", f"Train through: {report['train_end']}  ", f"Calibration: {report['calibration_period'][0]} through {report['calibration_period'][1]}  ", f"Historical test: {report['test_start']} onward", "", "Macro-F1 and balanced accuracy are the primary metrics. The multiclass probabilities are temperature-scaled using the separate 2024 calibration period. Majority-class probabilities provide the baseline. Per-class precision/recall and confusion matrices are in `evaluation.json`.", "", "| Horizon | Train n | Cal n | Test n | XGB macro-F1 | Majority macro-F1 | XGB balanced accuracy | Majority balanced accuracy |", "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    lines = ["# Forecast model evaluation", "", f"Version: `{report['model_version']}`  ", f"Train through: {report['train_end']}  ", f"Calibration: {report['calibration_period'][0]} through {report['calibration_period'][1]}  ", f"Historical test: {report['test_start']} onward", "", f"Macro-F1 and balanced accuracy are the primary metrics. Multiclass probabilities are temperature-scaled using the separate {report['calibration_period'][0][:4]} calibration period. Majority-class probabilities provide the baseline. Per-class precision/recall and confusion matrices are in `evaluation.json`.", "", "| Horizon | Train n | Cal n | Test n | XGB macro-F1 | Majority macro-F1 | XGB balanced accuracy | Majority balanced accuracy |", "|---|---:|---:|---:|---:|---:|---:|---:|"]
     for h, m in report["horizons"].items():
         x, b = m["xgboost"], m["majority_baseline"]
         lines.append(f"| {h} | {m['n_train']} | {m['n_calibration']} | {m['n_test']} | {x['macro_f1']:.4f} | {b['macro_f1']:.4f} | {x['balanced_accuracy']:.4f} | {b['balanced_accuracy']:.4f} |")
@@ -289,14 +300,40 @@ def render_report(report: dict) -> str:
 def train() -> None:
     ensure_dirs()
     df = build_frame()
+    build_dir = MODELS / "_building"
+    build_dir.mkdir(parents=True, exist_ok=True)
+    model_paths = []
+    train_rows = {}
     for h in HORIZONS:
         d = eligible(df, h)
-        y = d[f"label_{h}"].astype(int).to_numpy()
+        prior_dates = pd.Series(df.loc[df.date <= TRAIN_END, "date"].drop_duplicates().sort_values().to_numpy())
+        if len(prior_dates) <= h:
+            raise RuntimeError(f"Cannot purge {h} sessions before training/calibration boundary")
+        train_cutoff = prior_dates.iloc[-(h + 1)]
+        training = d[d.date <= train_cutoff]
+        train_rows[str(h)] = int(len(training))
+        y = training[f"label_{h}"].astype(int).to_numpy()
         if set(np.unique(y)) != {0, 1, 2}:
             raise RuntimeError(f"Final {h}d dataset does not contain all classes")
-        model = model_for(h).fit(d[FEATURES], y)
-        model.save_model(str(MODELS / f"xgb_{h}d.json"))
-    manifest = {"model_version": VERSION, "trained_at_utc": datetime.now(timezone.utc).isoformat(), "data_as_of": str(df.date.max().date()), "horizons": list(HORIZONS), "classes": {"0": "bearish", "1": "neutral", "2": "bullish"}, "features": FEATURES, "train_rows": {str(h): int(len(eligible(df, h))) for h in HORIZONS}, "protocol": "fixed XGBoost recipe; all eligible observations for shadow inference", "calibration": "separate scalar temperatures in calibration.json fitted on 2024", "data_path": "../data/psx_ohlcv.parquet"}
+        model = model_for(h).fit(training[FEATURES], y)
+        model_path = build_dir / f"xgb_{h}d.json"
+        model.save_model(str(model_path))
+        model_paths.append(model_path)
+    calibration = json.loads((MODELS / "calibration.json").read_text(encoding="utf-8"))
+    digest = hashlib.sha256()
+    for path in model_paths:
+        digest.update(path.read_bytes())
+    digest.update(json.dumps(calibration["temperatures"], sort_keys=True).encode("utf-8"))
+    version = f"{VERSION}-train{TRAIN_END:%Y%m%d}-{digest.hexdigest()[:10]}"
+    version_dir = MODELS / "versions" / version
+    version_dir.mkdir(parents=True, exist_ok=True)
+    for path in model_paths:
+        shutil.copy2(path, version_dir / path.name)
+    calibration["model_version"] = version
+    (version_dir / "calibration.json").write_text(json.dumps(calibration, indent=2), encoding="utf-8")
+    manifest = {"model_version": version, "model_family": VERSION, "trained_at_utc": datetime.now(timezone.utc).isoformat(), "data_as_of": str(df.date.max().date()), "training_cutoff": str(TRAIN_END.date()), "calibration_period": [str((TRAIN_END + pd.Timedelta(days=1)).date()), str(CAL_END.date())], "horizons": list(HORIZONS), "classes": {"0": "bearish", "1": "neutral", "2": "bullish"}, "features": FEATURES, "train_rows": train_rows, "protocol": "fixed XGBoost recipe; models match the time-separated evaluation; no post-calibration refit", "calibration": "separate scalar temperatures fitted on 2025", "data_path": "../data/psx_ohlcv.parquet"}
+    (version_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (MODELS / "current.json").write_text(json.dumps({"model_version": version}, indent=2), encoding="utf-8")
     (MODELS / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
@@ -316,42 +353,69 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 def infer(symbols: list[str] | None = None, as_of: str | None = None) -> None:
     df = build_frame()
-    asof = pd.Timestamp(as_of).normalize() if as_of else df.date.max()
+    cutoff = pd.Timestamp(as_of).normalize() if as_of else df.date.max()
     symbols = [s.upper() for s in symbols] if symbols else sorted(df.symbol.unique())
-    slice_df = df.loc[(df.date == asof) & df.symbol.isin(symbols) & df.clean_feature_window].dropna(subset=FEATURES)
+    available = df.loc[(df.date <= cutoff) & df.symbol.isin(symbols) & df.clean_feature_window].dropna(subset=FEATURES)
+    slice_df = available.groupby("symbol", sort=False).tail(1).sort_values("symbol")
+    market_dates = pd.Index(df.loc[df.date <= cutoff, "date"].drop_duplicates().sort_values())
+    date_positions = {date: i for i, date in enumerate(market_dates)}
+    latest_position = len(market_dates) - 1
+    slice_df = slice_df.copy()
+    slice_df["freshness_sessions"] = slice_df.date.map(lambda date: latest_position - date_positions.get(date, latest_position + 1))
+    stale_symbols = slice_df.loc[slice_df.freshness_sessions > MAX_FRESHNESS_SESSIONS, "symbol"].tolist()
+    if stale_symbols:
+        LOG.warning("Omitting %s symbols with no clean bar within %s sessions: %s", len(stale_symbols), MAX_FRESHNESS_SESSIONS, ", ".join(stale_symbols))
+    slice_df = slice_df.loc[slice_df.freshness_sessions <= MAX_FRESHNESS_SESSIONS]
     if slice_df.empty:
-        raise RuntimeError(f"No eligible feature rows for {symbols} at as_of={asof.date()}")
+        raise RuntimeError(f"No eligible feature rows for {symbols} at or before {cutoff.date()}")
     conn = sqlite3.connect(LEDGER)
     init_db(conn)
-    manifest = json.loads((MODELS / "manifest.json").read_text(encoding="utf-8"))
+    current = json.loads((MODELS / "current.json").read_text(encoding="utf-8"))
+    version_dir = MODELS / "versions" / current["model_version"]
+    manifest = json.loads((version_dir / "manifest.json").read_text(encoding="utf-8"))
     version = manifest["model_version"]
-    temperatures = json.loads((MODELS / "calibration.json").read_text(encoding="utf-8"))["temperatures"]
+    temperatures = json.loads((version_dir / "calibration.json").read_text(encoding="utf-8"))["temperatures"]
+    output = []
     for h in HORIZONS:
         model = XGBClassifier()
-        model.load_model(str(MODELS / f"xgb_{h}d.json"))
+        model.load_model(str(version_dir / f"xgb_{h}d.json"))
         probs = apply_temperature(model.predict_proba(slice_df[FEATURES]), float(temperatures[str(h)]))
         # XGBoost native additive feature contributions on the predicted class margin.
         contrib = model.get_booster().predict(__import__("xgboost").DMatrix(slice_df[FEATURES], feature_names=FEATURES), pred_contribs=True)
         contrib = np.asarray(contrib)
         for ix, (_, row) in enumerate(slice_df.iterrows()):
+            row_asof = pd.Timestamp(row.date)
             predicted = int(np.argmax(probs[ix]))
             # Multiclass XGBoost yields [row, class, feature+base]; support documented shape.
             local = contrib[ix, predicted, :-1] if contrib.ndim == 3 else contrib[ix, :-1]
             top = np.argsort(np.abs(local))[::-1][:3]
             drivers = []
+            readable = {
+                "ret_1": "1-session price momentum", "ret_3": "3-session price momentum",
+                "ret_7": "7-session price momentum", "ret_14": "14-session price momentum",
+                "ret_21": "21-session price momentum", "vol_5": "5-session realized volatility",
+                "vol_20": "20-session realized volatility", "close_sma5": "price versus 5-session average",
+                "close_sma20": "price versus 20-session average", "close_sma50": "price versus 50-session average",
+                "rsi_14": "14-session relative strength index", "range_pct": "daily high-low range",
+                "volume_log_z20": "volume versus 20-session norm", "volume_change_5": "5-session volume change",
+                "peer_median_ret": "same-day peer median return", "peer_momentum_5": "5-session peer momentum",
+            }
             for j in top:
                 feature = FEATURES[int(j)]
                 direction = "increases" if local[j] > 0 else "decreases"
-                drivers.append({"feature": feature, "value": float(row[feature]), "effect": direction, "contribution": float(local[j])})
-            target_date = df.loc[(df.symbol == row.symbol) & (df.date > asof), "date"].head(h)
+                value = float(row[feature])
+                unit = "" if feature == "rsi_14" or feature == "volume_log_z20" else "%"
+                shown = value if unit == "" else value * 100
+                drivers.append({"feature": feature, "name": readable[feature], "value": value, "effect": direction, "contribution": float(local[j]), "text": f"{readable[feature]} is {shown:+.2f}{unit}; it {direction} the {CLASSES[predicted]} model score"})
+            target_date = df.loc[(df.symbol == row.symbol) & (df.date > row_asof), "date"].head(h)
             target = str(target_date.iloc[-1].date()) if len(target_date) == h else None
-            conn.execute("INSERT OR IGNORE INTO forecasts(symbol,horizon_sessions,as_of,model_version,class_label,confidence,probabilities_json,drivers_json,target_date) VALUES(?,?,?,?,?,?,?,?,?)", (row.symbol, h, asof.date().isoformat(), version, CLASSES[predicted], float(probs[ix, predicted]), json.dumps({c: float(probs[ix, i]) for i, c in enumerate(CLASSES)}), json.dumps(drivers), target))
+            probabilities = {c: float(probs[ix, i]) for i, c in enumerate(CLASSES)}
+            conn.execute("INSERT OR IGNORE INTO forecasts(symbol,horizon_sessions,as_of,model_version,class_label,confidence,probabilities_json,drivers_json,target_date) VALUES(?,?,?,?,?,?,?,?,?)", (row.symbol, h, row_asof.date().isoformat(), version, CLASSES[predicted], float(probs[ix, predicted]), json.dumps(probabilities), json.dumps(drivers), target))
+            output.append({"symbol": row.symbol, "horizon_sessions": h, "class_label": CLASSES[predicted], "confidence": float(probs[ix, predicted]), "probabilities": probabilities, "drivers": drivers, "as_of": row_asof.date().isoformat(), "model_version": version, "target_date": target, "freshness_days": int((cutoff - row_asof).days), "freshness_sessions": int(row.freshness_sessions)})
     conn.commit()
-    rows = conn.execute("SELECT symbol,horizon_sessions,class_label,confidence,as_of,model_version FROM forecasts WHERE as_of=? ORDER BY symbol,horizon_sessions", (asof.date().isoformat(),)).fetchall()
     conn.close()
-    output = [{"symbol": r[0], "horizon_sessions": r[1], "class_label": r[2], "confidence": r[3], "as_of": r[4], "model_version": r[5]} for r in rows]
     (REPORTS / "latest_forecasts.json").write_text(json.dumps(output, indent=2), encoding="utf-8")
-    LOG.info("Stored %s horizon forecasts at %s", len(rows), asof.date())
+    LOG.info("Stored %s horizon forecasts for %s symbols through %s", len(output), len(slice_df), cutoff.date())
 
 
 def settle() -> None:
@@ -360,21 +424,13 @@ def settle() -> None:
     init_db(conn)
     rows = conn.execute("SELECT id,symbol,horizon_sessions,as_of FROM forecasts WHERE settled_at IS NULL").fetchall()
     updates = 0
-    lookup = df.set_index(["symbol", "date"])
     for rid, symbol, h, asof in rows:
-        dates = df.loc[(df.symbol == symbol) & (df.date > pd.Timestamp(asof)), "date"].head(h)
-        if len(dates) != h:
+        matched = df.loc[(df.symbol == symbol) & (df.date == pd.Timestamp(asof))]
+        if matched.empty or pd.isna(matched.iloc[0][f"label_{h}"]):
             continue
-        end = dates.iloc[-1]
-        try:
-            start_px = float(lookup.loc[(symbol, pd.Timestamp(asof)), "close"])
-            end_px = float(lookup.loc[(symbol, end), "close"])
-        except KeyError:
-            continue
-        forward = end_px / start_px - 1
-        vol = float(lookup.loc[(symbol, pd.Timestamp(asof)), "vol_20"])
-        band = 0.5 * vol * np.sqrt(h)
-        actual = "bearish" if forward < -band else "bullish" if forward > band else "neutral"
+        forward = float(matched.iloc[0][f"forward_return_{h}"])
+        label = int(matched.iloc[0][f"label_{h}"])
+        actual = CLASSES[label]
         conn.execute("UPDATE forecasts SET actual_return=?,actual_class=?,settled_at=? WHERE id=?", (forward, actual, datetime.now(timezone.utc).isoformat(), rid))
         updates += 1
     conn.commit()

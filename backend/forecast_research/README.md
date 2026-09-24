@@ -7,9 +7,10 @@ This directory is a standalone prototype. It does not import or write to the exi
 - One fixed XGBoost multiclass classifier per horizon (1, 3, and 7 PSX trading sessions).
 - Bullish / neutral / bearish labels use the point-in-time 20-session realized volatility, scaled by `0.5 * sqrt(horizon)`. This is a classification target, not a buy/sell instruction.
 - Features are built from past OHLCV only. Peer-market return is a same-date median of available per-symbol returns, excluding the predicted symbol; it is not represented as KSE-100.
-- Time split: train through 2023-12-31, calibrate probabilities on 2024, and use 2025 onward as the historical holdout. Horizon rows are purged at split boundaries so labels cannot use prices from the next period. The project has prior experiments covering overlapping dates, so this is not a pristine research holdout.
-- Final model artifacts are then refit on all eligible observations to support shadow inference. Holdout metrics are from the pre-refit model.
+- Time split: train through 2024-12-31, calibrate probabilities on 2025, and use 2026 onward as the historical holdout. Horizon rows are purged at split boundaries so labels cannot use prices from the next period. The project has prior experiments covering overlapping dates, so this is not a pristine research holdout.
+- The shadow artifacts are the same fitted models and temperature calibrators used for the reported holdout metrics; they are not refit after calibration. The tradeoff is a 2024 training cutoff, which should be addressed only with a future rolling train/calibrate/test protocol.
 - Scheduled CLI inference stores versioned forecasts in the local SQLite ledger. A separate outcome updater fills actual outcomes when the horizon elapses.
+- Inference omits symbols whose most recent usable feature row is more than five market sessions stale; outputs include both calendar-day and session-count freshness.
 
 ## Run
 
@@ -22,6 +23,8 @@ python -m forecast_research.pipeline train
 python -m forecast_research.pipeline forecast
 python -m forecast_research.pipeline settle
 ```
+
+Pinned dependencies used to generate the checked-in local artifacts are listed in `forecast_research/requirements.txt`.
 
 `forecast` accepts optional symbols (`--symbols HBL,OGDC`) and as-of date (`--as-of YYYY-MM-DD`). For scheduling, invoke `forecast` once after the PSX close on each trading day using Task Scheduler/cron. There is intentionally no route wired into the existing API.
 

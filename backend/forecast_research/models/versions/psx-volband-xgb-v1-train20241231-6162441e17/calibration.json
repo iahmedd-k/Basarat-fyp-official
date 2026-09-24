@@ -1,0 +1,9 @@
+{
+  "model_version": "psx-volband-xgb-v1-train20241231-6162441e17",
+  "method": "single scalar temperature fitted on 2025 time-separated calibration set",
+  "temperatures": {
+    "1": 0.810226894786506,
+    "3": 0.8068304682337791,
+    "7": 0.8313386478451451
+  }
+}
