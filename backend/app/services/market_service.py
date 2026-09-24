@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import math
+from datetime import datetime, timezone
 from collections import defaultdict
 
 import pypsx_toolkit
@@ -26,6 +27,31 @@ class MarketService:
         "KSE30": "KSE-30",
         "KMI30": "KMI-30",
     }
+
+    @staticmethod
+    def quote_freshness() -> dict:
+        """Return the timestamp of the last successful live market-watch fetch."""
+        fetched_at = cache_get_sync("market:quotes:fetched_at")
+        if not fetched_at:
+            return {"as_of": None, "is_stale": True}
+        try:
+            stamp = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+            age = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
+            return {"as_of": fetched_at, "is_stale": age > QUOTES_TTL_SECONDS}
+        except (TypeError, ValueError):
+            return {"as_of": None, "is_stale": True}
+
+    @staticmethod
+    def _normalize_quotes(rows: list[dict]) -> list[dict]:
+        """Reconcile provider change fields with the actual current and LDCP prices."""
+        for row in rows:
+            current = MarketService._safe_float(row.get("current"))
+            ldcp = MarketService._safe_float(row.get("ldcp"))
+            if current > 0 and ldcp > 0:
+                change = round(current - ldcp, 4)
+                row["change"] = change
+                row["change_pct"] = round(change / ldcp * 100, 2)
+        return rows
 
     @staticmethod
     def _safe_float(value, default=0.0):
@@ -176,13 +202,13 @@ class MarketService:
             cached = cache_get_sync(cache_key)
             if cached is not None and len(cached) > 0:
                 log.debug("Market data cache hit from Redis (sync)")
-                return cached
+                return self._normalize_quotes(cached)
 
         if read_only and not force_refresh:
             last_known = cache_get_sync(fallback_key)
             if last_known:
                 log.info("Serving %d market quotes from sync stale fallback", len(last_known))
-                return last_known
+                return self._normalize_quotes(last_known)
             return []
 
         log.info("Fetching market watch from external API (sync)")
@@ -196,7 +222,9 @@ class MarketService:
             rows = []
             for symbol, row in raw.iterrows():
                 ldcp = self._safe_float(row.get("LDCP"))
-                change = self._safe_float(row.get("Change"))
+                current = self._safe_float(row.get("Current"))
+                reported_change = self._safe_float(row.get("Change"))
+                change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
                 rows.append({
                     "symbol": str(symbol),
@@ -205,7 +233,7 @@ class MarketService:
                     "open": self._safe_float(row.get("Open")),
                     "high": self._safe_float(row.get("High")),
                     "low": self._safe_float(row.get("Low")),
-                    "current": self._safe_float(row.get("Current")),
+                    "current": current,
                     "change": change,
                     "change_pct": change_pct,
                     "volume": self._safe_int(row.get("Volume")),
@@ -213,6 +241,7 @@ class MarketService:
 
             cache_set_sync(cache_key, rows, QUOTES_TTL_SECONDS)
             cache_set_sync(fallback_key, rows, FALLBACK_TTL_SECONDS)
+            cache_set_sync("market:quotes:fetched_at", datetime.now(timezone.utc).isoformat(), FALLBACK_TTL_SECONDS)
             log.info("Stored %d market quotes in centralized cache (sync)", len(rows))
             return rows
 
@@ -220,7 +249,7 @@ class MarketService:
         last_known = cache_get_sync(fallback_key)
         if last_known and len(last_known) > 0:
             log.info("Serving %d market quotes from sync fallback cache", len(last_known))
-            return last_known
+            return self._normalize_quotes(last_known)
 
         return []
 
@@ -231,13 +260,13 @@ class MarketService:
             cached = await cache_get(cache_key)
             if cached is not None and len(cached) > 0:
                 log.debug("Market data cache hit from Redis (async)")
-                return cached
+                return self._normalize_quotes(cached)
 
         if read_only and not force_refresh:
             last_known = await cache_get(fallback_key)
             if last_known:
                 log.info("Serving %d market quotes from stale fallback", len(last_known))
-                return last_known
+                return self._normalize_quotes(last_known)
             return []
 
         log.info("Fetching market watch from external API")
@@ -254,7 +283,9 @@ class MarketService:
             rows = []
             for symbol, row in raw.iterrows():
                 ldcp = self._safe_float(row.get("LDCP"))
-                change = self._safe_float(row.get("Change"))
+                current = self._safe_float(row.get("Current"))
+                reported_change = self._safe_float(row.get("Change"))
+                change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
                 change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
                 rows.append({
                     "symbol": str(symbol),
@@ -263,7 +294,7 @@ class MarketService:
                     "open": self._safe_float(row.get("Open")),
                     "high": self._safe_float(row.get("High")),
                     "low": self._safe_float(row.get("Low")),
-                    "current": self._safe_float(row.get("Current")),
+                    "current": current,
                     "change": change,
                     "change_pct": change_pct,
                     "volume": self._safe_int(row.get("Volume")),
@@ -272,6 +303,7 @@ class MarketService:
             if rows:
                 await cache_set(cache_key, rows, QUOTES_TTL_SECONDS)
                 await cache_set(fallback_key, rows, FALLBACK_TTL_SECONDS)
+                await cache_set("market:quotes:fetched_at", datetime.now(timezone.utc).isoformat(), FALLBACK_TTL_SECONDS)
                 log.info("Stored %d market quotes in centralized cache", len(rows))
                 return rows
 
@@ -279,7 +311,7 @@ class MarketService:
         last_known = await cache_get(fallback_key)
         if last_known and len(last_known) > 0:
             log.info("Serving %d market quotes from persistent fallback cache", len(last_known))
-            return last_known
+            return self._normalize_quotes(last_known)
 
         return []
 

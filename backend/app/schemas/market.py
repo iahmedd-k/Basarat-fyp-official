@@ -67,6 +67,8 @@ class MarketQuotesResponse(BaseModel):
     limit: int
     offset: int = 0
     filtered: bool = False
+    as_of: str | None = None
+    is_stale: bool = True
 
 
 class SectorPerformance(BaseModel):

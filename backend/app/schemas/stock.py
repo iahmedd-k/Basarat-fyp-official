@@ -31,6 +31,8 @@ class StockOverview(BaseModel):
     pe_ratio: float | None = None
     year_change_pct: float | None = None
     ytd_change_pct: float | None = None
+    quote_as_of: str | None = None
+    quote_is_stale: bool = True
 
 
 class PriceBar(BaseModel):
@@ -46,6 +48,9 @@ class PriceHistoryResponse(BaseModel):
     symbol: str
     range: str
     bars: list[PriceBar]
+    as_of_date: str | None = None
+    data_age_days: int | None = None
+    is_stale: bool = True
 
 
 class IndicatorSeries(BaseModel):
@@ -81,6 +86,9 @@ class TechnicalSummary(BaseModel):
 class TechnicalIndicatorsResponse(BaseModel):
     symbol: str
     period: int
+    as_of_date: str | None = None
+    data_age_days: int | None = None
+    is_stale: bool = True
     overall_signal: str | None = None
     summary_message: str | None = None
     signals_breakdown: SignalsBreakdown | None = None
@@ -177,6 +185,8 @@ class SectorOverview(BaseModel):
 
 class FundamentalsResponse(BaseModel):
     symbol: str
+    data_status: str = "unavailable"
+    data_message: str | None = None
     company_profile: CompanyProfile | None = None
     equity_profile: EquityProfile | None = None
     financials_annual: list[dict] | None = None

@@ -96,8 +96,13 @@ async def get_news(
             if not items:
                 empty_reason = "no_results"
 
-        # Get last updated time
-        last_updated = ingestion_state.get_last_ingestion_time()
+        # The feed's last-updated time is the latest visible article, while
+        # /news/refresh/status continues to report the last ingestion attempt.
+        last_updated = None
+        if row == "news":
+            from app.models.news import NewsArticle
+            latest = await db.execute(select(NewsArticle.created_at).order_by(NewsArticle.created_at.desc()).limit(1))
+            last_updated = latest.scalar_one_or_none()
 
         return NewsListResponse(
             items=[NewsArticleResponse(**item) for item in items],
@@ -256,9 +261,9 @@ async def get_sources(
                 name=reg["name"],
                 type=reg["type"],
                 last_success_at=None,
-                last_error=None,
+                last_error="No ingestion status recorded yet.",
                 consecutive_failures=0,
-                healthy=True,
+                healthy=False,
             ))
 
     return SourcesResponse(sources=source_list)

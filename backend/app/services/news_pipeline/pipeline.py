@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.news import NewsArticle, NewsArticleSymbol
+from app.models.news import NewsArticle, NewsArticleSymbol, NewsSourceState
 from app.schemas.news import IngestResult
 from app.services.sentiment_service import score_text
 
@@ -79,6 +79,41 @@ async def _load_existing_hashes(db: AsyncSession, limit: int = 10000) -> set[str
         .limit(limit)
     )
     return {row[0] for row in result.fetchall() if row[0]}
+
+
+async def _save_source_health(db: AsyncSession, results: list[IngestResult]) -> None:
+    """Persist each adapter's latest run result for the source-health endpoint."""
+    now = datetime.now(timezone.utc)
+    keys = {
+        "PSX": "psx", "SECP": "secp", "SBP": "sbp", "OGRA": "ogra",
+        "FBR/MoF": "fbr_mof", "Business Recorder": "business_recorder",
+        "Dawn Business": "dawn", "Mettis Global": "mettis",
+    }
+    try:
+        existing_result = await db.execute(select(NewsSourceState))
+        states = {state.source_key: state for state in existing_result.scalars().all()}
+        for item in results:
+            key = keys.get(item.source)
+            if not key:
+                continue
+            state = states.get(key)
+            if state is None:
+                state = NewsSourceState(source_key=key, consecutive_failures=0, last_new_count=0, healthy=False)
+                db.add(state)
+            state.last_run_at = now
+            state.last_new_count = int(item.articles_inserted or 0)
+            state.last_error = (str(item.error)[:4000] if item.error else None)
+            if item.error:
+                state.consecutive_failures = (state.consecutive_failures or 0) + 1
+                state.healthy = False
+            else:
+                state.last_success_at = now
+                state.consecutive_failures = 0
+                state.healthy = True
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        log.exception("Could not persist news source health")
 
 
 def _clean_article(raw: NormalizedArticle) -> dict | None:
@@ -266,6 +301,7 @@ async def run_pipeline(db: AsyncSession, limit_per_source: int = 50) -> Pipeline
 
     if not all_new_articles:
         log.info("No new articles to process")
+        await _save_source_health(db, result.sources)
         ingestion_state.mark_ingestion_completed(0)
         ingestion_state.increment_run_count()
         result.completed_at = datetime.now(timezone.utc).isoformat()
@@ -384,6 +420,7 @@ async def run_pipeline(db: AsyncSession, limit_per_source: int = 50) -> Pipeline
         r.articles_inserted = sum(
             1 for a in all_new_articles if a.get("source") == r.source
         )
+    await _save_source_health(db, result.sources)
 
     # Aggregate results
     result.total_fetched = sum(r.articles_fetched for r in result.sources)

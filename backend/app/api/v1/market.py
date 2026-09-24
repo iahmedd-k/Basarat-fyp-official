@@ -225,6 +225,7 @@ async def get_market_quotes(
             limit=limit,
             offset=offset,
             filtered=filtered,
+            **MarketService.quote_freshness(),
         )
     except Exception:
         raise ServiceUnavailableError("Failed to fetch market quotes")

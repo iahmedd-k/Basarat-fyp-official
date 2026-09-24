@@ -202,7 +202,8 @@ class StockService:
             row = frame.loc[symbol]
             ldcp = self._num(self._get_field(row, "LDCP", "ldcp", "close", "Close", default=0.0))
             current = self._num(self._get_field(row, "Current", "current", "price", "Price", default=0.0))
-            change = self._num(self._get_field(row, "Change", "change", default=0.0))
+            reported_change = self._num(self._get_field(row, "Change", "change", default=0.0))
+            change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
             change_pct = round((change / ldcp * 100) if ldcp else 0.0, 2)
             volume = self._safe_int(self._get_field(row, "Volume", "volume", "Vol", "vol", default=0))
             sector = self._get_field(row, "Sector", "sector", "SECTOR", default=None)
@@ -259,13 +260,26 @@ class StockService:
             frame = pypsx_toolkit.get_quote(symbol, as_dict=True)
         except TypeError:
             try:
-                frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
+                # Newer toolkit releases default to a DataFrame and no longer
+                # accept the legacy `format` keyword.
+                frame = pypsx_toolkit.get_quote(symbol)
+            except TypeError:
+                try:
+                    frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
+                except Exception as exc:
+                    log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
+                    frame = None
             except Exception as exc:
                 log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
                 frame = None
         except Exception as exc:
             log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
             frame = None
+        if _is_empty_frame(frame):
+            try:
+                frame = pypsx_toolkit.get_quote(symbol)
+            except Exception as exc:
+                log.debug("PSX quote fallback failed for %s: %s", symbol, exc)
         _cache_source_frame(cache_key, frame, QUOTE_TTL_SECONDS)
         if isinstance(frame, dict):
             cache_set_sync(shared_key, frame, QUOTE_TTL_SECONDS)
@@ -288,13 +302,29 @@ class StockService:
             frame = pypsx_toolkit.get_company_fundamentals(symbol, as_dict=True)
         except TypeError:
             try:
-                frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
+                # Fall back to the toolkit's default DataFrame response first.
+                # `format` was removed from the public API in newer releases.
+                frame = pypsx_toolkit.get_company_fundamentals(symbol)
+            except TypeError:
+                try:
+                    frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
+                except Exception as exc:
+                    log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
+                    frame = None
             except Exception as exc:
                 log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
                 frame = None
         except Exception as exc:
             log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
             frame = None
+        if _is_empty_frame(frame):
+            try:
+                frame = pypsx_toolkit.get_company_fundamentals(symbol, format="json")
+            except Exception:
+                try:
+                    frame = pypsx_toolkit.get_company_fundamentals(symbol)
+                except Exception as exc:
+                    log.debug("PSX fundamentals fallback failed for %s: %s", symbol, exc)
         _cache_source_frame(cache_key, frame, FUND_TTL_SECONDS)
         if isinstance(frame, dict):
             ttl = FUND_TTL_SECONDS if not _is_empty_frame(frame) else FAILED_SOURCE_TTL_SECONDS
@@ -323,6 +353,11 @@ class StockService:
                 value = frame.get(key)
                 if value not in (None, ""):
                     return self._latest_number(value)
+            category_values = frame.get(category) or frame.get(category.lower())
+            if isinstance(category_values, dict):
+                for key, value in category_values.items():
+                    if str(key).strip().lower() == metric.strip().lower() and value not in (None, ""):
+                        return self._latest_number(value)
             return None
         flat_metric_keys = {
             "Market Cap (000's)": "market_cap",
@@ -337,6 +372,11 @@ class StockService:
         flat_key = flat_metric_keys.get(metric)
         if flat_key and flat_key in getattr(frame, "columns", ()) and len(frame):
             return self._latest_number(frame.iloc[0][flat_key])
+        if {"CATEGORY", "METRIC", "VALUE"}.issubset(set(getattr(frame, "columns", ()))):
+            mask = frame["CATEGORY"].astype(str).str.casefold().eq(category.casefold()) & frame["METRIC"].astype(str).str.casefold().eq(metric.casefold())
+            matches = frame.loc[mask, "VALUE"]
+            if not matches.empty:
+                return self._latest_number(matches.iloc[-1])
         try:
             mask = (
                 (frame.index.get_level_values(0) == symbol)
@@ -460,6 +500,8 @@ class StockService:
             "pe_ratio": self._quote_field(quote, "P/E RATIO (TTM) **"),
             "year_change_pct": self._quote_field(quote, "1-YEAR CHANGE * ^"),
             "ytd_change_pct": self._quote_field(quote, "YTD CHANGE * ^"),
+            "quote_as_of": self._market.quote_freshness()["as_of"],
+            "quote_is_stale": self._market.quote_freshness()["is_stale"],
         }
 
     def _market_cap_m(self, symbol):
@@ -500,7 +542,7 @@ class StockService:
         start = end - lookback
         df = self._get_ohlcv(symbol, start, end)
         if df is None or df.empty:
-            return {"symbol": symbol, "range": label, "bars": []}
+            return {"symbol": symbol, "range": label, "bars": [], "as_of_date": None, "data_age_days": None, "is_stale": True}
 
         bars = []
         for ts, row in df.iterrows():
@@ -514,7 +556,9 @@ class StockService:
                     "volume": self._safe_int(row["VOLUME"]),
                 }
             )
-        return {"symbol": symbol, "range": label, "bars": bars}
+        as_of = df.index[-1].date()
+        age_days = max(0, (date.today() - as_of).days)
+        return {"symbol": symbol, "range": label, "bars": bars, "as_of_date": as_of.isoformat(), "data_age_days": age_days, "is_stale": age_days > 3}
 
     def technical_indicators(
         self,
@@ -525,7 +569,7 @@ class StockService:
     ):
         symbol = str(symbol).upper()
         norm_indicators = ",".join(sorted([i.strip().upper() for i in indicators.split(",") if i.strip()]))
-        cache_key = f"tech:{symbol}:{norm_indicators}:{period}:{limit}"
+        cache_key = f"tech:v2:{symbol}:{norm_indicators}:{period}:{limit}"
 
         # 1. Check Redis cache first
         cached = cache_get_sync(cache_key)
@@ -541,6 +585,9 @@ class StockService:
                 "period": period,
                 "overall_signal": "NEUTRAL",
                 "summary_message": "No historical price data available to compute technical indicators.",
+                "as_of_date": None,
+                "data_age_days": None,
+                "is_stale": True,
                 "signals_breakdown": {"buy": 0, "neutral": 0, "sell": 0},
                 "summary": {},
                 "indicators": {},
@@ -612,10 +659,14 @@ class StockService:
 
         # --- Bollinger Bands ---
         if "BB" in requested or "BOLLINGER" in requested:
-            bb_low, bb_mid, bb_up = pypsx_toolkit.bollinger_bands(df, window=20, num_std=2.0, column="CLOSE")
-            low_s = to_series(bb_low)
-            mid_s = to_series(bb_mid)
-            up_s = to_series(bb_up)
+            bands = pypsx_toolkit.bollinger_bands(df, window=20, num_std=2.0, column="CLOSE")
+            # Toolkit documentation has used different tuple orders across
+            # releases. Normalize each row mathematically so labels can never
+            # invert even if an upstream version changes its return order.
+            bands_frame = pd.concat([pd.Series(band) for band in bands], axis=1)
+            low_s = to_series(bands_frame.min(axis=1))
+            mid_s = to_series(bands_frame.median(axis=1))
+            up_s = to_series(bands_frame.max(axis=1))
             ind_series["BB_LOWER"] = low_s
             ind_series["BB_MID"] = mid_s
             ind_series["BB_UPPER"] = up_s
@@ -696,6 +747,9 @@ class StockService:
         result = {
             "symbol": symbol,
             "period": period,
+            "as_of_date": df.index[-1].date().isoformat(),
+            "data_age_days": max(0, (date.today() - df.index[-1].date()).days),
+            "is_stale": (date.today() - df.index[-1].date()).days > 3,
             "overall_signal": overall,
             "summary_message": msg,
             "signals_breakdown": signals,
@@ -736,9 +790,25 @@ class StockService:
 
     def _fund_raw_string(self, symbol, category, metric_name=None):
         frame = self._get_fund_frame(symbol)
-        if frame is None or frame.empty:
+        if frame is None:
+            return None
+        if isinstance(frame, dict):
+            values = frame.get(category) or frame.get(category.lower())
+            if isinstance(values, dict):
+                for key, value in values.items():
+                    if metric_name is None or metric_name.casefold() in str(key).casefold():
+                        if value not in (None, ""):
+                            return str(value)
+            return None
+        if frame.empty:
             return None
         try:
+            if {"CATEGORY", "METRIC", "VALUE"}.issubset(set(frame.columns)):
+                rows = frame.loc[frame["CATEGORY"].astype(str).str.casefold().eq(category.casefold())]
+                if metric_name:
+                    rows = rows.loc[rows["METRIC"].astype(str).str.casefold().str.contains(metric_name.casefold(), regex=False)]
+                if not rows.empty:
+                    return str(rows.iloc[-1]["VALUE"]).strip()
             for idx, row in frame.iterrows():
                 cat = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else ""
                 met = idx[2] if isinstance(idx, tuple) and len(idx) > 2 else ""
@@ -757,7 +827,7 @@ class StockService:
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
         # v4 avoids reusing null results produced by the old toolkit adapter.
-        cache_key = f"fund:v4:{symbol}"
+        cache_key = f"fund:v5:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
@@ -912,6 +982,33 @@ class StockService:
             "dividend_yield_pct": div_yield,
         }
 
+        financials_annual = (
+            info_dict.get("financials_annual")
+            or info_dict.get("Financials Annual")
+            or (fund_data.get("financials_annual") if isinstance(fund_data, dict) else None)
+        )
+        financials_quarterly = (
+            info_dict.get("financials_quarterly")
+            or info_dict.get("Financials Quarterly")
+            or (fund_data.get("financials_quarterly") if isinstance(fund_data, dict) else None)
+        )
+
+        def _financial_rows(value):
+            if isinstance(value, list):
+                return value
+            if isinstance(value, dict):
+                return [value]
+            if hasattr(value, "to_dict"):
+                try:
+                    rows = value.to_dict(orient="records")
+                    return rows if isinstance(rows, list) else None
+                except (TypeError, ValueError):
+                    return None
+            return None
+
+        financials_annual = _financial_rows(financials_annual)
+        financials_quarterly = _financial_rows(financials_quarterly)
+
 
         # 4. Trading Limits & 52-Week Range (via snapshot)
         year_high, year_low = None, None
@@ -1007,8 +1104,18 @@ class StockService:
 
         result = {
             "symbol": symbol,
+            "data_status": "partial" if any(value not in (None, [], "") for value in (
+                equity_profile.get("market_cap_pkr"), equity_profile.get("total_shares"), eps, pe_ratio,
+                peg, eps_growth, net_margin, gross_margin, year_high, year_low, dividend_history,
+            )) else "unavailable",
+            "data_message": None if any(value not in (None, [], "") for value in (
+                equity_profile.get("market_cap_pkr"), equity_profile.get("total_shares"), eps, pe_ratio,
+                peg, eps_growth, net_margin, gross_margin, year_high, year_low, dividend_history,
+            )) else "Fundamentals provider returned no usable company data; unavailable values are left blank.",
             "company_profile": company_profile,
             "equity_profile": equity_profile,
+            "financials_annual": financials_annual,
+            "financials_quarterly": financials_quarterly,
             "ratios": ratios,
             "trading_limits": trading_limits,
             "dividend_history": dividend_history,
