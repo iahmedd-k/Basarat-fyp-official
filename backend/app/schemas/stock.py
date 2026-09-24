@@ -20,6 +20,7 @@ class StockOverview(BaseModel):
     symbol: str
     name: str
     sector: str | None = None
+    current_price: float | None = None
     ltp: float | None = None
     ldcp: float | None = None
     change: float | None = None
