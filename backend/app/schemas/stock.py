@@ -120,6 +120,7 @@ class CompanyProfile(BaseModel):
     company_secretary: str | None = None
     website: str | None = None
     address: str | None = None
+    psx_url: str | None = None
 
 
 class EquityProfile(BaseModel):
@@ -195,6 +196,7 @@ class FundamentalsResponse(BaseModel):
     symbol: str
     data_status: str = "unavailable"
     data_message: str | None = None
+    psx_official_url: str | None = None
     company_profile: CompanyProfile | None = None
     equity_profile: EquityProfile | None = None
     financials_annual: list[dict] | None = None
@@ -202,6 +204,7 @@ class FundamentalsResponse(BaseModel):
     financials_unit: str | None = None
     ratio_history: list[dict] | None = None
     financial_reports: list[FinancialReportItem] | None = None
+    financial_reports_count: int | None = None
     ratios: FinancialRatios | None = None
     trading_limits: TradingLimits | None = None
     dividend_history: list[DividendHistoryItem] | None = None

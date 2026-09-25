@@ -207,8 +207,30 @@ def _page_source_info(soup, symbol: str) -> dict:
     }
 
 
+def _parse_pipe_dict_to_records(pipe_dict: dict, prefix: str = "Y") -> list[dict]:
+    if not isinstance(pipe_dict, dict) or not pipe_dict:
+        return []
+    cols = {}
+    max_len = 0
+    for label, val in pipe_dict.items():
+        if val is None:
+            continue
+        parts = [p.strip() for p in str(val).split("|")]
+        cols[_metric_key(label)] = parts
+        max_len = max(max_len, len(parts))
+    records = []
+    for i in range(max_len):
+        rec = {"period": f"{prefix}-{i+1}", "values": {}}
+        for mk, parts in cols.items():
+            if i < len(parts):
+                rec["values"][mk] = _number(parts[i])
+        records.append(rec)
+    return records
+
+
 def _fetch_company_tables(symbol: str) -> dict:
     url = f"{_BASE}/company/{symbol}"
+    soup = None
     try:
         response = httpx.get(
             url,
@@ -216,12 +238,16 @@ def _fetch_company_tables(symbol: str) -> dict:
             timeout=httpx.Timeout(12.0, connect=5.0),
             follow_redirects=True,
         )
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, "html.parser")
+    except Exception as exc:
+        log.warning("PSX direct page fetch failed for %s: %s", symbol, exc)
+
+    if soup:
         financial_tables = soup.select("#financials table")
         ratio_tables = soup.select("#ratios table")
         payload = {
-            "source_url": str(response.url),
+            "source_url": url,
             "source_info": _page_source_info(soup, symbol),
             "financials_annual": _parse_table(financial_tables[0]) if financial_tables else [],
             "financials_quarterly": _parse_table(financial_tables[1]) if len(financial_tables) > 1 else [],
@@ -233,13 +259,60 @@ def _fetch_company_tables(symbol: str) -> dict:
         has_profile = any(value not in (None, "", [], {}) for value in profile.values())
         has_equity = any(value not in (None, "", [], {}) for value in equity.values())
         has_table_data = any(payload[key] for key in ("financials_annual", "financials_quarterly", "ratio_history"))
-        if not (has_profile or has_equity or has_table_data):
-            log.warning("PSX company page returned no parseable company data for %s", symbol)
-            return {}
-        return payload
+        if has_profile or has_equity or has_table_data:
+            return payload
+
+    # Fallback to pypsx_toolkit.Ticker(symbol).info if direct HTML parsing is challenged
+    try:
+        import pypsx_toolkit
+        t = pypsx_toolkit.Ticker(symbol)
+        info = getattr(t, "info", None)
+        if isinstance(info, dict) and info:
+            ann_raw = info.get("Financials Annual") or {}
+            qtr_raw = info.get("Financials Quarterly") or {}
+            rat_raw = info.get("Ratios") or {}
+            ann_records = _parse_pipe_dict_to_records(ann_raw, prefix="Y")
+            qtr_records = _parse_pipe_dict_to_records(qtr_raw, prefix="Q")
+            rat_records = _parse_pipe_dict_to_records(rat_raw, prefix="R")
+
+            eq_raw = info.get("Equity Profile") or {}
+            equity = {}
+            if "Market Cap (000's)" in eq_raw:
+                mc_k = _number(eq_raw["Market Cap (000's)"])
+                if isinstance(mc_k, (int, float)):
+                    equity["market_cap"] = mc_k * 1000
+            if "Shares" in eq_raw:
+                sh = _number(eq_raw["Shares"])
+                if isinstance(sh, (int, float)):
+                    equity["shares_outstanding"] = int(sh)
+            if "Free Float" in eq_raw:
+                ff = _number(eq_raw["Free Float"])
+                if isinstance(ff, (int, float)):
+                    equity["free_float_pct"] = ff
+
+            source_info = {
+                "symbol": symbol,
+                "name": info.get("name") or symbol,
+                "company_name": info.get("company_name") or symbol,
+                "Profile": info.get("Profile") or {},
+                "Governance": info.get("Governance") or {},
+                "Equity Profile": eq_raw,
+                "Financials Annual": ann_raw,
+                "Financials Quarterly": qtr_raw,
+                "Ratios": rat_raw,
+                **equity,
+            }
+            return {
+                "source_url": url,
+                "source_info": source_info,
+                "financials_annual": ann_records,
+                "financials_quarterly": qtr_records,
+                "ratio_history": rat_records,
+            }
     except Exception as exc:
-        log.warning("PSX company tables fetch failed for %s: %s", symbol, exc)
-        return {}
+        log.warning("pypsx_toolkit fallback failed for %s: %s", symbol, exc)
+
+    return {}
 
 
 def _fetch_financial_reports(symbol: str) -> dict:
@@ -281,15 +354,24 @@ def _fetch_financial_reports(symbol: str) -> dict:
             ),
             reverse=True,
         )
-        return {"financial_reports": reports}
+        # Top 6 most recent reports as requested
+        return {
+            "financial_reports": reports[:6],
+            "total_reports_count": len(reports),
+            "psx_reports_url": f"{_BASE}/company/{symbol}",
+        }
     except Exception as exc:
         log.warning("PSX financial report index fetch failed for %s: %s", symbol, exc)
-        return {}
+        return {
+            "financial_reports": [],
+            "total_reports_count": 0,
+            "psx_reports_url": f"{_BASE}/company/{symbol}",
+        }
 
 
 def get_psx_company_table_data(symbol: str) -> dict:
     """Return normalized company-page statements, ratio history, and report links."""
     symbol = str(symbol).strip().upper()
-    tables = _cached_fetch(f"psx:company-tables:v4:{symbol}", lambda: _fetch_company_tables(symbol))
-    reports = _cached_fetch(f"psx:financial-report-index:v3:{symbol}", lambda: _fetch_financial_reports(symbol))
+    tables = _cached_fetch(f"psx:company-tables:v5:{symbol}", lambda: _fetch_company_tables(symbol))
+    reports = _cached_fetch(f"psx:financial-report-index:v5:{symbol}", lambda: _fetch_financial_reports(symbol))
     return {**tables, **reports}

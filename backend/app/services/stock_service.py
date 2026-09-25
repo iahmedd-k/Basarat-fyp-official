@@ -54,8 +54,8 @@ def _get_shared_dataframe(key, loader, ttl_seconds=FUND_TTL_SECONDS):
     if isinstance(cached, str):
         try:
             return pd.read_json(StringIO(cached), orient="split")
-        except Exception as exc:
-            log.warning("Could not decode shared DataFrame cache %s: %s", key, exc)
+        except Exception:
+            pass
     try:
         frame = loader()
     except Exception as exc:
@@ -64,7 +64,8 @@ def _get_shared_dataframe(key, loader, ttl_seconds=FUND_TTL_SECONDS):
     if frame is not None and hasattr(frame, "to_json"):
         ttl = ttl_seconds if not bool(getattr(frame, "empty", False)) else FAILED_SOURCE_TTL_SECONDS
         try:
-            cache_set_sync(key, frame.to_json(orient="split", date_format="iso"), ttl)
+            save_frame = frame.reset_index() if isinstance(frame.index, pd.MultiIndex) else frame
+            cache_set_sync(key, save_frame.to_json(orient="split", date_format="iso"), ttl)
         except Exception as exc:
             log.warning("Could not write shared DataFrame cache %s: %s", key, exc)
     return frame
@@ -960,7 +961,7 @@ class StockService:
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
         # v13 forces refresh of all cached company profiles and loads full company tables
-        cache_key = f"fund:v13:{symbol}"
+        cache_key = f"fund:v15:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
@@ -1068,6 +1069,7 @@ class StockService:
             "company_secretary": secretary,
             "website": website,
             "address": address,
+            "psx_url": f"https://dps.psx.com.pk/company/{symbol}",
         }
         if str(company_profile["name"]).strip().upper() in {symbol, f"{symbol} PAKISTAN"}:
             company_profile["name"] = self._company_name(symbol)
@@ -1250,7 +1252,7 @@ class StockService:
         announcements = []
         try:
             ann_df = _get_shared_dataframe(
-                f"stock:announcements:v2:{symbol}",
+                f"stock:announcements:v3:{symbol}",
                 lambda: pypsx_toolkit.get_announcements(symbol),
             )
             if ann_df is not None and not ann_df.empty:
@@ -1305,17 +1307,22 @@ class StockService:
             )
         )
 
+        reports_list = psx_table_data.get("financial_reports") or []
+        total_reports = psx_table_data.get("total_reports_count") or len(reports_list)
+
         result = {
             "symbol": symbol,
             "data_status": data_status,
             "data_message": data_message,
+            "psx_official_url": f"https://dps.psx.com.pk/company/{symbol}",
             "company_profile": company_profile,
             "equity_profile": equity_profile,
             "financials_annual": financials_annual,
             "financials_quarterly": financials_quarterly,
             "financials_unit": "PKR thousands except EPS",
             "ratio_history": ratio_history,
-            "financial_reports": psx_table_data.get("financial_reports") or [],
+            "financial_reports": reports_list[:6],
+            "financial_reports_count": total_reports,
             "ratios": ratios,
             "trading_limits": trading_limits,
             "dividend_history": dividend_history,
