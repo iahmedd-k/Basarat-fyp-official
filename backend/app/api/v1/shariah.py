@@ -12,7 +12,7 @@ from app.schemas.shariah import (
     ShariahPurificationResponse,
     ShariahScreeningResponse,
 )
-from app.services.shariah_service import NON_COMPLIANT_SYMBOLS, ShariahService
+from app.services.shariah_service import NON_COMPLIANT_SYMBOLS, PSX_KMI30_SCREENING, ShariahService
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,10 @@ async def get_kmi30_shariah(
         return ShariahKMI30Response(
             index="KMI-30",
             total_constituents=len(constituents),
-            **service.market_constituents_freshness(),
+            as_of=f"{PSX_KMI30_SCREENING['accounts_as_of']}T00:00:00+00:00",
+            is_stale=service.market_constituents_freshness().get("is_stale", True),
+            effective_from=f"{PSX_KMI30_SCREENING['effective_from']}T00:00:00+00:00",
+            source_url=PSX_KMI30_SCREENING["source_url"],
             constituents=constituents,
         )
     except Exception:
@@ -83,13 +86,19 @@ async def get_shariah_screening(
             else None
         )
 
+        source_fields = {
+            field: getattr(screening, field, None)
+            for field in ("data_as_of", "data_is_stale", "effective_from", "source_url",
+                          "source_exception", "purification_rate_provisional")
+        }
         summary = (
-            f"{sym_upper} is a current PSX KMI-30 constituent; current financial screening ratios are unavailable."
+            f"{sym_upper} is classified by the PSX KMI-30 screening effective {source_fields['effective_from'].date()}; financial ratios are as of {source_fields['data_as_of'].date()}."
+            if screening.screening_method and screening.screening_method.startswith("PSX KMI-30 screening notice")
+            else f"{sym_upper} is a current PSX KMI-30 constituent; financial screening ratios are unavailable."
             if screening.is_shariah_compliant
             else f"{sym_upper} does not satisfy PSX Shariah screening criteria ({profile.get('reason', 'Financial or business non-compliance')})."
         )
-        member_data = screening.screening_method.startswith("Cached PSX KMI-30")
-        freshness = service.market_constituents_freshness() if member_data else {}
+        criteria = service.build_criteria(screening, symbol=sym_upper)
 
         return ShariahScreeningResponse(
             symbol=sym_upper,
@@ -97,10 +106,10 @@ async def get_shariah_screening(
             overall_score=None,
             screening_method=screening.screening_method or "PSX KMI-30 / Meezan Screening Standard",
             screened_at=screening.screened_at,
-            data_as_of=freshness.get("as_of"),
-            data_is_stale=freshness.get("is_stale") if member_data else None,
+            **source_fields,
             sector=profile.get("sector"),
             purification_rate=purif_rate if screening.is_shariah_compliant else None,
+            criteria=criteria,
             compliance_summary=summary,
         )
     except AppError:
@@ -134,6 +143,9 @@ async def get_shariah_criteria(
             screening_available=screening is not None,
             is_shariah_compliant=is_compliant,
             criteria=criteria,
+            data_as_of=getattr(screening, "data_as_of", None),
+            data_is_stale=getattr(screening, "data_is_stale", None),
+            source_url=getattr(screening, "source_url", None),
         )
     except AppError:
         raise
@@ -179,10 +191,10 @@ async def get_shariah_purification(
             rate=custom_rate,
         )
 
-        notes = (
-            f"To purify income from {sym_upper}, donate PKR {purification_amount:,.2f} "
-            f"({purification_rate * 100:.2f}% of dividend income) to an approved Islamic charity."
-        )
+        is_provisional = bool(getattr(screening, "purification_rate_provisional", False))
+        notes = (f"Using the PSX screening rate dated {getattr(screening, 'data_as_of', None).date()}, "
+                 f"calculate PKR {purification_amount:,.2f} ({purification_rate * 100:.2f}% of dividend income). "
+                 + ("PSX marks this rate provisional and subject to adjustment." if is_provisional else ""))
 
         return ShariahPurificationResponse(
             symbol=sym_upper,
@@ -190,6 +202,9 @@ async def get_shariah_purification(
             purification_amount=purification_amount,
             purification_rate=purification_rate,
             notes=notes,
+            data_as_of=getattr(screening, "data_as_of", None),
+            source_url=getattr(screening, "source_url", None),
+            rate_is_provisional=is_provisional,
         )
     except AppError:
         raise

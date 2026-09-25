@@ -57,21 +57,16 @@ These items need a product-approved data source/definition; this audit intention
 
 ## Production-readiness follow-up — 2026-09-25
 
-The product owner confirmed that purification is calculated as **dividend income × rate** and that the organization has a PSX redistribution license. The following local changes address the audit findings; they have not yet been deployed to the AWS service.
+The product owner confirmed purification is **dividend income × rate** and confirmed that the organization has a PSX redistribution license. The first code follow-up was committed and deployed earlier in this work. This addendum records the subsequent source-data integration and current verification.
 
-- Removed the hard-coded KMI-30 financial-profile table. Screening no longer uses those static ratios or old database screening rows without source/as-of metadata.
-- KMI-30 membership is accepted as a limited membership-based signal only when the cached constituent feed is fresh. The KMI response now includes `as_of` and `is_stale`; empty/unavailable membership data returns 503 rather than a fabricated list.
-- Constituents are no longer enriched with fabricated prices, sectors, ratios, or purification rates. Financial criteria not present in a dated source remain null, including the overall score.
-- Purification now accepts `dividend_income` only and applies an explicitly available screening rate to that amount. It returns 422 when a verified rate is unavailable rather than using a profile/default rate. At present, the production dataset does not provide verified rates, so this calculation remains unavailable pending a dated authoritative Shariah financial-screening feed.
-- Replaced the manual live audit script's embedded test login with anonymous public-route checks and a configurable `AUDIT_BASE_URL`; it does not contain or use credentials.
-- Updated endpoint and frontend integration documentation to specify the dividend-income basis and unavailable-rate behavior.
+- Added the official PSX KMI-30 recomposition/screening snapshot from notice PSX/N-610 dated 2026-05-15. It lists the 30 constituents effective 2026-05-25 and screening ratios calculated from company accounts as of 2025-12-31. Source: [PSX notice](https://dps.psx.com.pk/download/attachment/277332-1.pdf).
+- Public KMI-30, single-symbol screening, and criteria payloads now carry the source URL, accounts-as-of date, effective date, and a stale-data indicator. Unavailable source fields remain null; the notice's N/A values for MEBL are retained.
+- The API preserves PSX's published final Shariah status and exposes the individual ratio checks separately. It identifies PSX exceptions for OGDC and HUBC rather than making those threshold ratios look like ordinary pass/fail outcomes.
+- Purification uses the official PSX income ratio as the provisional rate where PSX marks the source rate available. It multiplies this by `dividend_income`, reports the exact result and source date, and warns that the rate is provisional. MEBL has no published income ratio in the notice, so its purification route remains unavailable.
+- The source ratios are almost nine months old on the audit date and are correctly reported as stale. This is an explicitly dated last-known official dataset, not a claim that the companies have been screened against newer accounts.
 
-Local verification: **20/20** tests passed in `tests/api/test_shariah_api.py`; edited Python modules and the manual smoke script passed `py_compile`; `git diff --check` passed. After commit `f7618cf` reached GitHub, the anonymous AWS smoke check passed all **7** route/data-contract checks.
+Local verification: **21/21** tests passed in `tests/api/test_shariah_api.py`; changed Python modules passed `py_compile`; the JSON snapshot contains exactly 30 tickers; `git diff --check` passed. The test coverage checks anonymous access, source dates and URL, OGDC's 6.62% provisional rate and PKR 993 calculation for PKR 15,000 dividend income, and MEBL's unavailable rate.
 
-The AWS response currently reports KMI-30 `total_constituents=30`, `as_of=null`, `is_stale=true`; accordingly OGDC screening is unavailable/unverified, criteria values are null, and purification returns 404 until fresh membership data arrives. HBL remains classified non-compliant by known business activity. The deployed service is behaving as intended for stale source data; a successful smoke run does not make the Shariah financial-ratio/purification feed complete.
+The remaining publication step is to push this source-data integration and then confirm that GitHub deployment completed before repeating the anonymous production smoke checks. Do not describe this new snapshot as live on AWS until that check succeeds.
 
-### Readiness decision
-
-The Shariah API now fails safely and reports uncertainty honestly, but the Shariah module is **not fully feature-ready for production use**: the deployed constituent snapshot is stale and verified current financial ratios/purification rates are not available from the connected data feed. The separate historical Stocks/Market audit also documents source-data gaps, including stale OHLCV and missing financial fundamentals. The user confirmed PSX redistribution rights, which addresses the license question but does not supply a dated Shariah screening dataset.
-
-Security follow-up: the previous live test script was already committed with an inline test account password. The working-tree version no longer contains it, but prior Git revisions retain it. Do not reuse that account; rotate or disable it, and consider repository history cleanup if the credential was valid outside test environments. No credential was used during this work.
+Security follow-up: an earlier live-test script revision included an inline test-account password. The working-tree script no longer contains it, but prior Git revisions retain it. No credential was read or used during this work. If that password was valid anywhere, disable or rotate the account and treat the value as exposed; consider history cleanup after rotation.

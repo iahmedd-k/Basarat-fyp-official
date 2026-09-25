@@ -17,21 +17,25 @@ def test_shariah_endpoints():
         kmi_data = kmi.json()
         assert kmi_data["index"] == "KMI-30"
         assert kmi_data["total_constituents"] == len(kmi_data["constituents"])
-        assert kmi_data["total_constituents"] >= 30
-        assert "as_of" in kmi_data and isinstance(kmi_data["is_stale"], bool)
-        assert all(
-            row.get("debt_ratio") is None and row.get("purification_rate") is None
-            for row in kmi_data["constituents"]
-        )
-
-        market_data_is_fresh = not kmi_data["is_stale"] and kmi_data["as_of"] is not None
-        for symbol, expected in (("OGDC", True if market_data_is_fresh else None), ("HBL", False)):
+        assert kmi_data["total_constituents"] == 30
+        assert kmi_data["as_of"].startswith("2025-12-31")
+        assert kmi_data["effective_from"].startswith("2026-05-25")
+        assert kmi_data["source_url"].startswith("https://dps.psx.com.pk/")
+        constituents = {row["symbol"]: row for row in kmi_data["constituents"]}
+        assert len(constituents) == 30
+        assert constituents["OGDC"]["interest_income_ratio"] == 0.0662
+        assert constituents["MEBL"]["interest_income_ratio"] is None
+        for symbol, expected in (("OGDC", True), ("HBL", False)):
             result = client.get(f"{BASE_URL}/shariah/{symbol}")
             assert result.status_code == 200, result.text
             body = result.json()
             assert body["is_shariah_compliant"] is expected
             assert body["overall_score"] is None
-            assert body["screening_available"] is market_data_is_fresh or symbol == "HBL"
+            assert body["screening_available"] is True
+            if symbol == "OGDC":
+                assert body["data_as_of"].startswith("2025-12-31")
+                assert body["data_is_stale"] is True
+                assert body["purification_rate"] == 0.0662
 
         unknown = client.get(f"{BASE_URL}/shariah/ZZZ999")
         assert unknown.status_code == 200
@@ -42,21 +46,28 @@ def test_shariah_endpoints():
         assert criteria.status_code == 200
         criteria_data = criteria.json()
         assert len(criteria_data["criteria"]) == 6
-        if market_data_is_fresh:
-            assert criteria_data["criteria"][0]["passed"] is True
-            assert all(row["value"] is None and row["passed"] is None for row in criteria_data["criteria"][1:])
-        else:
-            assert criteria_data["screening_available"] is False
-            assert all(row["value"] is None and row["passed"] is None for row in criteria_data["criteria"])
+        assert criteria_data["screening_available"] is True
+        assert criteria_data["data_as_of"].startswith("2025-12-31")
+        income_criterion = next(row for row in criteria_data["criteria"] if "Income Ratio" in row["name"])
+        assert income_criterion["value"] == 6.62
+        assert income_criterion["passed"] is None
+        assert "exception" in income_criterion and income_criterion["exception"]
 
         purification = client.get(
             f"{BASE_URL}/shariah/OGDC/purification",
             params={"dividend_income": 15000.0},
         )
-        assert purification.status_code == (422 if market_data_is_fresh else 404)
-        if market_data_is_fresh:
-            message = purification.json()["error"]["message"].lower()
-            assert "verified purification rate" in message
+        assert purification.status_code == 200, purification.text
+        purification_data = purification.json()
+        assert purification_data["purification_rate"] == 0.0662
+        assert purification_data["purification_amount"] == 993.0
+        assert purification_data["rate_is_provisional"] is True
+
+        unavailable_rate = client.get(
+            f"{BASE_URL}/shariah/MEBL/purification",
+            params={"dividend_income": 15000.0},
+        )
+        assert unavailable_rate.status_code == 422
 
         invalid = client.get(f"{BASE_URL}/shariah/OGDC/purification")
         assert invalid.status_code == 422

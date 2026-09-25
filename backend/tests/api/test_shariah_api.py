@@ -112,19 +112,25 @@ class TestShariahPurification:
         assert rate == 0.012
         assert amount == 180.0
 
-    async def test_purification_requires_verified_rate(self, client: AsyncClient, auth_headers):
+    async def test_purification_requires_verified_rate_when_psx_does_not_publish_one(self, client: AsyncClient, auth_headers):
         resp = await client.get(
-            "/api/v1/shariah/OGDC/purification?dividend_income=15000.0",
+            "/api/v1/shariah/MEBL/purification?dividend_income=15000.0",
             headers=auth_headers,
         )
         assert resp.status_code == 422
         assert "verified purification rate" in resp.json()["error"]["message"].lower()
 
-    async def test_purification_is_public_and_uses_dividend_income(self, client: AsyncClient):
+    async def test_purification_is_public_and_uses_dated_psx_rate(self, client: AsyncClient):
         resp = await client.get(
             "/api/v1/shariah/OGDC/purification?dividend_income=15000.0",
         )
-        assert resp.status_code in (200, 422)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["purification_rate"] == 0.0662
+        assert data["purification_amount"] == 993.0
+        assert data["data_as_of"].startswith("2025-12-31")
+        assert data["source_url"].startswith("https://dps.psx.com.pk/")
+        assert data["rate_is_provisional"] is True
 
     async def test_purification_requires_dividend_income(self, client: AsyncClient):
         resp = await client.get(
@@ -173,3 +179,14 @@ class TestShariahKMI30:
     async def test_kmi30_is_public(self, client: AsyncClient):
         resp = await client.get("/api/v1/shariah/kmi30")
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_constituents"] == 30
+        assert data["as_of"].startswith("2025-12-31")
+        assert data["effective_from"].startswith("2026-05-25")
+
+    async def test_kmi30_source_snapshot_has_expected_rows_and_ratios(self, client: AsyncClient):
+        resp = await client.get("/api/v1/shariah/kmi30")
+        rows = {row["symbol"]: row for row in resp.json()["constituents"]}
+        assert len(rows) == 30
+        assert rows["OGDC"]["interest_income_ratio"] == 0.0662
+        assert rows["MEBL"]["interest_income_ratio"] is None

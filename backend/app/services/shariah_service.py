@@ -1,5 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime, timezone
+import json
 import logging
+from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +10,34 @@ from app.models.stock import Stock
 from app.services.market_service import MarketService
 
 log = logging.getLogger(__name__)
+
+_PSX_SCREENING_PATH = Path(__file__).resolve().parents[1] / "data" / "psx_kmi30_screening_2025-12.json"
+with _PSX_SCREENING_PATH.open(encoding="utf-8") as _source_file:
+    PSX_KMI30_SCREENING = json.load(_source_file)
+PSX_KMI30_COMPANIES: dict[str, dict] = PSX_KMI30_SCREENING["companies"]
+_SCREENING_AS_OF = date.fromisoformat(PSX_KMI30_SCREENING["accounts_as_of"])
+_KMI30_EFFECTIVE_FROM = date.fromisoformat(PSX_KMI30_SCREENING["effective_from"])
+
+
+def _screening_source_fields(row: dict) -> dict:
+    """Return clearly dated official PSX screening values in API decimal units."""
+    as_of = datetime.combine(_SCREENING_AS_OF, datetime.min.time(), tzinfo=timezone.utc)
+    return {
+        "debt_ratio": None if row["debt"] is None else row["debt"] / 100,
+        "interest_income_ratio": None if row["income"] is None else row["income"] / 100,
+        "non_compliant_investment_ratio": None if row["investment"] is None else row["investment"] / 100,
+        "illiquid_assets_ratio": None if row["illiquid"] is None else row["illiquid"] / 100,
+        "net_liquid_assets_per_share": row["nla"],
+        "reference_share_price": row["price"],
+        "screening_method": "PSX KMI-30 screening notice PSX/N-610 (2026-05-15)",
+        "screened_at": as_of.replace(tzinfo=None),
+        "data_as_of": as_of,
+        "effective_from": datetime.combine(_KMI30_EFFECTIVE_FROM, datetime.min.time(), tzinfo=timezone.utc),
+        "data_is_stale": (date.today() - _SCREENING_AS_OF).days > 180,
+        "source_url": PSX_KMI30_SCREENING["source_url"],
+        "purification_rate_provisional": bool(row.get("provisional", False)),
+        "source_exception": row.get("exception") or row.get("note"),
+    }
 
 # Compliance outcomes use source-backed index membership or known business activity.
 # Non-compliant conventional institutions & sectors
@@ -65,6 +95,20 @@ class ShariahService:
     async def get_screening(self, symbol: str) -> ShariahScreening | None:
         sym_upper = symbol.upper()
         stock = await self.get_stock_by_symbol(sym_upper)
+
+        # Use the latest dated PSX KMI screening snapshot rather than requiring
+        # a market-price cache to disclose verified screening ratios.
+        if sym_upper in PSX_KMI30_COMPANIES:
+            row = PSX_KMI30_COMPANIES[sym_upper]
+            screening = ShariahScreening(
+                stock_id=stock.id if stock else f"stock-{sym_upper.lower()}",
+                is_shariah_compliant=bool(row["status"]),
+                **{key: value for key, value in _screening_source_fields(row).items()
+                   if key in {"debt_ratio", "interest_income_ratio", "screening_method", "screened_at"}},
+            )
+            for key, value in _screening_source_fields(row).items():
+                setattr(screening, key, value)
+            return screening
 
         # Legacy database rows were populated from static profiles. They have no
         # source/as-of metadata, so their ratios cannot be presented as current.
@@ -146,8 +190,12 @@ class ShariahService:
 
         debt_ratio = float(screening.debt_ratio) if screening and screening.debt_ratio is not None else None
         interest_ratio = float(screening.interest_income_ratio) if screening and screening.interest_income_ratio is not None else None
-        non_compliant_inv = None
-        illiquid_ratio = None
+        non_compliant_inv = getattr(screening, "non_compliant_investment_ratio", None)
+        illiquid_ratio = getattr(screening, "illiquid_assets_ratio", None)
+        nla = getattr(screening, "net_liquid_assets_per_share", None)
+        share_price = getattr(screening, "reference_share_price", None)
+        source_exception = getattr(screening, "source_exception", None)
+        has_ratio_exception = bool(source_exception)
 
         is_core_halal = not is_non_compliant and (screening.is_shariah_compliant if screening else True)
 
@@ -162,37 +210,39 @@ class ShariahService:
             {
                 "name": "Debt to Total Assets Ratio",
                 "threshold": 0.37,
-                "value": debt_ratio,
+                "value": None if debt_ratio is None else debt_ratio * 100,
                 "passed": None if debt_ratio is None else debt_ratio < 0.37 and is_core_halal,
                 "description": "Total interest-bearing debt / Total Assets must be less than 37%.",
             },
             {
                 "name": "Non-Compliant Investments Ratio",
                 "threshold": 0.33,
-                "value": non_compliant_inv,
-                "passed": None if non_compliant_inv is None else non_compliant_inv < 0.33 and is_core_halal,
+                "value": None if non_compliant_inv is None else non_compliant_inv * 100,
+                "passed": None if non_compliant_inv is None or (source_exception and "investment" in source_exception.lower()) else non_compliant_inv < 0.33 and is_core_halal,
                 "description": "Interest-bearing deposits and non-compliant investments / Total Assets must be under 33%.",
+                "exception": source_exception if source_exception and "investment" in source_exception.lower() else None,
             },
             {
                 "name": "Non-Permissible / Interest Income Ratio",
                 "threshold": 0.05,
-                "value": interest_ratio,
-                "passed": None if interest_ratio is None else interest_ratio < 0.05 and is_core_halal,
+                "value": None if interest_ratio is None else interest_ratio * 100,
+                "passed": None if interest_ratio is None or has_ratio_exception else interest_ratio < 0.05 and is_core_halal,
                 "description": "Interest and non-permissible income / Gross Revenue must be under 5%.",
+                "exception": source_exception,
             },
             {
                 "name": "Illiquid Assets to Total Assets Ratio",
                 "threshold": 0.25,
-                "value": illiquid_ratio,
+                "value": None if illiquid_ratio is None else illiquid_ratio * 100,
                 "passed": None if illiquid_ratio is None else illiquid_ratio >= 0.25 and is_core_halal,
                 "description": "Illiquid physical assets / Total Assets must be at least 25%.",
             },
             {
                 "name": "Net Liquid Assets vs Market Price",
-                "threshold": 1.0,
-                "value": None,
-                "passed": None,
-                "description": "Net liquid assets per share must be less than the current market price per share.",
+                "threshold": share_price if share_price is not None else 1.0,
+                "value": nla,
+                "passed": None if nla is None or share_price is None else nla < share_price,
+                "description": "Net liquid assets per share must be less than the reference share price reported for the screening date.",
             },
         ]
 
@@ -209,16 +259,31 @@ class ShariahService:
         return amount, effective_rate
 
     async def get_kmi30_constituents(self) -> list[dict]:
-        """Fetch source-backed KMI-30 constituents without inventing prices or ratios."""
+        """Merge PSX's dated authoritative roster with fresh market quotes when available."""
         market_service = MarketService()
         try:
             constituents = await market_service.get_index_constituents("KMI30")
             if constituents and len(constituents) > 0:
-                return [{**c, "is_shariah_compliant": True, "purification_rate": None, "debt_ratio": None}
-                        for c in constituents if c.get("symbol")]
+                market_rows = {str(c.get("symbol", "")).upper(): c for c in constituents if c.get("symbol")}
+                return [self._kmi_constituent(symbol, row, market_rows.get(symbol))
+                        for symbol, row in PSX_KMI30_COMPANIES.items()]
         except Exception as e:
             log.warning("MarketService.get_index_constituents(KMI30) unavailable: %s", e)
-        return []
+        return [self._kmi_constituent(symbol, row, None) for symbol, row in PSX_KMI30_COMPANIES.items()]
+
+    @staticmethod
+    def _kmi_constituent(symbol: str, row: dict, market_row: dict | None) -> dict:
+        source_fields = _screening_source_fields(row)
+        return {
+            **(market_row or {}),
+            "symbol": symbol,
+            "name": row["name"],
+            "is_shariah_compliant": bool(row["status"]),
+            "debt_ratio": source_fields["debt_ratio"],
+            "interest_income_ratio": source_fields["interest_income_ratio"],
+            "data_as_of": source_fields["data_as_of"].isoformat(),
+            "purification_rate_provisional": source_fields["purification_rate_provisional"],
+        }
 
     @staticmethod
     def market_constituents_freshness() -> dict:
