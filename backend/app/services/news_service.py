@@ -6,6 +6,7 @@ from typing import Optional
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import BadRequestError
 from app.models.news import NewsArticle, NewsArticleSymbol
 from app.models.user import User
 
@@ -21,6 +22,7 @@ class NewsService:
         limit: int = 20,
         cursor: Optional[str] = None,
         symbol: Optional[str] = None,
+        q: Optional[str] = None,
         sentiment: Optional[str] = None,
         source: Optional[str] = None,
         event_type: Optional[str] = None,
@@ -77,6 +79,15 @@ class NewsService:
                 )
             )
 
+        if q and q.strip():
+            search_term = f"%{q.strip()}%"
+            conditions.append(
+                or_(
+                    NewsArticle.title.ilike(search_term),
+                    NewsArticle.summary.ilike(search_term),
+                )
+            )
+
         # Filters
         if sentiment:
             conditions.append(NewsArticle.sentiment_label == sentiment.lower())
@@ -99,6 +110,8 @@ class NewsService:
             try:
                 cursor_published_at_str, cursor_id = cursor.split("|", 1)
                 cursor_published_at = datetime.fromisoformat(cursor_published_at_str)
+                if not cursor_id.strip():
+                    raise ValueError("Cursor ID is empty")
                 # For DESC order: we want items OLDER than cursor
                 query = query.where(
                     or_(
@@ -109,9 +122,8 @@ class NewsService:
                         ),
                     )
                 )
-            except (ValueError, IndexError):
-                log.warning("Invalid cursor format: %s", cursor)
-                pass
+            except (ValueError, IndexError) as exc:
+                raise BadRequestError("Invalid news cursor.") from exc
 
         query = query.order_by(NewsArticle.published_at.desc().nulls_last(), NewsArticle.created_at.desc(), NewsArticle.id.desc())
         query = query.limit(limit + 1)  # +1 to check has_more
@@ -124,7 +136,7 @@ class NewsService:
             articles = articles[:limit]
 
         next_cursor = None
-        if articles:
+        if has_more and articles:
             last = articles[-1]
             if last.published_at:
                 next_cursor = f"{last.published_at.isoformat()}|{last.id}"

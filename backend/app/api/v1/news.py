@@ -85,6 +85,7 @@ async def get_news(
                 limit=limit,
                 cursor=cursor,
                 symbol=symbol,
+                q=q,
                 sentiment=sentiment,
                 source=source,
                 event_type=event_type,
@@ -111,6 +112,7 @@ async def get_news(
             row=row,
             last_updated_at=last_updated.isoformat() if last_updated else None,
             empty_reason=empty_reason,
+            total=total if row == "news" else len(items),
         )
     except AppError:
         raise
@@ -310,34 +312,35 @@ async def get_stock_news(
     cursor: Optional[str] = Query(None, description="Opaque cursor from previous page"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Stock page News tab - retrieves live official announcements from PSX with Redis cache & DB fallback."""
+    """Stock page News tab with filtering and cursor pagination."""
     try:
         if source_type and source_type not in ("official", "news"):
             raise HTTPException(status_code=400, detail="source_type must be 'official' or 'news'")
         if sentiment and sentiment not in ("bullish", "bearish", "neutral"):
             raise HTTPException(status_code=400, detail="sentiment must be 'bullish', 'bearish', or 'neutral'")
 
-        from app.services.psx_announcement_service import PSXAnnouncementService
-        psx_svc = PSXAnnouncementService(db)
-        items = await psx_svc.get_stock_announcements(symbol=symbol.upper(), limit=limit)
-
-        # Apply optional filters
-        if sentiment:
-            items = [item for item in items if item.get("sentiment", {}).get("label") == sentiment.lower()]
-        if event_type:
-            items = [item for item in items if item.get("event_type") == event_type]
-        if source_type:
-            items = [item for item in items if item.get("source", {}).get("type") == source_type]
+        svc = NewsService(db)
+        articles, total, next_cursor = await svc.get_articles(
+            symbol=symbol.upper(),
+            q=None,
+            sentiment=sentiment,
+            event_type=event_type,
+            source_type=source_type,
+            limit=limit,
+            cursor=cursor,
+        )
+        items = [svc.to_response(article) for article in articles]
 
         return NewsListResponse(
             items=[NewsArticleResponse(**item) for item in items],
-            next_cursor=None,
-            has_more=False,
+            next_cursor=next_cursor,
+            has_more=next_cursor is not None,
             row="news",
             last_updated_at=ingestion_state.get_last_ingestion_time().isoformat() if ingestion_state.get_last_ingestion_time() else None,
             empty_reason="no_results" if not items else None,
+            total=total,
         )
-    except HTTPException:
+    except (AppError, HTTPException):
         raise
     except Exception as exc:
         import logging
