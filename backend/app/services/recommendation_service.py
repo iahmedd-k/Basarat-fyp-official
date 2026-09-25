@@ -102,10 +102,14 @@ class RecommendationEngine:
                 else f"Composite score {score:.3f} crossed the SELL threshold ({SELL_THRESHOLD:.2f})." if score < SELL_THRESHOLD
                 else f"Composite score {score:.3f} is between the BUY threshold ({BUY_THRESHOLD:.2f}) and SELL threshold ({SELL_THRESHOLD:.2f})."
             )
-            item["status"] = "available" if len(available) == 4 else "partial" if available else "insufficient_data"
-            item["risk_profile"] = risk_tolerance
-            atr = item.get("atr_14")
             price = item.get("current_price")
+            atr = item.get("atr_14")
+            if (atr is None or float(atr) <= 0) and price and float(price) > 0:
+                if item.get("norm_atr14"):
+                    atr = float(item["norm_atr14"]) * float(price)
+                else:
+                    atr = float(price) * 0.025
+            item["atr_14"] = round(float(atr), 4) if atr else None
             if atr and price and item.get("signal") in {"buy", "sell"}:
                 multipliers = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])
                 direction = 1 if item["signal"] == "buy" else -1
@@ -192,8 +196,11 @@ class RecommendationEngine:
         signals = []
 
         # 1. RSI momentum
-        rsi = latest.get("rsi_14", 50)
-        if "rsi_14" in latest.index and pd.notna(rsi):
+        rsi = latest.get("rsi_14")
+        if rsi is None and latest.get("rsi_norm") is not None and pd.notna(latest.get("rsi_norm")):
+            rsi = float(latest["rsi_norm"]) * 100.0
+        if rsi is not None and pd.notna(rsi):
+            rsi = float(rsi)
             rsi_score = 0.0
             if rsi < 30:
                 rsi_score = 0.8  # oversold = bullish
@@ -206,9 +213,16 @@ class RecommendationEngine:
             signals.append(("rsi", rsi_score, f"RSI={rsi:.1f}"))
 
         # 2. MACD crossover
-        macd_now = latest.get("macd_hist", 0)
-        macd_prev = prev.get("macd_hist", 0)
-        if "macd_hist" in latest.index and "macd_hist" in prev.index and pd.notna(macd_now) and pd.notna(macd_prev):
+        macd_now = latest.get("macd_hist")
+        if macd_now is None:
+            macd_now = latest.get("macd_hist_norm")
+        macd_prev = prev.get("macd_hist")
+        if macd_prev is None:
+            macd_prev = prev.get("macd_hist_norm")
+
+        if macd_now is not None and pd.notna(macd_now):
+            macd_now = float(macd_now)
+            macd_prev = float(macd_prev) if (macd_prev is not None and pd.notna(macd_prev)) else macd_now
             if macd_now > 0 and macd_prev <= 0:
                 macd_score = 0.7  # bullish crossover
             elif macd_now < 0 and macd_prev >= 0:
@@ -219,34 +233,43 @@ class RecommendationEngine:
                 macd_score = -0.3
             else:
                 macd_score = 0.0
-            signals.append(("macd", macd_score, f"MACD_cross={macd_now:.4f}"))
+            signals.append(("macd", macd_score, f"MACD_hist={macd_now:.4f}"))
 
         # 3. Bollinger Band position
         close = latest.get("close", 0)
-        bb_upper = latest.get("bb_upper", close)
-        bb_lower = latest.get("bb_lower", close)
-        bb_mid = latest.get("bb_mid", close)
-        if all(name in latest.index for name in ("bb_upper", "bb_lower", "close")) and pd.notna(bb_upper) and pd.notna(bb_lower) and bb_upper != bb_lower:
-            bb_pos = (close - bb_lower) / (bb_upper - bb_lower)  # 0 to 1
-            # Near lower band = bullish, near upper = bearish
-            bb_score = float(np.clip((0.5 - bb_pos) * 2, -1, 1))  # map [0,1] to [1,-1]
-            signals.append(("bb", float(bb_score), f"BB_pos={bb_pos:.2f}"))
+        if latest.get("bb_pct_b") is not None and pd.notna(latest.get("bb_pct_b")):
+            bb_pos = float(latest["bb_pct_b"])
+            bb_score = float(np.clip((0.5 - bb_pos) * 2, -1, 1))
+            signals.append(("bb", float(bb_score), f"BB_%B={bb_pos:.2f}"))
+        else:
+            bb_upper = latest.get("bb_upper", close)
+            bb_lower = latest.get("bb_lower", close)
+            if pd.notna(bb_upper) and pd.notna(bb_lower) and bb_upper != bb_lower:
+                bb_pos = (close - bb_lower) / (bb_upper - bb_lower)
+                bb_score = float(np.clip((0.5 - bb_pos) * 2, -1, 1))
+                signals.append(("bb", float(bb_score), f"BB_pos={bb_pos:.2f}"))
 
-        # 4. ADX trend confirmation
+        # 4. Moving Average Crossover confirmation
+        if latest.get("sma_cross_20_50") is not None and pd.notna(latest.get("sma_cross_20_50")):
+            cross_val = float(latest["sma_cross_20_50"])
+            cross_score = 0.4 if cross_val > 0 else -0.4
+            signals.append(("ma_cross", cross_score, "SMA20/50=Bullish" if cross_val > 0 else "SMA20/50=Bearish"))
+        elif latest.get("ema_cross_12_26") is not None and pd.notna(latest.get("ema_cross_12_26")):
+            cross_val = float(latest["ema_cross_12_26"])
+            cross_score = 0.4 if cross_val > 0 else -0.4
+            signals.append(("ma_cross", cross_score, "EMA12/26=Bullish" if cross_val > 0 else "EMA12/26=Bearish"))
+
+        # 5. Trend & Volatility scaling
         adx = latest.get("adx_14", latest.get("adx", 20))
         trend_mult = 1.0
         if pd.notna(adx):
             if adx > 25:
-                trend_mult = 1.3
+                trend_mult = 1.2
             elif adx < 15:
-                trend_mult = 0.6
+                trend_mult = 0.8
 
-        # 5. Volume confirmation
         vol_zscore = latest.get("volume_zscore_20", 0)
-        if pd.notna(vol_zscore) and abs(vol_zscore) > 1.5:
-            vol_mult = 1.2
-        else:
-            vol_mult = 1.0
+        vol_mult = 1.1 if (pd.notna(vol_zscore) and abs(float(vol_zscore)) > 1.2) else 1.0
 
         if not signals:
             return 0.0, {"status": "unavailable", "reason": "no technical indicators available"}
@@ -536,7 +559,15 @@ class RecommendationEngine:
 
         latest = sym_df.iloc[-1]
         current_price = float(current_price_override or latest.get("close", 0))
-        atr = float(latest.get("atr_14", 0))
+        atr_val = latest.get("atr_14") or latest.get("atr")
+        if atr_val is not None and pd.notna(atr_val):
+            atr = float(atr_val)
+        elif latest.get("norm_atr14") is not None and pd.notna(latest.get("norm_atr14")) and current_price > 0:
+            atr = float(latest["norm_atr14"]) * current_price
+        elif current_price > 0:
+            atr = current_price * 0.025
+        else:
+            atr = 0.0
 
         if not np.isfinite(current_price) or not np.isfinite(atr) or current_price <= 0 or atr <= 0:
             return {

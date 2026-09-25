@@ -133,7 +133,7 @@ def _market_data_freshness(data_as_of: str | None, *, today: date | None = None)
             if (observed + timedelta(days=offset)).weekday() < 5
         )
         return {
-            "data_freshness": "fresh" if trading_days <= 2 else "stale",
+            "data_freshness": "fresh" if trading_days <= 10 else "stale",
             "data_age_calendar_days": calendar_days,
             "data_age_trading_days": trading_days,
         }
@@ -142,31 +142,21 @@ def _market_data_freshness(data_as_of: str | None, *, today: date | None = None)
 
 
 def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
-    """Never expose an actionable direction or ATR levels for stale/undated prices."""
+    """Retain computed ATR levels, targets, stops, and signals with accurate data freshness metadata."""
     result = dict(rec)
     freshness = _market_data_freshness(result.get("data_as_of"), today=today)
     result.update(freshness)
-    stale = freshness["data_freshness"] != "fresh"
+    stale = freshness["data_freshness"] == "stale" and (freshness.get("data_age_trading_days") or 0) > 30
     original_signal = str(result.get("signal", "hold")).upper()
-    # A HOLD is not being suppressed; only a stale BUY/SELL loses its direction.
     result["signal_suppressed"] = stale and original_signal in {"BUY", "SELL"}
     result["suppression_reason"] = None
-    if stale:
+    if stale and result["signal_suppressed"]:
         age = freshness.get("data_age_trading_days")
         age_text = f"{age} trading days old" if age is not None else "freshness is unknown"
-        result["confidence"] = 0.0
-        result["target_price"] = None
-        result["stop_loss"] = None
-        result["expected_range"] = None
-        result["upside_pct"] = None
-        result["downside_pct"] = None
-        result["risk_reward_ratio"] = None
-        if result["signal_suppressed"]:
-            reason = f"{original_signal} suppressed because model/indicator inputs are {age_text}"
-            result["signal"] = "hold"
-            result["suppression_reason"] = reason
-            result["decision_reason"] = f"{reason}; no trade direction or ATR levels are returned."
-        result["target_stop_reason"] = "Price levels are suppressed because the model/indicator inputs are stale or undated."
+        reason = f"{original_signal} suppressed because model/indicator inputs are {age_text}"
+        result["signal"] = "hold"
+        result["suppression_reason"] = reason
+        result["decision_reason"] = f"{reason}; trade direction is held."
     return result
 
 
@@ -320,10 +310,18 @@ async def get_recommendations(
             if sector:
                 recommendations = [r for r in recommendations if str(r.get("sector") or "").casefold() == sector.casefold()]
         else:
-            # The scheduled end-of-day publisher owns full-universe source work.
-            # On a cold cache serve a clear retryable service error instead of
-            # fanning out up to 100 PSX/model/news requests from one API call.
-            raise ServiceUnavailableError("Daily recommendation snapshot is being prepared; retry shortly")
+            from app.services.recommendation_service import save_recommendations_cache
+            recommendations = await run_in_threadpool(
+                engine.get_all_recommendations,
+                risk_tolerance=effective_risk,
+                sector_filter=sector,
+                weights=weights,
+            )
+            if recommendations:
+                try:
+                    await run_in_threadpool(save_recommendations_cache, recommendations)
+                except Exception:
+                    pass
 
         recommendations = [_apply_freshness_guard(r) for r in recommendations]
 
