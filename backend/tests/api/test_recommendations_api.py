@@ -5,7 +5,7 @@ from datetime import date
 from httpx import AsyncClient
 from unittest.mock import patch
 
-from app.api.v1.recommendations import _apply_freshness_guard, _component_payload, _market_data_freshness, _summarize
+from app.api.v1.recommendations import _apply_freshness_guard, _component_payload, _market_data_freshness, _market_data_payload, _summarize
 
 
 def test_summary_does_not_mistake_unavailable_ml_for_decision_reason():
@@ -37,6 +37,19 @@ def test_market_data_freshness_uses_weekdays_and_marks_old_data():
         "data_age_calendar_days": 7,
         "data_age_trading_days": 5,
     }
+
+
+def test_stale_quote_fetch_time_is_not_reported_as_price_observation_time():
+    market_data = _market_data_payload({
+        "quote_as_of": "2026-09-24T18:55:11+00:00",
+        "quote_is_stale": True,
+        "data_as_of": "2026-09-18",
+        "current_price": 426.26,
+    })
+    assert market_data["as_of"] is None
+    assert market_data["quote_fetched_at"] == "2026-09-24T18:55:11+00:00"
+    assert market_data["freshness"] == "stale"
+    assert market_data["analysis_as_of"] == "2026-09-18"
 
 
 def test_stale_data_suppresses_actionable_signal_and_price_levels():

@@ -274,6 +274,7 @@ class RecommendationComponent(BaseModel):
 
 class RecommendationMarketData(BaseModel):
     as_of: str | None = None
+    quote_fetched_at: str | None = None
     freshness: str = "unknown"
     age_calendar_days: int | None = None
     age_trading_days: int | None = None

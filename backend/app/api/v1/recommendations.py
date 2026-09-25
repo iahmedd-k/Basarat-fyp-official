@@ -197,12 +197,18 @@ def _component_payload(rec: dict) -> dict:
 
 def _market_data_payload(rec: dict) -> dict:
     quote_as_of = rec.get("quote_as_of")
-    quote_freshness = _market_data_freshness(quote_as_of or rec.get("data_as_of"))
-    if rec.get("quote_is_stale"):
+    quote_is_stale = bool(rec.get("quote_is_stale"))
+    quote_freshness = _market_data_freshness(quote_as_of) if quote_as_of else {
+        "data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None,
+    }
+    if quote_is_stale:
+        # quote_as_of is the last successful fetch timestamp, not proof that
+        # the fallback price itself was observed at that time.
         quote_freshness["data_freshness"] = "stale"
     analysis_freshness = _market_data_freshness(rec.get("data_as_of"))
     return {
-        "as_of": quote_as_of or rec.get("data_as_of"),
+        "as_of": None if quote_is_stale else quote_as_of,
+        "quote_fetched_at": quote_as_of,
         "freshness": quote_freshness["data_freshness"],
         "age_calendar_days": quote_freshness["data_age_calendar_days"],
         "age_trading_days": quote_freshness["data_age_trading_days"],
