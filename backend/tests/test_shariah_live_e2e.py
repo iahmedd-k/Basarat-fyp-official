@@ -50,6 +50,7 @@ def test_shariah_endpoints():
         assert criteria_data["data_as_of"].startswith("2025-12-31")
         income_criterion = next(row for row in criteria_data["criteria"] if "Income Ratio" in row["name"])
         assert income_criterion["value"] == 6.62
+        assert income_criterion["threshold"] == 5.0
         assert income_criterion["passed"] is None
         assert "exception" in income_criterion and income_criterion["exception"]
 
