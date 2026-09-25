@@ -302,6 +302,9 @@ class SwaggerLiveAuditRunner:
         if path in ("/", "/health", "/health/ready"):
             url = f"{self.base_url}{path}"
 
+        if use_auth and not self.auth_token:
+            self.ensure_authenticated()
+
         headers = {"User-Agent": "Basarat-Swagger-Auditor/2.0"}
         if use_auth and self.auth_headers:
             headers.update(self.auth_headers)
@@ -380,6 +383,26 @@ class SwaggerLiveAuditRunner:
         self._execute("System", "GET", "/health/ready", expected_status=[200], use_auth=False)
         self._execute("System", "GET", "/openapi.json", expected_status=[200], use_auth=False, inspector_kwargs={"critical_keys": ["openapi", "info", "paths"]})
 
+    def ensure_authenticated(self):
+        if self.auth_token:
+            return
+        login_url = f"{self.api_url}/auth/login"
+        for _ in range(6):
+            try:
+                resp = self.client.post(login_url, json={"email": "admin@basarat.pk", "password": "TestPassword12345!"})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, dict) and "access_token" in data:
+                        self.auth_token = data["access_token"]
+                        self.auth_headers = {"Authorization": f"Bearer {self.auth_token}"}
+                        return
+                elif resp.status_code == 429:
+                    time.sleep(2.0)
+                else:
+                    break
+            except Exception:
+                time.sleep(1.0)
+
     # ── 2. Auth & User Profile ──────────────────────────────────────────────
     def audit_auth_and_user(self):
         if not self.should_run("Auth") and not self.should_run("Users"):
@@ -420,7 +443,7 @@ class SwaggerLiveAuditRunner:
                     "POST",
                     "/auth/login",
                     expected_status=[200, 401],
-                    json_data={"email": "admin@basarat.pk", "password": "AdminPassword123!"},
+                    json_data={"email": "admin@basarat.pk", "password": "TestPassword12345!"},
                     use_auth=False,
                 )
                 if isinstance(admin_login, dict) and "access_token" in admin_login:
@@ -506,12 +529,12 @@ class SwaggerLiveAuditRunner:
         if not self.should_run("Recommendations"):
             return
         print("\n--- 6. Module: Multi-Strategy Quantitative Recommendations ---", flush=True)
-        self._execute("Recommendations", "GET", "/recommendations", params={"risk_profile": "moderate"}, expected_status=[200], inspector_kwargs={"critical_keys": ["recommendations", "total_evaluated"]})
+        self._execute("Recommendations", "GET", "/recommendations", params={"risk_profile": "moderate"}, expected_status=[200], inspector_kwargs={"critical_keys": ["count", "total_count", "risk_profile", "recommendations"], "min_items": 1})
         self._execute("Recommendations", "GET", "/recommendations/engine-weights", expected_status=[200], inspector_kwargs={"critical_keys": ["weights"]})
 
         for sym in self.symbols[:2]:
-            self._execute("Recommendations", "GET", f"/recommendations/{sym}", expected_status=[200], inspector_kwargs={"critical_keys": ["symbol", "recommendation", "confidence_score", "strategy_scores"]})
-            self._execute("Recommendations", "GET", f"/recommendations/{sym}/target-stop", expected_status=[200], inspector_kwargs={"critical_keys": ["entry_price", "target_price", "stop_loss", "risk_reward_ratio"]})
+            self._execute("Recommendations", "GET", f"/recommendations/{sym}", expected_status=[200], inspector_kwargs={"critical_keys": ["symbol", "decision", "components", "market_data", "risk", "summary"]})
+            self._execute("Recommendations", "GET", f"/recommendations/{sym}/target-stop", expected_status=[200], inspector_kwargs={"critical_keys": ["symbol", "decision", "market_data", "risk", "risk_profile"]})
 
     # ── 7. Portfolio Management & PnL ───────────────────────────────────────
     def audit_portfolio(self):
