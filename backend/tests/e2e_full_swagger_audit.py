@@ -457,6 +457,10 @@ class SwaggerLiveAuditRunner:
             self._execute("Auth", "POST", "/auth/forgot-password", expected_status=[200, 404], json_data={"email": "admin@basarat.pk"}, use_auth=False)
             self._execute("Auth", "POST", "/auth/verify-reset-code", expected_status=[400, 422], json_data={"email": "admin@basarat.pk", "code": "000000"}, use_auth=False)
 
+            # OAuth Endpoints Probe (Validation Guard)
+            self._execute("Auth", "POST", "/auth/google", expected_status=[400, 401, 422], json_data={"id_token": "mock_google_id_token_for_validation_audit"}, use_auth=False)
+            self._execute("Auth", "POST", "/auth/apple", expected_status=[400, 401, 422], json_data={"id_token": "mock_apple_id_token_for_validation_audit"}, use_auth=False)
+
         if self.should_run("Users"):
             # Investment Profile Options
             self._execute("Users", "GET", "/users/investment-profile/options", expected_status=[200], inspector_kwargs={"critical_keys": ["risk_tolerances", "investment_horizons", "sectors"]})

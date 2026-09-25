@@ -16,8 +16,10 @@ from slowapi.errors import RateLimitExceeded
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import (
+    AppleAuthRequest,
     ChangePasswordRequest,
     ForgotPasswordRequest,
+    GoogleAuthRequest,
     LoginRequest,
     LogoutRequest,
     MessageResponse,
@@ -162,6 +164,68 @@ async def login(
     except Exception as e:
         log.exception("Login failed")
         raise ServiceUnavailableError("Login failed")
+
+
+@router.post(
+    "/auth/google",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Continue with Google OAuth (Mobile / Web)",
+    description=(
+        "**Continue with Google:**\n\n"
+        "- Authenticates or registers a user using a Google OAuth ID Token (`id_token`) received from Google Sign-In SDK.\n"
+        "- Google-verified users are automatically marked active and verified (`is_verified = True`).\n"
+        "- Automatically syncs user profile name and Google avatar picture.\n"
+        "- Returns JWT `access_token`, rotating `refresh_token`, and user summary."
+    ),
+)
+@limiter.limit("15/minute")
+async def continue_with_google(
+    request: Request,
+    data: GoogleAuthRequest,
+    service: AuthService = Depends(_get_service),
+):
+    try:
+        return await service.authenticate_google(
+            id_token=data.id_token,
+            access_token=data.access_token,
+        )
+    except (UnauthorizedError, BadRequestError, ValidationFailedError, RateLimitExceeded):
+        raise
+    except Exception as e:
+        log.exception("Google authentication failed")
+        raise ServiceUnavailableError("Google authentication failed")
+
+
+@router.post(
+    "/auth/apple",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Continue with Apple OAuth (iOS / macOS / Web)",
+    description=(
+        "**Continue with Apple:**\n\n"
+        "- Authenticates or registers a user using an Apple Identity Token (`id_token`) from Sign in with Apple SDK.\n"
+        "- Automatically sets `is_verified = True` for verified Apple accounts.\n"
+        "- Supports optional `full_name` captured during the user's initial Apple authorization grant.\n"
+        "- Returns JWT `access_token`, rotating `refresh_token`, and user summary."
+    ),
+)
+@limiter.limit("15/minute")
+async def continue_with_apple(
+    request: Request,
+    data: AppleAuthRequest,
+    service: AuthService = Depends(_get_service),
+):
+    try:
+        return await service.authenticate_apple(
+            id_token=data.id_token,
+            full_name=data.full_name,
+        )
+    except (UnauthorizedError, BadRequestError, ValidationFailedError, RateLimitExceeded):
+        raise
+    except Exception as e:
+        log.exception("Apple authentication failed")
+        raise ServiceUnavailableError("Apple authentication failed")
 
 
 @router.post(

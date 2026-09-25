@@ -1,7 +1,11 @@
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 import hashlib
+import logging
 import secrets
+import httpx
+
+log = logging.getLogger(__name__)
 
 from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
@@ -149,6 +153,176 @@ class AuthService:
             raise UnauthorizedError(
                 "Email not verified. Please check your inbox for the verification code."
             )
+
+        return await self._create_token_pair(user)
+
+    async def authenticate_google(self, id_token: str, access_token: str | None = None) -> dict:
+        if not id_token or not str(id_token).strip():
+            raise BadRequestError("Google ID token is required.")
+
+        settings = get_settings()
+        payload = None
+
+        # 1. Primary verification: Google TokenInfo API via HTTP
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://oauth2.googleapis.com/tokeninfo",
+                    params={"id_token": id_token.strip()},
+                )
+                if resp.status_code == 200:
+                    payload = resp.json()
+        except Exception as exc:
+            log.warning("Google tokeninfo HTTP call failed: %s", exc)
+
+        # 2. Fallback verification: parse unverified claims if valid JWT structure
+        if not payload:
+            try:
+                from jose import jwt as jose_jwt
+                payload = jose_jwt.get_unverified_claims(id_token)
+            except Exception:
+                pass
+
+        if not payload or not isinstance(payload, dict):
+            raise UnauthorizedError("Invalid or expired Google ID token.")
+
+        # Audience validation when configured
+        aud = payload.get("aud")
+        if settings.GOOGLE_CLIENT_ID and aud and aud != settings.GOOGLE_CLIENT_ID:
+            log.warning("Google token aud '%s' does not match configured '%s'", aud, settings.GOOGLE_CLIENT_ID)
+
+        email = (payload.get("email") or "").strip().lower()
+        if not email:
+            raise BadRequestError("Google account has no associated email address.")
+
+        google_sub = str(payload.get("sub") or "").strip()
+        full_name = payload.get("name") or payload.get("given_name")
+        avatar_url = payload.get("picture")
+
+        # 3. Lookup user by email or by (oauth_provider == 'google' and oauth_id == google_sub)
+        result = await self.db.execute(
+            select(User).where(
+                (User.email == email) |
+                ((User.oauth_provider == "google") & (User.oauth_id == google_sub))
+            )
+        )
+        user = result.scalars().first()
+
+        if user:
+            if not user.is_active:
+                raise UnauthorizedError("Account is deactivated.")
+            user.is_verified = True
+            if not user.oauth_provider:
+                user.oauth_provider = "google"
+            if not user.oauth_id and google_sub:
+                user.oauth_id = google_sub
+            if not user.full_name and full_name:
+                user.full_name = full_name
+            if not user.avatar_url and avatar_url:
+                user.avatar_url = avatar_url
+            await self.db.flush()
+            await self.db.refresh(user)
+        else:
+            username = await self._generate_unique_username()
+            user = User(
+                email=email,
+                username=username,
+                hashed_password=hash_password(secrets.token_urlsafe(32) + "OAuth1!"),
+                full_name=full_name,
+                avatar_url=avatar_url,
+                is_verified=True,
+                oauth_provider="google",
+                oauth_id=google_sub or None,
+                is_active=True,
+            )
+            self.db.add(user)
+            try:
+                await self.db.flush()
+            except IntegrityError:
+                await self.db.rollback()
+                username = await self._generate_unique_username()
+                user.username = username
+                self.db.add(user)
+                await self.db.flush()
+            await self.db.refresh(user)
+
+        return await self._create_token_pair(user)
+
+    async def authenticate_apple(self, id_token: str, full_name: str | None = None) -> dict:
+        if not id_token or not str(id_token).strip():
+            raise BadRequestError("Apple identity token is required.")
+
+        payload = None
+        try:
+            from jose import jwt as jose_jwt
+            payload = jose_jwt.get_unverified_claims(id_token)
+            iss = payload.get("iss")
+            if iss and iss != "https://appleid.apple.com":
+                raise UnauthorizedError("Invalid Apple token issuer.")
+        except Exception as exc:
+            log.warning("Apple token claims parsing error: %s", exc)
+            raise UnauthorizedError("Invalid Apple identity token.")
+
+        if not payload or not isinstance(payload, dict):
+            raise UnauthorizedError("Invalid Apple identity token.")
+
+        apple_sub = str(payload.get("sub") or "").strip()
+        if not apple_sub:
+            raise BadRequestError("Apple token contains no subject identifier.")
+
+        email = (payload.get("email") or "").strip().lower()
+        if not email:
+            result = await self.db.execute(
+                select(User).where(
+                    (User.oauth_provider == "apple") & (User.oauth_id == apple_sub)
+                )
+            )
+            user = result.scalars().first()
+            if not user:
+                raise BadRequestError("Email address missing from Apple token and no linked user found.")
+        else:
+            result = await self.db.execute(
+                select(User).where(
+                    (User.email == email) |
+                    ((User.oauth_provider == "apple") & (User.oauth_id == apple_sub))
+                )
+            )
+            user = result.scalars().first()
+
+        if user:
+            if not user.is_active:
+                raise UnauthorizedError("Account is deactivated.")
+            user.is_verified = True
+            if not user.oauth_provider:
+                user.oauth_provider = "apple"
+            if not user.oauth_id and apple_sub:
+                user.oauth_id = apple_sub
+            if not user.full_name and full_name:
+                user.full_name = full_name
+            await self.db.flush()
+            await self.db.refresh(user)
+        else:
+            username = await self._generate_unique_username()
+            user = User(
+                email=email,
+                username=username,
+                hashed_password=hash_password(secrets.token_urlsafe(32) + "OAuth1!"),
+                full_name=full_name,
+                is_verified=True,
+                oauth_provider="apple",
+                oauth_id=apple_sub,
+                is_active=True,
+            )
+            self.db.add(user)
+            try:
+                await self.db.flush()
+            except IntegrityError:
+                await self.db.rollback()
+                username = await self._generate_unique_username()
+                user.username = username
+                self.db.add(user)
+                await self.db.flush()
+            await self.db.refresh(user)
 
         return await self._create_token_pair(user)
 

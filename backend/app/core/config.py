@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     CLERK_WEBHOOK_SECRET: str = ""
     CLERK_SECRET_KEY: str = ""
 
+    # OAuth Providers (Google & Apple)
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    APPLE_CLIENT_ID: str = ""  # Service ID or Bundle ID (e.g. pk.basarat.app)
+    APPLE_TEAM_ID: str = ""
+    APPLE_KEY_ID: str = ""
+
     # HuggingFace (FinBERT sentiment via Inference API)
     HF_API_TOKEN: str = ""
 

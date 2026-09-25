@@ -86,6 +86,33 @@ class LoginRequest(BaseModel):
     password: str = Field(..., description="User password", examples=["SecurePass123!"])
 
 
+class GoogleAuthRequest(BaseModel):
+    """Request body for 'Continue with Google' OAuth authentication."""
+    id_token: str = Field(
+        ...,
+        description="Google OAuth ID token (JWT) obtained from Google Sign-In SDK on Mobile/Web.",
+        examples=["eyJhbGciOiJSUzI1NiIsImtpZCI6Ij..."],
+    )
+    access_token: str | None = Field(
+        None,
+        description="Optional Google OAuth access token for profile/avatar fetching fallback.",
+    )
+
+
+class AppleAuthRequest(BaseModel):
+    """Request body for 'Continue with Apple' OAuth authentication."""
+    id_token: str = Field(
+        ...,
+        description="Apple identity token (JWT) obtained from Sign In with Apple SDK.",
+        examples=["eyJraWQiOiJhYmMxMjMiLCJhbGciOiJSUzI1NiJ9..."],
+    )
+    full_name: str | None = Field(
+        None,
+        description="User's full name (transmitted by Apple client only on initial authorization).",
+        examples=["Ahmed Khan"],
+    )
+
+
 class RefreshRequest(BaseModel):
     """Request body for token refresh."""
     refresh_token: str = Field(..., description="Valid refresh token received from login or verify-email", examples=["eyJhbGciOi..."])
