@@ -272,6 +272,9 @@ class RecommendationItem(BaseModel):
     source_weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights with canonical keys ml, technical, fundamental, sentiment.")
     effective_source_weights: dict[str, float] = Field(default_factory=dict, description="Effective weights with canonical keys ml, technical, fundamental, sentiment.")
     data_as_of: str | None = Field(default=None, description="Date of the daily feature row used, when available.")
+    data_freshness: str = Field(default="unknown", description="fresh, stale, or unknown; stale means more than two weekdays since the market-data date.")
+    data_age_calendar_days: int | None = Field(default=None, description="Calendar days between the market-data date and response date.")
+    data_age_trading_days: int | None = Field(default=None, description="Weekdays since the market-data date; exchange holidays are not excluded.")
     confidence: float = Field(
         ..., ge=0, le=1,
         description="Heuristic signal strength from the absolute composite score (0-1); not a probability or accuracy estimate.", examples=[0.72],
@@ -407,6 +410,9 @@ class RecommendationDetailResponse(BaseModel):
     source_weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights with canonical keys ml, technical, fundamental, sentiment.")
     effective_source_weights: dict[str, float] = Field(default_factory=dict, description="Effective weights with canonical keys ml, technical, fundamental, sentiment.")
     data_as_of: str | None = Field(default=None, description="Date of the daily feature row used, when available.")
+    data_freshness: str = Field(default="unknown", description="fresh, stale, or unknown; stale means more than two weekdays since the market-data date.")
+    data_age_calendar_days: int | None = Field(default=None, description="Calendar days between the market-data date and response date.")
+    data_age_trading_days: int | None = Field(default=None, description="Weekdays since the market-data date; exchange holidays are not excluded.")
     summary: str = Field(default="", description="Short human-readable summary of the recommendation.")
 
     # Detailed reasoning
@@ -433,6 +439,9 @@ class TargetStopResponse(BaseModel):
     symbol: str
     generated_at: datetime = Field(..., description="UTC time when these levels were assembled.")
     data_as_of: str | None = Field(default=None, description="Latest daily market-data date used.")
+    data_freshness: str = Field(default="unknown", description="fresh, stale, or unknown; stale means more than two weekdays since the market-data date.")
+    data_age_calendar_days: int | None = Field(default=None, description="Calendar days between the market-data date and response date.")
+    data_age_trading_days: int | None = Field(default=None, description="Weekdays since the market-data date; exchange holidays are not excluded.")
     horizon: str = Field(default="5 trading days", description="Horizon used to scale ATR levels.")
     currency: str = Field(default="PKR", description="Currency for all price and ATR fields.")
     signal: str | None = Field(default=None, description="Recommendation signal used to orient ATR levels.")

@@ -11,7 +11,7 @@ The authenticated recommendation endpoints return flat JSON suitable for Android
 
 - Show `signal` prominently and `decision_reason` below it.
 - Label `confidence` as **signal strength**, because `confidence_type` is `heuristic_signal_strength`; it is not a probability of success.
-- Show `horizon` and `data_as_of` beside the signal. `generated_at` is when the API assembled the response, not when market data was last updated.
+- Show `horizon`, `data_as_of`, and `data_freshness` beside the signal. `data_freshness` is `stale` after two weekdays (weekends excluded; exchange holidays are not known), and the response includes calendar/trading-day ages. `generated_at` is when the API assembled the response, not when market data was last updated. Stale market data is also called out in `summary`.
 - Prices and ATR levels are in `currency` (PKR). Use `target_stop_method` and `target_stop_reason` to explain ATR levels. A HOLD has no directional target/stop; its `expected_range` is a volatility envelope, not a price forecast.
 - Render `signals`, `source_weights`, and `effective_source_weights` for ML, technical, fundamental, and FinBERT sentiment. Sentiment is omitted from the composite when no scored articles are available or its aggregate is older than seven days. Legacy `weights` uses `gru` for the ML component; mobile clients should prefer the canonical `source_*` maps.
 - `model_probabilities` are fractions from 0 to 1. Only display them as calibrated probabilities when `probabilities_calibrated` is true; it is false for the current model.

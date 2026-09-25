@@ -4,7 +4,7 @@ Returns clean, flat JSON optimized for frontend rendering.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Path as PathParam
 from starlette.concurrency import run_in_threadpool
@@ -46,36 +46,75 @@ def _get_user_weights(user: User, defaults: dict) -> dict[str, float]:
 
 
 def _summarize(r: dict) -> str:
-    """One-line summary from recommendation dict."""
+    """Summarize the decision using only components that affected the composite."""
     signal = r.get("signal", "hold").upper()
-    reasoning = r.get("reasoning", {})
-    ml_reason = reasoning.get("ml", {}).get("reason") or (
-        f"ML {reasoning.get('ml', {}).get('signal_bias')}"
-        if reasoning.get("ml", {}).get("signal_bias") else ""
+    reasoning = r.get("reasoning") or {}
+    effective = r.get("effective_weights") or {}
+    source_names = {
+        "gru": "ML forecast", "ml": "ML forecast", "technical": "technicals",
+        "fundamental": "fundamentals", "sentiment": "sentiment",
+    }
+    active = sorted(
+        ((key, float(weight)) for key, weight in effective.items() if float(weight or 0) > 0),
+        key=lambda entry: entry[1], reverse=True,
     )
-    tech_reason = reasoning.get("technical", {}).get("reason", "")
-    parts = []
-    if signal == "BUY":
-        parts.append("BUY signal")
-    elif signal == "SELL":
-        parts.append("Sell signal")
+    unavailable = []
+    configured = r.get("weights") or {}
+    for key in ("gru", "technical", "fundamental", "sentiment"):
+        detail_key = "ml" if key == "gru" else key
+        component = reasoning.get(detail_key) or {}
+        if component.get("status") == "unavailable" and float(configured.get(key, configured.get(detail_key, 0)) or 0) > 0:
+            unavailable.append(source_names[key])
+
+    label = {"BUY": "Buy", "SELL": "Sell"}.get(signal, "Hold")
+    if active:
+        key, _ = active[0]
+        source = source_names.get(key, source_names.get("gru" if key == "ml" else key, key))
+        scores = r.get("signals") or {}
+        score = scores.get(key, scores.get("gru" if key in {"ml", "gru"} else key))
+        if score is None:
+            score = r.get({"ml": "ml_signal", "gru": "ml_signal", "technical": "technical_signal", "fundamental": "fundamental_signal", "sentiment": "sentiment_signal"}.get(key, ""))
+        if len(active) == 1:
+            verb = "are" if key in {"technical", "fundamental"} else "is"
+            detail = f"{source.capitalize()} {verb} the only available input"
+        else:
+            verb = "lead" if key in {"technical", "fundamental"} else "leads"
+            detail = f"{source.capitalize()} {verb} the combined signals"
+        if score is not None:
+            detail += f" ({float(score):+.3f})"
     else:
-        parts.append("Hold")
+        detail = "No signal components are available"
 
-    detail = ml_reason or tech_reason
-    if not detail:
-        for source in ("ml", "technical", "fundamental"):
-            factors = reasoning.get(source, {})
-            if isinstance(factors, dict):
-                detail = next((f"{key}: {value}" for key, value in factors.items()
-                               if key not in {"status", "model", "model_version", "method", "probabilities_calibrated"}
-                               and isinstance(value, (str, int, float))), "")
-                if detail:
-                    break
-    if detail:
-        parts.append(detail)
+    summary = f"{label}: {detail}"
+    if unavailable:
+        summary += f"; {', '.join(unavailable)} unavailable"
+    freshness = _market_data_freshness(r.get("data_as_of"))
+    if freshness["data_freshness"] == "stale":
+        summary += f"; market data is stale ({freshness['data_age_trading_days']} trading days old)"
+    return summary
 
-    return ": ".join(parts[:2]) if len(parts) > 1 else parts[0]
+
+def _market_data_freshness(data_as_of: str | None, *, today: date | None = None) -> dict:
+    """Report market-data age; weekends are excluded from the two-day freshness window."""
+    if not data_as_of:
+        return {"data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None}
+    try:
+        observed = date.fromisoformat(str(data_as_of)[:10])
+        current = today or datetime.now(timezone.utc).date()
+        calendar_days = (current - observed).days
+        if calendar_days < 0:
+            return {"data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None}
+        trading_days = sum(
+            1 for offset in range(1, calendar_days + 1)
+            if (observed + timedelta(days=offset)).weekday() < 5
+        )
+        return {
+            "data_freshness": "fresh" if trading_days <= 2 else "stale",
+            "data_age_calendar_days": calendar_days,
+            "data_age_trading_days": trading_days,
+        }
+    except (TypeError, ValueError):
+        return {"data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None}
 
 
 def _model_probabilities(rec: dict) -> dict[str, float] | None:
@@ -183,6 +222,7 @@ async def get_recommendations(
                 source_weights=_canonical_weights(r.get("weights", weights)),
                 effective_source_weights=_canonical_weights(r.get("effective_weights", {})),
                 data_as_of=r.get("data_as_of"),
+                **_market_data_freshness(r.get("data_as_of")),
                 horizon="5 trading days",
                 currency="PKR",
                 model_version=((r.get("reasoning") or {}).get("ml") or {}).get("model_version"),
@@ -335,6 +375,7 @@ async def get_recommendation_detail(
             effective_source_weights=_canonical_weights(rec.get("effective_weights", {})),
             status=rec.get("status", "available"),
             data_as_of=rec.get("data_as_of"),
+            **_market_data_freshness(rec.get("data_as_of")),
             summary=_summarize(rec),
         )
 
@@ -379,6 +420,7 @@ async def get_target_stop(
             symbol=symbol,
             generated_at=datetime.now(timezone.utc),
             data_as_of=rec.get("data_as_of"),
+            **_market_data_freshness(rec.get("data_as_of")),
             horizon="5 trading days",
             currency="PKR",
             current_price=current,

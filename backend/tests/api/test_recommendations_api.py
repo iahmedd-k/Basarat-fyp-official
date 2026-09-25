@@ -1,8 +1,42 @@
 """API tests for recommendations endpoints."""
 
 import pytest
+from datetime import date
 from httpx import AsyncClient
 from unittest.mock import patch
+
+from app.api.v1.recommendations import _market_data_freshness, _summarize
+
+
+def test_summary_does_not_mistake_unavailable_ml_for_decision_reason():
+    rec = {
+        "signal": "hold",
+        "data_as_of": "2026-09-18",
+        "signals": {"ml": 0.0, "technical": -0.0224, "fundamental": 0.0, "sentiment": 0.0},
+        "weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
+        "effective_weights": {"technical": 1.0},
+        "reasoning": {
+            "ml": {"status": "unavailable", "reason": "production model unavailable"},
+            "technical": {"status": "available"},
+            "fundamental": {"status": "unavailable"},
+            "sentiment": {"status": "unavailable"},
+        },
+    }
+    summary = _summarize(rec)
+    assert "Technicals are the only available input (-0.022)" in summary
+    assert "ML forecast, fundamentals, sentiment unavailable" in summary
+    assert "production model unavailable" not in summary
+
+
+def test_market_data_freshness_uses_weekdays_and_marks_old_data():
+    fresh = _market_data_freshness("2026-09-24", today=date(2026, 9, 25))
+    assert fresh["data_freshness"] == "fresh"
+    stale = _market_data_freshness("2026-09-18", today=date(2026, 9, 25))
+    assert stale == {
+        "data_freshness": "stale",
+        "data_age_calendar_days": 7,
+        "data_age_trading_days": 5,
+    }
 
 
 @pytest.mark.api
