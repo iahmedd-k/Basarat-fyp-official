@@ -290,6 +290,6 @@ def _fetch_financial_reports(symbol: str) -> dict:
 def get_psx_company_table_data(symbol: str) -> dict:
     """Return normalized company-page statements, ratio history, and report links."""
     symbol = str(symbol).strip().upper()
-    tables = _cached_fetch(f"psx:company-tables:v3:{symbol}", lambda: _fetch_company_tables(symbol))
-    reports = _cached_fetch(f"psx:financial-report-index:v2:{symbol}", lambda: _fetch_financial_reports(symbol))
+    tables = _cached_fetch(f"psx:company-tables:v4:{symbol}", lambda: _fetch_company_tables(symbol))
+    reports = _cached_fetch(f"psx:financial-report-index:v3:{symbol}", lambda: _fetch_financial_reports(symbol))
     return {**tables, **reports}

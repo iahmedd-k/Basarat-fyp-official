@@ -959,8 +959,8 @@ class StockService:
 
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
-        # v12 forces refresh of cached empty profiles and loads full company tables
-        cache_key = f"fund:v12:{symbol}"
+        # v13 forces refresh of all cached company profiles and loads full company tables
+        cache_key = f"fund:v13:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
@@ -970,7 +970,7 @@ class StockService:
         psx_table_data = get_psx_company_table_data(symbol)
         div = self._get_dividend_frame(symbol)
 
-        info_key = f"stock:ticker_info:v4:{symbol}"
+        info_key = f"stock:ticker_info:v5:{symbol}"
         page_info = psx_table_data.get("source_info") or {}
 
         def has_source_values(value):
