@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.models.news import NewsArticle
 from app.models.sentiment import SentimentAggregate, SentimentResult
+from app.models.stock import Stock
 from app.repository.sentiment_repository import SentimentRepository
 
 log = logging.getLogger(__name__)
@@ -369,6 +370,12 @@ async def compute_stock_sentiment(
     """
     symbol = symbol.upper()
     repo = SentimentRepository(db)
+    # The filesystem-backed PSX universe can contain symbols that have not yet
+    # been registered in the relational stock catalog. Scores can still be
+    # computed for those symbols, but sentiment rows reference stocks.symbol.
+    stock_exists = await db.scalar(
+        select(Stock.symbol).where(Stock.symbol == symbol).limit(1)
+    ) is not None
 
     news = await _fetch_news_for_symbol(repo, symbol, days)
 
@@ -402,16 +409,17 @@ async def compute_stock_sentiment(
             model = result["model"]
 
             # Persist sentiment result with full probability distribution
-            await repo.create_sentiment_result(
-                news_article_id=item["news_article_id"],
-                symbol=symbol,
-                model_name=model,
-                label=result["label"],
-                score=score,
-                positive_score=result.get("positive_score"),
-                neutral_score=result.get("neutral_score"),
-                negative_score=result.get("negative_score"),
-            )
+            if stock_exists:
+                await repo.create_sentiment_result(
+                    news_article_id=item["news_article_id"],
+                    symbol=symbol,
+                    model_name=model,
+                    label=result["label"],
+                    score=score,
+                    positive_score=result.get("positive_score"),
+                    neutral_score=result.get("neutral_score"),
+                    negative_score=result.get("negative_score"),
+                )
 
         all_scores.append(score)
         details.append({
@@ -501,6 +509,7 @@ async def compute_stock_sentiment(
         "daily_scores": daily_scores,
         "updated_at": updated_at,
         "details": details[:20],  # cap for response size
+        "persistence": "stored" if stock_exists else "computed_only_stock_not_registered",
     }
 
     # Cache to disk
@@ -515,21 +524,21 @@ async def compute_stock_sentiment(
     neu_ratio = sum(1 for s in all_scores if -0.15 < s < 0.15) / len(all_scores) if all_scores else None
     neg_ratio = sum(1 for s in all_scores if s <= -0.15) / len(all_scores) if all_scores else None
 
-    await repo.upsert_sentiment_aggregate(
-        symbol=symbol,
-        period=f"{days}D",
-        period_start=period_start,
-        period_end=period_end,
-        overall_score=result["score"],
-        label=label,
-        article_count=result["article_count"],
-        positive_ratio=pos_ratio,
-        neutral_ratio=neu_ratio,
-        negative_ratio=neg_ratio,
-        trend=trend,
-        daily_scores=json.dumps(daily_scores),
-        source_breakdown=None,
-    )
+    if stock_exists:
+        await repo.upsert_sentiment_aggregate(
+            symbol=symbol,
+            period=f"{days}D",
+            period_start=period_start,
+            period_end=period_end,
+            overall_score=result["score"],
+            label=label,
+            article_count=result["article_count"],
+            positive_ratio=pos_ratio,
+            neutral_ratio=neu_ratio,
+            trend=trend,
+            daily_scores=json.dumps(daily_scores),
+            source_breakdown=None,
+        )
 
     return result
 

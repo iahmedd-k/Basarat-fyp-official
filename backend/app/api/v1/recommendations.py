@@ -425,12 +425,14 @@ async def get_recommendation_detail(
 
         from app.services.recommendation_service import RecommendationEngine, DEFAULT_WEIGHTS
 
-        engine = RecommendationEngine(weights=_get_user_weights(user, DEFAULT_WEIGHTS))
+        user_weights = _get_user_weights(user, DEFAULT_WEIGHTS)
+        risk_profile = _get_user_risk_profile(user)
+        engine = RecommendationEngine(weights=user_weights)
         sentiment_data = await _load_recommendation_sentiment(db, symbol)
         rec = await run_in_threadpool(
             engine.get_recommendation,
             symbol,
-            risk_tolerance=_get_user_risk_profile(user),
+            risk_tolerance=risk_profile,
             weights=engine.weights,
             sentiment_data=sentiment_data,
         )
@@ -446,7 +448,7 @@ async def get_recommendation_detail(
             components=_component_payload(rec),
             market_data=_market_data_payload(rec),
             risk=_risk_payload(rec),
-            risk_profile=_get_user_risk_profile(user),
+            risk_profile=risk_profile,
             summary=_summarize(rec),
         )
 
@@ -470,12 +472,14 @@ async def get_target_stop(
 
         from app.services.recommendation_service import RecommendationEngine, DEFAULT_WEIGHTS
 
-        engine = RecommendationEngine(weights=_get_user_weights(user, DEFAULT_WEIGHTS))
+        user_weights = _get_user_weights(user, DEFAULT_WEIGHTS)
+        risk_profile = _get_user_risk_profile(user)
+        engine = RecommendationEngine(weights=user_weights)
         sentiment_data = await _load_recommendation_sentiment(db, symbol)
         rec = await run_in_threadpool(
             engine.get_recommendation,
             symbol,
-            risk_tolerance=_get_user_risk_profile(user),
+            risk_tolerance=risk_profile,
             weights=engine.weights,
             sentiment_data=sentiment_data,
         )
@@ -487,7 +491,7 @@ async def get_target_stop(
             decision=_decision_payload(rec),
             market_data=_market_data_payload(rec),
             risk=_risk_payload(rec),
-            risk_profile=_get_user_risk_profile(user),
+            risk_profile=risk_profile,
         )
 
     except Exception as exc:
