@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+import { requireApiBaseUrl } from './config';
 
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('clerk_token');
@@ -8,7 +8,7 @@ async function request(endpoint, options = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(`${requireApiBaseUrl()}${endpoint}`, {
     ...options,
     headers,
   });

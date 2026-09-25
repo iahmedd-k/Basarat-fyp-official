@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Activity, ArrowLeft, ArrowRight, List, Search, TrendingDown, TrendingUp } from "lucide-react";
-
-const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000/api/v1" : ""))
-  .replace(/\/$/, "");
+import { requireApiBaseUrl } from "../api/config";
 
 const INDEXES = [
   { code: "KSE100", label: "KSE 100" },
@@ -25,8 +23,7 @@ const volume = (value) => hasNumber(value) ? Number(value).toLocaleString() : "â
 const quoteIsTraded = (stock) => Number(stock.volume) > 0 && Number(stock.current) > 0 && Number.isFinite(Number(stock.change_pct));
 
 async function getJson(path) {
-  if (!API_BASE) throw new Error("Set VITE_API_URL to the public API base URL before building the production frontend.");
-  const response = await fetch(`${API_BASE}${path}`, { headers: { Accept: "application/json" } });
+  const response = await fetch(`${requireApiBaseUrl()}${path}`, { headers: { Accept: "application/json" } });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body?.detail || body?.error?.message || `Market API returned ${response.status}`);
   return body;

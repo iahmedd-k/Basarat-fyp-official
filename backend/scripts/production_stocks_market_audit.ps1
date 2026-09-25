@@ -23,6 +23,7 @@ $cases = @(
     @{name='market.sentiment'; path='/market/sentiment-overview'},
     @{name='market.quotes.default'; path='/market/quotes?limit=5'},
     @{name='market.quotes.alias'; path='/market/all-stocks?limit=5'},
+    @{name='market.quotes.full_universe'; path='/market/quotes?limit=1000'},
     @{name='market.quotes.pagination'; path='/market/quotes?limit=5&offset=2'},
     @{name='market.quotes.symbol_filter'; path='/market/quotes?symbols=HBL,OGDC'},
     @{name='market.quotes.sector_filter'; path='/market/quotes?sector=Bank&limit=5'},
@@ -35,28 +36,23 @@ $out = @()
 foreach ($c in $cases) {
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        try {
-            $response = Invoke-WebRequest -Uri ($base + $c.path) -TimeoutSec 30 -UseBasicParsing
-            $status = [int]$response.StatusCode
-            $content = $response.Content
-        } catch {
-            $response = $_.Exception.Response
-            if ($null -eq $response) { throw }
-            $status = [int]$response.StatusCode
-            $reader = New-Object System.IO.StreamReader($response.GetResponseStream())
-            $content = $reader.ReadToEnd()
-            $reader.Dispose()
-        }
+        $response = Invoke-WebRequest -Uri ($base + $c.path) -TimeoutSec 30 -SkipHttpErrorCheck
+        $status = [int]$response.StatusCode
+        $content = $response.Content
         $watch.Stop()
-        $body = $null; $jsonValid = $false; $topKeys = @(); $sample = $null
+        $body = $null; $jsonValid = $false; $topKeys = @(); $itemCount = $null; $sample = $null
         try {
             $body = $content | ConvertFrom-Json -ErrorAction Stop
             $jsonValid = $true
             if ($body -is [System.Management.Automation.PSCustomObject]) { $topKeys = @($body.PSObject.Properties.Name) }
             elseif ($body -is [array]) { $topKeys = @('array') }
-            $sample = $body
+            if ($body.PSObject.Properties.Name -contains 'stocks') { $itemCount = @($body.stocks).Count }
+            elseif ($body.PSObject.Properties.Name -contains 'bars') { $itemCount = @($body.bars).Count }
+            elseif ($body.PSObject.Properties.Name -contains 'results') { $itemCount = @($body.results).Count }
+            elseif ($body.PSObject.Properties.Name -contains 'constituents') { $itemCount = @($body.constituents).Count }
+            $sample = $content.Substring(0, [Math]::Min(350, $content.Length))
         } catch { $sample = $content.Substring(0, [Math]::Min(350, $content.Length)) }
-        $out += [PSCustomObject]@{name=$c.name; path=$c.path; status=$status; seconds=[Math]::Round($watch.Elapsed.TotalSeconds,2); json=$jsonValid; keys=$topKeys; body=$sample}
+        $out += [PSCustomObject]@{name=$c.name; path=$c.path; status=$status; seconds=[Math]::Round($watch.Elapsed.TotalSeconds,2); json=$jsonValid; keys=$topKeys; item_count=$itemCount; body_preview=$sample}
     } catch {
         $watch.Stop()
         $out += [PSCustomObject]@{name=$c.name; path=$c.path; status=0; seconds=[Math]::Round($watch.Elapsed.TotalSeconds,2); json=$false; keys=@(); body=$_.Exception.Message}
