@@ -54,6 +54,27 @@ def test_stale_data_suppresses_actionable_signal_and_price_levels():
     assert "5 trading days old" in rec["suppression_reason"]
 
 
+def test_stale_data_does_not_claim_an_existing_hold_was_suppressed():
+    rec = _apply_freshness_guard({
+        "signal": "hold", "confidence": 0.045, "composite_score": -0.022,
+        "data_as_of": "2026-09-18", "target_price": None, "stop_loss": None,
+        "expected_range": {"low": 401.91, "high": 457.09},
+        "decision_reason": "Composite score -0.022 is between the BUY and SELL thresholds.",
+        "signals": {"technical": -0.0224},
+        "weights": {"technical": 1.0},
+        "effective_weights": {"technical": 1.0},
+        "reasoning": {"technical": {"status": "available"}},
+    }, today=date(2026, 9, 25))
+    assert rec["signal"] == "hold"
+    assert rec["signal_suppressed"] is False
+    assert rec["suppression_reason"] is None
+    assert "between the BUY and SELL thresholds" in rec["decision_reason"]
+    assert rec["confidence"] == 0.0
+    assert rec["expected_range"] is None
+    assert "HOLD suppressed" not in _summarize(rec)
+    assert "market data is stale (5 trading days old)" in _summarize(rec)
+
+
 @pytest.mark.api
 class TestRecommendationsListEndpoint:
     async def test_recommendations_requires_auth(self, client: AsyncClient):

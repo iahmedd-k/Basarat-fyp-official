@@ -124,13 +124,14 @@ def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
     result = dict(rec)
     freshness = _market_data_freshness(result.get("data_as_of"), today=today)
     result.update(freshness)
-    result["signal_suppressed"] = freshness["data_freshness"] != "fresh"
+    stale = freshness["data_freshness"] != "fresh"
+    original_signal = str(result.get("signal", "hold")).upper()
+    # A HOLD is not being suppressed; only a stale BUY/SELL loses its direction.
+    result["signal_suppressed"] = stale and original_signal in {"BUY", "SELL"}
     result["suppression_reason"] = None
-    if result["signal_suppressed"]:
-        old_signal = str(result.get("signal", "hold")).upper()
+    if stale:
         age = freshness.get("data_age_trading_days")
         age_text = f"{age} trading days old" if age is not None else "freshness is unknown"
-        result["signal"] = "hold"
         result["confidence"] = 0.0
         result["target_price"] = None
         result["stop_loss"] = None
@@ -138,9 +139,11 @@ def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
         result["upside_pct"] = None
         result["downside_pct"] = None
         result["risk_reward_ratio"] = None
-        reason = f"{old_signal} suppressed because market data is {age_text}"
-        result["suppression_reason"] = reason
-        result["decision_reason"] = f"{reason}; no trade direction or ATR levels are returned."
+        if result["signal_suppressed"]:
+            reason = f"{original_signal} suppressed because market data is {age_text}"
+            result["signal"] = "hold"
+            result["suppression_reason"] = reason
+            result["decision_reason"] = f"{reason}; no trade direction or ATR levels are returned."
         result["target_stop_reason"] = "Price levels are suppressed because market-data freshness could not be confirmed."
     return result
 
