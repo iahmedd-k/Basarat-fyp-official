@@ -986,7 +986,7 @@ class StockService:
             info_dict["sector"] = self._sector_of(symbol) or info_dict.get("sector")
             cache_set_sync(info_key, info_dict, FUND_TTL_SECONDS)
             cache_set_sync(f"stock:raw_fundamentals:v4:{symbol}", info_dict, FUND_TTL_SECONDS)
-            _cache[f"fund:{symbol}"] = (info_dict, _now())
+            _cache[f"fund:{symbol}"] = info_dict
             _cache_ttl[f"fund:{symbol}"] = _now()
         else:
             cached_info = cache_get_sync(info_key)
@@ -1010,7 +1010,7 @@ class StockService:
                 # Reuse the existing toolkit scrape below instead of making a
                 # second request for the same company fundamentals.
                 cache_set_sync(f"stock:raw_fundamentals:v4:{symbol}", info_dict, FUND_TTL_SECONDS)
-                _cache[f"fund:{symbol}"] = (info_dict, _now())
+                _cache[f"fund:{symbol}"] = info_dict
                 _cache_ttl[f"fund:{symbol}"] = _now()
 
         # Populate _fund_metric from the same page payload instead of fetching
