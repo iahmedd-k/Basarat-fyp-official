@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from celery import shared_task
 from sqlalchemy import desc, or_, text
+from app.models.stock import Stock
 
 from app.db.base import get_sync_session_factory
 from app.models.news import NewsArticle, NewsArticleSymbol
@@ -25,6 +26,7 @@ log = logging.getLogger(__name__)
 def compute_stock_sentiment_sync(db, symbol: str, days: int = 7) -> dict:
     """Synchronous version of compute_stock_sentiment for Celery workers."""
     symbol = symbol.upper()
+    stock_registered = db.query(Stock.id).filter(Stock.symbol == symbol).first() is not None
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
     sym_clean = symbol.strip().upper()
@@ -58,8 +60,10 @@ def compute_stock_sentiment_sync(db, symbol: str, days: int = 7) -> dict:
                 "text": f"{a.title}. {a.summary or ''}",
                 "source": a.source or "unknown",
                 "published_at": a.published_at.isoformat() if a.published_at else None,
-                "existing_score": float(a.sentiment_score) if a.sentiment_score else None,
+                "existing_score": float(a.sentiment_score) if a.sentiment_score is not None else None,
+                "existing_model": a.sentiment_method or "cached",
                 "news_article_id": a.id,
+                "article": a,
             })
 
     if not matched:
@@ -72,6 +76,8 @@ def compute_stock_sentiment_sync(db, symbol: str, days: int = 7) -> dict:
             "trend": "stable",
             "daily_scores": [],
             "details": [],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "model": "no_news",
         }
         cache_path = SENTIMENT_DIR / f"{symbol}.json"
         with open(cache_path, "w") as f:
@@ -84,25 +90,34 @@ def compute_stock_sentiment_sync(db, symbol: str, days: int = 7) -> dict:
     for item in matched:
         if item["existing_score"] is not None:
             score = item["existing_score"]
-            model = "cached"
+            model = item.get("existing_model") or "cached"
         else:
             scored = score_text(item["text"])
             score = scored["score"]
             model = scored["model"]
+            # Store the article-level score once. The same article can match
+            # multiple symbols; later aggregates reuse this persisted FinBERT
+            # result instead of calling the model once per ticker.
+            article = item["article"]
+            article.sentiment_score = score
+            article.sentiment_label = scored.get("label")
+            article.sentiment_method = "finbert" if str(model).startswith("finbert") else "eps_rule"
+            article.sentiment_status = "ok"
 
             # Persist sentiment result
-            sr = SentimentResult(
-                news_article_id=item["news_article_id"],
-                symbol=symbol,
-                model_name=model,
-                label=scored["label"],
-                score=score,
-                positive_score=scored.get("positive_score"),
-                neutral_score=scored.get("neutral_score"),
-                negative_score=scored.get("negative_score"),
-            )
-            db.add(sr)
-            db.flush()
+            if stock_registered:
+                sr = SentimentResult(
+                    news_article_id=item["news_article_id"],
+                    symbol=symbol,
+                    model_name=model,
+                    label=scored["label"],
+                    score=score,
+                    positive_score=scored.get("positive_score"),
+                    neutral_score=scored.get("neutral_score"),
+                    negative_score=scored.get("negative_score"),
+                )
+                db.add(sr)
+                db.flush()
 
         all_scores.append(score)
         details.append({
@@ -181,6 +196,9 @@ def compute_stock_sentiment_sync(db, symbol: str, days: int = 7) -> dict:
         "trend": trend,
         "daily_scores": daily_scores,
         "details": details[:20],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "model": "finbert" if details and all(d.get("model") in {"finbert", "finbert_api"} for d in details) else "heuristic_or_mixed",
+        "persistence": "stored" if stock_registered else "cache_only_stock_not_registered",
     }
 
     # Cache to disk
@@ -205,6 +223,8 @@ def compute_stock_sentiment_sync(db, symbol: str, days: int = 7) -> dict:
         )
         .first()
     )
+    if not stock_registered:
+        return result
     if agg:
         agg.overall_score = result["score"]
         agg.label = label
@@ -331,10 +351,10 @@ def aggregate_sentiment_task(self, symbols: list[str] | None = None):
     try:
         with SessionFactory() as db:
             if not symbols:
-                # Recommendations cover the complete active PSX universe; a
-                # fixed LIMIT left the remaining symbols without FinBERT cache.
-                result = db.execute(text("SELECT DISTINCT symbol FROM stocks WHERE is_active = TRUE"))
-                symbols_to_process = [row[0] for row in result.fetchall()]
+                # Recommendation and sentiment coverage must match the same
+                # frozen KSE-100 universe, independent of the stocks table seed.
+                from app.data.scraper.symbol_universe import get_active_symbols
+                symbols_to_process = [item["symbol"] for item in get_active_symbols()]
             else:
                 symbols_to_process = [s.upper() for s in symbols]
 

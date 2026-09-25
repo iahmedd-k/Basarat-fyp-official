@@ -14,9 +14,6 @@ from app.data.scraper.symbol_universe import get_active_symbols
 
 log = logging.getLogger(__name__)
 
-EXPECTED_SYMBOL_COUNT = 98
-
-
 def build_feature_quality_report(
     df: pd.DataFrame,
     label_report: Dict[str, Any],
@@ -26,7 +23,7 @@ def build_feature_quality_report(
     """Build and save the feature quality report.
 
     Checks:
-    - Exactly 98 unique symbols (error loudly if not)
+    - Coverage against the frozen KSE-100 analysis universe
     - NaN stats before/after drop
     - Macro coverage
     - Per-symbol row counts
@@ -42,11 +39,10 @@ def build_feature_quality_report(
     active_syms = set(e["symbol"] for e in active)
     parquet_syms = set(df["symbol"].unique())
 
-    if len(parquet_syms) != EXPECTED_SYMBOL_COUNT:
-        log.error(
-            "Expected %d symbols but found %d — CHECK INPUT",
-            EXPECTED_SYMBOL_COUNT, len(parquet_syms),
-        )
+    report["expected_symbols"] = len(active_syms)
+    report["symbol_coverage_pct"] = round(len(parquet_syms & active_syms) / len(active_syms) * 100, 2) if active_syms else 0
+    if not active_syms.issubset(parquet_syms):
+        log.warning("Feature data is missing %d KSE-100 symbols", len(active_syms - parquet_syms))
 
     missing = active_syms - parquet_syms
     extra = parquet_syms - active_syms

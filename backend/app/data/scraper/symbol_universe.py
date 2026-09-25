@@ -14,9 +14,9 @@ from typing import Dict, List
 
 log = logging.getLogger(__name__)
 
-# Indices to union together
-# Note: KMI100 is excluded — PSX returns 404 for that index code.
-_INDEX_NAMES: List[str] = ["KSE100", "KSE30", "KMI30"]
+# This application generates forecasts and recommendations for the KSE-100.
+# Other symbols remain available through general stock browsing/on-demand data.
+_INDEX_NAMES: List[str] = ["KSE100"]
 
 # Default path relative to project root or backend
 _BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -116,14 +116,18 @@ def load_frozen_universe(config_dir: Path | None = None) -> List[Dict]:
 
 
 def get_active_symbols(config_dir: Path | None = None) -> List[Dict]:
-    """Load the frozen universe and return only active (non-excluded) symbols.
+    """Return KSE-100 members used by the analysis pipeline.
 
-    Symbols with ``"excluded": true`` in their entry are filtered out.
-    This is the function downstream code (feature engineering, training)
-    should use to get the working symbol list.
+    Historical ``excluded`` flags are not membership changes. Insufficient
+    history is handled by individual feature/model stages, so one short
+    history must not silently remove a constituent from recommendations.
     """
     universe = load_frozen_universe(config_dir)
-    active = [entry for entry in universe if not entry.get("excluded", False)]
-    excluded_count = len(universe) - len(active)
-    log.info("Active symbols: %d (excluded: %d)", len(active), excluded_count)
+    active = [entry for entry in universe if "KSE100" in entry.get("indices", [])]
+    if not active:
+        # Support older frozen files which were created with a KSE-100-only
+        # configuration and do not carry index membership metadata.
+        active = universe
+    active = sorted(active, key=lambda entry: entry["symbol"])
+    log.info("KSE-100 analysis symbols: %d", len(active))
     return active

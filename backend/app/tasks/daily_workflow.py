@@ -25,6 +25,10 @@ from app.celery_app import celery
 log = logging.getLogger(__name__)
 
 
+class SourceRateLimited(RuntimeError):
+    """Stop the daily chain after an explicit upstream rate-limit response."""
+
+
 def _get_sync_session():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -54,6 +58,17 @@ def update_market_data_task(self):
     log.info("[DATA] Starting daily market data update")
 
     try:
+        import asyncio
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        today_pkt = datetime.now(ZoneInfo("Asia/Karachi"))
+        if today_pkt.weekday() >= 5:
+            return {"status": "skipped", "reason": "weekend", "timestamp": datetime.utcnow().isoformat()}
+        from app.services.news_pipeline.market_schedule import is_holiday
+        if asyncio.run(is_holiday()):
+            log.info("[DATA] Exchange holiday; retaining prior session snapshots")
+            return {"status": "skipped", "reason": "exchange_holiday", "timestamp": datetime.utcnow().isoformat()}
+
         from app.data.scraper.run_scrape import run_scrape
 
         scrape_result = run_scrape(
@@ -63,6 +78,8 @@ def update_market_data_task(self):
         if isinstance(scrape_result, dict):
             errors = int(scrape_result.get("errors", 0) or 0)
             total = int(scrape_result.get("total_symbols", 0) or 0)
+            if scrape_result.get("rate_limited"):
+                raise SourceRateLimited("PSX returned HTTP 403/429; retained previous snapshots and stopped this daily chain")
             if total and errors == total:
                 raise RuntimeError(f"OHLCV refresh failed for every symbol ({errors}/{total})")
             log.info(
@@ -76,6 +93,9 @@ def update_market_data_task(self):
     except SoftTimeLimitExceeded:
         log.error("[DATA] Market data update timed out")
         raise self.retry(countdown=600)
+    except SourceRateLimited:
+        log.exception("[DATA] Source denied requests; stopping pipeline without retry")
+        raise
     except Exception as exc:
         log.exception("[DATA] Market data update failed")
         raise self.retry(exc=exc)

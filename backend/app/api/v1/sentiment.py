@@ -5,6 +5,7 @@ Rolling 7-day decay-weighted average for per-stock sentiment.
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,8 +48,18 @@ async def get_sentiment(
             get_cached_sentiment,
         )
 
-        # Try cache first (fresh within 1 hour)
+        # Sentiment is a daily snapshot; refresh it at most once per day on
+        # demand rather than on every profile open.
         cached = get_cached_sentiment(symbol)
+        if cached is not None:
+            try:
+                updated = datetime.fromisoformat(str(cached.get("updated_at")).replace("Z", "+00:00"))
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - updated.astimezone(timezone.utc) > timedelta(hours=24):
+                    cached = None
+            except (TypeError, ValueError):
+                cached = None
         if cached is not None:
             return SentimentResponse(
                 symbol=cached["symbol"],

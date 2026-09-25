@@ -355,6 +355,22 @@ def get_forecast(symbol: str, horizon: str = "1D", sym_df: pd.DataFrame | None =
 
     as_of_date = sym_df["date"].iloc[-1].date()
 
+    # Inference is deterministic for a (symbol, session, horizon, model)
+    # tuple. Share the result in Redis so forecast API calls and recommendation
+    # generation do not run the same model repeatedly across workers.
+    model_cache_version = str(getattr(artifacts, "model_version", None) or "current")
+    cache_key = f"forecast:v2:{symbol}:{horizon}:{as_of_date.isoformat()}:{model_cache_version}"
+    try:
+        from app.core.redis import cache_get_sync
+        cached_forecast = cache_get_sync(cache_key)
+        if isinstance(cached_forecast, dict):
+            for field in ("as_of_date", "predicted_for_date"):
+                if isinstance(cached_forecast.get(field), str):
+                    cached_forecast[field] = date.fromisoformat(cached_forecast[field][:10])
+            return cached_forecast
+    except Exception:
+        pass
+
     # ── Run both models ────────────────────────────────────────────────
     gru_result = _run_gru(symbol, sym_df)
     xgb_result = _run_xgb(symbol, as_of_date, sym_df)
@@ -420,7 +436,7 @@ def get_forecast(symbol: str, horizon: str = "1D", sym_df: pd.DataFrame | None =
              symbol, ensemble["direction"], ensemble["top_class_probability"],
              ensemble.get("gate_reason", "?"), as_of_date, predicted_for_date, horizon)
 
-    return {
+    response = {
         "symbol": symbol,
         "horizon": horizon,
         "direction": ensemble["direction"],
@@ -435,3 +451,9 @@ def get_forecast(symbol: str, horizon: str = "1D", sym_df: pd.DataFrame | None =
         "gate_reason": ensemble.get("gate_reason", ""),
         "market_context": market_ctx,
     }
+    try:
+        from app.core.redis import cache_set_sync
+        cache_set_sync(cache_key, response, 36 * 3600)
+    except Exception:
+        log.debug("Could not cache forecast for %s", symbol, exc_info=True)
+    return response

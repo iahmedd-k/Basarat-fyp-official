@@ -349,6 +349,7 @@ async def _fetch_news_for_symbol(
                 "published_at_dt": a.published_at,
                 "existing_score": float(a.sentiment_score) if a.sentiment_score is not None else None,
                 "news_article_id": a.id,
+                "article": a,
             })
     return matched
 
@@ -407,6 +408,13 @@ async def compute_stock_sentiment(
             result = score_text(item["text"])
             score = result["score"]
             model = result["model"]
+            # Persist the text score once per article so recommendations for
+            # other symbols mentioned by that story can reuse it.
+            article = item["article"]
+            article.sentiment_score = score
+            article.sentiment_label = result.get("label")
+            article.sentiment_method = "finbert" if str(model).startswith("finbert") else "eps_rule"
+            article.sentiment_status = "ok"
 
             # Persist sentiment result with full probability distribution
             if stock_exists:
@@ -744,7 +752,7 @@ async def get_sentiment_news(
             "source": a.source or "Market News",
             "published_at": a.published_at.isoformat() if a.published_at else (a.created_at.isoformat() if a.created_at else None),
             "url": a.external_url or a.url,
-            "sentiment": label.upper(),
+            "sentiment": label.lower(),
             "sentiment_score": score,
             "sentiment_model": model,
             "positive_score": float(sr.positive_score) if (sr and sr.positive_score is not None) else None,

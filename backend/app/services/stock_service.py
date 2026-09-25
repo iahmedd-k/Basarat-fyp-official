@@ -11,9 +11,11 @@ from app.core.redis import cache_get_sync, cache_set_sync
 from app.services.market_service import MarketService
 
 QUOTE_TTL_SECONDS = 300
-FUND_TTL_SECONDS = 1800
-OHLCV_TTL_SECONDS = 600
-FAILED_SOURCE_TTL_SECONDS = 30
+# Fundamental values are session-level data; damp failed calls for an hour so
+# a broken PSX endpoint cannot be retried once per user/request.
+FUND_TTL_SECONDS = 86400
+OHLCV_TTL_SECONDS = 86400
+FAILED_SOURCE_TTL_SECONDS = 3600
 log = logging.getLogger(__name__)
 
 # Unified in-process TTL cache: key -> (value, timestamp).
@@ -1252,8 +1254,8 @@ class StockService:
             "sector_overview": self.get_sector_overview(symbol),
         }
 
-        # Keep useful fundamentals for 30m. When the upstream source is
-        # blocked/unavailable, don't pin an all-null response for that long.
+        # Keep useful fundamentals for one session. Cache failures for one
+        # hour to avoid retrying an unavailable PSX endpoint per user request.
         useful_fields = (
             company_profile.get("business_description"), company_profile.get("ceo"),
             company_profile.get("website"), company_profile.get("address"),

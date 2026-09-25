@@ -1,9 +1,4 @@
-"""Recommendation Cache — Celery task to precompute recommendations on schedule.
-
-Runs periodically (every 4 hours) to precompute recommendations for all
-active symbols. The API reads from the cache instead of computing on every
-request, since the underlying data (features, live market data) is expensive.
-"""
+"""Publish the daily KSE-100 recommendation snapshot after sentiment runs."""
 
 import logging
 from datetime import datetime
@@ -24,8 +19,9 @@ log = logging.getLogger(__name__)
 def refresh_recommendations_task(self):
     """Recompute recommendations for all active symbols and cache to Redis.
 
-    This task runs every 4 hours via Celery Beat. The API endpoints
-    read from the cache, not from live computation.
+    Celery Beat runs this once after the daily OHLCV, feature, forecast and
+    sentiment jobs. API list routes read this shared cache and only reweight
+    its stored source scores per user.
     """
     log.info("[RECOMMEND] Refreshing recommendation cache")
 

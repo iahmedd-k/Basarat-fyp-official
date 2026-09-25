@@ -47,7 +47,7 @@ celery.conf.update(
             "task": "app.tasks.daily_workflow.run_daily_pipeline",
             # Refresh after PSX's trading session so OHLCV/features and
             # forecasts include the latest completed trading day.
-            "schedule": crontab(hour=18, minute=0),  # 18:00 PKT
+            "schedule": crontab(hour=18, minute=0, day_of_week="1-5"),  # after close, Mon-Fri PKT
         },
         # ── Weekly: retraining pipeline ──
         "weekly-retraining": {
@@ -63,36 +63,33 @@ celery.conf.update(
             "task": "app.tasks.model_monitoring.detect_drift",
             "schedule": crontab(hour=7, minute=0),
         },
-        # ── Recommendations: refresh every 4 hours ──
+        # ── Save the previous session's final quote snapshot once after close ──
+        # API handlers serve this shared Redis snapshot; they do not scrape PSX.
+        "refresh-market-close-snapshot": {
+            "task": "app.tasks.refresh_market_cache.refresh_market_cache",
+            "kwargs": {"refresh_reference": True},
+            "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
+        },
+        # ── Publish recommendations after daily sentiment aggregation ──
         "refresh-recommendations": {
             "task": "app.tasks.recommendation_cache.refresh_recommendations",
-            "schedule": crontab(minute=0, hour="*/4"),
+            "schedule": crontab(hour=19, minute=30, day_of_week="1-5"),
         },
         # ── FinBERT: score the full active stock universe after news ingestion ──
         "daily-sentiment-aggregation": {
             "task": "app.tasks.sentiment_tasks.aggregate_sentiment",
-            "schedule": crontab(hour=19, minute=0),  # 19:00 PKT, after the trading/news session
+            "schedule": crontab(hour=19, minute=0, day_of_week="1-5"),  # after the trading/news session
         },
         # ── News ingestion: every 30 min on the clock, task gates on market hours ──
         "news-ingestion-market-aware": {
             "task": "app.tasks.scrape_news.run",
             "schedule": crontab(minute="*/30"),  # Every 30 min on the clock
         },
-        # ── One shared PSX quote refresh; API requests read Redis snapshots ──
-        "refresh-market-quotes": {
-            "task": "app.tasks.refresh_market_cache.refresh_market_cache",
-            "schedule": crontab(minute="*/5"),
-        },
-        # ── Reference data changes much less often than quotes ──
-        "refresh-market-reference": {
-            "task": "app.tasks.refresh_market_cache.refresh_market_cache",
-            "kwargs": {"refresh_reference": True},
-            "schedule": crontab(minute=0, hour="*/6"),
-        },
+        # Index membership changes rarely; refresh it weekly, not on every API day.
         "refresh-market-constituents": {
             "task": "app.tasks.refresh_market_cache.refresh_market_cache",
             "kwargs": {"refresh_reference": True, "refresh_constituents": True},
-            "schedule": crontab(minute=15, hour=4),
+            "schedule": crontab(day_of_week=0, minute=15, hour=4),
         },
         # ── Rescore failed sentiment: hourly ──
         "rescore-failed-sentiment": {

@@ -27,12 +27,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from app.data.scraper.ohlcv import fetch_ohlcv
+from app.data.scraper.ohlcv import fetch_ohlcv, psx_access_denied, reset_psx_access_denied
 from app.data.scraper.quality import check_data_quality
 from app.data.scraper.symbol_universe import (
     fetch_symbol_universe,
     freeze_universe,
-    load_frozen_universe,
+    get_active_symbols,
 )
 from app.data.scraper.writers import write_combined_parquet, write_symbol_parquet
 
@@ -171,6 +171,7 @@ def run_scrape(
     """Main scrape orchestrator."""
     out_dir = output_dir or _DEFAULT_OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
+    reset_psx_access_denied()
 
     # Step 1: Optionally freeze universe
     if freeze:
@@ -185,7 +186,7 @@ def run_scrape(
     # Step 2: Load frozen universe
     log.info("=== Loading frozen symbol universe ===")
     try:
-        universe = load_frozen_universe(config_dir)
+        universe = get_active_symbols(config_dir)
     except FileNotFoundError as exc:
         log.error(str(exc))
         log.error("Run with --freeze-universe first to generate the symbol list.")
@@ -213,6 +214,10 @@ def run_scrape(
 
     log.info("=== Starting OHLCV fetch for %d symbols ===", total)
     for i, symbol in enumerate(symbols, 1):
+        if psx_access_denied():
+            log.error("Stopping OHLCV run after PSX HTTP 403/429; preserving existing history")
+            results.extend({"symbol": pending, "status": "skipped", "reason": "source_rate_limited"} for pending in symbols[i - 1:])
+            break
         log.info("[%d/%d] %s", i, total, symbol)
         result = _scrape_symbol(
             symbol=symbol,
@@ -252,6 +257,7 @@ def run_scrape(
         "skipped": skip_count,
         "errors": err_count,
         "no_data": no_data_count,
+        "rate_limited": any(r.get("reason") == "source_rate_limited" for r in results),
         "results": results,
     }
 

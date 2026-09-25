@@ -198,7 +198,8 @@ def _component_payload(rec: dict) -> dict:
 def _market_data_payload(rec: dict) -> dict:
     quote_as_of = rec.get("quote_as_of")
     quote_is_stale = bool(rec.get("quote_is_stale"))
-    quote_freshness = _market_data_freshness(quote_as_of) if quote_as_of else {
+    price_as_of = quote_as_of or rec.get("data_as_of")
+    quote_freshness = _market_data_freshness(price_as_of) if price_as_of else {
         "data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None,
     }
     if quote_is_stale:
@@ -207,7 +208,7 @@ def _market_data_payload(rec: dict) -> dict:
         quote_freshness["data_freshness"] = "stale"
     analysis_freshness = _market_data_freshness(rec.get("data_as_of"))
     return {
-        "as_of": None if quote_is_stale else quote_as_of,
+        "as_of": None if quote_is_stale else price_as_of,
         "quote_fetched_at": quote_as_of,
         "freshness": quote_freshness["data_freshness"],
         "age_calendar_days": quote_freshness["data_age_calendar_days"],
@@ -303,20 +304,26 @@ async def get_recommendations(
     user: User = Depends(get_current_user),
 ):
     try:
-        from app.services.recommendation_service import DEFAULT_WEIGHTS, RecommendationEngine
+        from app.services.recommendation_service import (
+            DEFAULT_WEIGHTS,
+            RecommendationEngine,
+            get_cached_recommendations,
+        )
 
         effective_risk = risk_profile or _get_user_risk_profile(user)
 
         weights = _get_user_weights(user, DEFAULT_WEIGHTS)
-        # Build the response from the short-lived quote/analysis cache. The
-        # 4-hour snapshot is unsuitable for a live recommendation endpoint.
         engine = RecommendationEngine(weights=weights)
-        recommendations = await run_in_threadpool(
-            engine.get_all_recommendations,
-            risk_tolerance=effective_risk,
-            sector_filter=sector,
-            weights=weights,
-        )
+        snapshot = await run_in_threadpool(get_cached_recommendations)
+        if snapshot:
+            recommendations = engine.personalize_snapshot(snapshot, effective_risk, weights)
+            if sector:
+                recommendations = [r for r in recommendations if str(r.get("sector") or "").casefold() == sector.casefold()]
+        else:
+            # The scheduled end-of-day publisher owns full-universe source work.
+            # On a cold cache serve a clear retryable service error instead of
+            # fanning out up to 100 PSX/model/news requests from one API call.
+            raise ServiceUnavailableError("Daily recommendation snapshot is being prepared; retry shortly")
 
         recommendations = [_apply_freshness_guard(r) for r in recommendations]
 
@@ -351,6 +358,8 @@ async def get_recommendations(
             recommendations=items,
         )
 
+    except ServiceUnavailableError:
+        raise
     except Exception as exc:
         log.exception("Failed to fetch recommendations")
         raise ServiceUnavailableError("Failed to fetch recommendations")

@@ -29,6 +29,17 @@ _SESSION_HEADERS = {
     "Origin": "https://dps.psx.com.pk",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
+_PSX_ACCESS_DENIED = False
+
+
+def psx_access_denied() -> bool:
+    """Whether PSX denied a request during the current scraper process."""
+    return _PSX_ACCESS_DENIED
+
+
+def reset_psx_access_denied() -> None:
+    global _PSX_ACCESS_DENIED
+    _PSX_ACCESS_DENIED = False
 
 
 def _month_range(start: date, end: date) -> List[Tuple[int, int]]:
@@ -98,6 +109,8 @@ def _fetch_symbol_direct(
             log.debug("  %s %d-%02d fetch failed: %s", symbol, y, m, exc)
             response = getattr(exc, "response", None)
             if response is not None and response.status_code in (403, 429):
+                global _PSX_ACCESS_DENIED
+                _PSX_ACCESS_DENIED = True
                 log.warning("PSX denied requests for %s (HTTP %d); stopping this symbol", symbol, response.status_code)
                 break
 
@@ -153,6 +166,7 @@ def fetch_ohlcv(
     Returns a DataFrame with columns ``[date, open, high, low, close, volume]``
     sorted by date ascending.  Returns an empty DataFrame if no data is found.
     """
+    global _PSX_ACCESS_DENIED
     if end is None:
         end = date.today()
     if start is None:
@@ -182,6 +196,7 @@ def fetch_ohlcv(
         response = getattr(exc, "response", None)
         status_code = getattr(response, "status_code", None) or getattr(exc, "status_code", None)
         if status_code in (403, 429):
+            _PSX_ACCESS_DENIED = True
             log.warning("PSX denied historical data for %s (HTTP %s); skipping direct fallback", symbol, status_code)
             return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
         log.info("  psx-data-reader failed (%s), using direct scraper", exc)

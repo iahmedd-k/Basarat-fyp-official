@@ -67,6 +67,72 @@ class RecommendationEngine:
     def __init__(self, weights: dict | None = None):
         self.weights = weights or DEFAULT_WEIGHTS.copy()
 
+    def personalize_snapshot(self, recommendations: list[dict], risk_tolerance: str, weights: dict) -> list[dict]:
+        """Apply per-user weights/risk to the daily component snapshot without source calls."""
+        output = []
+        keys = (("gru", "ml"), ("technical", "technical"), ("fundamental", "fundamental"), ("sentiment", "sentiment"))
+        for source in recommendations:
+            item = dict(source)
+            signals = item.get("signals") or {}
+            reasoning = item.get("reasoning") or {}
+            available = [(weight_key, signal_key, float(signals.get(signal_key, 0) or 0))
+                         for weight_key, signal_key in keys
+                         if (reasoning.get(signal_key) or {}).get("status") != "unavailable"]
+            total_weight = sum(float(weights.get(weight_key, 0) or 0) for weight_key, _, _ in available)
+            effective = {weight_key: float(weights.get(weight_key, 0) or 0) / total_weight
+                         for weight_key, _, _ in available} if total_weight else {}
+            source_weights = item.get("weights") or {}
+            same_weights = all(
+                abs(float(source_weights.get(key, source_weights.get("gru" if key == "gru" else key, 0)) or 0) - float(value)) < 1e-8
+                for key, value in weights.items()
+            )
+            if same_weights and item.get("composite_score") is not None:
+                # Preserve the score actually published with this snapshot;
+                # only recompute for a user's changed weight profile.
+                score = float(item["composite_score"])
+            else:
+                score = sum(effective[key] * value for key, _, value in available) if total_weight else 0.0
+            item["weights"] = dict(weights)
+            item["effective_weights"] = effective
+            item["composite_score"] = round(score, 4)
+            item["signal"] = (item.get("signal") or "hold").lower() if same_weights else ("buy" if score > BUY_THRESHOLD else "sell" if score < SELL_THRESHOLD else "hold")
+            item["confidence"] = float(item.get("confidence", 0) or 0) if same_weights else round(min(abs(score) / 0.5, 1.0), 4)
+            item["decision_reason"] = item.get("decision_reason") if same_weights else (
+                f"Composite score {score:.3f} crossed the BUY threshold ({BUY_THRESHOLD:.2f})." if score > BUY_THRESHOLD
+                else f"Composite score {score:.3f} crossed the SELL threshold ({SELL_THRESHOLD:.2f})." if score < SELL_THRESHOLD
+                else f"Composite score {score:.3f} is between the BUY threshold ({BUY_THRESHOLD:.2f}) and SELL threshold ({SELL_THRESHOLD:.2f})."
+            )
+            item["status"] = "available" if len(available) == 4 else "partial" if available else "insufficient_data"
+            item["risk_profile"] = risk_tolerance
+            atr = item.get("atr_14")
+            price = item.get("current_price")
+            if atr and price and item.get("signal") in {"buy", "sell"}:
+                multipliers = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])
+                direction = 1 if item["signal"] == "buy" else -1
+                target = float(price) + direction * float(atr) * multipliers["target"]
+                stop = float(price) - direction * float(atr) * multipliers["stop"]
+                item["target_price"] = round(target, 2)
+                item["stop_loss"] = round(stop, 2)
+                item["upside_pct"] = round((target - float(price)) / float(price) * 100, 2)
+                item["downside_pct"] = round((stop - float(price)) / float(price) * 100, 2)
+                item["expected_range"] = None
+                item["risk_reward_ratio"] = round(abs(target - float(price)) / abs(stop - float(price)), 2)
+            elif atr and price:
+                target_mult = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])["target"]
+                half_range = round(float(atr) * target_mult, 2)
+                item["expected_range"] = {
+                    "low": round(float(price) - half_range, 2),
+                    "high": round(float(price) + half_range, 2),
+                    "method": "atr_range",
+                }
+                item["target_price"] = None
+                item["stop_loss"] = None
+                item["upside_pct"] = None
+                item["downside_pct"] = None
+                item["risk_reward_ratio"] = None
+            output.append(item)
+        return output
+
     # ───────────────────────────────────────────────────────────────────
     # ML Signal (shared forecast ensemble)
     # ───────────────────────────────────────────────────────────────────
@@ -118,35 +184,9 @@ class RecommendationEngine:
         if sym_df.empty:
             return 0.0, {"reason": "no data"}
 
-        # Use the same daily OHLCV-backed indicator service exposed by the
-        # stock technical-indicators route. It refreshes stale history from the
-        # PSX provider and reports the observation date alongside its result.
-        if symbol:
-            try:
-                from app.services.stock_service import StockService
-                live = StockService().technical_indicators(symbol)
-                counts = live.get("signals_breakdown") or {}
-                total = sum(int(counts.get(key, 0) or 0) for key in ("buy", "neutral", "sell"))
-                if total:
-                    score = float(np.clip((counts.get("buy", 0) - counts.get("sell", 0)) / total, -1.0, 1.0))
-                    return score, {
-                        "status": "available",
-                        "source": "daily OHLCV technical-indicators service",
-                        "overall_signal": live.get("overall_signal"),
-                        "signals_breakdown": counts,
-                        "as_of_date": live.get("as_of_date"),
-                        "is_stale": bool(live.get("is_stale", True)),
-                        "summary": live.get("summary", {}),
-                    }
-                return 0.0, {
-                    "status": "unavailable",
-                    "reason": live.get("summary_message") or "daily OHLCV indicators returned no usable signals",
-                    "as_of_date": live.get("as_of_date"),
-                }
-            except Exception as exc:
-                log.warning("Live technical indicators unavailable for %s: %s", symbol, exc)
-                return 0.0, {"status": "unavailable", "reason": f"daily OHLCV indicator lookup failed: {exc}"}
-
+        # Use the prepared daily feature row shared with the technical route.
+        # Calling the endpoint service here would trigger a second OHLCV lookup
+        # for every constituent during recommendation snapshot generation.
         latest = sym_df.iloc[-1]
         prev = sym_df.iloc[-2] if len(sym_df) > 1 else latest
         signals = []
@@ -243,6 +283,17 @@ class RecommendationEngine:
 
             pe_ratio = overview.get("pe_ratio")
             year_change = overview.get("year_change_pct")
+            fundamentals = {}
+
+            def as_number(value):
+                try:
+                    value = float(str(value).replace(",", "").replace("%", "").strip())
+                    return value if np.isfinite(value) else None
+                except (TypeError, ValueError):
+                    return None
+
+            pe_ratio = as_number(pe_ratio)
+            year_change = as_number(year_change)
 
             # The overview/quote feed often has prices but no valuation fields.
             # Pull the canonical fundamentals service response before declaring
@@ -259,6 +310,28 @@ class RecommendationEngine:
                         if str(metric.get("key", metric.get("name", ""))).strip().casefold() in {"p/e ratio", "pe ratio", "price to earnings"}:
                             pe_ratio = metric.get("value")
                             break
+
+            pe_ratio = as_number(pe_ratio)
+            year_change = as_number(year_change)
+
+            ratios = (fundamentals.get("ratios") or {}) if isinstance(fundamentals, dict) else {}
+            if not ratios and isinstance(fundamentals, dict):
+                ratios = {
+                    str(metric.get("key", "")).strip().lower().replace(" ", "_"): metric.get("value")
+                    for metric in fundamentals.get("metrics") or []
+                    if isinstance(metric, dict)
+                }
+
+            def metric_number(*names):
+                for name in names:
+                    value = ratios.get(name)
+                    try:
+                        parsed = float(str(value).replace(",", "").replace("%", "").strip())
+                        if np.isfinite(parsed):
+                            return parsed
+                    except (TypeError, ValueError):
+                        pass
+                return None
 
             signals = []
 
@@ -290,8 +363,31 @@ class RecommendationEngine:
                     yc_score = 0.0
                 signals.append(("year_momentum", yc_score, f"1Y_change={year_change:.1f}%"))
 
+            # Use any other reported valuation/profitability fields instead of
+            # marking the whole fundamental component missing just because P/E
+            # and one-year change are absent from the quote feed.
+            peg = metric_number("peg_ratio", "peg", "p/e_g_ratio", "p_e_g_ratio")
+            eps_growth = metric_number("eps_growth_pct", "eps_growth", "eps_growth_(%)")
+            net_margin = metric_number("net_profit_margin_pct", "net_profit_margin", "net_profit_margin_(%)")
+            dividend_yield = metric_number("dividend_yield_pct", "dividend_yield")
+            eps = metric_number("eps", "earnings_per_share")
+            for metric_name, value, boundaries in (
+                ("eps_growth", eps_growth, ((20, 0.5), (0, 0.2), (-10, -0.1), (-float("inf"), -0.5))),
+                ("net_margin", net_margin, ((15, 0.3), (0, 0.1), (-float("inf"), -0.5))),
+                ("dividend_yield", dividend_yield, ((5, 0.3), (0, 0.15), (-float("inf"), -0.2))),
+            ):
+                if value is None:
+                    continue
+                score = next((score for threshold, score in boundaries if value >= threshold), boundaries[-1][1])
+                signals.append((metric_name, score, f"{metric_name}={value:.2f}"))
+            if peg is not None:
+                peg_score = 0.5 if 0 < peg <= 1 else 0.1 if peg <= 2 else -0.3
+                signals.append(("peg", peg_score, f"PEG={peg:.2f}"))
+            if eps is not None:
+                signals.append(("eps", 0.1 if eps > 0 else -0.5, f"EPS={eps:.2f}"))
+
             if not signals:
-                reason = "PSX fundamentals feed has no usable P/E or one-year change for this symbol."
+                reason = "No usable valuation, profitability, dividend, EPS, or one-year price data was returned."
                 return 0.0, {"status": "unavailable", "reason": reason}
 
             raw = sum(s[1] for s in signals) / len(signals)
@@ -299,7 +395,7 @@ class RecommendationEngine:
 
             reasoning = {s[0]: s[2] for s in signals}
             reasoning["status"] = "available"
-            reasoning["method"] = "unvalidated_pe_and_one_year_momentum_heuristic"
+            reasoning["method"] = "unvalidated_available_fundamental_metrics_heuristic"
             return float(final), reasoning
 
         except Exception as e:
@@ -730,11 +826,21 @@ class RecommendationEngine:
                 overview_data = quote_map.get(sym, {})
                 if not df.empty:
                     sym_df = df[df["symbol"] == sym].copy().sort_values("date").reset_index(drop=True)
-                    if sym_df.empty or len(sym_df) < 10:
-                        continue
                     rec = self.get_recommendation(sym, risk_tolerance, requested_weights, sym_df=sym_df, overview_data=overview_data)
                 else:
-                    rec = self.get_recommendation(sym, risk_tolerance, requested_weights, overview_data=overview_data)
+                    rec = self.get_recommendation(
+                        sym, risk_tolerance, requested_weights,
+                        sym_df=pd.DataFrame(), overview_data=overview_data,
+                    )
+                if rec.get("status") == "insufficient_data":
+                    rec["name"] = overview_data.get("name") or sym
+                    rec["sector"] = overview_data.get("sector")
+                    rec["current_price"] = overview_data.get("current") or overview_data.get("current_price")
+                    rec["reasoning"] = {
+                        name: {"status": "unavailable", "reason": f"No prepared KSE-100 feature history for {sym}."}
+                        for name in ("ml", "technical", "fundamental", "sentiment")
+                    }
+                    rec["effective_weights"] = {}
                 # The market watch quote is refreshed independently of the
                 # daily feature parquet. Present the latest quote while retaining
                 # the historical analysis date used for indicator/model scores.
@@ -766,18 +872,21 @@ class RecommendationEngine:
 # ───────────────────────────────────────────────────────────────────────
 
 def get_cached_recommendations() -> list[dict] | None:
-    """Load the shared default-profile recommendation snapshot from Redis."""
+    """Load the shared daily snapshot from Redis, then the mounted volume."""
     try:
         from app.core.redis import cache_get_sync
         data = cache_get_sync("recommendations:default:v5")
         if not isinstance(data, dict):
-            return None
+            try:
+                data = json.loads(RECOMMENDATIONS_CACHE.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
         cached_at = datetime.fromisoformat(data.get("timestamp", "2000-01-01"))
         if cached_at.tzinfo is not None:
             cached_at = cached_at.astimezone(timezone.utc).replace(tzinfo=None)
-        # The Celery schedule refreshes this shared default-profile cache every 4h.
+        # The cache is one end-of-day snapshot retained through the next session.
         cache_age = (datetime.utcnow() - cached_at).total_seconds()
-        if cache_age < 0 or cache_age > 4 * 3600:
+        if cache_age < 0 or cache_age > 120 * 3600:
             return None
         recommendations = data.get("recommendations", [])
         # Reject older cache files created before the API had real component
@@ -796,13 +905,20 @@ def get_cached_recommendations() -> list[dict] | None:
 
 
 def save_recommendations_cache(recommendations: list[dict]) -> None:
-    """Publish recommendations for API containers through shared Redis."""
+    """Publish recommendations through Redis and the shared reports volume."""
     data = {
         "timestamp": datetime.utcnow().isoformat(),
         "cache_version": 5,
         "count": len(recommendations),
         "recommendations": recommendations,
     }
+    try:
+        RECOMMENDATIONS_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = RECOMMENDATIONS_CACHE.with_suffix(".tmp")
+        temp_path.write_text(json.dumps(data, default=str), encoding="utf-8")
+        temp_path.replace(RECOMMENDATIONS_CACHE)
+    except OSError:
+        log.warning("Could not persist recommendation snapshot to shared volume", exc_info=True)
     from app.core.redis import cache_set_sync
-    cache_set_sync("recommendations:default:v5", data, 4 * 3600)
+    cache_set_sync("recommendations:default:v5", data, 7 * 24 * 3600)
     log.info("Saved %d recommendations to cache", len(recommendations))

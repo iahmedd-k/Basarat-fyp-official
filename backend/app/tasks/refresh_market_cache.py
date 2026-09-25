@@ -45,7 +45,7 @@ def refresh_market_cache(self, refresh_reference: bool = False, refresh_constitu
                 results["indices"] = len(indices)
 
             if refresh_constituents:
-                for code in ("KSE100", "KSE30", "KMI30"):
+                for code in ("KSE100",):
                     values = await service.get_index_constituents(
                         code, force_refresh=True, read_only=False
                     )

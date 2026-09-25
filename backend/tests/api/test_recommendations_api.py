@@ -198,10 +198,23 @@ class TestRecommendationsListEndpoint:
     async def test_list_uses_persisted_custom_weights(self, client: AsyncClient, auth_headers):
         weights = {"gru_weight": 0.5, "technical_weight": 0.3, "fundamental_weight": 0.2}
         await client.post("/api/v1/recommendations/engine-weights", json=weights, headers=auth_headers)
-        with patch("app.services.recommendation_service.RecommendationEngine.get_all_recommendations", return_value=[] ) as get_all:
+        snapshot = [{
+            "symbol": "SYS", "signal": "hold", "composite_score": 0.0,
+            "signals": {"ml": 0.6, "technical": 0.4, "fundamental": 0.1, "sentiment": -0.2},
+            "weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
+            "effective_weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
+            "reasoning": {name: {"status": "available"} for name in ("ml", "technical", "fundamental", "sentiment")},
+            "data_as_of": "2026-09-25", "current_price": 450.0, "atr_14": 10.0,
+        }]
+        with patch("app.services.recommendation_service.get_cached_recommendations", return_value=snapshot), \
+             patch("app.services.recommendation_service.RecommendationEngine.get_all_recommendations") as get_all:
             response = await client.get("/api/v1/recommendations", headers=auth_headers)
         assert response.status_code == 200
-        assert get_all.call_args.kwargs["weights"] == {"gru": 0.5, "technical": 0.3, "fundamental": 0.2, "sentiment": 0.0}
+        assert not get_all.called
+        recommendation = response.json()["recommendations"][0]
+        assert recommendation["decision"]["composite_score"] == 0.44
+        assert recommendation["components"]["ml"]["configured_weight"] == 0.5
+        assert recommendation["components"]["sentiment"]["effective_weight"] == 0.0
 
 
 @pytest.mark.api
