@@ -9,6 +9,7 @@ from fastapi import Depends
 
 from app.core.redis import cache_get_sync, cache_set_sync
 from app.services.market_service import MarketService
+from app.services.psx_company_tables import get_psx_company_table_data
 
 QUOTE_TTL_SECONDS = 300
 # Fundamental values are session-level data; damp failed calls for an hour so
@@ -308,7 +309,9 @@ class StockService:
         symbol = str(symbol).upper()
         now = _now()
         cache_key = f"fund:{symbol}"
-        shared_key = f"stock:raw_fundamentals:{symbol}"
+        # v2 bypasses legacy partial payloads cached before all source fields
+        # were exposed by the route.
+        shared_key = f"stock:raw_fundamentals:v3:{symbol}"
         cached_at = _cache_ttl.get(cache_key, 0.0)
         if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
             return _cache[cache_key]
@@ -593,7 +596,7 @@ class StockService:
     @staticmethod
     def _company_name(symbol: str) -> str:
         """Return the provider company name when available, falling back to ticker."""
-        info_key = f"stock:ticker_info:{symbol}"
+        info_key = f"stock:ticker_info:v3:{symbol}"
         info = cache_get_sync(info_key)
         if isinstance(info, dict):
             name = info.get("company_name") or info.get("name")
@@ -952,43 +955,52 @@ class StockService:
 
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
-        # v7 invalidates old fundamentals that may contain data from an
-        # unlicensed web-scraped fallback source.
-        cache_key = f"fund:v7:{symbol}"
+        # v10 returns the normalized company-page tables and report index.
+        cache_key = f"fund:v10:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
             return cached
 
         quote = self._get_quote_frame(symbol)
-        self._get_fund_frame(symbol)  # populate cache for _fund_metric
+        psx_table_data = get_psx_company_table_data(symbol)
         div = self._get_dividend_frame(symbol)
 
-        info_dict = {}
-        info_key = f"stock:ticker_info:{symbol}"
-        cached_info = cache_get_sync(info_key)
-        if isinstance(cached_info, dict):
-            info_dict = cached_info
+        info_key = f"stock:ticker_info:v3:{symbol}"
+        info_dict = psx_table_data.get("source_info") or {}
+        if isinstance(info_dict, dict) and info_dict:
+            info_dict["sector"] = self._sector_of(symbol) or info_dict.get("sector")
+            cache_set_sync(info_key, info_dict, FUND_TTL_SECONDS)
+            cache_set_sync(f"stock:raw_fundamentals:v3:{symbol}", info_dict, FUND_TTL_SECONDS)
+            _cache[f"fund:{symbol}"] = (info_dict, _now())
+            _cache_ttl[f"fund:{symbol}"] = _now()
         else:
-            try:
-                t = pypsx_toolkit.Ticker(symbol)
-                if hasattr(t, "info") and isinstance(t.info, dict):
-                    info_dict = t.info
-                    info_ttl = FUND_TTL_SECONDS if any(
-                        value not in (None, "", [], {})
-                        for key, value in info_dict.items()
-                        if key.lower() not in {"symbol", "name", "company_name", "sector"}
-                    ) else FAILED_SOURCE_TTL_SECONDS
-                    cache_set_sync(info_key, info_dict, info_ttl)
-            except Exception as exc:
-                log.warning("PSX ticker info fetch failed for %s: %s", symbol, exc)
+            cached_info = cache_get_sync(info_key)
+            if isinstance(cached_info, dict):
+                info_dict = cached_info
+            else:
+                try:
+                    t = pypsx_toolkit.Ticker(symbol)
+                    if hasattr(t, "info") and isinstance(t.info, dict):
+                        info_dict = t.info
+                        info_ttl = FUND_TTL_SECONDS if any(
+                            value not in (None, "", [], {})
+                            for key, value in info_dict.items()
+                            if key.lower() not in {"symbol", "name", "company_name", "sector"}
+                        ) else FAILED_SOURCE_TTL_SECONDS
+                        cache_set_sync(info_key, info_dict, info_ttl)
+                except Exception as exc:
+                    log.warning("PSX ticker info fetch failed for %s: %s", symbol, exc)
+
+        # Populate _fund_metric from the same page payload instead of fetching
+        # that company page a second time through the toolkit.
+        fund_data = self._get_fund_frame(symbol)
+        flat_info = fund_data if isinstance(fund_data, dict) else info_dict
 
         # 1. Company Profile & Governance
         prof = info_dict.get("Profile", {}) if isinstance(info_dict.get("Profile"), dict) else {}
         gov = info_dict.get("Governance", {}) if isinstance(info_dict.get("Governance"), dict) else {}
 
-        fund_data = self._get_fund_frame(symbol)
-        flat_info = fund_data if isinstance(fund_data, dict) else info_dict
         desc = (
             prof.get("Business Description")
             or flat_info.get("business_description")
@@ -1135,8 +1147,21 @@ class StockService:
                     return None
             return None
 
-        financials_annual = _financial_rows(financials_annual)
-        financials_quarterly = _financial_rows(financials_quarterly)
+        financials_annual = psx_table_data.get("financials_annual") or _financial_rows(financials_annual)
+        financials_quarterly = psx_table_data.get("financials_quarterly") or _financial_rows(financials_quarterly)
+
+        ratio_history = psx_table_data.get("ratio_history") or []
+        latest_ratio_values = (ratio_history[0].get("values") or {}) if ratio_history else {}
+        # The endpoint's headline ratios must match the newest displayed PSX
+        # period; toolkit metadata may contain a stale fiscal year.
+        if "peg_ratio" in latest_ratio_values:
+            peg = self._num(latest_ratio_values.get("peg_ratio"))
+        if "eps_growth_pct" in latest_ratio_values:
+            eps_growth = self._num(latest_ratio_values.get("eps_growth_pct"))
+        if "net_profit_margin_pct" in latest_ratio_values:
+            net_margin = self._num(latest_ratio_values.get("net_profit_margin_pct"))
+        if "gross_profit_margin_pct" in latest_ratio_values:
+            gross_margin = self._num(latest_ratio_values.get("gross_profit_margin_pct"))
 
 
         # 4. Trading Limits & 52-Week Range (via snapshot)
@@ -1144,12 +1169,13 @@ class StockService:
         cb_low, cb_up = None, None
         year_change, ytd_change = None, None
         try:
-            snap = cache_get_sync(f"stock:snapshot:{symbol}")
+            snapshot_key = f"stock:snapshot:v2:{symbol}"
+            snap = cache_get_sync(snapshot_key)
             if not isinstance(snap, dict):
                 snap = pypsx_toolkit.get_snapshot(symbol)
                 if isinstance(snap, dict):
                     ttl = FUND_TTL_SECONDS if snap else FAILED_SOURCE_TTL_SECONDS
-                    cache_set_sync(f"stock:snapshot:{symbol}", snap, ttl)
+                    cache_set_sync(snapshot_key, snap, ttl)
             if isinstance(snap, dict):
                 reg = snap.get("REG", {})
                 cb = reg.get("CIRCUIT BREAKER")
@@ -1181,7 +1207,7 @@ class StockService:
         dividend_history = []
         try:
             div_df = _get_shared_dataframe(
-                f"stock:dividend_history:{symbol}",
+                f"stock:dividend_history:v2:{symbol}",
                 lambda: pypsx_toolkit.get_dividend_history(symbol),
             )
             if div_df is not None and not div_df.empty:
@@ -1199,7 +1225,7 @@ class StockService:
         announcements = []
         try:
             ann_df = _get_shared_dataframe(
-                f"stock:announcements:{symbol}",
+                f"stock:announcements:v2:{symbol}",
                 lambda: pypsx_toolkit.get_announcements(symbol),
             )
             if ann_df is not None and not ann_df.empty:
@@ -1217,8 +1243,8 @@ class StockService:
         metrics = [
             _metric("EPS", eps, "Earnings per share over the last twelve months."),
             _metric("P/E Ratio", pe_ratio, "Price-to-earnings; lower values suggest cheaper valuation."),
-            _metric("ROE", None, "Not provided by the PSX fundamentals feed."),
-            _metric("Debt-to-Equity", None, "Not provided by the PSX fundamentals feed."),
+            _metric("ROE", None, "Not included in the company-page financial tables."),
+            _metric("Debt-to-Equity", None, "Not included in the company-page financial tables."),
             _metric("Dividend Yield", div_yield, "Trailing dividend yield relative to the last traded price."),
             _metric("Market Cap (PKR M)", market_cap_m, "Market capitalisation in millions of PKR."),
         ]
@@ -1245,6 +1271,9 @@ class StockService:
             "equity_profile": equity_profile,
             "financials_annual": financials_annual,
             "financials_quarterly": financials_quarterly,
+            "financials_unit": "PKR thousands except EPS",
+            "ratio_history": ratio_history,
+            "financial_reports": psx_table_data.get("financial_reports") or [],
             "ratios": ratios,
             "trading_limits": trading_limits,
             "dividend_history": dividend_history,

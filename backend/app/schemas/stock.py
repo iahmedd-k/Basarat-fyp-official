@@ -162,6 +162,13 @@ class AnnouncementItem(BaseModel):
     pdf_link: str | None = None
 
 
+class FinancialReportItem(BaseModel):
+    report_type: str | None = None
+    period_ended: str | None = None
+    posting_date: str | None = None
+    url: str | None = None
+
+
 class SectorPeerItem(BaseModel):
     symbol: str | None = None
     name: str | None = None
@@ -192,6 +199,9 @@ class FundamentalsResponse(BaseModel):
     equity_profile: EquityProfile | None = None
     financials_annual: list[dict] | None = None
     financials_quarterly: list[dict] | None = None
+    financials_unit: str | None = None
+    ratio_history: list[dict] | None = None
+    financial_reports: list[FinancialReportItem] | None = None
     ratios: FinancialRatios | None = None
     trading_limits: TradingLimits | None = None
     dividend_history: list[DividendHistoryItem] | None = None
