@@ -8,7 +8,6 @@ import pypsx_toolkit
 from fastapi import Depends
 
 from app.core.redis import cache_get_sync, cache_set_sync
-from app.services.stockanalysis_fundamentals import fetch_stockanalysis_fundamentals
 from app.services.market_service import MarketService
 
 QUOTE_TTL_SECONDS = 300
@@ -557,53 +556,14 @@ class StockService:
         quote = self._get_quote_frame(symbol)
         high = q["high"] or self._quote_field(quote, "HIGH")
         low = q["low"] or self._quote_field(quote, "LOW")
-
-        # If market data doesn't have valid high/low, compute from today's OHLCV bar
-        if (high is None or high == 0.0) or (low is None or low == 0.0):
-            today = date.today()
-            try:
-                ohlcv = self._get_ohlcv(symbol, today - timedelta(days=5), today)
-                if ohlcv is not None and not ohlcv.empty and "HIGH" in ohlcv.columns and "LOW" in ohlcv.columns:
-                    latest_bar = ohlcv.iloc[-1]
-                    ohlcv_high = self._num(latest_bar.get("HIGH"))
-                    ohlcv_low = self._num(latest_bar.get("LOW"))
-                    if ohlcv_high and ohlcv_high > 0:
-                        high = ohlcv_high
-                    if ohlcv_low and ohlcv_low > 0:
-                        low = ohlcv_low
-            except Exception as exc:
-                log.warning("Failed to compute day_range from OHLCV for %s: %s", symbol, exc)
+        high = high if high is not None and high > 0 else None
+        low = low if low is not None and low > 0 else None
 
         quote_freshness = self._market.quote_freshness()
         market_cap_m = self._market_cap_m(symbol)
         pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
         year_change_pct = self._quote_field(quote, "1-YEAR CHANGE * ^")
         ytd_change_pct = self._quote_field(quote, "YTD CHANGE * ^")
-
-        # When the dps.psx.com.pk quote/fundamentals pages are unreachable
-        # (cloud/datacenter IPs), fill the gaps from StockAnalysis.com, which
-        # is reachable from those environments.
-        if (
-            market_cap_m is None or pe_ratio is None or year_change_pct is None
-            or high is None or low is None
-        ):
-            try:
-                sa = fetch_stockanalysis_fundamentals(symbol)
-                sa_eq = sa.get("equity_profile") or {}
-                sa_ratio = sa.get("ratios") or {}
-                sa_limits = sa.get("trading_limits") or {}
-                if market_cap_m is None:
-                    market_cap_m = sa_eq.get("market_cap_pkr_m")
-                if pe_ratio is None:
-                    pe_ratio = sa_ratio.get("pe_ratio")
-                if year_change_pct is None:
-                    year_change_pct = sa_limits.get("year_change_pct")
-                if high is None:
-                    high = sa_limits.get("day_high")
-                if low is None:
-                    low = sa_limits.get("day_low")
-            except Exception as exc:
-                log.warning("StockAnalysis fallback failed for %s overview: %s", symbol, exc)
 
         if ytd_change_pct is None:
             ytd_change_pct = self._ytd_change_from_history(symbol)
@@ -648,13 +608,11 @@ class StockService:
                     return str(name)
         except Exception as exc:
             log.debug("Company name lookup failed for %s: %s", symbol, exc)
-        try:
-            profile = fetch_stockanalysis_fundamentals(symbol).get("company_profile") or {}
-            name = profile.get("name")
-            if name and str(name).strip().upper() not in {symbol, f"{symbol} PAKISTAN"}:
-                return str(name)
-        except Exception as exc:
-            log.debug("StockAnalysis company name lookup failed for %s: %s", symbol, exc)
+        from app.services.news_pipeline.symbol_tagger import _STATIC_ALIASES
+
+        aliases = _STATIC_ALIASES.get(symbol, [])
+        if aliases:
+            return str(aliases[0]).title()
         return symbol
 
     def _ytd_change_from_history(self, symbol: str):
@@ -992,8 +950,9 @@ class StockService:
 
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
-        # v6 refreshes cached profiles that contain only a ticker as the name.
-        cache_key = f"fund:v6:{symbol}"
+        # v7 invalidates old fundamentals that may contain data from an
+        # unlicensed web-scraped fallback source.
+        cache_key = f"fund:v7:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
@@ -1268,93 +1227,6 @@ class StockService:
             "gross_profit_margin_pct": gross_margin,
             "net_profit_margin_pct": net_margin,
             "eps_growth_pct": eps_growth,
-        }
-
-        # Fallback: when the dps.psx.com.pk company/snapshot/quote pages are
-        # unreachable from this environment (common for cloud/datacenter IPs),
-        # fill the blank fundamentals from StockAnalysis.com (S&P Global data),
-        # which is reachable and covers every PSX symbol.
-        missing_core = {
-            company_profile.get("business_description"),
-            company_profile.get("ceo"),
-            equity_profile.get("market_cap_pkr"),
-            equity_profile.get("total_shares"),
-            eps, pe_ratio, year_high, year_low,
-        } == {None}
-        if missing_core:
-            try:
-                sa = fetch_stockanalysis_fundamentals(symbol)
-                sa_company = sa.get("company_profile") or {}
-                sa_eq = sa.get("equity_profile") or {}
-                sa_ratio = sa.get("ratios") or {}
-                sa_limits = sa.get("trading_limits") or {}
-
-                if not company_profile.get("business_description"):
-                    company_profile["business_description"] = sa.get("business_description")
-                if not company_profile.get("ceo"):
-                    company_profile["ceo"] = sa_company.get("ceo")
-                if not company_profile.get("website"):
-                    company_profile["website"] = sa_company.get("website")
-                if not company_profile.get("sector") and sa_company.get("sector"):
-                    company_profile["sector"] = sa_company["sector"]
-
-                if not equity_profile.get("market_cap_pkr"):
-                    equity_profile["market_cap_pkr"] = sa_eq.get("market_cap_pkr")
-                if not equity_profile.get("market_cap_pkr_m"):
-                    equity_profile["market_cap_pkr_m"] = sa_eq.get("market_cap_pkr_m")
-                if not equity_profile.get("total_shares"):
-                    equity_profile["total_shares"] = sa_eq.get("total_shares")
-                if not equity_profile.get("free_float_shares"):
-                    equity_profile["free_float_shares"] = sa_eq.get("free_float_shares")
-                if not equity_profile.get("free_float_pct"):
-                    equity_profile["free_float_pct"] = sa_eq.get("free_float_pct")
-
-                if not ratios.get("pe_ratio"):
-                    ratios["pe_ratio"] = sa_ratio.get("pe_ratio")
-                if not ratios.get("eps"):
-                    ratios["eps"] = sa_ratio.get("eps")
-                if not ratios.get("peg_ratio"):
-                    ratios["peg_ratio"] = sa_ratio.get("peg_ratio")
-                if not ratios.get("net_profit_margin_pct"):
-                    ratios["net_profit_margin_pct"] = sa_ratio.get("net_profit_margin_pct")
-                if not ratios.get("gross_profit_margin_pct"):
-                    ratios["gross_profit_margin_pct"] = sa_ratio.get("gross_profit_margin_pct")
-                if not ratios.get("dividend_yield_pct"):
-                    ratios["dividend_yield_pct"] = sa_ratio.get("dividend_yield_pct")
-                if not ratios.get("eps_growth_pct"):
-                    ratios["eps_growth_pct"] = sa_ratio.get("eps_growth_pct")
-
-                if not trading_limits.get("year_high"):
-                    trading_limits["year_high"] = sa_limits.get("year_high")
-                if not trading_limits.get("year_low"):
-                    trading_limits["year_low"] = sa_limits.get("year_low")
-                if not trading_limits.get("year_change_pct"):
-                    trading_limits["year_change_pct"] = sa_limits.get("year_change_pct")
-
-                # Refresh metrics[] rows with newly available values.
-                for m in metrics:
-                    key = m["key"]
-                    if key == "EPS" and not m["value"]:
-                        m["value"] = ratios.get("eps")
-                    elif key == "P/E Ratio" and not m["value"]:
-                        m["value"] = ratios.get("pe_ratio")
-                    elif key == "ROE" and sa_ratio.get("roe_pct") is not None:
-                        m["value"] = sa_ratio["roe_pct"]
-                        m["note"] = "Return on equity; trailing twelve months."
-                    elif key == "Dividend Yield" and not m["value"]:
-                        m["value"] = ratios.get("dividend_yield_pct")
-                    elif "Market Cap (PKR M)" in key and not m["value"]:
-                        m["value"] = equity_profile.get("market_cap_pkr_m")
-            except Exception as exc:
-                log.warning("StockAnalysis fallback failed for %s: %s", symbol, exc)
-
-        # Rebuild extras from the live dicts so fallback values propagate here too.
-        extras = {
-            "year_change_pct": trading_limits.get("year_change_pct"),
-            "ytd_change_pct": ytd_change,
-            "gross_profit_margin_pct": ratios.get("gross_profit_margin_pct"),
-            "net_profit_margin_pct": ratios.get("net_profit_margin_pct"),
-            "eps_growth_pct": ratios.get("eps_growth_pct"),
         }
 
         result = {

@@ -17,16 +17,11 @@ def test_search_symbols_resolves_known_company_name_alias(monkeypatch):
     assert result == [{"symbol": "HBL", "name": "Habib Bank", "sector": "COMMERCIAL BANKS"}]
 
 
-def test_company_name_falls_back_to_stockanalysis_when_psx_returns_ticker(monkeypatch):
+def test_company_name_falls_back_to_known_alias_when_psx_returns_ticker(monkeypatch):
     monkeypatch.setattr("app.services.stock_service.cache_get_sync", lambda key: None)
     monkeypatch.setattr("app.services.stock_service.cache_set_sync", lambda *args: None)
     monkeypatch.setattr(
         "app.services.stock_service.pypsx_toolkit.Ticker",
         lambda symbol: type("Ticker", (), {"info": {"name": "HBL"}})(),
     )
-    monkeypatch.setattr(
-        "app.services.stock_service.fetch_stockanalysis_fundamentals",
-        lambda symbol: {"company_profile": {"name": "Habib Bank Limited"}},
-    )
-
-    assert StockService._company_name("HBL") == "Habib Bank Limited"
+    assert StockService._company_name("HBL") == "Habib Bank"
