@@ -166,7 +166,20 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
             downside_pct = target_stop.get("downside_pct")
             risk_reward_ratio = target_stop.get("risk_reward_ratio")
 
+    # Clear explanatory rationale for price targets and stop loss
+    if target_price is None or stop_loss is None:
+        if direction in ("uncertain", "sideways"):
+            price_target_rationale = (
+                f"Price target and stop-loss levels are omitted in '{direction}' regime "
+                f"(neutral momentum probability: {probabilities.get('sideways', 0)}%) to avoid misleading projections."
+            )
+        else:
+            price_target_rationale = "Target and stop-loss calculations are pending current session price data."
+    else:
+        price_target_rationale = f"Target price calculated via ATR volatility interval for {horizon} horizon."
+
     return ForecastResponse(
+        price_target_rationale=price_target_rationale,
         symbol=result["symbol"],
         horizon=horizon,
         direction=direction,

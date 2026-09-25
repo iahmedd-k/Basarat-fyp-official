@@ -165,6 +165,11 @@ class ForecastResponse(BaseModel):
         description="Absolute target reward divided by stop-loss risk; unitless. Null when no target exists.",
         examples=[1.49],
     )
+    price_target_rationale: str | None = Field(
+        default=None,
+        description="Explanatory rationale for price target and stop-loss values, or reason why they are omitted in neutral/uncertain regimes.",
+        examples=["Price target and stop-loss are omitted in uncertain regime to avoid misleading projections."],
+    )
 
     # Model source
     model_version: str = Field(

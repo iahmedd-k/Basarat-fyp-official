@@ -92,6 +92,8 @@ async def get_shariah_screening(
             for field in ("data_as_of", "data_is_stale", "effective_from", "source_url",
                           "source_exception", "purification_rate_provisional")
         }
+        if not source_fields.get("source_exception"):
+            source_fields["source_exception"] = "None (Standard PSX KMI-30 screening)" 
         summary = (
             f"{sym_upper} is classified by the PSX KMI-30 screening effective {source_fields['effective_from'].date()}; financial ratios are as of {source_fields['data_as_of'].date()}."
             if screening.screening_method and screening.screening_method.startswith("PSX KMI-30 screening notice")

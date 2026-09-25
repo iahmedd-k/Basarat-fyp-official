@@ -199,6 +199,8 @@ class ShariahService:
 
         is_core_halal = not is_non_compliant and (screening.is_shariah_compliant if screening else True)
 
+        default_exemption = source_exception or "None (Fully compliant with PSX standard)"
+
         return [
             {
                 "name": "Core Business Permissibility",
@@ -206,6 +208,7 @@ class ShariahService:
                 "value": 1.0 if is_core_halal else 0.0,
                 "passed": is_core_halal,
                 "description": "Core business activities must be halal and free from prohibited elements.",
+                "exception": default_exemption,
             },
             {
                 "name": "Debt to Total Assets Ratio",
@@ -213,6 +216,7 @@ class ShariahService:
                 "value": None if debt_ratio is None else round(debt_ratio * 100, 2),
                 "passed": None if debt_ratio is None else debt_ratio < 0.37 and is_core_halal,
                 "description": "Total interest-bearing debt / Total Assets must be less than 37%.",
+                "exception": default_exemption,
             },
             {
                 "name": "Non-Compliant Investments Ratio",
@@ -220,7 +224,7 @@ class ShariahService:
                 "value": None if non_compliant_inv is None else round(non_compliant_inv * 100, 2),
                 "passed": None if non_compliant_inv is None or (source_exception and "investment" in source_exception.lower()) else non_compliant_inv < 0.33 and is_core_halal,
                 "description": "Interest-bearing deposits and non-compliant investments / Total Assets must be under 33%.",
-                "exception": source_exception if source_exception and "investment" in source_exception.lower() else None,
+                "exception": source_exception if (source_exception and "investment" in source_exception.lower()) else default_exemption,
             },
             {
                 "name": "Non-Permissible / Interest Income Ratio",
@@ -228,7 +232,7 @@ class ShariahService:
                 "value": None if interest_ratio is None else round(interest_ratio * 100, 2),
                 "passed": None if interest_ratio is None or has_ratio_exception else interest_ratio < 0.05 and is_core_halal,
                 "description": "Interest and non-permissible income / Gross Revenue must be under 5%.",
-                "exception": source_exception,
+                "exception": source_exception or default_exemption,
             },
             {
                 "name": "Illiquid Assets to Total Assets Ratio",
@@ -236,6 +240,7 @@ class ShariahService:
                 "value": None if illiquid_ratio is None else round(illiquid_ratio * 100, 2),
                 "passed": None if illiquid_ratio is None else illiquid_ratio >= 0.25 and is_core_halal,
                 "description": "Illiquid physical assets / Total Assets must be at least 25%.",
+                "exception": default_exemption,
             },
             {
                 "name": "Net Liquid Assets vs Market Price",
@@ -243,6 +248,7 @@ class ShariahService:
                 "value": nla,
                 "passed": None if nla is None or share_price is None else nla < share_price,
                 "description": "Net liquid assets per share must be less than the reference share price reported for the screening date.",
+                "exception": default_exemption,
             },
         ]
 
