@@ -632,6 +632,21 @@ class MarketService:
                 await cache_set(cache_key, rows, QUOTES_TTL_SECONDS)
                 await cache_set(fallback_key, rows, FALLBACK_TTL_SECONDS)
                 await cache_set("market:quotes:fetched_at", datetime.now(timezone.utc).isoformat(), FALLBACK_TTL_SECONDS)
+                # Recommendations and StockService read market snapshots via
+                # the synchronous Redis client. Mirror only this successful
+                # upstream fetch so both API paths observe the same live quote
+                # and freshness timestamp (never promote the stale fallback).
+                await asyncio.to_thread(cache_set_sync, cache_key, rows, QUOTES_TTL_SECONDS)
+                await asyncio.to_thread(cache_set_sync, fallback_key, rows, FALLBACK_TTL_SECONDS)
+                await asyncio.to_thread(
+                    cache_set_sync,
+                    "market:quotes:fetched_at",
+                    datetime.now(timezone.utc).isoformat(),
+                    FALLBACK_TTL_SECONDS,
+                )
+                freshness = await asyncio.to_thread(self.quote_freshness)
+                if freshness.get("is_stale"):
+                    log.error("Market quote Redis mirror is not visible to sync readers: %s", freshness)
                 log.info("Stored %d market quotes in centralized cache", len(rows))
                 return rows
 
