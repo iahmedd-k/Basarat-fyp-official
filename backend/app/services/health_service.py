@@ -1,3 +1,4 @@
+import asyncio
 import os
 import redis
 from sqlalchemy import text
@@ -47,12 +48,19 @@ class HealthService:
             return "down"
 
     async def check_health(self):
+        database_status, redis_status, worker_status = await asyncio.gather(
+            self._check_database(),
+            asyncio.to_thread(self._check_redis),
+            asyncio.to_thread(self._check_celery_worker),
+        )
         services = {
             "api": "ready",
-            "database": await self._check_database(),
-            "redis": self._check_redis(),
-            "celery_worker": self._check_celery_worker(),
-            "celery_beat": self._check_celery_beat(),
+            "database": database_status,
+            "redis": redis_status,
+            "celery_worker": worker_status,
+            # Beat scheduling shares the Redis dependency; do not ping Redis a
+            # second time and add another network timeout to readiness.
+            "celery_beat": redis_status if settings.USE_CELERY else "ready",
         }
         status = (
             "healthy"
