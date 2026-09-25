@@ -48,6 +48,8 @@ def _get_user_weights(user: User, defaults: dict) -> dict[str, float]:
 def _summarize(r: dict) -> str:
     """Summarize the decision using only components that affected the composite."""
     signal = r.get("signal", "hold").upper()
+    if r.get("signal_suppressed"):
+        return f"Hold: {r.get('suppression_reason') or 'signal suppressed because market data is not fresh'}"
     reasoning = r.get("reasoning") or {}
     effective = r.get("effective_weights") or {}
     source_names = {
@@ -117,16 +119,89 @@ def _market_data_freshness(data_as_of: str | None, *, today: date | None = None)
         return {"data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None}
 
 
-def _model_probabilities(rec: dict) -> dict[str, float] | None:
-    ml = (rec.get("reasoning") or {}).get("ml") or {}
-    values = {
-        "bullish": ml.get("prob_bullish"),
-        "bearish": ml.get("prob_bearish"),
-        "sideways": ml.get("prob_sideways"),
+def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
+    """Never expose an actionable direction or ATR levels for stale/undated prices."""
+    result = dict(rec)
+    freshness = _market_data_freshness(result.get("data_as_of"), today=today)
+    result.update(freshness)
+    result["signal_suppressed"] = freshness["data_freshness"] != "fresh"
+    result["suppression_reason"] = None
+    if result["signal_suppressed"]:
+        old_signal = str(result.get("signal", "hold")).upper()
+        age = freshness.get("data_age_trading_days")
+        age_text = f"{age} trading days old" if age is not None else "freshness is unknown"
+        result["signal"] = "hold"
+        result["confidence"] = 0.0
+        result["target_price"] = None
+        result["stop_loss"] = None
+        result["expected_range"] = None
+        result["upside_pct"] = None
+        result["downside_pct"] = None
+        result["risk_reward_ratio"] = None
+        reason = f"{old_signal} suppressed because market data is {age_text}"
+        result["suppression_reason"] = reason
+        result["decision_reason"] = f"{reason}; no trade direction or ATR levels are returned."
+        result["target_stop_reason"] = "Price levels are suppressed because market-data freshness could not be confirmed."
+    return result
+
+
+def _component_payload(rec: dict) -> dict:
+    reasoning = rec.get("reasoning") or {}
+    configured = _canonical_weights(rec.get("weights"))
+    effective = _canonical_weights(rec.get("effective_weights"))
+    signals = _canonical_signals(rec.get("signals"))
+    components = {}
+    for name in ("ml", "technical", "fundamental", "sentiment"):
+        source_reason = reasoning.get(name) or {}
+        status = source_reason.get("status")
+        if status not in {"available", "unavailable"}:
+            status = "available" if effective.get(name, 0) > 0 else "unavailable"
+        components[name] = {
+            "score": signals[name] if status == "available" else None,
+            "status": status,
+            "configured_weight": configured[name],
+            "effective_weight": effective[name],
+        }
+    return components
+
+
+def _market_data_payload(rec: dict) -> dict:
+    return {
+        "as_of": rec.get("data_as_of"),
+        "freshness": rec.get("data_freshness", "unknown"),
+        "age_calendar_days": rec.get("data_age_calendar_days"),
+        "age_trading_days": rec.get("data_age_trading_days"),
+        "current_price": rec.get("current_price"),
+        "currency": "PKR",
     }
-    if not any(value is not None for value in values.values()):
-        return None
-    return {key: float(value) for key, value in values.items() if value is not None}
+
+
+def _decision_payload(rec: dict) -> dict:
+    return {
+        "signal": str(rec.get("signal", "hold")).upper(),
+        "composite_score": round(float(rec.get("composite_score", 0) or 0), 3),
+        "confidence": round(float(rec.get("confidence", 0) or 0), 3),
+        "confidence_type": "heuristic_signal_strength",
+        "status": rec.get("status", "available"),
+        "horizon": "5 trading days",
+        "reason": _decision_reason(rec),
+        "suppressed": bool(rec.get("signal_suppressed", False)),
+        "suppression_reason": rec.get("suppression_reason"),
+    }
+
+
+def _risk_payload(rec: dict) -> dict:
+    return {
+        "target_price": rec.get("target_price"),
+        "stop_loss": rec.get("stop_loss"),
+        "expected_range": rec.get("expected_range"),
+        "atr_14": rec.get("atr_14"),
+        "upside_pct": rec.get("upside_pct"),
+        "downside_pct": rec.get("downside_pct"),
+        "risk_reward_ratio": rec.get("risk_reward_ratio"),
+        "method": rec.get("target_stop_method", "atr_band"),
+        "explanation": _target_stop_reason(rec),
+    }
 
 
 def _canonical_weights(weights: dict | None) -> dict[str, float]:
@@ -201,6 +276,8 @@ async def get_recommendations(
                 weights=weights,
             )
 
+        recommendations = [_apply_freshness_guard(r) for r in recommendations]
+
         if sector:
             recommendations = [
                 r for r in recommendations
@@ -215,35 +292,11 @@ async def get_recommendations(
                 symbol=r["symbol"],
                 name=r.get("name"),
                 sector=r.get("sector"),
-                signal=r["signal"].upper(),
-                status=r.get("status", "available"),
-                weights=r.get("weights", weights),
-                effective_weights=r.get("effective_weights", {}),
-                source_weights=_canonical_weights(r.get("weights", weights)),
-                effective_source_weights=_canonical_weights(r.get("effective_weights", {})),
-                data_as_of=r.get("data_as_of"),
-                **_market_data_freshness(r.get("data_as_of")),
-                horizon="5 trading days",
-                currency="PKR",
-                model_version=((r.get("reasoning") or {}).get("ml") or {}).get("model_version"),
-                confidence_type="heuristic_signal_strength",
-                model_probabilities=_model_probabilities(r),
-                probabilities_calibrated=bool(((r.get("reasoning") or {}).get("ml") or {}).get("probabilities_calibrated", False)),
-                confidence=round(r["confidence"], 3),
-                composite_score=round(r.get("composite_score", 0), 3),
-                signals=_canonical_signals(r.get("signals")),
-                reasoning=r.get("reasoning", {}),
-                current_price=r.get("current_price"),
-                target_price=r.get("target_price"),
-                stop_loss=r.get("stop_loss"),
-                expected_range=r.get("expected_range"),
-                target_stop_method=r.get("target_stop_method"),
-                target_stop_reason=_target_stop_reason(r),
-                upside_pct=r.get("upside_pct"),
-                downside_pct=r.get("downside_pct"),
-                risk_reward_ratio=r.get("risk_reward_ratio"),
+                decision=_decision_payload(r),
+                components=_component_payload(r),
+                market_data=_market_data_payload(r),
+                risk=_risk_payload(r),
                 summary=_summarize(r),
-                decision_reason=_decision_reason(r),
             )
             for r in recommendations
         ]
@@ -252,8 +305,6 @@ async def get_recommendations(
             count=len(items),
             total_count=total_count,
             generated_at=datetime.now(timezone.utc),
-            horizon="5 trading days",
-            currency="PKR",
             risk_profile=effective_risk,
             recommendations=items,
         )
@@ -275,11 +326,12 @@ async def get_engine_weights(
         from app.services.recommendation_service import DEFAULT_WEIGHTS
         user_w = _get_user_weights(user, DEFAULT_WEIGHTS)
         return EngineWeightsResponse(
-            gru_weight=user_w["gru"],
-            ml_weight=user_w["gru"],
-            technical_weight=user_w["technical"],
-            fundamental_weight=user_w["fundamental"],
-            sentiment_weight=user_w["sentiment"],
+            weights={
+                "ml": user_w["gru"],
+                "technical": user_w["technical"],
+                "fundamental": user_w["fundamental"],
+                "sentiment": user_w["sentiment"],
+            },
         )
     except Exception:
         log.exception("Failed to get engine weights")
@@ -305,11 +357,12 @@ async def set_engine_weights(
         }
         db.add(user)
         return EngineWeightsResponse(
-            gru_weight=data.gru_weight,
-            ml_weight=data.gru_weight,
-            technical_weight=data.technical_weight,
-            fundamental_weight=data.fundamental_weight,
-            sentiment_weight=data.sentiment_weight,
+            weights={
+                "ml": data.gru_weight,
+                "technical": data.technical_weight,
+                "fundamental": data.fundamental_weight,
+                "sentiment": data.sentiment_weight,
+            },
         )
     except Exception as exc:
         raise ServiceUnavailableError("Failed to set engine weights")
@@ -337,45 +390,18 @@ async def get_recommendation_detail(
             weights=engine.weights,
         )
 
-        reasoning = rec.get("reasoning", {})
-
-        signals = rec.get("signals") or {"ml": 0.0, "technical": 0.0, "fundamental": 0.0, "sentiment": 0.0}
+        rec = _apply_freshness_guard(rec)
 
         return RecommendationDetailResponse(
             symbol=symbol,
             name=rec.get("name"),
             sector=rec.get("sector"),
             generated_at=datetime.now(timezone.utc),
-            horizon="5 trading days",
-            currency="PKR",
-            model_version=((reasoning.get("ml") or {}).get("model_version")),
-            confidence_type="heuristic_signal_strength",
-            model_probabilities=_model_probabilities(rec),
-            probabilities_calibrated=bool((reasoning.get("ml") or {}).get("probabilities_calibrated", False)),
-            signal=rec["signal"].upper(),
-            confidence=round(rec["confidence"], 3),
-            composite_score=round(rec.get("composite_score", 0), 3),
-            signals=_canonical_signals(signals),
-            target_price=rec.get("target_price"),
-            stop_loss=rec.get("stop_loss"),
-            current_price=rec.get("current_price"),
-            atr_14=rec.get("atr_14"),
-            expected_range=rec.get("expected_range"),
-            upside_pct=rec.get("upside_pct"),
-            downside_pct=rec.get("downside_pct"),
-            risk_reward_ratio=rec.get("risk_reward_ratio"),
-            target_stop_method=rec.get("target_stop_method"),
-            target_stop_reason=_target_stop_reason(rec),
-            decision_reason=_decision_reason(rec),
+            decision=_decision_payload(rec),
+            components=_component_payload(rec),
+            market_data=_market_data_payload(rec),
+            risk=_risk_payload(rec),
             risk_profile=_get_user_risk_profile(user),
-            reasoning=reasoning,
-            weights=rec.get("weights", getattr(engine, "weights", DEFAULT_WEIGHTS)),
-            effective_weights=rec.get("effective_weights", {}),
-            source_weights=_canonical_weights(rec.get("weights", getattr(engine, "weights", DEFAULT_WEIGHTS))),
-            effective_source_weights=_canonical_weights(rec.get("effective_weights", {})),
-            status=rec.get("status", "available"),
-            data_as_of=rec.get("data_as_of"),
-            **_market_data_freshness(rec.get("data_as_of")),
             summary=_summarize(rec),
         )
 
@@ -405,37 +431,15 @@ async def get_target_stop(
             risk_tolerance=_get_user_risk_profile(user),
             weights=engine.weights,
         )
-
-        current = rec.get("current_price")
-        target = rec.get("target_price")
-        stop = rec.get("stop_loss")
-
-        upside = round((target - current) / current * 100, 1) if current and target else None
-        downside = round((stop - current) / current * 100, 1) if current and stop else None
-        risk = abs(current - stop) if current and stop else 0
-        reward = abs(target - current) if current and target else 0
-        risk_reward = round(reward / risk, 2) if risk > 0 and reward > 0 else None
+        rec = _apply_freshness_guard(rec)
 
         return TargetStopResponse(
             symbol=symbol,
             generated_at=datetime.now(timezone.utc),
-            data_as_of=rec.get("data_as_of"),
-            **_market_data_freshness(rec.get("data_as_of")),
-            horizon="5 trading days",
-            currency="PKR",
-            current_price=current,
-            target_price=target,
-            stop_loss=stop,
-            signal=rec.get("signal", "hold").upper(),
-            status=rec.get("status", "available"),
-            method=rec.get("target_stop_method", "atr_band"),
-            target_stop_reason=_target_stop_reason(rec),
-            atr_14=rec.get("atr_14"),
-            risk_tolerance=_get_user_risk_profile(user),
-            upside_pct=upside,
-            downside_pct=downside,
-            expected_range=rec.get("expected_range"),
-            risk_reward_ratio=risk_reward,
+            decision=_decision_payload(rec),
+            market_data=_market_data_payload(rec),
+            risk=_risk_payload(rec),
+            risk_profile=_get_user_risk_profile(user),
         )
 
     except Exception as exc:

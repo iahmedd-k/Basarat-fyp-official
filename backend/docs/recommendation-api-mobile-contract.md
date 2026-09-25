@@ -1,21 +1,17 @@
-# Recommendation API contract for mobile clients
+# Recommendation API response contract
 
-The authenticated recommendation endpoints return flat JSON suitable for Android rendering:
+Recommendation responses now group fields by purpose and omit raw per-indicator diagnostics:
 
-- `GET /api/v1/recommendations`: cards/list.
-- `GET /api/v1/recommendations/{symbol}`: detail and component explanation.
-- `GET /api/v1/recommendations/{symbol}/target-stop`: risk levels.
-- `GET` and `POST /api/v1/recommendations/engine-weights`: configured source weights. Defaults are ML 0.30, technical 0.25, fundamental 0.25, and FinBERT sentiment 0.20. `ml_weight` is the canonical Android field; legacy `gru_weight` remains accepted and returned for older clients. If both are sent, they must match. Older saved three-source preferences retain a zero sentiment weight until updated.
+- List and detail items use `decision`, `components`, `market_data`, and `risk` objects. Each component reports its score, availability, configured weight, and effective weight. Unavailable scores are `null`, not zero.
+- `GET /api/v1/recommendations/{symbol}/target-stop` returns the same grouped decision, market data, and risk objects.
+- `GET /api/v1/recommendations/engine-weights` returns `{"weights":{"ml":0.30,"technical":0.25,"fundamental":0.25,"sentiment":0.20}}` by default. POST accepts the legacy flat weight request (including `gru_weight`) and returns the grouped shape. Older saved three-source preferences retain a zero sentiment weight until updated.
 
 ## Fields to display
 
-- Show `signal` prominently and `decision_reason` below it.
-- Label `confidence` as **signal strength**, because `confidence_type` is `heuristic_signal_strength`; it is not a probability of success.
-- Show `horizon`, `data_as_of`, and `data_freshness` beside the signal. `data_freshness` is `stale` after two weekdays (weekends excluded; exchange holidays are not known), and the response includes calendar/trading-day ages. `generated_at` is when the API assembled the response, not when market data was last updated. Stale market data is also called out in `summary`.
-- Prices and ATR levels are in `currency` (PKR). Use `target_stop_method` and `target_stop_reason` to explain ATR levels. A HOLD has no directional target/stop; its `expected_range` is a volatility envelope, not a price forecast.
-- Render `signals`, `source_weights`, and `effective_source_weights` for ML, technical, fundamental, and FinBERT sentiment. Sentiment is omitted from the composite when no scored articles are available or its aggregate is older than seven days. Legacy `weights` uses `gru` for the ML component; mobile clients should prefer the canonical `source_*` maps.
-- `model_probabilities` are fractions from 0 to 1. Only display them as calibrated probabilities when `probabilities_calibrated` is true; it is false for the current model.
-- Treat `status` (`available`, `partial`, or `insufficient_data`) as a visible data-quality indicator. Do not infer freshness from `generated_at`; use `data_as_of`.
-- In list responses, `count` is the number returned after `limit`; `total_count` is the number matching filters before the limit.
+- Read the actionable direction and reason from `decision`; `confidence` is heuristic signal strength, not a probability.
+- Read component scores and availability from `components`. Missing sources have `score: null`; the service reweights the available components.
+- Read `market_data.freshness` and its age fields before displaying a recommendation. Data more than two weekdays old, or with unknown freshness, forces HOLD, sets confidence to zero, and suppresses target/stop/range levels. The response marks this with `decision.suppressed` and `decision.suppression_reason`.
+- Prices and ATR levels are in `market_data.currency` (PKR). `risk` contains levels and their explanation; these are volatility estimates, not forecasts or execution guarantees.
+- `generated_at` is when the API assembled the response, not when market data was last updated. In list responses, `count` is returned after `limit`; `total_count` is the number matching filters before the limit.
 
 There is currently no Android application source tree in this repository, so this documents the mobile-facing API contract; an Android UI must bind its views to these response fields in the Android project.
