@@ -88,8 +88,13 @@ def _get_production_model():
             if int(getattr(model, "n_features_in_", -1)) != len(features):
                 raise ValueError("model feature count does not match its feature manifest")
             mapping = manifest.get("label_mapping") or manifest.get("class_mapping")
+            if not mapping and isinstance(manifest.get("classes"), list):
+                mapping = {
+                    str(label).strip().lower(): class_id
+                    for class_id, label in enumerate(manifest["classes"])
+                }
             if not mapping:
-                raise ValueError("production model manifest requires an explicit label mapping")
+                raise ValueError("production model manifest requires class names or a label mapping")
             mapped_classes = {int(class_id) for class_id in mapping.values()}
             fitted_classes = {int(class_id) for class_id in model.classes_}
             if mapped_classes != fitted_classes:
@@ -166,11 +171,16 @@ class RecommendationEngine:
             if len(fitted_classes) != len(probabilities) or not mapping:
                 raise ValueError("model classes do not match the saved class mapping")
 
-            class_probs = {
-                label: float(probabilities[fitted_classes.index(class_id)])
-                for label, class_id in mapping.items()
-                if class_id in fitted_classes
+            label_aliases = {
+                "down": "bearish", "negative": "bearish", "sell": "bearish", "avoid": "bearish",
+                "underperform": "bearish", "up": "bullish", "positive": "bullish", "buy": "bullish",
+                "outperform": "bullish", "neutral": "sideways", "flat": "sideways",
             }
+            class_probs = {}
+            for label, class_id in mapping.items():
+                if class_id in fitted_classes:
+                    normalized_label = label_aliases.get(label, label)
+                    class_probs[normalized_label] = float(probabilities[fitted_classes.index(class_id)])
             p_bull = class_probs.get("bullish", class_probs.get("buy", class_probs.get("outperform")))
             p_bear = class_probs.get("bearish", class_probs.get("avoid", class_probs.get("underperform")))
             if p_bull is None or p_bear is None:

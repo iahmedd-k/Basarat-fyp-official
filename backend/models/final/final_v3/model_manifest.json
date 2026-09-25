@@ -3,6 +3,7 @@
   "deployed_at": "2026-09-24T19:38:00+00:00",
   "horizon": "5D",
   "classes": ["down", "up"],
+  "label_mapping": {"down": 0, "up": 1},
   "models": {
     "xgboost": {
       "version": "xgb_v4_event_fundamentals_directional",

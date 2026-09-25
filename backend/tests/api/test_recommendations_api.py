@@ -5,7 +5,7 @@ from datetime import date
 from httpx import AsyncClient
 from unittest.mock import patch
 
-from app.api.v1.recommendations import _apply_freshness_guard, _market_data_freshness, _summarize
+from app.api.v1.recommendations import _apply_freshness_guard, _component_payload, _market_data_freshness, _summarize
 
 
 def test_summary_does_not_mistake_unavailable_ml_for_decision_reason():
@@ -73,6 +73,25 @@ def test_stale_data_does_not_claim_an_existing_hold_was_suppressed():
     assert rec["expected_range"] is None
     assert "HOLD suppressed" not in _summarize(rec)
     assert "market data is stale (5 trading days old)" in _summarize(rec)
+
+
+def test_unavailable_component_explains_why_score_is_null():
+    components = _component_payload({
+        "signals": {"ml": 0.0},
+        "weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
+        "effective_weights": {"technical": 1.0},
+        "reasoning": {
+            "ml": {"status": "unavailable", "reason": "production model or metadata unavailable"},
+            "technical": {"status": "available"},
+            "fundamental": {"status": "unavailable", "reason": "no fundamental data available"},
+            "sentiment": {"status": "unavailable", "reason": "no scored news articles available"},
+        },
+    })
+    assert components["ml"]["score"] is None
+    assert components["ml"]["availability_reason"] == "production model or metadata unavailable"
+    assert components["fundamental"]["availability_reason"] == "no fundamental data available"
+    assert components["sentiment"]["availability_reason"] == "no scored news articles available"
+    assert components["technical"]["availability_reason"] is None
 
 
 @pytest.mark.api

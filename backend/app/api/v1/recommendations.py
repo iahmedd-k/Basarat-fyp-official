@@ -162,6 +162,7 @@ def _component_payload(rec: dict) -> dict:
         components[name] = {
             "score": signals[name] if status == "available" else None,
             "status": status,
+            "availability_reason": source_reason.get("reason") if status == "unavailable" else None,
             "configured_weight": configured[name],
             "effective_weight": effective[name],
         }
