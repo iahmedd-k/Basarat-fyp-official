@@ -721,7 +721,7 @@ class RecommendationEngine:
             json.dumps(requested_weights, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:12]
         sector_key = (sector_filter or "all").strip().lower()
-        cache_key = f"rec:all:v2:{risk_tolerance}:{sector_key}:{weight_key}"
+        cache_key = f"rec:all:v3:{risk_tolerance}:{sector_key}:{weight_key}"
         cached = cache_get_sync(cache_key)
         if cached:
             return cached
@@ -779,7 +779,7 @@ def get_cached_recommendations() -> list[dict] | None:
     """Load the shared default-profile recommendation snapshot from Redis."""
     try:
         from app.core.redis import cache_get_sync
-        data = cache_get_sync("recommendations:default:v3")
+        data = cache_get_sync("recommendations:default:v4")
         if not isinstance(data, dict):
             return None
         cached_at = datetime.fromisoformat(data.get("timestamp", "2000-01-01"))
@@ -792,7 +792,7 @@ def get_cached_recommendations() -> list[dict] | None:
         recommendations = data.get("recommendations", [])
         # Reject older cache files created before the API had real component
         # scores and composite scores; otherwise clients would see misleading zeros.
-        if data.get("cache_version") != 3:
+        if data.get("cache_version") != 4:
             return None
         if any(
             not isinstance(item, dict)
@@ -809,10 +809,10 @@ def save_recommendations_cache(recommendations: list[dict]) -> None:
     """Publish recommendations for API containers through shared Redis."""
     data = {
         "timestamp": datetime.utcnow().isoformat(),
-        "cache_version": 3,
+        "cache_version": 4,
         "count": len(recommendations),
         "recommendations": recommendations,
     }
     from app.core.redis import cache_set_sync
-    cache_set_sync("recommendations:default:v3", data, 4 * 3600)
+    cache_set_sync("recommendations:default:v4", data, 4 * 3600)
     log.info("Saved %d recommendations to cache", len(recommendations))
