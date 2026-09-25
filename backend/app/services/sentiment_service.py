@@ -200,7 +200,13 @@ _NEGATIVE_WORDS = {
     "bankruptcy", "fraud", "negative", "recession", "slump", "plunge", "down",
 }
 
-_NEGATION_WORDS = {"not", "no", "never", "failed", "cannot", "neither", "hardly", "barely"}
+_NEGATION_WORDS = {
+    "not", "no", "never", "failed", "cannot", "neither", "hardly", "barely",
+    "without", "lack", "lacks", "lacking", "didn't", "didnt", "don't", "dont",
+    "doesn't", "doesnt", "wasn't", "wasnt", "weren't", "werent", "won't", "wont",
+}
+
+_CLAUSE_BREAKERS = {".", ",", ";", "!", "?", "but", "however", "although", "yet", "except"}
 
 
 def _heuristic_score(text: str) -> tuple[float, float, float, float, str]:
@@ -211,30 +217,64 @@ def _heuristic_score(text: str) -> tuple[float, float, float, float, str]:
     """
     text_lower = text.lower()
 
-    # Step 1: Check multi-word financial phrases
-    pos_phrase_count = sum(1 for p in _POSITIVE_PHRASES if p in text_lower)
-    neg_phrase_count = sum(1 for p in _NEGATIVE_PHRASES if p in text_lower)
+    # Step 1: Check multi-word financial phrases with negation awareness
+    pos_phrase_count = 0
+    neg_phrase_count = 0
 
-    # Step 2: Tokenize and apply negation window
-    tokens = [w.strip(".,;:!?\"'()[]{}") for w in text_lower.split() if w.strip(".,;:!?\"'()[]{}")]
+    for phrase in _POSITIVE_PHRASES:
+        idx = 0
+        while True:
+            idx = text_lower.find(phrase, idx)
+            if idx == -1:
+                break
+            preceding = text_lower[max(0, idx - 30):idx].split()
+            if any(nw in preceding for nw in _NEGATION_WORDS):
+                neg_phrase_count += 1
+            else:
+                pos_phrase_count += 1
+            idx += len(phrase)
+
+    for phrase in _NEGATIVE_PHRASES:
+        idx = 0
+        while True:
+            idx = text_lower.find(phrase, idx)
+            if idx == -1:
+                break
+            preceding = text_lower[max(0, idx - 30):idx].split()
+            if any(nw in preceding for nw in _NEGATION_WORDS):
+                pos_phrase_count += 1
+            else:
+                neg_phrase_count += 1
+            idx += len(phrase)
+
+    # Step 2: Tokenize and apply clause-aware negation window
+    raw_tokens = text_lower.split()
     pos_word_count = 0
     neg_word_count = 0
 
     negate = False
     negation_window = 0
 
-    for token in tokens:
-        if token in _NEGATION_WORDS:
+    for raw_token in raw_tokens:
+        clean_token = raw_token.strip(".,;:!?\"'()[]{}")
+        has_punctuation = any(p in raw_token for p in ".,;:!?")
+
+        if clean_token in _CLAUSE_BREAKERS or has_punctuation:
+            if clean_token not in _NEGATION_WORDS:
+                negate = False
+                negation_window = 0
+
+        if clean_token in _NEGATION_WORDS:
             negate = True
-            negation_window = 3
+            negation_window = 5
             continue
 
-        if token in _POSITIVE_WORDS:
+        if clean_token in _POSITIVE_WORDS:
             if negate:
                 neg_word_count += 1
             else:
                 pos_word_count += 1
-        elif token in _NEGATIVE_WORDS:
+        elif clean_token in _NEGATIVE_WORDS:
             if negate:
                 pos_word_count += 1
             else:

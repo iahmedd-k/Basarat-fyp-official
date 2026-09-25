@@ -27,73 +27,37 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ── Static routes MUST be declared before parameterized /{symbol} routes ──
+
 @router.get(
-    "/sentiment/{symbol}",
-    response_model=SentimentResponse,
-    summary="Get sentiment analysis for a stock",
+    "/sentiment/market-overview",
+    response_model=MarketSentimentResponse,
+    summary="Get overall market sentiment",
 )
 @limiter.limit("60/minute")
-async def get_sentiment(
+async def get_market_sentiment(
     request: Request,
-    symbol: str,
-    days: int = Query(7, ge=1, le=90, description="Rolling window in days"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        symbol = symbol.upper()
-
         from app.services.sentiment_service import (
-            compute_stock_sentiment,
-            get_cached_sentiment,
+            compute_market_sentiment,
+            get_cached_market_sentiment,
         )
 
-        # Sentiment is a daily snapshot; refresh it at most once per day on
-        # demand rather than on every profile open.
-        cached = get_cached_sentiment(symbol)
+        # Try cache first
+        cached = get_cached_market_sentiment()
         if cached is not None:
-            try:
-                updated = datetime.fromisoformat(str(cached.get("updated_at")).replace("Z", "+00:00"))
-                if updated.tzinfo is None:
-                    updated = updated.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) - updated.astimezone(timezone.utc) > timedelta(hours=24):
-                    cached = None
-            except (TypeError, ValueError):
-                cached = None
-        if cached is not None:
-            return SentimentResponse(
-                symbol=cached["symbol"],
-                score=cached["score"],
-                label=cached["label"],
-                confidence=cached.get("confidence"),
-                positive_ratio=cached.get("positive_ratio"),
-                neutral_ratio=cached.get("neutral_ratio"),
-                negative_ratio=cached.get("negative_ratio"),
-                article_count=cached["article_count"],
-                trend=cached["trend"],
-                daily_scores=cached.get("daily_scores"),
-                updated_at=cached.get("updated_at"),
-            )
+            return MarketSentimentResponse(**cached)
 
         # Compute live
-        result = await compute_stock_sentiment(db, symbol, days=days)
-        return SentimentResponse(
-            symbol=result["symbol"],
-            score=result["score"],
-            label=result["label"],
-            confidence=result.get("confidence"),
-            positive_ratio=result.get("positive_ratio"),
-            neutral_ratio=result.get("neutral_ratio"),
-            negative_ratio=result.get("negative_ratio"),
-            article_count=result["article_count"],
-            trend=result["trend"],
-            daily_scores=result.get("daily_scores"),
-            updated_at=result.get("updated_at"),
-        )
+        result = await compute_market_sentiment(db)
+        return MarketSentimentResponse(**result)
 
     except Exception as exc:
-        log.exception("Sentiment fetch failed for %s", symbol)
-        raise ServiceUnavailableError(f"Failed to fetch sentiment: {exc}")
+        log.exception("Market sentiment fetch failed")
+        raise ServiceUnavailableError(f"Failed to fetch market sentiment: {exc}")
 
 
 @router.get(
@@ -167,31 +131,69 @@ async def get_sentiment_news(
 
 
 @router.get(
-    "/sentiment/market-overview",
-    response_model=MarketSentimentResponse,
-    summary="Get overall market sentiment",
+    "/sentiment/{symbol}",
+    response_model=SentimentResponse,
+    summary="Get sentiment analysis for a stock",
 )
 @limiter.limit("60/minute")
-async def get_market_sentiment(
+async def get_sentiment(
     request: Request,
+    symbol: str,
+    days: int = Query(7, ge=1, le=90, description="Rolling window in days"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        symbol = symbol.upper()
+
         from app.services.sentiment_service import (
-            compute_market_sentiment,
-            get_cached_market_sentiment,
+            compute_stock_sentiment,
+            get_cached_sentiment,
         )
 
-        # Try cache first
-        cached = get_cached_market_sentiment()
+        # Sentiment is a daily snapshot; refresh it at most once per day on
+        # demand rather than on every profile open.
+        cached = get_cached_sentiment(symbol)
         if cached is not None:
-            return MarketSentimentResponse(**cached)
+            try:
+                updated = datetime.fromisoformat(str(cached.get("updated_at")).replace("Z", "+00:00"))
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - updated.astimezone(timezone.utc) > timedelta(hours=24):
+                    cached = None
+            except (TypeError, ValueError):
+                cached = None
+        if cached is not None:
+            return SentimentResponse(
+                symbol=cached["symbol"],
+                score=cached["score"],
+                label=cached["label"],
+                confidence=cached.get("confidence"),
+                positive_ratio=cached.get("positive_ratio"),
+                neutral_ratio=cached.get("neutral_ratio"),
+                negative_ratio=cached.get("negative_ratio"),
+                article_count=cached["article_count"],
+                trend=cached["trend"],
+                daily_scores=cached.get("daily_scores"),
+                updated_at=cached.get("updated_at"),
+            )
 
         # Compute live
-        result = await compute_market_sentiment(db)
-        return MarketSentimentResponse(**result)
+        result = await compute_stock_sentiment(db, symbol, days=days)
+        return SentimentResponse(
+            symbol=result["symbol"],
+            score=result["score"],
+            label=result["label"],
+            confidence=result.get("confidence"),
+            positive_ratio=result.get("positive_ratio"),
+            neutral_ratio=result.get("neutral_ratio"),
+            negative_ratio=result.get("negative_ratio"),
+            article_count=result["article_count"],
+            trend=result["trend"],
+            daily_scores=result.get("daily_scores"),
+            updated_at=result.get("updated_at"),
+        )
 
     except Exception as exc:
-        log.exception("Market sentiment fetch failed")
-        raise ServiceUnavailableError(f"Failed to fetch market sentiment: {exc}")
+        log.exception("Sentiment fetch failed for %s", symbol)
+        raise ServiceUnavailableError(f"Failed to fetch sentiment: {exc}")
