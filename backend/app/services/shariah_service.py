@@ -259,17 +259,9 @@ class ShariahService:
         return amount, effective_rate
 
     async def get_kmi30_constituents(self) -> list[dict]:
-        """Merge PSX's dated authoritative roster with fresh market quotes when available."""
-        market_service = MarketService()
-        try:
-            constituents = await market_service.get_index_constituents("KMI30")
-            if constituents and len(constituents) > 0:
-                market_rows = {str(c.get("symbol", "")).upper(): c for c in constituents if c.get("symbol")}
-                return [self._kmi_constituent(symbol, row, market_rows.get(symbol))
-                        for symbol, row in PSX_KMI30_COMPANIES.items()]
-        except Exception as e:
-            log.warning("MarketService.get_index_constituents(KMI30) unavailable: %s", e)
-        return [self._kmi_constituent(symbol, row, None) for symbol, row in PSX_KMI30_COMPANIES.items()]
+        """Return PSX's dated roster without coupling it to live market/cache availability."""
+        return [self._kmi_constituent(symbol, row, None)
+                for symbol, row in PSX_KMI30_COMPANIES.items()]
 
     @staticmethod
     def _kmi_constituent(symbol: str, row: dict, market_row: dict | None) -> dict:
@@ -288,3 +280,8 @@ class ShariahService:
     @staticmethod
     def market_constituents_freshness() -> dict:
         return MarketService.constituents_freshness("KMI30")
+
+    @staticmethod
+    def screening_snapshot_freshness() -> dict:
+        fields = _screening_source_fields(next(iter(PSX_KMI30_COMPANIES.values())))
+        return {key: fields[key] for key in ("data_as_of", "data_is_stale", "effective_from", "source_url")}

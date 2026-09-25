@@ -38,13 +38,14 @@ async def get_kmi30_shariah(
         constituents = await service.get_kmi30_constituents()
         if not constituents:
             raise ServiceUnavailableError("KMI-30 constituent data is temporarily unavailable.")
+        snapshot = service.screening_snapshot_freshness()
         return ShariahKMI30Response(
             index="KMI-30",
             total_constituents=len(constituents),
             as_of=f"{PSX_KMI30_SCREENING['accounts_as_of']}T00:00:00+00:00",
-            is_stale=service.market_constituents_freshness().get("is_stale", True),
-            effective_from=f"{PSX_KMI30_SCREENING['effective_from']}T00:00:00+00:00",
-            source_url=PSX_KMI30_SCREENING["source_url"],
+            is_stale=snapshot["data_is_stale"],
+            effective_from=snapshot["effective_from"],
+            source_url=snapshot["source_url"],
             constituents=constituents,
         )
     except Exception:
