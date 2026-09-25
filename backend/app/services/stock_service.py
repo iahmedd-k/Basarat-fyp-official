@@ -311,7 +311,7 @@ class StockService:
         cache_key = f"fund:{symbol}"
         # v2 bypasses legacy partial payloads cached before all source fields
         # were exposed by the route.
-        shared_key = f"stock:raw_fundamentals:v3:{symbol}"
+        shared_key = f"stock:raw_fundamentals:v4:{symbol}"
         cached_at = _cache_ttl.get(cache_key, 0.0)
         if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
             return _cache[cache_key]
@@ -596,7 +596,7 @@ class StockService:
     @staticmethod
     def _company_name(symbol: str) -> str:
         """Return the provider company name when available, falling back to ticker."""
-        info_key = f"stock:ticker_info:v3:{symbol}"
+        info_key = f"stock:ticker_info:v4:{symbol}"
         info = cache_get_sync(info_key)
         if isinstance(info, dict):
             name = info.get("company_name") or info.get("name")
@@ -955,8 +955,8 @@ class StockService:
 
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
-        # v10 returns the normalized company-page tables and report index.
-        cache_key = f"fund:v10:{symbol}"
+        # v11 rejects empty company-page parses and reuses the toolkit fallback.
+        cache_key = f"fund:v11:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
@@ -966,12 +966,26 @@ class StockService:
         psx_table_data = get_psx_company_table_data(symbol)
         div = self._get_dividend_frame(symbol)
 
-        info_key = f"stock:ticker_info:v3:{symbol}"
-        info_dict = psx_table_data.get("source_info") or {}
-        if isinstance(info_dict, dict) and info_dict:
+        info_key = f"stock:ticker_info:v4:{symbol}"
+        page_info = psx_table_data.get("source_info") or {}
+
+        def has_source_values(value):
+            if isinstance(value, dict):
+                return any(has_source_values(item) for item in value.values())
+            if isinstance(value, (list, tuple)):
+                return any(has_source_values(item) for item in value)
+            return value is not None and bool(str(value).strip())
+
+        # An HTTP 200 page can still be an empty/challenge response. Only
+        # trust the direct page parse if it contains actual company fields.
+        info_dict = page_info if isinstance(page_info, dict) and has_source_values({
+            key: value for key, value in page_info.items()
+            if key not in {"symbol", "name", "company_name"}
+        }) else {}
+        if info_dict:
             info_dict["sector"] = self._sector_of(symbol) or info_dict.get("sector")
             cache_set_sync(info_key, info_dict, FUND_TTL_SECONDS)
-            cache_set_sync(f"stock:raw_fundamentals:v3:{symbol}", info_dict, FUND_TTL_SECONDS)
+            cache_set_sync(f"stock:raw_fundamentals:v4:{symbol}", info_dict, FUND_TTL_SECONDS)
             _cache[f"fund:{symbol}"] = (info_dict, _now())
             _cache_ttl[f"fund:{symbol}"] = _now()
         else:
@@ -991,6 +1005,13 @@ class StockService:
                         cache_set_sync(info_key, info_dict, info_ttl)
                 except Exception as exc:
                     log.warning("PSX ticker info fetch failed for %s: %s", symbol, exc)
+
+            if isinstance(info_dict, dict) and info_dict:
+                # Reuse the existing toolkit scrape below instead of making a
+                # second request for the same company fundamentals.
+                cache_set_sync(f"stock:raw_fundamentals:v4:{symbol}", info_dict, FUND_TTL_SECONDS)
+                _cache[f"fund:{symbol}"] = (info_dict, _now())
+                _cache_ttl[f"fund:{symbol}"] = _now()
 
         # Populate _fund_metric from the same page payload instead of fetching
         # that company page a second time through the toolkit.

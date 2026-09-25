@@ -24,8 +24,10 @@ _FAILURE_TTL = 60 * 60
 _BASE = "https://dps.psx.com.pk"
 _FINANCIALS_BASE = "https://financials.psx.com.pk/"
 _HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; BasaratEducationalResearch/1.0)",
-    "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
 }
 _local_cache: dict[str, tuple[object, float]] = {}
 _locks: dict[str, threading.Lock] = {}
@@ -218,13 +220,23 @@ def _fetch_company_tables(symbol: str) -> dict:
         soup = BeautifulSoup(response.text, "html.parser")
         financial_tables = soup.select("#financials table")
         ratio_tables = soup.select("#ratios table")
-        return {
+        payload = {
             "source_url": str(response.url),
             "source_info": _page_source_info(soup, symbol),
             "financials_annual": _parse_table(financial_tables[0]) if financial_tables else [],
             "financials_quarterly": _parse_table(financial_tables[1]) if len(financial_tables) > 1 else [],
             "ratio_history": _parse_table(ratio_tables[0]) if ratio_tables else [],
         }
+        info = payload["source_info"]
+        profile = info.get("Profile") or {}
+        equity = info.get("Equity Profile") or {}
+        has_profile = any(value not in (None, "", [], {}) for value in profile.values())
+        has_equity = any(value not in (None, "", [], {}) for value in equity.values())
+        has_table_data = any(payload[key] for key in ("financials_annual", "financials_quarterly", "ratio_history"))
+        if not (has_profile or has_equity or has_table_data):
+            log.warning("PSX company page returned no parseable company data for %s", symbol)
+            return {}
+        return payload
     except Exception as exc:
         log.warning("PSX company tables fetch failed for %s: %s", symbol, exc)
         return {}
@@ -278,6 +290,6 @@ def _fetch_financial_reports(symbol: str) -> dict:
 def get_psx_company_table_data(symbol: str) -> dict:
     """Return normalized company-page statements, ratio history, and report links."""
     symbol = str(symbol).strip().upper()
-    tables = _cached_fetch(f"psx:company-tables:v2:{symbol}", lambda: _fetch_company_tables(symbol))
+    tables = _cached_fetch(f"psx:company-tables:v3:{symbol}", lambda: _fetch_company_tables(symbol))
     reports = _cached_fetch(f"psx:financial-report-index:v2:{symbol}", lambda: _fetch_financial_reports(symbol))
     return {**tables, **reports}
