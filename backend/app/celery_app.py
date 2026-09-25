@@ -70,16 +70,8 @@ celery.conf.update(
             "kwargs": {"refresh_reference": True},
             "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
         },
-        # ── Publish recommendations after daily sentiment aggregation ──
-        "refresh-recommendations": {
-            "task": "app.tasks.recommendation_cache.refresh_recommendations",
-            "schedule": crontab(hour=19, minute=30, day_of_week="1-5"),
-        },
-        # ── FinBERT: score the full active stock universe after news ingestion ──
-        "daily-sentiment-aggregation": {
-            "task": "app.tasks.sentiment_tasks.aggregate_sentiment",
-            "schedule": crontab(hour=19, minute=0, day_of_week="1-5"),  # after the trading/news session
-        },
+        # Sentiment and recommendation publication run as dependent final
+        # stages of daily-workflow, after OHLCV/features/forecast finish.
         # ── News ingestion: every 30 min on the clock, task gates on market hours ──
         "news-ingestion-market-aware": {
             "task": "app.tasks.scrape_news.run",

@@ -439,14 +439,34 @@ def run_daily_pipeline():
     """
     log.info("[DAILY] Starting full daily pipeline")
 
+    # Gate before dispatching the chain. Returning "skipped" from the first
+    # chained task would still allow Celery to continue with stale downstream
+    # features, sentiment and recommendation publication.
+    import asyncio
+    from zoneinfo import ZoneInfo
+    now_pkt = datetime.now(ZoneInfo("Asia/Karachi"))
+    if now_pkt.weekday() >= 5:
+        return {"status": "skipped", "reason": "weekend"}
+    try:
+        from app.services.news_pipeline.market_schedule import is_holiday
+        if asyncio.run(is_holiday()):
+            return {"status": "skipped", "reason": "exchange_holiday"}
+    except Exception as exc:
+        log.warning("Could not check holiday calendar; continuing daily pipeline: %s", exc)
+
     # These stages are independent tasks in a serial pipeline. Immutable
     # signatures prevent Celery from injecting each prior task's result as a
     # positional argument into the next bound task (which accepts no such arg).
+    from app.tasks.sentiment_tasks import aggregate_sentiment_task
+    from app.tasks.recommendation_cache import refresh_recommendations_task
+
     workflow = chain(
         update_market_data_task.si(),
         generate_features_task.si(),
         generate_predictions_task.si(),
         evaluate_pending_predictions_task.si(),
+        aggregate_sentiment_task.si(),
+        refresh_recommendations_task.si(),
     )
     result = workflow.apply_async()
 
