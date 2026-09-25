@@ -48,6 +48,7 @@ class ShariahPurificationResponse(BaseModel):
     purification_rate: float
     notes: str | None = None
     data_as_of: datetime | None = None
+    data_is_stale: bool | None = None
     source_url: str | None = None
     rate_is_provisional: bool = False
 

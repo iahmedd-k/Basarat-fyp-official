@@ -204,6 +204,7 @@ async def get_shariah_purification(
             purification_rate=purification_rate,
             notes=notes,
             data_as_of=getattr(screening, "data_as_of", None),
+            data_is_stale=getattr(screening, "data_is_stale", None),
             source_url=getattr(screening, "source_url", None),
             rate_is_provisional=is_provisional,
         )

@@ -62,6 +62,7 @@ def test_shariah_endpoints():
         purification_data = purification.json()
         assert purification_data["purification_rate"] == 0.0662
         assert purification_data["purification_amount"] == 993.0
+        assert purification_data["data_is_stale"] is True
         assert purification_data["rate_is_provisional"] is True
 
         unavailable_rate = client.get(

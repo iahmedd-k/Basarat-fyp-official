@@ -129,6 +129,7 @@ class TestShariahPurification:
         assert data["purification_rate"] == 0.0662
         assert data["purification_amount"] == 993.0
         assert data["data_as_of"].startswith("2025-12-31")
+        assert data["data_is_stale"] is True
         assert data["source_url"].startswith("https://dps.psx.com.pk/")
         assert data["rate_is_provisional"] is True
 
