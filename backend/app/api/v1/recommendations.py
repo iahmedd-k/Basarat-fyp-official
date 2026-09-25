@@ -45,6 +45,28 @@ def _get_user_weights(user: User, defaults: dict) -> dict[str, float]:
         return defaults.copy()
 
 
+async def _load_recommendation_sentiment(db: AsyncSession, symbol: str) -> dict | None:
+    """Reuse the sentiment API's cache/FinBERT aggregation service for detail routes."""
+    from app.services.sentiment_service import compute_stock_sentiment, get_cached_sentiment
+
+    cached = get_cached_sentiment(symbol)
+    if cached is not None:
+        updated_at = cached.get("updated_at")
+        try:
+            updated = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - updated.astimezone(timezone.utc) <= timedelta(days=7):
+                return cached
+        except (TypeError, ValueError):
+            pass
+    try:
+        return await compute_stock_sentiment(db, symbol, days=7)
+    except Exception as exc:
+        log.warning("FinBERT sentiment unavailable for recommendation %s: %s", symbol, exc)
+        return {"status": "unavailable", "reason": f"FinBERT/news sentiment service failed: {exc}"}
+
+
 def _summarize(r: dict) -> str:
     """Summarize the decision using only components that affected the composite."""
     signal = r.get("signal", "hold").upper()
@@ -92,7 +114,7 @@ def _summarize(r: dict) -> str:
         summary += f"; {', '.join(unavailable)} unavailable"
     freshness = _market_data_freshness(r.get("data_as_of"))
     if freshness["data_freshness"] == "stale":
-        summary += f"; market data is stale ({freshness['data_age_trading_days']} trading days old)"
+        summary += f"; model/indicator analysis is stale ({freshness['data_age_trading_days']} trading days old)"
     return summary
 
 
@@ -140,11 +162,11 @@ def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
         result["downside_pct"] = None
         result["risk_reward_ratio"] = None
         if result["signal_suppressed"]:
-            reason = f"{original_signal} suppressed because market data is {age_text}"
+            reason = f"{original_signal} suppressed because model/indicator inputs are {age_text}"
             result["signal"] = "hold"
             result["suppression_reason"] = reason
             result["decision_reason"] = f"{reason}; no trade direction or ATR levels are returned."
-        result["target_stop_reason"] = "Price levels are suppressed because market-data freshness could not be confirmed."
+        result["target_stop_reason"] = "Price levels are suppressed because the model/indicator inputs are stale or undated."
     return result
 
 
@@ -165,16 +187,29 @@ def _component_payload(rec: dict) -> dict:
             "availability_reason": source_reason.get("reason") if status == "unavailable" else None,
             "configured_weight": configured[name],
             "effective_weight": effective[name],
+            "details": {
+                key: value for key, value in source_reason.items()
+                if key not in {"status", "reason"}
+            },
         }
     return components
 
 
 def _market_data_payload(rec: dict) -> dict:
+    quote_as_of = rec.get("quote_as_of")
+    quote_freshness = _market_data_freshness(quote_as_of or rec.get("data_as_of"))
+    if rec.get("quote_is_stale"):
+        quote_freshness["data_freshness"] = "stale"
+    analysis_freshness = _market_data_freshness(rec.get("data_as_of"))
     return {
-        "as_of": rec.get("data_as_of"),
-        "freshness": rec.get("data_freshness", "unknown"),
-        "age_calendar_days": rec.get("data_age_calendar_days"),
-        "age_trading_days": rec.get("data_age_trading_days"),
+        "as_of": quote_as_of or rec.get("data_as_of"),
+        "freshness": quote_freshness["data_freshness"],
+        "age_calendar_days": quote_freshness["data_age_calendar_days"],
+        "age_trading_days": quote_freshness["data_age_trading_days"],
+        "analysis_as_of": rec.get("data_as_of"),
+        "analysis_freshness": analysis_freshness["data_freshness"],
+        "analysis_age_calendar_days": analysis_freshness["data_age_calendar_days"],
+        "analysis_age_trading_days": analysis_freshness["data_age_trading_days"],
         "current_price": rec.get("current_price"),
         "currency": "PKR",
     }
@@ -262,23 +297,20 @@ async def get_recommendations(
     user: User = Depends(get_current_user),
 ):
     try:
-        from app.services.recommendation_service import DEFAULT_WEIGHTS, RecommendationEngine, get_cached_recommendations
+        from app.services.recommendation_service import DEFAULT_WEIGHTS, RecommendationEngine
 
         effective_risk = risk_profile or _get_user_risk_profile(user)
 
         weights = _get_user_weights(user, DEFAULT_WEIGHTS)
-        uses_default_weights = all(abs(weights[key] - DEFAULT_WEIGHTS[key]) < 1e-9 for key in DEFAULT_WEIGHTS)
-        cached = get_cached_recommendations() if effective_risk == "moderate" and uses_default_weights else None
-        if cached is not None:
-            recommendations = cached
-        else:
-            engine = RecommendationEngine(weights=weights)
-            recommendations = await run_in_threadpool(
-                engine.get_all_recommendations,
-                risk_tolerance=effective_risk,
-                sector_filter=sector,
-                weights=weights,
-            )
+        # Build the response from the short-lived quote/analysis cache. The
+        # 4-hour snapshot is unsuitable for a live recommendation endpoint.
+        engine = RecommendationEngine(weights=weights)
+        recommendations = await run_in_threadpool(
+            engine.get_all_recommendations,
+            risk_tolerance=effective_risk,
+            sector_filter=sector,
+            weights=weights,
+        )
 
         recommendations = [_apply_freshness_guard(r) for r in recommendations]
 
@@ -380,6 +412,7 @@ async def set_engine_weights(
 async def get_recommendation_detail(
     symbol: str = PathParam(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.&-]+$"),
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         symbol = symbol.upper()
@@ -387,11 +420,13 @@ async def get_recommendation_detail(
         from app.services.recommendation_service import RecommendationEngine, DEFAULT_WEIGHTS
 
         engine = RecommendationEngine(weights=_get_user_weights(user, DEFAULT_WEIGHTS))
+        sentiment_data = await _load_recommendation_sentiment(db, symbol)
         rec = await run_in_threadpool(
             engine.get_recommendation,
             symbol,
             risk_tolerance=_get_user_risk_profile(user),
             weights=engine.weights,
+            sentiment_data=sentiment_data,
         )
 
         rec = _apply_freshness_guard(rec)
@@ -422,6 +457,7 @@ async def get_recommendation_detail(
 async def get_target_stop(
     symbol: str = PathParam(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.&-]+$"),
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         symbol = symbol.upper()
@@ -429,11 +465,13 @@ async def get_target_stop(
         from app.services.recommendation_service import RecommendationEngine, DEFAULT_WEIGHTS
 
         engine = RecommendationEngine(weights=_get_user_weights(user, DEFAULT_WEIGHTS))
+        sentiment_data = await _load_recommendation_sentiment(db, symbol)
         rec = await run_in_threadpool(
             engine.get_recommendation,
             symbol,
             risk_tolerance=_get_user_risk_profile(user),
             weights=engine.weights,
+            sentiment_data=sentiment_data,
         )
         rec = _apply_freshness_guard(rec)
 

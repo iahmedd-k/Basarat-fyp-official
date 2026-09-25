@@ -1,11 +1,11 @@
-"""Recommendation Engine — signal synthesis combining ML forecast, technical, and fundamental analysis.
+"""Recommendation Engine — combine the forecast, live technical, fundamental, and news signals.
 
 Signal Synthesis Formula (over sources that are available):
     composite_score = sum(normalized_source_weight * source_signal)
 
 Where:
-    - ml_signal: XGBoost v3 bullish probability minus bearish probability
-    - technical_signal: from RSI, MACD, ADX, Bollinger position
+    - ml_signal: the shared forecast ensemble's bullish minus bearish probability
+    - technical_signal: daily OHLCV technical-indicators service
     - fundamental_signal: exploratory P/E and one-year price-change heuristic
 
 Each signal is normalized to [-1, 1] range:
@@ -61,53 +61,6 @@ BUY_THRESHOLD = 0.15
 SELL_THRESHOLD = -0.15
 
 
-PROD_MODEL_PATH = Path("models/final/final_v3/xgb_model.ubj")
-PROD_FEATURES_PATH = Path("models/final/final_v3/xgb_features.json")
-PROD_MANIFEST_PATH = Path("models/final/final_v3/model_manifest.json")
-
-_cached_xgb_model = None
-_cached_xgb_features = None
-_cached_xgb_manifest = None
-
-
-def _get_production_model():
-    global _cached_xgb_model, _cached_xgb_features, _cached_xgb_manifest
-    if _cached_xgb_model is None and PROD_MODEL_PATH.exists():
-        try:
-            import xgboost as xgb
-            model = xgb.XGBClassifier()
-            model.load_model(str(PROD_MODEL_PATH))
-            features = None
-            manifest = None
-            if PROD_FEATURES_PATH.exists():
-                features = json.loads(PROD_FEATURES_PATH.read_text(encoding="utf-8"))
-            if PROD_MANIFEST_PATH.exists():
-                manifest = json.loads(PROD_MANIFEST_PATH.read_text(encoding="utf-8"))
-            if not features or not manifest:
-                raise ValueError("production model requires feature and class metadata")
-            if int(getattr(model, "n_features_in_", -1)) != len(features):
-                raise ValueError("model feature count does not match its feature manifest")
-            mapping = manifest.get("label_mapping") or manifest.get("class_mapping")
-            if not mapping and isinstance(manifest.get("classes"), list):
-                mapping = {
-                    str(label).strip().lower(): class_id
-                    for class_id, label in enumerate(manifest["classes"])
-                }
-            if not mapping:
-                raise ValueError("production model manifest requires class names or a label mapping")
-            mapped_classes = {int(class_id) for class_id in mapping.values()}
-            fitted_classes = {int(class_id) for class_id in model.classes_}
-            if mapped_classes != fitted_classes:
-                raise ValueError("model class IDs do not match its label mapping")
-            _cached_xgb_model = model
-            _cached_xgb_features = features
-            _cached_xgb_manifest = manifest
-            log.info("Loaded Production XGBoost v3 model successfully")
-        except Exception as e:
-            log.warning("Could not load XGBoost production model: %s", e)
-    return _cached_xgb_model, _cached_xgb_features, _cached_xgb_manifest
-
-
 class RecommendationEngine:
     """Compute stock recommendations by synthesizing multiple signal sources."""
 
@@ -115,98 +68,42 @@ class RecommendationEngine:
         self.weights = weights or DEFAULT_WEIGHTS.copy()
 
     # ───────────────────────────────────────────────────────────────────
-    # ML Signal (Production XGBoost v3 Alpha Model)
+    # ML Signal (shared forecast ensemble)
     # ───────────────────────────────────────────────────────────────────
 
-    def _ml_signal(self, sym_df: pd.DataFrame) -> tuple[float, dict]:
-        """Derive a directional signal using the Production XGBoost v3 model.
-
-        Evaluates the 30 clean normalized cross-sectional technical features.
-        Returns (signal in [-1, 1], reasoning dict).
-        """
+    def _ml_signal(self, sym_df: pd.DataFrame, symbol: str | None = None) -> tuple[float, dict]:
+        """Use the same forecast inference that backs GET /forecast/{symbol}."""
         if sym_df.empty:
             return 0.0, {"status": "unavailable", "reason": "no data"}
-
-        latest = sym_df.iloc[-1]
-        if (
-            "is_primary_universe" not in latest.index
-            or pd.isna(latest.get("is_primary_universe"))
-            or not bool(latest.get("is_primary_universe"))
-        ):
-            return 0.0, {
-                "status": "unavailable",
-                "reason": "model is trained only on rows in the primary liquidity universe",
-            }
-        model, feat_names, manifest = _get_production_model()
-        if model is None or not feat_names or not manifest:
-            return 0.0, {"status": "unavailable", "reason": "production model or metadata unavailable"}
-
         try:
-            # The model was trained on point-in-time cross-sectional rank features.
-            # Never substitute raw values or a neutral 0.5 for missing rank inputs.
-            missing = [name for name in feat_names if name not in sym_df.columns]
-            if missing:
-                raise ValueError(f"missing model features: {missing[:5]}")
-            values = [latest[name] for name in feat_names]
-            if any(pd.isna(value) or not np.isfinite(float(value)) for value in values):
-                raise ValueError("model feature row contains null or non-finite values")
-            if any(float(value) < 0.0 or float(value) > 1.0 for value in values):
-                raise ValueError("cross-sectional rank features must be in [0, 1]")
+            from app.ml.serving.inference import get_forecast
 
-            probabilities = model.predict_proba(np.asarray([[float(value) for value in values]], dtype=np.float32))[0]
-            if (
-                len(probabilities) == 0
-                or not np.isfinite(probabilities).all()
-                or any(float(value) < 0.0 or float(value) > 1.0 for value in probabilities)
-                or not np.isclose(float(np.sum(probabilities)), 1.0, atol=1e-5)
-            ):
-                raise ValueError("model returned an invalid class probability distribution")
-            mapping = manifest.get("label_mapping") or manifest.get("class_mapping")
-            if mapping:
-                mapping = {str(label).strip().lower(): int(class_id) for label, class_id in mapping.items()}
-            else:
-                names = manifest.get("classes") or []
-                mapping = {str(label).strip().lower(): index for index, label in enumerate(names)}
-            fitted_classes = [int(value) for value in getattr(model, "classes_", range(len(probabilities)))]
-            if len(fitted_classes) != len(probabilities) or not mapping:
-                raise ValueError("model classes do not match the saved class mapping")
-
-            label_aliases = {
-                "down": "bearish", "negative": "bearish", "sell": "bearish", "avoid": "bearish",
-                "underperform": "bearish", "up": "bullish", "positive": "bullish", "buy": "bullish",
-                "outperform": "bullish", "neutral": "sideways", "flat": "sideways",
-            }
-            class_probs = {}
-            for label, class_id in mapping.items():
-                if class_id in fitted_classes:
-                    normalized_label = label_aliases.get(label, label)
-                    class_probs[normalized_label] = float(probabilities[fitted_classes.index(class_id)])
-            p_bull = class_probs.get("bullish", class_probs.get("buy", class_probs.get("outperform")))
-            p_bear = class_probs.get("bearish", class_probs.get("avoid", class_probs.get("underperform")))
-            if p_bull is None or p_bear is None:
-                raise ValueError("class mapping must identify bullish/bearish or buy/avoid classes")
-
-            # Bullish minus bearish probability mass gives a directional [-1, 1] score.
+            forecast = get_forecast(symbol or str(sym_df.iloc[-1].get("symbol", "")), horizon="1W", sym_df=sym_df)
+            p_bull = float(forecast["bullish_pct"]) / 100.0
+            p_bear = float(forecast["bearish_pct"]) / 100.0
             score = float(np.clip(p_bull - p_bear, -1.0, 1.0))
             return score, {
                 "status": "available",
-                "model": "XGBoost v3 Alpha Engine",
-                "model_version": manifest.get("model_version", manifest.get("model_name", "unknown")),
+                "model": "forecast ensemble",
+                "model_version": forecast.get("model_version"),
+                "direction": forecast.get("direction"),
+                "gate_reason": forecast.get("gate_reason"),
+                "as_of_date": str(forecast.get("as_of_date")),
                 "signal_bias": "Bullish" if score > 0.1 else "Bearish" if score < -0.1 else "Neutral",
                 "prob_bullish": round(p_bull, 4),
                 "prob_bearish": round(p_bear, 4),
-                "prob_sideways": round(class_probs.get("sideways", 0.0), 4),
-                "probabilities_calibrated": bool(manifest.get("probabilities_calibrated", False)),
+                "prob_sideways": round(float(forecast.get("sideways_pct", 0.0)) / 100.0, 4),
+                "probabilities_calibrated": False,
             }
         except Exception as exc:
-            log.warning("XGBoost recommendation unavailable: %s", exc)
-            return 0.0, {"status": "unavailable", "reason": str(exc)}
+            log.warning("Forecast recommendation unavailable for %s: %s", symbol, exc)
+            return 0.0, {"status": "unavailable", "reason": f"forecast inference failed: {exc}"}
 
     # ───────────────────────────────────────────────────────────────────
     # Technical Signal (from indicators)
     # ───────────────────────────────────────────────────────────────────
 
-    def _technical_signal(self, sym_df: pd.DataFrame) -> tuple[float, dict]:
+    def _technical_signal(self, sym_df: pd.DataFrame, symbol: str | None = None) -> tuple[float, dict]:
         """Compute a composite technical signal from multiple indicators.
 
         Combines:
@@ -220,6 +117,35 @@ class RecommendationEngine:
         """
         if sym_df.empty:
             return 0.0, {"reason": "no data"}
+
+        # Use the same daily OHLCV-backed indicator service exposed by the
+        # stock technical-indicators route. It refreshes stale history from the
+        # PSX provider and reports the observation date alongside its result.
+        if symbol:
+            try:
+                from app.services.stock_service import StockService
+                live = StockService().technical_indicators(symbol)
+                counts = live.get("signals_breakdown") or {}
+                total = sum(int(counts.get(key, 0) or 0) for key in ("buy", "neutral", "sell"))
+                if total:
+                    score = float(np.clip((counts.get("buy", 0) - counts.get("sell", 0)) / total, -1.0, 1.0))
+                    return score, {
+                        "status": "available",
+                        "source": "daily OHLCV technical-indicators service",
+                        "overall_signal": live.get("overall_signal"),
+                        "signals_breakdown": counts,
+                        "as_of_date": live.get("as_of_date"),
+                        "is_stale": bool(live.get("is_stale", True)),
+                        "summary": live.get("summary", {}),
+                    }
+                return 0.0, {
+                    "status": "unavailable",
+                    "reason": live.get("summary_message") or "daily OHLCV indicators returned no usable signals",
+                    "as_of_date": live.get("as_of_date"),
+                }
+            except Exception as exc:
+                log.warning("Live technical indicators unavailable for %s: %s", symbol, exc)
+                return 0.0, {"status": "unavailable", "reason": f"daily OHLCV indicator lookup failed: {exc}"}
 
         latest = sym_df.iloc[-1]
         prev = sym_df.iloc[-2] if len(sym_df) > 1 else latest
@@ -318,6 +244,22 @@ class RecommendationEngine:
             pe_ratio = overview.get("pe_ratio")
             year_change = overview.get("year_change_pct")
 
+            # The overview/quote feed often has prices but no valuation fields.
+            # Pull the canonical fundamentals service response before declaring
+            # this component unavailable.
+            if pe_ratio is None or year_change is None:
+                from app.services.stock_service import StockService
+
+                fundamentals = StockService().get_fundamentals(symbol)
+                extras = fundamentals.get("extras") or {}
+                if year_change is None:
+                    year_change = extras.get("year_change_pct")
+                if pe_ratio is None:
+                    for metric in fundamentals.get("metrics") or []:
+                        if str(metric.get("key", metric.get("name", ""))).strip().casefold() in {"p/e ratio", "pe ratio", "price to earnings"}:
+                            pe_ratio = metric.get("value")
+                            break
+
             signals = []
 
             # P/E ratio signal
@@ -349,7 +291,8 @@ class RecommendationEngine:
                 signals.append(("year_momentum", yc_score, f"1Y_change={year_change:.1f}%"))
 
             if not signals:
-                return 0.0, {"status": "unavailable", "reason": "no fundamental data available"}
+                reason = "PSX fundamentals feed has no usable P/E or one-year change for this symbol."
+                return 0.0, {"status": "unavailable", "reason": reason}
 
             raw = sum(s[1] for s in signals) / len(signals)
             final = np.clip(raw, -1, 1)
@@ -361,16 +304,22 @@ class RecommendationEngine:
 
         except Exception as e:
             log.warning("Fundamental signal failed for %s: %s", symbol, e)
-            return 0.0, {"status": "unavailable", "reason": "fundamental data lookup failed"}
+            return 0.0, {"status": "unavailable", "reason": f"PSX fundamental data lookup failed: {e}"}
 
-    def _sentiment_signal(self, symbol: str) -> tuple[float, dict]:
+    def _sentiment_signal(self, symbol: str, sentiment_data: dict | None = None) -> tuple[float, dict]:
         """Use the asynchronously aggregated per-stock FinBERT sentiment cache."""
         try:
             from app.services.sentiment_service import get_cached_sentiment
 
-            sentiment = get_cached_sentiment(symbol)
+            sentiment = sentiment_data or get_cached_sentiment(symbol)
+            if sentiment and sentiment.get("status") == "unavailable":
+                return 0.0, {
+                    "status": "unavailable",
+                    "reason": sentiment.get("reason") or "FinBERT sentiment could not be computed",
+                }
             if not sentiment or int(sentiment.get("article_count", 0) or 0) <= 0:
-                return 0.0, {"status": "unavailable", "reason": "no scored news articles available"}
+                reason = (sentiment or {}).get("reason") or "no scored news articles available for this symbol in the 7-day window"
+                return 0.0, {"status": "unavailable", "reason": reason}
             raw_score = sentiment.get("score")
             if raw_score is None or not np.isfinite(float(raw_score)):
                 return 0.0, {"status": "unavailable", "reason": "sentiment score missing or invalid"}
@@ -404,14 +353,15 @@ class RecommendationEngine:
         sym_df: pd.DataFrame,
         weights: dict | None = None,
         overview_data: dict | None = None,
+        sentiment_data: dict | None = None,
     ) -> dict:
         """Compute the full composite recommendation for a single symbol."""
         w = weights or self.weights
 
-        ml_score, ml_reasoning = self._ml_signal(sym_df)
-        tech_score, tech_reasoning = self._technical_signal(sym_df)
+        ml_score, ml_reasoning = self._ml_signal(sym_df, symbol=symbol)
+        tech_score, tech_reasoning = self._technical_signal(sym_df, symbol=symbol)
         fund_score, fund_reasoning = self._fundamental_signal(symbol, overview_data=overview_data)
-        sentiment_score, sentiment_reasoning = self._sentiment_signal(symbol)
+        sentiment_score, sentiment_reasoning = self._sentiment_signal(symbol, sentiment_data=sentiment_data)
 
         components = [
             ("gru", ml_score, ml_reasoning),
@@ -476,6 +426,7 @@ class RecommendationEngine:
         risk_tolerance: str = "moderate",
         ml_direction: str | None = None,
         horizon: str = "1W",
+        current_price_override: float | None = None,
     ) -> dict:
         """Compute target price and stop-loss using ATR-based method scaled for horizon."""
         if sym_df.empty:
@@ -488,7 +439,7 @@ class RecommendationEngine:
             }
 
         latest = sym_df.iloc[-1]
-        current_price = float(latest.get("close", 0))
+        current_price = float(current_price_override or latest.get("close", 0))
         atr = float(latest.get("atr_14", 0))
 
         if not np.isfinite(current_price) or not np.isfinite(atr) or current_price <= 0 or atr <= 0:
@@ -569,6 +520,7 @@ class RecommendationEngine:
         weights: dict | None = None,
         sym_df: pd.DataFrame | None = None,
         overview_data: dict | None = None,
+        sentiment_data: dict | None = None,
     ) -> dict:
         """Get the full recommendation for a single symbol."""
         symbol = symbol.upper()
@@ -660,12 +612,37 @@ class RecommendationEngine:
                 "fundamental_score": 0.0,
             }
 
+        if overview_data is None:
+            try:
+                from app.services.stock_service import StockService
+                overview_data = StockService().get_overview(symbol)
+            except Exception as exc:
+                log.info("Live quote lookup unavailable for %s: %s", symbol, exc)
+                overview_data = {}
+
         # Compute composite signal
-        composite = self.compute_composite(symbol, sym_df, weights, overview_data=overview_data)
+        composite = self.compute_composite(symbol, sym_df, weights, overview_data=overview_data, sentiment_data=sentiment_data)
+
+        quoted_price = None
+        for key in ("current", "current_price", "ltp"):
+            try:
+                candidate = float((overview_data or {}).get(key))
+                if np.isfinite(candidate) and candidate > 0:
+                    quoted_price = candidate
+                    break
+            except (TypeError, ValueError):
+                continue
 
         # Compute target/stop — pass composite verdict so target aligns with signal direction
         target_stop = self.compute_target_stop(symbol, sym_df, risk_tolerance,
-                                               ml_direction=composite["verdict"], horizon="1W")
+                                               ml_direction=composite["verdict"], horizon="1W",
+                                               current_price_override=quoted_price)
+        quote_as_of = None
+        try:
+            from app.services.market_service import MarketService
+            quote_as_of = MarketService.quote_freshness().get("as_of")
+        except Exception:
+            pass
 
         return {
             "symbol": symbol,
@@ -685,6 +662,8 @@ class RecommendationEngine:
             "effective_weights": composite["effective_weights"],
             "status": composite["status"],
             "data_as_of": str(sym_df.iloc[-1].get("date"))[:10] if sym_df.iloc[-1].get("date") is not None else None,
+            "quote_as_of": quote_as_of,
+            "quote_is_stale": bool((overview_data or {}).get("quote_is_stale", False)),
             "target_price": target_stop.get("target_price"),
             "stop_loss": target_stop.get("stop_loss"),
             "expected_range": target_stop.get("expected_range"),
@@ -721,7 +700,7 @@ class RecommendationEngine:
             json.dumps(requested_weights, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:12]
         sector_key = (sector_filter or "all").strip().lower()
-        cache_key = f"rec:all:v3:{risk_tolerance}:{sector_key}:{weight_key}"
+        cache_key = f"rec:all:v4:{risk_tolerance}:{sector_key}:{weight_key}"
         cached = cache_get_sync(cache_key)
         if cached:
             return cached
@@ -756,6 +735,17 @@ class RecommendationEngine:
                     rec = self.get_recommendation(sym, risk_tolerance, requested_weights, sym_df=sym_df, overview_data=overview_data)
                 else:
                     rec = self.get_recommendation(sym, risk_tolerance, requested_weights, overview_data=overview_data)
+                # The market watch quote is refreshed independently of the
+                # daily feature parquet. Present the latest quote while retaining
+                # the historical analysis date used for indicator/model scores.
+                if overview_data.get("current"):
+                    rec["current_price"] = overview_data["current"]
+                try:
+                    from app.services.market_service import MarketService
+                    rec["quote_as_of"] = MarketService.quote_freshness().get("as_of")
+                    rec["quote_is_stale"] = MarketService.quote_freshness().get("is_stale", True)
+                except Exception:
+                    pass
                 if sector_filter and str(rec.get("sector") or "").casefold() != sector_filter.casefold():
                     continue
                 results.append(rec)
@@ -766,7 +756,7 @@ class RecommendationEngine:
 
         # Sort by composite score (best first)
         results.sort(key=lambda r: r.get("composite_score", 0), reverse=True)
-        cache_set_sync(cache_key, results, ttl_seconds=900)
+        cache_set_sync(cache_key, results, ttl_seconds=300)
 
         return results
 
@@ -779,7 +769,7 @@ def get_cached_recommendations() -> list[dict] | None:
     """Load the shared default-profile recommendation snapshot from Redis."""
     try:
         from app.core.redis import cache_get_sync
-        data = cache_get_sync("recommendations:default:v4")
+        data = cache_get_sync("recommendations:default:v5")
         if not isinstance(data, dict):
             return None
         cached_at = datetime.fromisoformat(data.get("timestamp", "2000-01-01"))
@@ -792,7 +782,7 @@ def get_cached_recommendations() -> list[dict] | None:
         recommendations = data.get("recommendations", [])
         # Reject older cache files created before the API had real component
         # scores and composite scores; otherwise clients would see misleading zeros.
-        if data.get("cache_version") != 4:
+        if data.get("cache_version") != 5:
             return None
         if any(
             not isinstance(item, dict)
@@ -809,10 +799,10 @@ def save_recommendations_cache(recommendations: list[dict]) -> None:
     """Publish recommendations for API containers through shared Redis."""
     data = {
         "timestamp": datetime.utcnow().isoformat(),
-        "cache_version": 4,
+        "cache_version": 5,
         "count": len(recommendations),
         "recommendations": recommendations,
     }
     from app.core.redis import cache_set_sync
-    cache_set_sync("recommendations:default:v4", data, 4 * 3600)
+    cache_set_sync("recommendations:default:v5", data, 4 * 3600)
     log.info("Saved %d recommendations to cache", len(recommendations))

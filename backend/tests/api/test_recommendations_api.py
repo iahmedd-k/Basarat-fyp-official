@@ -72,7 +72,7 @@ def test_stale_data_does_not_claim_an_existing_hold_was_suppressed():
     assert rec["confidence"] == 0.0
     assert rec["expected_range"] is None
     assert "HOLD suppressed" not in _summarize(rec)
-    assert "market data is stale (5 trading days old)" in _summarize(rec)
+    assert "model/indicator analysis is stale (5 trading days old)" in _summarize(rec)
 
 
 def test_unavailable_component_explains_why_score_is_null():

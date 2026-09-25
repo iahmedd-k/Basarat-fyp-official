@@ -260,6 +260,7 @@ def run_scrape(
 
     # Save run log
     _save_fetch_log(out_dir, summary)
+    return summary
 
 
 # ---------------------------------------------------------------------------

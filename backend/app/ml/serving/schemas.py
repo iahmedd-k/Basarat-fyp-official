@@ -269,6 +269,7 @@ class RecommendationComponent(BaseModel):
     availability_reason: str | None = Field(default=None, description="Why the component score is unavailable, when applicable.")
     configured_weight: float = Field(default=0.0, ge=0, le=1)
     effective_weight: float = Field(default=0.0, ge=0, le=1)
+    details: dict = Field(default_factory=dict, description="Source probabilities, observation date, and component-specific evidence.")
 
 
 class RecommendationMarketData(BaseModel):
@@ -276,6 +277,10 @@ class RecommendationMarketData(BaseModel):
     freshness: str = "unknown"
     age_calendar_days: int | None = None
     age_trading_days: int | None = None
+    analysis_as_of: str | None = None
+    analysis_freshness: str = "unknown"
+    analysis_age_calendar_days: int | None = None
+    analysis_age_trading_days: int | None = None
     current_price: float | None = None
     currency: str = "PKR"
 

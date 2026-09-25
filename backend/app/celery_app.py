@@ -45,7 +45,9 @@ celery.conf.update(
         # ── Daily: data update + features + predictions + evaluation ──
         "daily-workflow": {
             "task": "app.tasks.daily_workflow.run_daily_pipeline",
-            "schedule": crontab(hour=2, minute=0),  # 02:00 PKT
+            # Refresh after PSX's trading session so OHLCV/features and
+            # forecasts include the latest completed trading day.
+            "schedule": crontab(hour=18, minute=0),  # 18:00 PKT
         },
         # ── Weekly: retraining pipeline ──
         "weekly-retraining": {
@@ -66,10 +68,10 @@ celery.conf.update(
             "task": "app.tasks.recommendation_cache.refresh_recommendations",
             "schedule": crontab(minute=0, hour="*/4"),
         },
-        # ── Sentiment: aggregate daily ──
+        # ── FinBERT: score the full active stock universe after news ingestion ──
         "daily-sentiment-aggregation": {
             "task": "app.tasks.sentiment_tasks.aggregate_sentiment",
-            "schedule": crontab(hour=8, minute=0),
+            "schedule": crontab(hour=19, minute=0),  # 19:00 PKT, after the trading/news session
         },
         # ── News ingestion: every 30 min on the clock, task gates on market hours ──
         "news-ingestion-market-aware": {

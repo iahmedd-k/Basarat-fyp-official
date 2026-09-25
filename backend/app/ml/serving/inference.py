@@ -303,7 +303,7 @@ def _single_model_result(
     }
 
 
-def get_forecast(symbol: str, horizon: str = "1D") -> dict:
+def get_forecast(symbol: str, horizon: str = "1D", sym_df: pd.DataFrame | None = None) -> dict:
     """Run dual-model ensemble inference for a single symbol.
 
     Parameters
@@ -329,19 +329,27 @@ def get_forecast(symbol: str, horizon: str = "1D") -> dict:
             f"Symbol '{symbol}' is not in the active {len(active_symbols)}-symbol universe"
         )
 
-    # ── Load feature data ──────────────────────────────────────────────
-    if not FEATURES_PATH.is_file():
-        try:
-            from scripts.prepare_feature_assets import prepare_features
-            prepare_features()
-        except (FileNotFoundError, RuntimeError) as exc:
-            raise FileNotFoundError(
-                f"Forecast feature data is unavailable at {FEATURES_PATH}; "
-                "deploy backend/deploy_assets/ or provide the parquet snapshot."
-            ) from exc
+    # Recommendation synthesis can pass the already-loaded symbol frame. This
+    # keeps the API and recommendation paths on identical model inference while
+    # avoiding a full parquet reload for every symbol in a recommendation list.
+    if sym_df is None:
+        # ── Load feature data ──────────────────────────────────────────
+        if not FEATURES_PATH.is_file():
+            try:
+                from scripts.prepare_feature_assets import prepare_features
+                prepare_features()
+            except (FileNotFoundError, RuntimeError) as exc:
+                raise FileNotFoundError(
+                    f"Forecast feature data is unavailable at {FEATURES_PATH}; "
+                    "deploy backend/deploy_assets/ or provide the parquet snapshot."
+                ) from exc
 
-    df = pd.read_parquet(FEATURES_PATH)
-    sym_df = df[df["symbol"] == symbol].copy()
+        df = pd.read_parquet(FEATURES_PATH)
+        sym_df = df[df["symbol"] == symbol].copy()
+    else:
+        sym_df = sym_df.copy()
+    if sym_df.empty:
+        raise InsufficientHistoryError(f"No forecast feature rows are available for {symbol}")
     sym_df["date"] = pd.to_datetime(sym_df["date"])
     sym_df = sym_df.sort_values("date").reset_index(drop=True)
 

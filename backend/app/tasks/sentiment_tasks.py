@@ -331,7 +331,9 @@ def aggregate_sentiment_task(self, symbols: list[str] | None = None):
     try:
         with SessionFactory() as db:
             if not symbols:
-                result = db.execute(text("SELECT DISTINCT symbol FROM stocks LIMIT 50"))
+                # Recommendations cover the complete active PSX universe; a
+                # fixed LIMIT left the remaining symbols without FinBERT cache.
+                result = db.execute(text("SELECT DISTINCT symbol FROM stocks WHERE is_active = TRUE"))
                 symbols_to_process = [row[0] for row in result.fetchall()]
             else:
                 symbols_to_process = [s.upper() for s in symbols]

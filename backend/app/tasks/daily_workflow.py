@@ -56,11 +56,21 @@ def update_market_data_task(self):
     try:
         from app.data.scraper.run_scrape import run_scrape
 
-        run_scrape(
+        scrape_result = run_scrape(
             mode="incremental",
             delay=0.3,
         )
-        log.info("[DATA] Market data update complete")
+        if isinstance(scrape_result, dict):
+            errors = int(scrape_result.get("errors", 0) or 0)
+            total = int(scrape_result.get("total_symbols", 0) or 0)
+            if total and errors == total:
+                raise RuntimeError(f"OHLCV refresh failed for every symbol ({errors}/{total})")
+            log.info(
+                "[DATA] Market data update complete: updated=%s skipped=%s errors=%s no_data=%s",
+                scrape_result.get("ok"), scrape_result.get("skipped"), errors, scrape_result.get("no_data"),
+            )
+        else:
+            log.info("[DATA] Market data update complete")
         return {"status": "success", "timestamp": datetime.utcnow().isoformat()}
 
     except SoftTimeLimitExceeded:
@@ -409,11 +419,14 @@ def run_daily_pipeline():
     """
     log.info("[DAILY] Starting full daily pipeline")
 
+    # These stages are independent tasks in a serial pipeline. Immutable
+    # signatures prevent Celery from injecting each prior task's result as a
+    # positional argument into the next bound task (which accepts no such arg).
     workflow = chain(
-        update_market_data_task.s(),
-        generate_features_task.s(),
-        generate_predictions_task.s(),
-        evaluate_pending_predictions_task.s(),
+        update_market_data_task.si(),
+        generate_features_task.si(),
+        generate_predictions_task.si(),
+        evaluate_pending_predictions_task.si(),
     )
     result = workflow.apply_async()
 
