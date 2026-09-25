@@ -34,7 +34,7 @@ class TestRecommendationsListEndpoint:
                     "ml": {"reason": "Bullish trend forecast"},
                     "technical": {"reason": "RSI oversold rebound"},
                 },
-                "signals": {"ml": 0.6, "technical": 0.4, "fundamental": 0.1},
+                "signals": {"ml": 0.6, "technical": 0.4, "fundamental": 0.1, "sentiment": -0.2},
                 "weights": {"gru": 0.4, "technical": 0.35, "fundamental": 0.25},
                 "effective_weights": {"gru": 0.4, "technical": 0.35, "fundamental": 0.25},
                 "data_as_of": "2026-09-18",
@@ -66,6 +66,8 @@ class TestRecommendationsListEndpoint:
             assert rec["confidence_type"] == "heuristic_signal_strength"
             assert rec["source_weights"]["ml"] == 0.4
             assert rec["signals"]["ml"] == 0.6
+            assert rec["signals"]["sentiment"] == -0.2
+            assert rec["source_weights"]["sentiment"] == 0.0
             assert rec["decision_reason"].startswith("Composite score")
             assert "generated_at" in data
 
@@ -75,7 +77,7 @@ class TestRecommendationsListEndpoint:
         with patch("app.services.recommendation_service.RecommendationEngine.get_all_recommendations", return_value=[] ) as get_all:
             response = await client.get("/api/v1/recommendations", headers=auth_headers)
         assert response.status_code == 200
-        assert get_all.call_args.kwargs["weights"] == {"gru": 0.5, "technical": 0.3, "fundamental": 0.2}
+        assert get_all.call_args.kwargs["weights"] == {"gru": 0.5, "technical": 0.3, "fundamental": 0.2, "sentiment": 0.0}
 
 
 @pytest.mark.api
@@ -91,6 +93,7 @@ class TestEngineWeightsEndpoint:
         assert "gru_weight" in data
         assert "technical_weight" in data
         assert "fundamental_weight" in data
+        assert "sentiment_weight" in data
 
     async def test_set_weights_success(self, client: AsyncClient, auth_headers):
         payload = {
@@ -105,7 +108,18 @@ class TestEngineWeightsEndpoint:
         assert data["technical_weight"] == 0.3
         assert data["fundamental_weight"] == 0.2
         persisted = await client.get("/api/v1/recommendations/engine-weights", headers=auth_headers)
-        assert persisted.json() == {**payload, "ml_weight": 0.5}
+        assert persisted.json() == {**payload, "ml_weight": 0.5, "sentiment_weight": 0.0}
+
+    async def test_set_four_source_weights(self, client: AsyncClient, auth_headers):
+        payload = {
+            "ml_weight": 0.3,
+            "technical_weight": 0.25,
+            "fundamental_weight": 0.25,
+            "sentiment_weight": 0.2,
+        }
+        response = await client.post("/api/v1/recommendations/engine-weights", json=payload, headers=auth_headers)
+        assert response.status_code == 200
+        assert response.json() == {**payload, "gru_weight": 0.3}
 
     async def test_set_weights_rejects_values_that_do_not_sum_to_one(self, client: AsyncClient, auth_headers):
         response = await client.post(
@@ -135,10 +149,12 @@ class TestRecommendationDetailEndpoint:
     async def test_detail_success(self, client: AsyncClient, auth_headers):
         sample_rec = {
             "symbol": "SYS",
+            "name": "Systems Limited",
+            "sector": "Technology",
             "signal": "buy",
             "confidence": 0.82,
             "composite_score": 0.38,
-            "signals": {"ml": 0.6, "technical": 0.4, "fundamental": 0.1},
+            "signals": {"ml": 0.6, "technical": 0.4, "fundamental": 0.1, "sentiment": 0.3},
             "weights": {"gru": 0.4, "technical": 0.35, "fundamental": 0.25},
             "current_price": 450.0,
             "target_price": 485.0,
@@ -164,11 +180,14 @@ class TestRecommendationDetailEndpoint:
             assert resp.status_code == 200
             data = resp.json()
             assert data["symbol"] == "SYS"
+            assert data["name"] == "Systems Limited"
+            assert data["sector"] == "Technology"
             assert data["signal"] == "BUY"
             assert "signals" in data
             assert data["signals"]["ml"] == 0.6
             assert data["signals"]["technical"] == 0.4
             assert data["signals"]["fundamental"] == 0.1
+            assert data["signals"]["sentiment"] == 0.3
             assert data["target_price"] == 485.0
             assert data["current_price"] == 450.0
             assert data["risk_reward_ratio"] == 1.75
@@ -194,7 +213,7 @@ class TestRecommendationDetailEndpoint:
         with patch("app.services.recommendation_service.RecommendationEngine.get_recommendation", return_value=sample) as get_rec:
             response = await client.get("/api/v1/recommendations/SYS", headers=auth_headers)
         assert response.status_code == 200
-        assert get_rec.call_args.kwargs["weights"] == {"gru": 0.5, "technical": 0.3, "fundamental": 0.2}
+        assert get_rec.call_args.kwargs["weights"] == {"gru": 0.5, "technical": 0.3, "fundamental": 0.2, "sentiment": 0.0}
 
 
 @pytest.mark.api

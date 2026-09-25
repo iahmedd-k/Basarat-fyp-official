@@ -43,9 +43,10 @@ RECOMMENDATIONS_CACHE = Path("data/reports/recommendations_cache.json")
 # Default engine weights. The public/API key `gru` is retained for compatibility;
 # it currently weights the XGBoost ML component.
 DEFAULT_WEIGHTS = {
-    "gru": 0.40,
-    "technical": 0.35,
+    "gru": 0.30,
+    "technical": 0.25,
     "fundamental": 0.25,
+    "sentiment": 0.20,
 }
 
 # Risk profile multipliers for target/stop-loss
@@ -352,6 +353,37 @@ class RecommendationEngine:
             log.warning("Fundamental signal failed for %s: %s", symbol, e)
             return 0.0, {"status": "unavailable", "reason": "fundamental data lookup failed"}
 
+    def _sentiment_signal(self, symbol: str) -> tuple[float, dict]:
+        """Use the asynchronously aggregated per-stock FinBERT sentiment cache."""
+        try:
+            from app.services.sentiment_service import get_cached_sentiment
+
+            sentiment = get_cached_sentiment(symbol)
+            if not sentiment or int(sentiment.get("article_count", 0) or 0) <= 0:
+                return 0.0, {"status": "unavailable", "reason": "no scored news articles available"}
+            raw_score = sentiment.get("score")
+            if raw_score is None or not np.isfinite(float(raw_score)):
+                return 0.0, {"status": "unavailable", "reason": "sentiment score missing or invalid"}
+
+            updated_at = sentiment.get("updated_at")
+            if updated_at:
+                timestamp = pd.Timestamp(updated_at)
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.tz_localize("UTC")
+                age = datetime.now(timezone.utc) - timestamp.to_pydatetime()
+                if age > timedelta(days=7) or age < timedelta(minutes=-5):
+                    return 0.0, {"status": "unavailable", "reason": "sentiment cache is stale or dated in the future", "updated_at": updated_at}
+
+            score = float(np.clip(float(raw_score), -1.0, 1.0))
+            return score, {
+                "status": "available", "model": "FinBERT news aggregate",
+                "label": sentiment.get("label"), "article_count": int(sentiment.get("article_count", 0)),
+                "trend": sentiment.get("trend"), "updated_at": updated_at,
+            }
+        except Exception as exc:
+            log.warning("Sentiment recommendation unavailable for %s: %s", symbol, exc)
+            return 0.0, {"status": "unavailable", "reason": "sentiment lookup failed"}
+
     # ───────────────────────────────────────────────────────────────────
     # Composite Signal
     # ───────────────────────────────────────────────────────────────────
@@ -369,11 +401,13 @@ class RecommendationEngine:
         ml_score, ml_reasoning = self._ml_signal(sym_df)
         tech_score, tech_reasoning = self._technical_signal(sym_df)
         fund_score, fund_reasoning = self._fundamental_signal(symbol, overview_data=overview_data)
+        sentiment_score, sentiment_reasoning = self._sentiment_signal(symbol)
 
         components = [
             ("gru", ml_score, ml_reasoning),
             ("technical", tech_score, tech_reasoning),
             ("fundamental", fund_score, fund_reasoning),
+            ("sentiment", sentiment_score, sentiment_reasoning),
         ]
         available = [(key, score, reason) for key, score, reason in components if reason.get("status") != "unavailable"]
         active_weight_total = sum(float(w.get(key, 0.0)) for key, _, _ in available)
@@ -409,6 +443,7 @@ class RecommendationEngine:
             "ml_signal": round(ml_score, 4),
             "technical_signal": round(tech_score, 4),
             "fundamental_signal": round(fund_score, 4),
+            "sentiment_signal": round(sentiment_score, 4),
             "weights_used": w,
             "effective_weights": effective_weights,
             "status": "available" if len(available) == len(components) else "partial" if available else "insufficient_data",
@@ -416,6 +451,7 @@ class RecommendationEngine:
                 "ml": ml_reasoning,
                 "technical": tech_reasoning,
                 "fundamental": fund_reasoning,
+                "sentiment": sentiment_reasoning,
             },
         }
 
@@ -533,7 +569,7 @@ class RecommendationEngine:
                     "signal": "hold",
                     "confidence": 0.0,
                     "composite_score": 0.0,
-                    "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0},
+                    "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0, "sentiment": 0.0},
                     "weights": (weights or self.weights).copy(),
                     "effective_weights": {},
                     "status": "insufficient_data",
@@ -569,7 +605,7 @@ class RecommendationEngine:
                     "signal": "hold",
                     "confidence": 0.0,
                     "composite_score": 0.0,
-                    "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0},
+                    "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0, "sentiment": 0.0},
                     "weights": (weights or self.weights).copy(),
                     "effective_weights": {},
                     "status": "insufficient_data",
@@ -596,7 +632,7 @@ class RecommendationEngine:
                 "signal": "hold",
                 "confidence": 0.0,
                 "composite_score": 0.0,
-                "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0},
+                "signals": {"ml": 0.0, "technical": 0.0, "fundamental": 0.0, "sentiment": 0.0},
                 "weights": (weights or self.weights).copy(),
                 "effective_weights": {},
                 "status": "insufficient_data",
@@ -633,6 +669,7 @@ class RecommendationEngine:
                 "ml": composite["ml_signal"],
                 "technical": composite["technical_signal"],
                 "fundamental": composite["fundamental_signal"],
+                "sentiment": composite["sentiment_signal"],
             },
             "weights": composite["weights_used"],
             "effective_weights": composite["effective_weights"],
@@ -732,7 +769,7 @@ def get_cached_recommendations() -> list[dict] | None:
     """Load the shared default-profile recommendation snapshot from Redis."""
     try:
         from app.core.redis import cache_get_sync
-        data = cache_get_sync("recommendations:default:v2")
+        data = cache_get_sync("recommendations:default:v3")
         if not isinstance(data, dict):
             return None
         cached_at = datetime.fromisoformat(data.get("timestamp", "2000-01-01"))
@@ -745,7 +782,7 @@ def get_cached_recommendations() -> list[dict] | None:
         recommendations = data.get("recommendations", [])
         # Reject older cache files created before the API had real component
         # scores and composite scores; otherwise clients would see misleading zeros.
-        if data.get("cache_version") != 2:
+        if data.get("cache_version") != 3:
             return None
         if any(
             not isinstance(item, dict)
@@ -762,10 +799,10 @@ def save_recommendations_cache(recommendations: list[dict]) -> None:
     """Publish recommendations for API containers through shared Redis."""
     data = {
         "timestamp": datetime.utcnow().isoformat(),
-        "cache_version": 2,
+        "cache_version": 3,
         "count": len(recommendations),
         "recommendations": recommendations,
     }
     from app.core.redis import cache_set_sync
-    cache_set_sync("recommendations:default:v2", data, 4 * 3600)
+    cache_set_sync("recommendations:default:v3", data, 4 * 3600)
     log.info("Saved %d recommendations to cache", len(recommendations))

@@ -269,14 +269,14 @@ class RecommendationItem(BaseModel):
     status: str = Field(default="available", description="available, partial, or insufficient_data")
     weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights used.")
     effective_weights: dict[str, float] = Field(default_factory=dict, description="Weights after omitting unavailable sources and renormalizing.")
-    source_weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights with canonical keys ml, technical, fundamental.")
-    effective_source_weights: dict[str, float] = Field(default_factory=dict, description="Effective weights with canonical keys ml, technical, fundamental.")
+    source_weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights with canonical keys ml, technical, fundamental, sentiment.")
+    effective_source_weights: dict[str, float] = Field(default_factory=dict, description="Effective weights with canonical keys ml, technical, fundamental, sentiment.")
     data_as_of: str | None = Field(default=None, description="Date of the daily feature row used, when available.")
     confidence: float = Field(
         ..., ge=0, le=1,
         description="Heuristic signal strength from the absolute composite score (0-1); not a probability or accuracy estimate.", examples=[0.72],
     )
-    signals: dict[str, float] = Field(default_factory=dict, description="Component signal scores in [-1, 1], keyed by ml, technical, and fundamental.")
+    signals: dict[str, float] = Field(default_factory=dict, description="Component signal scores in [-1, 1], keyed by ml, technical, fundamental, and sentiment.")
     reasoning: dict = Field(default_factory=dict, description="Structured component status, factors, and model diagnostics.")
     composite_score: float = Field(
         ..., description="Raw composite signal (-1 to +1). Positive = bullish.",
@@ -355,6 +355,8 @@ class RecommendationDetailResponse(BaseModel):
     }
 
     symbol: str
+    name: str | None = Field(default=None, description="Company display name, when available.")
+    sector: str | None = Field(default=None, description="Company sector, when available.")
     generated_at: datetime = Field(..., description="UTC time when this recommendation was assembled.")
     horizon: str = Field(default="5 trading days", description="Intended signal and ATR risk-level horizon.")
     currency: str = Field(default="PKR", description="Currency for all price and ATR fields.")
@@ -376,8 +378,8 @@ class RecommendationDetailResponse(BaseModel):
     # Individual signal scores
     signals: dict[str, float] = Field(
         ...,
-        description="Individual signal scores. Keys: ml, technical, fundamental. Each in [-1, 1].",
-        examples=[{"ml": 0.45, "technical": 0.38, "fundamental": 0.15}],
+        description="Individual signal scores. Keys: ml, technical, fundamental, sentiment. Each in [-1, 1].",
+        examples=[{"ml": 0.45, "technical": 0.38, "fundamental": 0.15, "sentiment": 0.2}],
     )
 
     # Target / stop
@@ -402,14 +404,15 @@ class RecommendationDetailResponse(BaseModel):
     risk_profile: str = Field(default="moderate", description="Risk profile used to calculate price levels.")
     status: str = Field(default="available", description="available, partial, or insufficient_data")
     effective_weights: dict[str, float] = Field(default_factory=dict, description="Weights after excluding unavailable signal sources and renormalizing.")
-    source_weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights with canonical keys ml, technical, fundamental.")
-    effective_source_weights: dict[str, float] = Field(default_factory=dict, description="Effective weights with canonical keys ml, technical, fundamental.")
+    source_weights: dict[str, float] = Field(default_factory=dict, description="Configured source weights with canonical keys ml, technical, fundamental, sentiment.")
+    effective_source_weights: dict[str, float] = Field(default_factory=dict, description="Effective weights with canonical keys ml, technical, fundamental, sentiment.")
     data_as_of: str | None = Field(default=None, description="Date of the daily feature row used, when available.")
+    summary: str = Field(default="", description="Short human-readable summary of the recommendation.")
 
     # Detailed reasoning
     reasoning: dict = Field(
         ...,
-        description="Breakdown of each signal source. Keys: ml, technical, fundamental.",
+        description="Breakdown of each signal source. Keys: ml, technical, fundamental, sentiment.",
         examples=[{
             "ml": {"rsi": "RSI=35.2", "macd": "MACD_hist=0.0012", "sma": "close_vs_sma20=0.023"},
             "technical": {"rsi": "RSI=35.2", "macd": "MACD_cross=0.0012", "bb": "BB_pos=0.35"},
@@ -474,6 +477,7 @@ class EngineWeightsRequest(BaseModel):
     ml_weight: float | None = Field(default=None, ge=0.0, le=1.0, description="Canonical Android/mobile field for the XGBoost ML signal weight.")
     technical_weight: float = Field(0.35, ge=0.0, le=1.0)
     fundamental_weight: float = Field(0.25, ge=0.0, le=1.0)
+    sentiment_weight: float = Field(0.0, ge=0.0, le=1.0, description="Weight for recent per-stock FinBERT news sentiment.")
 
     @model_validator(mode="before")
     @classmethod
@@ -486,7 +490,7 @@ class EngineWeightsRequest(BaseModel):
 
     @model_validator(mode="after")
     def weights_must_sum_to_one(self):
-        total = self.gru_weight + self.technical_weight + self.fundamental_weight
+        total = self.gru_weight + self.technical_weight + self.fundamental_weight + self.sentiment_weight
         if abs(total - 1.0) > 1e-6:
             raise ValueError("Engine weights must sum to 1.0")
         return self
@@ -497,6 +501,7 @@ class EngineWeightsResponse(BaseModel):
     ml_weight: float = Field(..., description="Canonical alias for the legacy gru_weight field; this weights the XGBoost ML signal.")
     technical_weight: float
     fundamental_weight: float
+    sentiment_weight: float = 0.0
 
 
 # ═══════════════════════════════════════════════════════════════════════

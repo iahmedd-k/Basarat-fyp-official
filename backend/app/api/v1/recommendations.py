@@ -36,7 +36,7 @@ def _get_user_weights(user: User, defaults: dict) -> dict[str, float]:
     if not isinstance(saved, dict):
         return defaults.copy()
     try:
-        weights = {key: float(saved[key]) for key in ("gru", "technical", "fundamental")}
+        weights = {key: float(saved.get(key, 0.0)) for key in ("gru", "technical", "fundamental", "sentiment")}
         total = sum(weights.values())
         if any(value < 0 for value in weights.values()) or total <= 0:
             return defaults.copy()
@@ -96,6 +96,18 @@ def _canonical_weights(weights: dict | None) -> dict[str, float]:
         "ml": float(weights.get("ml", weights.get("gru", 0.0))),
         "technical": float(weights.get("technical", 0.0)),
         "fundamental": float(weights.get("fundamental", 0.0)),
+        "sentiment": float(weights.get("sentiment", 0.0)),
+    }
+
+
+def _canonical_signals(signals: dict | None) -> dict[str, float]:
+    """Return the same named, numeric component scores on every recommendation route."""
+    signals = signals or {}
+    return {
+        "ml": float(signals.get("ml", signals.get("gru", 0.0)) or 0.0),
+        "technical": float(signals.get("technical", 0.0) or 0.0),
+        "fundamental": float(signals.get("fundamental", 0.0) or 0.0),
+        "sentiment": float(signals.get("sentiment", 0.0) or 0.0),
     }
 
 
@@ -179,7 +191,7 @@ async def get_recommendations(
                 probabilities_calibrated=bool(((r.get("reasoning") or {}).get("ml") or {}).get("probabilities_calibrated", False)),
                 confidence=round(r["confidence"], 3),
                 composite_score=round(r.get("composite_score", 0), 3),
-                signals=r.get("signals", {}),
+                signals=_canonical_signals(r.get("signals")),
                 reasoning=r.get("reasoning", {}),
                 current_price=r.get("current_price"),
                 target_price=r.get("target_price"),
@@ -227,6 +239,7 @@ async def get_engine_weights(
             ml_weight=user_w["gru"],
             technical_weight=user_w["technical"],
             fundamental_weight=user_w["fundamental"],
+            sentiment_weight=user_w["sentiment"],
         )
     except Exception:
         log.exception("Failed to get engine weights")
@@ -248,6 +261,7 @@ async def set_engine_weights(
             "gru": data.gru_weight,
             "technical": data.technical_weight,
             "fundamental": data.fundamental_weight,
+            "sentiment": data.sentiment_weight,
         }
         db.add(user)
         return EngineWeightsResponse(
@@ -255,6 +269,7 @@ async def set_engine_weights(
             ml_weight=data.gru_weight,
             technical_weight=data.technical_weight,
             fundamental_weight=data.fundamental_weight,
+            sentiment_weight=data.sentiment_weight,
         )
     except Exception as exc:
         raise ServiceUnavailableError("Failed to set engine weights")
@@ -284,10 +299,12 @@ async def get_recommendation_detail(
 
         reasoning = rec.get("reasoning", {})
 
-        signals = rec.get("signals") or {"ml": 0.0, "technical": 0.0, "fundamental": 0.0}
+        signals = rec.get("signals") or {"ml": 0.0, "technical": 0.0, "fundamental": 0.0, "sentiment": 0.0}
 
         return RecommendationDetailResponse(
             symbol=symbol,
+            name=rec.get("name"),
+            sector=rec.get("sector"),
             generated_at=datetime.now(timezone.utc),
             horizon="5 trading days",
             currency="PKR",
@@ -298,7 +315,7 @@ async def get_recommendation_detail(
             signal=rec["signal"].upper(),
             confidence=round(rec["confidence"], 3),
             composite_score=round(rec.get("composite_score", 0), 3),
-            signals=signals,
+            signals=_canonical_signals(signals),
             target_price=rec.get("target_price"),
             stop_loss=rec.get("stop_loss"),
             current_price=rec.get("current_price"),
@@ -318,6 +335,7 @@ async def get_recommendation_detail(
             effective_source_weights=_canonical_weights(rec.get("effective_weights", {})),
             status=rec.get("status", "available"),
             data_as_of=rec.get("data_as_of"),
+            summary=_summarize(rec),
         )
 
     except Exception as exc:
