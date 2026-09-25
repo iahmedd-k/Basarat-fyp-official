@@ -12,12 +12,14 @@
 - `GET /api/v1/stocks/OGDC/news?sentiment=bullish` returned HTTP 503 when an item had a missing/null sentiment object.
 - The stock-News route accepted `cursor` but did not use it and always returned `next_cursor=null`, `has_more=false`.
 - `NewsService` produced a next cursor for every nonempty page, even if there was no following page; consequently `has_more` could be incorrectly true at the end of pagination.
+- Full traversal stopped after 51 items although the feed reported 282 total: cursor predicates compared only `published_at`, so the 231 records with no publication date were never reachable.
 - The sample article detail had a real title, source, URL, summary, publication time, and created time, but its `symbols` list was empty even though the title named Systems Limited (SYS). This is an existing-row tagging gap; the optional list is schema-valid, but stock association is incomplete for this article.
 
 ## Fixes in this change
 
 - Return the actual filtered article count from the News feed and stock-News endpoints.
 - Emit a pagination cursor only when another page exists.
+- Use `created_at` as the stable cursor/sort timestamp when `published_at` is missing, so every stored article remains reachable.
 - Apply the documented `q` parameter to article title and summary searches.
 - Reject malformed cursors with HTTP 400 instead of restarting at page one.
 - Use the shared cursor-aware News query for stock-News filtering and pagination, preventing the null-sentiment 503.

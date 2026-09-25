@@ -106,18 +106,18 @@ class NewsService:
         total = total_result.scalar() or 0
 
         # Cursor pagination: published_at DESC, id DESC
+        cursor_timestamp = func.coalesce(NewsArticle.published_at, NewsArticle.created_at)
         if cursor:
             try:
                 cursor_published_at_str, cursor_id = cursor.split("|", 1)
                 cursor_published_at = datetime.fromisoformat(cursor_published_at_str)
                 if not cursor_id.strip():
                     raise ValueError("Cursor ID is empty")
-                # For DESC order: we want items OLDER than cursor
                 query = query.where(
                     or_(
-                        NewsArticle.published_at < cursor_published_at,
+                        cursor_timestamp < cursor_published_at,
                         and_(
-                            NewsArticle.published_at == cursor_published_at,
+                            cursor_timestamp == cursor_published_at,
                             NewsArticle.id < cursor_id,
                         ),
                     )
@@ -125,7 +125,7 @@ class NewsService:
             except (ValueError, IndexError) as exc:
                 raise BadRequestError("Invalid news cursor.") from exc
 
-        query = query.order_by(NewsArticle.published_at.desc().nulls_last(), NewsArticle.created_at.desc(), NewsArticle.id.desc())
+        query = query.order_by(cursor_timestamp.desc(), NewsArticle.id.desc())
         query = query.limit(limit + 1)  # +1 to check has_more
 
         result = await self.db.execute(query)
@@ -138,8 +138,9 @@ class NewsService:
         next_cursor = None
         if has_more and articles:
             last = articles[-1]
-            if last.published_at:
-                next_cursor = f"{last.published_at.isoformat()}|{last.id}"
+            cursor_time = last.published_at or last.created_at
+            if cursor_time:
+                next_cursor = f"{cursor_time.isoformat()}|{last.id}"
 
         return articles, total, next_cursor
 

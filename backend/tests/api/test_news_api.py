@@ -39,13 +39,23 @@ class TestNewsEndpoints:
                 published_at=now - timedelta(days=1),
                 created_at=now - timedelta(days=1),
             ),
+            NewsArticle(
+                title="OGDC update without publication date",
+                url="https://example.test/news/undated",
+                source="Test Source",
+                source_type="news",
+                symbols='["OGDC"]',
+                sentiment_label="neutral",
+                published_at=None,
+                created_at=now - timedelta(days=2),
+            ),
         ])
         await db_session.flush()
 
         first = await client.get("/api/v1/news?symbol=OGDC&limit=1")
         assert first.status_code == 200
         first_data = first.json()
-        assert first_data["total"] == 2
+        assert first_data["total"] == 3
         assert len(first_data["items"]) == 1
         assert first_data["has_more"] is True
         assert first_data["next_cursor"]
@@ -56,16 +66,26 @@ class TestNewsEndpoints:
         )
         assert second.status_code == 200
         second_data = second.json()
-        assert second_data["total"] == 2
+        assert second_data["total"] == 3
         assert len(second_data["items"]) == 1
         assert second_data["items"][0]["title"] == "Older OGDC update"
-        assert second_data["has_more"] is False
-        assert second_data["next_cursor"] is None
+        assert second_data["has_more"] is True
+        assert second_data["next_cursor"]
+
+        third = await client.get(
+            "/api/v1/news",
+            params={"symbol": "OGDC", "limit": 1, "cursor": second_data["next_cursor"]},
+        )
+        assert third.status_code == 200
+        third_data = third.json()
+        assert third_data["items"][0]["title"] == "OGDC update without publication date"
+        assert third_data["has_more"] is False
+        assert third_data["next_cursor"] is None
 
         stock_first = await client.get("/api/v1/stocks/OGDC/news?limit=1&source_type=news")
         assert stock_first.status_code == 200
         stock_first_data = stock_first.json()
-        assert stock_first_data["total"] == 2
+        assert stock_first_data["total"] == 3
         assert stock_first_data["has_more"] is True
 
         stock_second = await client.get(
@@ -73,9 +93,17 @@ class TestNewsEndpoints:
             params={"limit": 1, "source_type": "news", "cursor": stock_first_data["next_cursor"]},
         )
         assert stock_second.status_code == 200
-        assert stock_second.json()["total"] == 2
+        assert stock_second.json()["total"] == 3
         assert len(stock_second.json()["items"]) == 1
-        assert stock_second.json()["has_more"] is False
+        assert stock_second.json()["has_more"] is True
+
+        stock_third = await client.get(
+            "/api/v1/stocks/OGDC/news",
+            params={"limit": 1, "source_type": "news", "cursor": stock_second.json()["next_cursor"]},
+        )
+        assert stock_third.status_code == 200
+        assert stock_third.json()["items"][0]["title"] == "OGDC update without publication date"
+        assert stock_third.json()["has_more"] is False
 
         search = await client.get("/api/v1/news", params={"q": "Older OGDC update"})
         assert search.status_code == 200
