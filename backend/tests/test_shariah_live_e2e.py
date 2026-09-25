@@ -24,7 +24,11 @@ def test_shariah_endpoints():
         constituents = {row["symbol"]: row for row in kmi_data["constituents"]}
         assert len(constituents) == 30
         assert constituents["OGDC"]["interest_income_ratio"] == 0.0662
+        assert constituents["OGDC"]["purification_rate_provisional"] is True
         assert constituents["MEBL"]["interest_income_ratio"] is None
+        assert constituents["MEBL"]["purification_rate_provisional"] is False
+        assert constituents["FFC"]["purification_rate_provisional"] is False
+        assert constituents["SYS"]["purification_rate_provisional"] is False
         for symbol, expected in (("OGDC", True), ("HBL", False)):
             result = client.get(f"{BASE_URL}/shariah/{symbol}")
             assert result.status_code == 200, result.text
