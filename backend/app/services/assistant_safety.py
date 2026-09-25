@@ -82,7 +82,7 @@ INTENT_KEYWORDS = {
     "personalized_investment_advice": [
         "should i buy", "should i sell", "should i hold", "how much to buy",
         "how much to sell", "how much to invest", "how much should i invest",
-        "position size", "allocation", "entry price", "exit price",
+        "target allocation", "allocation advice", "entry price", "exit price",
         "best stock for me", "recommend me", "what should i do",
         "tell me what to buy", "tell me what to sell", "what to buy",
         "what to sell", "guaranteed", "sure thing", "best bet",
@@ -161,14 +161,15 @@ def classify_intent(message: str) -> str:
     ):
         return "portfolio_information"
 
-    # Market information
-    if re.search(r"\bmarket\b|\bgainers?\b|\blosers?\b|\bindices\b|\bkse\b|\bkse100\b|\bpsx\b|\bturnover\b|\bvolume\b|\bnews\b|\bannouncements?\b", message_lower):
-        return "market_information"
-
-    concept_abbreviations = {"RSI", "MACD", "SMA", "EMA", "ATR", "VAR", "CVAR", "EPS", "ROI", "PPE"}
+    # Explicit Stock Ticker Lookup (prioritized before general market terms)
+    concept_abbreviations = {"RSI", "MACD", "SMA", "EMA", "ATR", "VAR", "CVAR", "EPS", "ROI", "PPE", "KSE", "KSE100", "KSE30", "KMI30", "PSX"}
     explicit_tickers = re.findall(r"(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,5}(?![A-Za-z0-9])", message)
     if any(ticker not in concept_abbreviations for ticker in explicit_tickers):
         return "stock_information"
+
+    # Market information
+    if re.search(r"\bmarket\b|\bgainers?\b|\blosers?\b|\bindices\b|\bkse\b|\bkse100\b|\bkse30\b|\bkmi30\b|\bpsx\b|\bturnover\b|\bvolume\b|\bnews\b|\bannouncements?\b", message_lower):
+        return "market_information"
 
     # General financial education should not be misclassified merely because
     # the concept (RSI, P/E, dividend) is also a supported stock metric.
