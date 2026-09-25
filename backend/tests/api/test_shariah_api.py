@@ -190,4 +190,8 @@ class TestShariahKMI30:
         rows = {row["symbol"]: row for row in resp.json()["constituents"]}
         assert len(rows) == 30
         assert rows["OGDC"]["interest_income_ratio"] == 0.0662
+        assert rows["OGDC"]["purification_rate_provisional"] is True
         assert rows["MEBL"]["interest_income_ratio"] is None
+        assert rows["MEBL"]["purification_rate_provisional"] is False
+        assert rows["FFC"]["purification_rate_provisional"] is False
+        assert rows["SYS"]["purification_rate_provisional"] is False
