@@ -149,6 +149,49 @@ async def run_test_suite_async(accounts: dict):
 
     results = []
 
+    def response_data_issue(method, path, response):
+        """Return a useful-data failure reason, independent of HTTP status."""
+        if response.status_code == 204:
+            return None
+        try:
+            payload = response.json()
+        except ValueError:
+            return "response is not valid JSON"
+        if payload is None:
+            return "response body is null"
+
+        def has_value(value):
+            if value is None:
+                return False
+            if isinstance(value, str):
+                return bool(value.strip())
+            if isinstance(value, (int, float, bool)):
+                return True
+            if isinstance(value, list):
+                return any(has_value(item) for item in value)
+            if isinstance(value, dict):
+                return any(has_value(item) for item in value.values())
+            return False
+
+        if not has_value(payload):
+            return "response contains only null/empty values"
+
+        # These collection responses are specifically expected to return useful
+        # application data in this seeded local audit, not just a valid wrapper.
+        if isinstance(payload, dict):
+            data_keys = {
+                "items", "results", "bars", "history", "indices", "constituents",
+                "quotes", "events", "recommendations", "holdings", "transactions",
+                "rules", "sources", "conversations", "notifications", "indicators",
+            }
+            for key in data_keys.intersection(payload):
+                value = payload[key]
+                if isinstance(value, list) and not value:
+                    return f"{key} is empty"
+        elif method == "GET" and isinstance(payload, list) and not payload:
+            return "response list is empty"
+        return None
+
     async def safe_request(client, method, path, headers=None, json=None, data=None, expected=[200, 201, 204], category="", name=""):
         try:
             if method == "GET":
@@ -165,8 +208,10 @@ async def run_test_suite_async(accounts: dict):
                 raise ValueError(f"Unknown method {method}")
 
             passed = r.status_code in expected
+            issue = response_data_issue(method, path, r) if passed else None
+            passed = passed and issue is None
             icon = "✓ PASS" if passed else "✗ FAIL"
-            log.info("[%s] [%s] %s %s -> HTTP %d", icon, category, method, path, r.status_code)
+            log.info("[%s] [%s] %s %s -> HTTP %d%s", icon, category, method, path, r.status_code, f" | {issue}" if issue else "")
             results.append({
                 "category": category,
                 "name": name or path,
@@ -174,7 +219,8 @@ async def run_test_suite_async(accounts: dict):
                 "path": path,
                 "status": r.status_code,
                 "passed": passed,
-                "body_snippet": (r.text[:120] if not passed else ""),
+                "data_issue": issue,
+                "body_snippet": r.text[:300],
             })
             return r
         except Exception as e:
@@ -285,12 +331,12 @@ async def run_test_suite_async(accounts: dict):
         # 7. FORECAST & RECOMMENDATIONS (PROTECTED)
         # ═════════════════════════════════════════════════════════════════════
         log.info("\n========== 7. FORECAST & RECOMMENDATIONS ==========")
-        await safe_request(client, "GET", "/api/v1/forecast/SYS?horizon=1D", headers=h1, expected=[200, 404], category="Forecast", name="Get AI Forecast")
-        await safe_request(client, "GET", "/api/v1/forecast/SYS/history", headers=h1, expected=[200, 404], category="Forecast", name="Get Forecast History")
+        await safe_request(client, "GET", "/api/v1/forecast/SYS?horizon=1D", headers=h1, expected=[200], category="Forecast", name="Get AI Forecast")
+        await safe_request(client, "GET", "/api/v1/forecast/SYS/history", headers=h1, expected=[200], category="Forecast", name="Get Forecast History")
         await safe_request(client, "GET", "/api/v1/recommendations", headers=h1, expected=[200], category="Recommendations", name="List Recommendations")
         await safe_request(client, "GET", "/api/v1/recommendations/engine-weights", headers=h1, expected=[200], category="Recommendations", name="Get Engine Weights")
-        await safe_request(client, "GET", "/api/v1/recommendations/SYS", headers=h1, expected=[200, 404], category="Recommendations", name="Get Stock Recommendation Detail")
-        await safe_request(client, "GET", "/api/v1/recommendations/SYS/target-stop", headers=h1, expected=[200, 404], category="Recommendations", name="Get Target/Stop Levels")
+        await safe_request(client, "GET", "/api/v1/recommendations/SYS", headers=h1, expected=[200], category="Recommendations", name="Get Stock Recommendation Detail")
+        await safe_request(client, "GET", "/api/v1/recommendations/SYS/target-stop", headers=h1, expected=[200], category="Recommendations", name="Get Target/Stop Levels")
         await safe_request(client, "GET", "/api/v1/recommendations/top-picks", headers=h1, expected=[200], category="Recommendations", name="Get Top Recommendations Picks")
 
         # ═════════════════════════════════════════════════════════════════════
@@ -329,8 +375,8 @@ async def run_test_suite_async(accounts: dict):
         # ═════════════════════════════════════════════════════════════════════
         log.info("\n========== 10. SHARIAH COMPLIANCE & PURIFICATION ==========")
         await safe_request(client, "GET", "/api/v1/shariah/kmi30", headers=h1, expected=[200], category="Shariah", name="Get KMI-30 Shariah Overview")
-        await safe_request(client, "GET", "/api/v1/shariah/SYS", headers=h1, expected=[200, 404], category="Shariah", name="Screen Stock Compliance")
-        await safe_request(client, "GET", "/api/v1/shariah/SYS/criteria", headers=h1, expected=[200, 404], category="Shariah", name="Get Detailed Shariah Criteria")
+        await safe_request(client, "GET", "/api/v1/shariah/SYS", headers=h1, expected=[200], category="Shariah", name="Screen Stock Compliance")
+        await safe_request(client, "GET", "/api/v1/shariah/SYS/criteria", headers=h1, expected=[200], category="Shariah", name="Get Detailed Shariah Criteria")
         await safe_request(client, "GET", "/api/v1/shariah/SYS/purification?holding_qty=100&holding_value=45000", headers=h1, expected=[200], category="Shariah", name="Calculate Dividend Purification")
 
         # ═════════════════════════════════════════════════════════════════════

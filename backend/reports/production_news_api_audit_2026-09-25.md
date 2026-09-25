@@ -31,4 +31,12 @@ Previously completed production audits document stale Market quotes/history, una
 
 ## Verification
 
-Pending deployment and post-deployment live retest.
+The focused News API suite passes **4/4**. Both commits deployed successfully through GitHub Actions: `9761a0d` (run `36133478456`) and `6c92cf1` (run `36134525168`).
+
+Post-deployment, all **26 public GET operations** across Market, Stocks, Shariah, and News returned the expected status and valid JSON. Their required top-level response fields were present. The two protected sentiment routes returned their expected 401 responses without credentials. Representative filters returned valid responses, including quote symbols/sector/search/sort/order, stock range/indicators, News row/symbol/sentiment/source/source-type/event/search, and stock-News sentiment/source-type/event filters.
+
+Final News checks: the public feed reports **282** articles and traverses **282/282 unique IDs in 6 pages**; OGDC stock News reports **36** articles and traverses **36/36 unique IDs in 8 pages**. Both final pages have `has_more=false` and no cursor. A unique no-match search returns zero items and `total=0`; malformed cursors return 400; the stock sentiment filter returns 200 and all returned items match the requested sentiment. Article detail includes all required identifiers, title, URL, source fields, and timestamps.
+
+Live data remains incomplete in optional fields: 8 of the first 50 News articles have no symbol tags and 9 have no sentiment; the sample SYS article names the company in its title but has no symbol association. The full quote set still contains **560/560** records but is stale (`2026-09-24T23:55:11+05:00`), all 560 OHLC values are null, 75 have zero volume, and one current price is null. HBL history remains stale at `2026-09-18` (7 days old), and HBL annual/quarterly fundamentals remain absent (`data_status=partial`). The official Shariah snapshot is stale, based on accounts as of `2025-12-31` and effective from `2026-05-25`. All 8 configured News sources currently report healthy.
+
+The News refresh POST was not invoked because it queues background ingestion against external sources. No create/update/delete operation is documented for these four public modules.

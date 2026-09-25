@@ -16,10 +16,8 @@ from app.services.groq_client import groq_client, GroqError
 from app.services.assistant_context import ContextBuilder
 from app.services.assistant_safety import (
     classify_intent,
-    check_output_safety,
-    sanitize_response,
+    enforce_output_safety,
     check_prompt_injection,
-    get_safety_response,
 )
 
 log = logging.getLogger(__name__)
@@ -197,6 +195,7 @@ class AssistantService:
         history = [
             {"role": msg.role, "content": msg.content}
             for msg in history_messages
+            if not (msg.role == "user" and check_prompt_injection(msg.content))
         ]
 
         # Safety: Check for prompt injection
@@ -270,17 +269,9 @@ class AssistantService:
             raise
 
         # Safety: Check output
-        is_safe, violation_type = check_output_safety(response)
-        if not is_safe:
-            log.warning(f"Output safety violation for user {user_id}: {violation_type}")
-            # Try to sanitize
-            sanitized = sanitize_response(response)
-            is_safe_after, _ = check_output_safety(sanitized)
-            if is_safe_after:
-                response = sanitized
-            else:
-                # Use safe fallback
-                response = get_safety_response(violation_type)
+        response, output_filtered, violation_type = enforce_output_safety(response)
+        if output_filtered:
+            log.warning("Output safety filtered response for user %s: %s", user_id, violation_type)
 
         # Save messages
         await self._save_message(conversation.id, "user", message)
@@ -372,6 +363,7 @@ class AssistantService:
         history = [
             {"role": msg.role, "content": msg.content}
             for msg in history_messages
+            if not (msg.role == "user" and check_prompt_injection(msg.content))
         ]
 
         user = await self.db.get(User, user_id)
@@ -379,7 +371,9 @@ class AssistantService:
         context = await context_builder.build_context(message, intent, history)
         messages = context_builder.build_messages(context, message, history)
 
-        # Stream tokens from Groq
+        # Buffer model output until the complete answer passes output safety.
+        # Emitting raw fragments here could expose advice that a later safety
+        # check would otherwise replace.
         full_response_chunks = []
         try:
             async for chunk in groq_client.stream_chat_completion(
@@ -388,7 +382,6 @@ class AssistantService:
                 max_tokens=500,
             ):
                 full_response_chunks.append(chunk)
-                yield f"data: {json.dumps({'event': 'chunk', 'chunk': chunk, 'conversation_id': conversation.id})}\n\n"
         except GroqError as e:
             log.error(f"Groq API streaming error: {e}")
             error_msg = "The AI assistant is temporarily unavailable. Please try again later."
@@ -402,16 +395,9 @@ class AssistantService:
 
         full_response = "".join(full_response_chunks).strip()
 
-        # Output safety check
-        is_safe, violation_type = check_output_safety(full_response)
-        if not is_safe:
-            log.warning(f"Output safety violation for user {user_id}: {violation_type}")
-            sanitized = sanitize_response(full_response)
-            is_safe_after, _ = check_output_safety(sanitized)
-            if is_safe_after:
-                full_response = sanitized
-            else:
-                full_response = get_safety_response(violation_type)
+        full_response, output_filtered, violation_type = enforce_output_safety(full_response)
+        if output_filtered:
+            log.warning("Output safety filtered streamed response for user %s: %s", user_id, violation_type)
 
         # Save to database
         await self._save_message(conversation.id, "user", message)
@@ -423,7 +409,14 @@ class AssistantService:
 
         await self.db.commit()
 
-        yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': full_response})}\n\n"
+        # Keep the chunk contract while ensuring every emitted fragment is a
+        # slice of the already-validated final response.
+        chunk_size = 96
+        for offset in range(0, len(full_response), chunk_size):
+            chunk = full_response[offset:offset + chunk_size]
+            yield f"data: {json.dumps({'event': 'chunk', 'chunk': chunk, 'conversation_id': conversation.id})}\n\n"
+
+        yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': full_response, 'safety_filtered': output_filtered})}\n\n"
 
     async def _save_message(
         self,

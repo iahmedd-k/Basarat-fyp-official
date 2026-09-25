@@ -152,11 +152,15 @@ class StockService:
         if not peers:
             return None
 
-        peers = sorted(peers, key=lambda d: d.get("change_pct", 0.0), reverse=True)
+        peers = sorted(
+            peers,
+            key=lambda d: (d.get("change_pct") if d.get("change_pct") is not None else -999999.0),
+            reverse=True,
+        )
         valid = [d for d in peers if d.get("change_pct") is not None]
         avg_change = round(sum(d["change_pct"] for d in valid) / len(valid), 2) if valid else 0.0
-        advancing = sum(1 for d in peers if d.get("change_pct", 0.0) > 0)
-        declining = sum(1 for d in peers if d.get("change_pct", 0.0) < 0)
+        advancing = sum(1 for d in valid if d["change_pct"] > 0)
+        declining = sum(1 for d in valid if d["change_pct"] < 0)
         unchanged = len(peers) - advancing - declining
 
         rank = next((i + 1 for i, d in enumerate(peers) if d.get("symbol") == symbol), None)
@@ -955,8 +959,8 @@ class StockService:
 
     def get_fundamentals(self, symbol: str):
         symbol = str(symbol).upper()
-        # v11 rejects empty company-page parses and reuses the toolkit fallback.
-        cache_key = f"fund:v11:{symbol}"
+        # v12 forces refresh of cached empty profiles and loads full company tables
+        cache_key = f"fund:v12:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
@@ -1278,16 +1282,33 @@ class StockService:
             "eps_growth_pct": eps_growth,
         }
 
+        sector_overview = None
+        try:
+            sector_overview = self.get_sector_overview(symbol)
+        except Exception as exc:
+            log.warning("Sector overview resolution failed for %s: %s", symbol, exc)
+
+        has_core = bool(company_profile.get("business_description") and financials_annual and equity_profile.get("market_cap_pkr"))
+        has_any = any(value not in (None, [], "") for value in (
+            equity_profile.get("market_cap_pkr"), equity_profile.get("total_shares"), eps, pe_ratio,
+            peg, eps_growth, net_margin, gross_margin, year_high, year_low, dividend_history,
+            company_profile.get("business_description"), financials_annual,
+        ))
+        data_status = "complete" if has_core else ("partial" if has_any else "unavailable")
+        data_message = (
+            "Company fundamentals, governance, equity profile, and financial statements loaded successfully."
+            if data_status == "complete"
+            else (
+                "Some company fundamentals are missing from the upstream PSX feed; blank fields are not estimated."
+                if data_status == "partial"
+                else "Fundamentals provider returned no usable company data; unavailable values are left blank."
+            )
+        )
+
         result = {
             "symbol": symbol,
-            "data_status": "partial" if any(value not in (None, [], "") for value in (
-                equity_profile.get("market_cap_pkr"), equity_profile.get("total_shares"), eps, pe_ratio,
-                peg, eps_growth, net_margin, gross_margin, year_high, year_low, dividend_history,
-            )) else "unavailable",
-            "data_message": "Some company fundamentals are missing from the upstream PSX feed; blank fields are not estimated." if any(value not in (None, [], "") for value in (
-                equity_profile.get("market_cap_pkr"), equity_profile.get("total_shares"), eps, pe_ratio,
-                peg, eps_growth, net_margin, gross_margin, year_high, year_low, dividend_history,
-            )) else "Fundamentals provider returned no usable company data; unavailable values are left blank.",
+            "data_status": data_status,
+            "data_message": data_message,
             "company_profile": company_profile,
             "equity_profile": equity_profile,
             "financials_annual": financials_annual,
@@ -1301,7 +1322,7 @@ class StockService:
             "announcements": announcements,
             "metrics": metrics,
             "extras": extras,
-            "sector_overview": self.get_sector_overview(symbol),
+            "sector_overview": sector_overview,
         }
 
         # Keep useful fundamentals for one session. Cache failures for one

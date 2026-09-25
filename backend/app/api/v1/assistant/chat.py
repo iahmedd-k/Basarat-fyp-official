@@ -71,7 +71,7 @@ async def chat(
 
 @router.post(
     "/assistant/chat/stream",
-    summary="Stream AI assistant response (Server-Sent Events)",
+    summary="Stream safety-checked assistant response (Server-Sent Events)",
 )
 @limiter.limit("30/minute")
 async def chat_stream(
@@ -81,13 +81,19 @@ async def chat_stream(
     service: AssistantService = Depends(get_assistant_service),
 ):
     """
-    Stream a response from the Stock AI Assistant token-by-token using SSE (text/event-stream).
+    Stream a response from the Stock AI Assistant using SSE (text/event-stream).
+    To prevent unvalidated text from reaching the user, the model response is
+    fully generated and safety-checked before chunk events are emitted.
 
     SSE Events format:
     - `data: {"event": "start", "conversation_id": "..."}`
-    - `data: {"event": "chunk", "chunk": "token", "conversation_id": "..."}`
-    - `data: {"event": "done", "conversation_id": "...", "full_response": "..."}`
+    - `data: {"event": "chunk", "chunk": "text fragment", "conversation_id": "..."}`
+    - `data: {"event": "done", "conversation_id": "...", "full_response": "...", "safety_filtered": false}`
     - `data: {"event": "error", "error": "...", "conversation_id": "..."}`
+
+    Chunk events are emitted only after full-response safety validation. They
+    are slices of `full_response`; `safety_filtered` indicates a safe redirect
+    replaced a policy-violating model answer.
     """
     stream_generator = service.process_chat_stream(
         user_id=user.id,

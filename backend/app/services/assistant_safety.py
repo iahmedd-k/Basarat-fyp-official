@@ -136,31 +136,46 @@ def classify_intent(message: str) -> str:
     if re.search(r"\banalyze\s+[a-z0-9]+\b|\bevaluate\s+[a-z0-9]+\b|\bassess\s+[a-z0-9]+\b|\bthoughts\s+on\b|\bview\s+on\b|\boutlook\b", message_lower):
         return "stock_analysis"
 
+    # App navigation/setup questions take precedence over the word
+    # "portfolio" (for example, "How do I create a portfolio?").
+    if re.search(r"\bhow\s+do\s+i\b|\bhow\s+to\b|\bfeatures?\b|\bhelp\b|\bsettings?\b|\balerts?\b", message_lower):
+        return "application_help"
+
     # Forecast explanation
     if "forecast" in message_lower or "prediction" in message_lower or "predict" in message_lower or "target" in message_lower:
         return "forecast_explanation"
-
-    # Financial education (general concepts without specific symbol lookups)
-    if re.search(r"\bwhat\s+is\b|\bexplain\b|\bdefine\b|\bmeaning\s+of\b|\bhow\s+does\b|\bconcept\b|\bdividend\b|\bpe\s+ratio\b|\bvaluation\b|\bshariah\b", message_lower):
-        return "financial_education"
-
-    # Application help
-    if re.search(r"\bhow\s+do\s+i\b|\bhow\s+to\b|\bfeatures?\b|\bhelp\b|\bsettings?\b|\balerts?\b", message_lower):
-        return "application_help"
 
     # Risk profile
     if re.search(r"\brisk\s+profile\b|\brisk\s+tolerance\b|\bhorizon\b|\bconservative\b|\baggressive\b", message_lower):
         return "risk_profile"
 
     # Portfolio information
-    if re.search(r"\bholdings?\b|\bportfolio\b|\bmy\s+stocks\b|\bpnl\b|\bprofit\b|\bloss\b|\breturns\b", message_lower):
+    if re.search(
+        r"\bholdings?\b|\bmy\s+(?:portfolio|stocks?|positions?|investments?)\b|"
+        r"\bportfolio\s+(?:value|pnl|performance|allocation|holdings?)\b|"
+        r"\b(?:pnl|profit|loss|returns|diversification|concentration|exposure)\b",
+        message_lower,
+    ) or (
+        re.search(r"\bportfolio\b", message_lower)
+        and not re.search(r"\b(?:what is|define|meaning of)\s+(?:a |the )?portfolio\b", message_lower)
+    ):
         return "portfolio_information"
 
     # Market information
-    if re.search(r"\bmarket\b|\bgainers?\b|\blosers?\b|\bindices\b|\bkse\b|\bkse100\b|\bpsx\b|\bturnover\b|\bvolume\b", message_lower):
+    if re.search(r"\bmarket\b|\bgainers?\b|\blosers?\b|\bindices\b|\bkse\b|\bkse100\b|\bpsx\b|\bturnover\b|\bvolume\b|\bnews\b|\bannouncements?\b", message_lower):
         return "market_information"
 
-    # Stock information / inquiry
+    concept_abbreviations = {"RSI", "MACD", "SMA", "EMA", "ATR", "VAR", "CVAR", "EPS", "ROI", "PPE"}
+    explicit_tickers = re.findall(r"(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,5}(?![A-Za-z0-9])", message)
+    if any(ticker not in concept_abbreviations for ticker in explicit_tickers):
+        return "stock_information"
+
+    # General financial education should not be misclassified merely because
+    # the concept (RSI, P/E, dividend) is also a supported stock metric.
+    if re.search(r"\bwhat\s+is\b|\bexplain\b|\bdefine\b|\bmeaning\s+of\b|\bhow\s+does\b|\bconcept\b|\bdividend\b|\bpe\s+ratio\b|\bvaluation\b|\bshariah\b", message_lower):
+        return "financial_education"
+
+    # Route live company/metric lookups after education intents.
     for kw in INTENT_KEYWORDS["stock_information"]:
         if kw in message_lower:
             return "stock_information"
@@ -184,8 +199,16 @@ def classify_intent(message: str) -> str:
 # Patterns that indicate personalized investment advice
 PROHIBITED_PATTERNS = [
     (r"\byou should buy\b", "direct_buy_advice"),
+    (r"\byou should (?:purchase|invest in)\b", "direct_buy_advice"),
     (r"\byou should sell\b", "direct_sell_advice"),
+    (r"\byou should (?:liquidate|dispose of)\b", "direct_sell_advice"),
+    (r"\byou should avoid\b", "direct_avoid_instruction"),
     (r"\byou should hold\b", "direct_hold_advice"),
+    (r"\bi recommend (?:that you )?(?:buy|purchase|sell|hold|avoid|invest in|buying|purchasing|selling|holding)\b", "personalized_recommendation"),
+    (r"\bi suggest (?:that you )?(?:buy|purchase|sell|hold|avoid|invest in)\b", "personalized_recommendation"),
+    (r"\bmy recommendation is to (?:buy|purchase|sell|hold|avoid|invest in)\b", "personalized_recommendation"),
+    (r"\b(?:best|ideal|perfect) (?:stock|investment|option) for you\b", "personalized_recommendation"),
+    (r"(?:^|[\n.!?]\s*)(?:[-*]\s*)?(?:buy|sell|hold|purchase|avoid)\s+(?:shares of\s+)?[A-Z]{2,5}\b", "direct_trade_instruction"),
     (r"\bbuy this stock\b", "direct_buy_instruction"),
     (r"\bsell this stock\b", "direct_sell_instruction"),
     (r"\ballocate\s+\d+%?\b", "allocation_instruction"),
@@ -263,6 +286,20 @@ def sanitize_response(response: str) -> str:
     return sanitized
 
 
+def enforce_output_safety(response: str) -> tuple[str, bool, Optional[str]]:
+    """Return one complete response that passes the output policy.
+
+    Callers must emit this checked response, never the unchecked model text.
+    """
+    is_safe, violation_type = check_output_safety(response)
+    if is_safe:
+        return response, False, None
+
+    # Avoid fragile in-place edits that can change the meaning of a financial
+    # sentence. Replace the whole answer with a vetted, topic-specific redirect.
+    return get_safety_response(violation_type or "default"), True, violation_type
+
+
 def check_prompt_injection(message: str) -> bool:
     """
     Check for prompt injection attempts.
@@ -315,6 +352,14 @@ def get_safety_response(violation_type: str) -> str:
         "direct_hold_advice": (
             "I can't tell you whether to hold, but I can help you review the stock's "
             "recent performance, forecast, and how it fits your investment horizon and risk profile."
+        ),
+        "direct_avoid_instruction": (
+            "I can't tell you to avoid a specific stock, but I can help review its "
+            "retrieved fundamentals, price history, forecast, and relevant risks."
+        ),
+        "direct_trade_instruction": (
+            "I can't give a direct trade instruction. I can summarize the retrieved "
+            "market, company, and risk information so you can make your own decision."
         ),
         "allocation_instruction": (
             "I can't specify portfolio allocations, but I can show you your current "

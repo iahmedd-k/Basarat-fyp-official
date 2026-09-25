@@ -17,8 +17,6 @@ log = logging.getLogger(__name__)
 ROOT_DIR = Path(__file__).resolve().parents[3]
 
 PROD_V3_DIR = Path("models/final/final_v3") if Path("models/final/final_v3").exists() else ROOT_DIR / "models" / "final" / "final_v3"
-GRU_MODEL_DIR = Path("models/gru_v1") if Path("models/gru_v1").exists() else ROOT_DIR / "models" / "gru_v1"
-XGB_MODEL_DIR = PROD_V3_DIR if (PROD_V3_DIR / "xgb_model.ubj").exists() else (Path("models/xgb_v1") if Path("models/xgb_v1").exists() else ROOT_DIR / "models" / "xgb_v1")
 DATA_DIR = Path("data/scalers") if Path("data/scalers").exists() else ROOT_DIR / "data" / "scalers"
 
 
@@ -83,7 +81,6 @@ def _load_xgb_artifacts() -> None:
         from xgboost import XGBClassifier
 
         prod_model_path = PROD_V3_DIR / "xgb_model.ubj"
-        legacy_model_path = Path("models/xgb_v1") / "xgb_v1_weighted.xgb"
 
         if prod_model_path.exists():
             artifacts.xgb_model = XGBClassifier()
@@ -99,20 +96,7 @@ def _load_xgb_artifacts() -> None:
             log.info("XGB artifacts loaded successfully — xgb_ready=True (xgb_v4_event_fundamentals)")
             return
 
-        if legacy_model_path.exists():
-            artifacts.xgb_model = XGBClassifier()
-            artifacts.xgb_model.load_model(str(legacy_model_path))
-            log.info("Loaded legacy XGB model <- %s", legacy_model_path)
-
-            xgb_meta_path = Path("models/xgb_v1") / "xgb_v1_weighted.json"
-            if xgb_meta_path.exists():
-                xgb_meta = json.loads(xgb_meta_path.read_text(encoding="utf-8"))
-                artifacts.xgb_feature_names = xgb_meta.get("feature_names", [])
-
-            log.info("Loaded XGB features <- %d features in exact training order", len(artifacts.xgb_feature_names))
-            artifacts.xgb_ready = True
-            artifacts.xgb_model_version = "xgb_weighted"
-            log.info("XGB artifacts loaded successfully — xgb_ready=True")
+        log.warning("Production XGBoost model artifact not found at %s", prod_model_path)
 
     except ImportError:
         log.warning("xgboost not installed — XGB ensemble disabled")
