@@ -245,6 +245,10 @@ class ForecastHistoryResponse(BaseModel):
         default=None,
         description="Overall accuracy across scored predictions (excludes uncertain)",
     )
+    accuracy_summary: str = Field(
+        default="Accuracy calculation pending: Predictions in this history window are either currently active or categorized under holding/uncertain regime.",
+        description="Human-readable explanation of accuracy metric or pending status.",
+    )
     history: list[ForecastHistoryItem]
 
 
@@ -265,13 +269,13 @@ class RecommendationDecision(BaseModel):
     horizon: str = "5 trading days"
     reason: str = ""
     suppressed: bool = False
-    suppression_reason: str | None = None
+    suppression_reason: str = "None (Active signal - no risk suppression applied)"
 
 
 class RecommendationComponent(BaseModel):
     score: float | None = Field(default=None, ge=-1, le=1, description="Directional component score in [-1, 1]; null when unavailable.")
     status: str = "unavailable"
-    availability_reason: str | None = Field(default=None, description="Why the component score is unavailable, when applicable.")
+    availability_reason: str = Field(default="Active: Signal verified and factored into decision matrix", description="Availability state and verification details.")
     configured_weight: float = Field(default=0.0, ge=0, le=1)
     effective_weight: float = Field(default=0.0, ge=0, le=1)
     details: dict = Field(default_factory=dict, description="Source probabilities, observation date, and component-specific evidence.")

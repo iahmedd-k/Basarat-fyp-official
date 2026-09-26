@@ -243,16 +243,30 @@ async def get_forecast_history(
             }
             conf = round(row.top_class_probability / 100.0, 3) if row.top_class_probability else 0
 
-            actual = None
             if row.actual_direction is not None:
                 actual = {
+                    "status": "evaluated",
                     "direction": row.actual_direction,
                     "was_correct": row.was_correct,
+                    "evaluation_note": f"Market outcome evaluated as '{row.actual_direction}' on target date {row.target_date}.",
                 }
                 if row.predicted_direction != "uncertain":
                     scored_count += 1
                     if row.was_correct:
                         correct_count += 1
+            else:
+                from datetime import date
+                is_future = row.target_date > date.today()
+                actual = {
+                    "status": "pending_target_date" if is_future else "pending_close_backfill",
+                    "direction": "pending",
+                    "was_correct": None,
+                    "evaluation_note": (
+                        f"Prediction active. Target date ({row.target_date}) trading session has not yet completed."
+                        if is_future else
+                        f"Target date ({row.target_date}) reached. Scheduled daily backfill job will evaluate final close outcome."
+                    ),
+                }
 
             items.append(ForecastHistoryItem(
                 predicted_at=row.predicted_at,
@@ -264,12 +278,18 @@ async def get_forecast_history(
             ))
 
         accuracy = round(correct_count / scored_count, 4) if scored_count > 0 else None
+        accuracy_summary = (
+            f"Overall directional accuracy: {round(accuracy * 100, 1)}% across {scored_count} evaluated predictions."
+            if accuracy is not None else
+            "Accuracy calculation pending: Predictions in this history window are either currently active or categorized under holding/uncertain regime."
+        )
 
         return ForecastHistoryResponse(
             symbol=symbol,
             horizon="1D",
             count=len(items),
             accuracy=accuracy,
+            accuracy_summary=accuracy_summary,
             history=items,
         )
 

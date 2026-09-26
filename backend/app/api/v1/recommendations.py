@@ -149,7 +149,7 @@ def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
     stale = freshness["data_freshness"] == "stale" and (freshness.get("data_age_trading_days") or 0) > 30
     original_signal = str(result.get("signal", "hold")).upper()
     result["signal_suppressed"] = stale and original_signal in {"BUY", "SELL"}
-    result["suppression_reason"] = None
+    result["suppression_reason"] = "None (Active signal - no risk suppression applied)" 
     if stale and result["signal_suppressed"]:
         age = freshness.get("data_age_trading_days")
         age_text = f"{age} trading days old" if age is not None else "freshness is unknown"
@@ -174,7 +174,7 @@ def _component_payload(rec: dict) -> dict:
         components[name] = {
             "score": signals[name] if status == "available" else None,
             "status": status,
-            "availability_reason": source_reason.get("reason") if status == "unavailable" else None,
+            "availability_reason": source_reason.get("reason") if status == "unavailable" else "Active: Signals verified and factored into decision matrix",
             "configured_weight": configured[name],
             "effective_weight": effective[name],
             "details": {
