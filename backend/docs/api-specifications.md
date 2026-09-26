@@ -72,10 +72,12 @@ Query params `?page=1&limit=20` — response carries `meta: { page, limit, total
 | Method | Endpoint | Body / Query | Notes |
 |---|---|---|---|
 | POST | `/auth/signup` | `email, password, full_name` | returns access + refresh |
-| POST | `/auth/login` | `email, password` | — |
+| POST | `/auth/login` | `email, password` | native login |
+| POST | `/auth/google` | `id_token, access_token?` | Google OAuth 2.0 Sign-In |
+| POST | `/auth/apple` | `id_token, full_name?` | Apple Sign-In |
 | POST | `/auth/refresh` | `refresh_token` | rotates token |
 | POST | `/auth/logout` | — | blacklists refresh token |
-| POST | `/auth/forgot-password` | `email` | — |
+| POST | `/auth/forgot-password` | `email` | password reset code |
 | POST | `/auth/reset-password` | `token, new_password` | — |
 | GET | `/users/me` | — | profile + risk profile |
 | PATCH | `/users/me` | `full_name, phone` | — |
@@ -83,17 +85,18 @@ Query params `?page=1&limit=20` — response carries `meta: { page, limit, total
 | PATCH | `/users/me/notification-preferences` | `channels[], categories[]` | — |
 | POST | `/devices/register` | `fcm_token, platform` | FCM registration (shared w/ M9) |
 
-### 3.2 Module 2 — Market Dashboard
+### 3.2 Module 2 — Market Dashboard & Curated Lists
 
 | Method | Endpoint | Query | Notes |
 |---|---|---|---|
 | GET | `/market/indices` | — | KSE-100/30, KMI-30 snapshot |
-| GET | `/market/sector-heatmap` | — | `[{sector, avg_change_pct, stock_count}]` |
-| GET | `/market/top-gainers` | `limit=10` | — |
-| GET | `/market/top-losers` | `limit=10` | — |
-| GET | `/market/volume-spikes` | `limit=10` | — |
-| GET | `/market/sentiment-overview` | — | `{score:-1..1, label}` |
-| WS | `/ws/market/live` | — | live tick stream |
+| GET | `/market/sectors/performance` | `order=asc\|desc` | aggregate sector breadth & market cap |
+| GET | `/market/curated` | `category=high_dividend_yield\|best_returning_1y\|value_investing\|most_liquid\|fastest_growth, limit=20, min_volume=5000, sector?` | Public curated leaderboards with 3-tier non-blocking caching |
+| GET | `/market/gainers` | `limit=10` | top price percentage gainers |
+| GET | `/market/losers` | `limit=10` | top price percentage losers |
+| GET | `/market/volume-spikes` | `limit=10` | abnormal volume surges |
+| GET | `/market/sentiment-overview` | — | `{market_mood, advance_decline_ratio}` |
+| GET | `/market/quotes` | `limit=20, offset=0, sort_by=, order=` | full PSX stock quote catalog |
 
 ### 3.3 Module 3 — Stock Analysis
 
@@ -329,10 +332,22 @@ Errors use the shared app error shape: `{error, message, field?, extras?}` (e.g.
 
 | Method | Endpoint | Body/Query | Notes |
 |---|---|---|---|
-| POST | `/assistant/chat` | `message, conversation_id?` | full response or streamed |
+| POST | `/assistant/chat` | `message, conversation_id?` | Standard full response (Non-streaming) |
+| POST | `/assistant/chat/stream` | `message, conversation_id?` | Server-Sent Events (SSE `text/event-stream`) streaming response |
 | GET | `/assistant/conversations` | — | list: title, last_message_at |
 | GET | `/assistant/conversations/{id}` | — | full message history |
 | GET | `/assistant/quick-prompts` | — | predefined prompt suggestions |
+
+### 3.13 Module 13 — Real-Time WebSockets & Fallback
+
+| Protocol | Endpoint | Params / Actions | Notes |
+|---|---|---|---|
+| WS | `/ws/market` | `{"action": "subscribe", "symbols": [...]}` | Live PSX stock price ticks and market depth |
+| WS | `/ws/alerts` | `?token=<JWT>` | Real-time personal price trigger alerts |
+| GET | `/ws/stats` | — | Active WebSocket client & topic metrics |
+| POST | `/ws/broadcast` | `symbol, price, change, volume` | Internal broadcast injection |
+
+* **Resilient Client Contract:** The frontend client (`liveStream.js`) connects to `/ws/market` for sub-millisecond price updates. If the WebSocket disconnects, it automatically falls back to background REST polling (`GET /market/quotes`), guaranteeing zero disruption.
 
 ---
 

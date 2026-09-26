@@ -18,27 +18,27 @@ This architecture was locked for one overriding reason: **ML (TensorFlow/GRU), N
 ```mermaid
 flowchart LR
     subgraph Clients
-        A[Kotlin Android App<br/>Jetpack Compose, MVVM]
-        W[React Web App<br/>Vite + TS, TanStack Query]
+        A["Kotlin Android App<br/>Jetpack Compose, MVVM"]
+        W["React Web App<br/>Vite + Tailwind, TanStack Query"]
     end
 
     A -->|"REST /api/v1 + WebSocket"| API
     W -->|"REST /api/v1 + WebSocket"| API
 
-    subgraph Backend["FastAPI Backend (Docker: api)"]
-        API[REST Routers<br/>12 modules, 1:1]
-        WS[WebSocket hub<br/>/ws/market/live]
-        CEL[Celery Worker + Beat<br/>scrape / inference / alerts]
-        ASS[LangChain Assistant<br/>tool-calling agent]
+    subgraph Backend["FastAPI Production Backend (Docker: api)"]
+        API["REST Routers<br/>14 Modules (Auth, Market, Stocks, etc.)"]
+        WS["WebSocket Hub<br/>/ws/market & /ws/alerts"]
+        CEL["Celery Worker + Beat<br/>Daily 16:00 Pipeline / ML / News"]
+        ASS["AI Assistant Agent<br/>Groq / Llama-3 + SSE Stream"]
     end
 
-    API --> PG[(PostgreSQL 16)]
-    API --> RD[(Redis 7)]
+    API --> PG[("PostgreSQL 16")]
+    API --> RD[("Redis 7 / Upstash")]
     WS --> RD
     CEL --> PG
     CEL --> RD
-    CEL -->|scrape| SRC[PSX · Yahoo · Dawn · BR · SBP]
-    CEL -->|FCM push| FCM[Firebase Cloud Messaging]
+    CEL -->|scrape| SRC["PSX DPS · SECP · Dawn · BR · SBP"]
+    CEL -->|FCM push| FCM["Firebase Cloud Messaging"]
     FCM --> A
 
     ASS --> API
@@ -113,6 +113,8 @@ Redis is a **general response cache** covering every expensive-to-compute or exp
 
 | Data | Cache key | TTL | Refreshed by |
 |---|---|---|---|
+| Market Quotes & Catalog | `market:quotes` · `market:quotes:last_known` | 600s / 7d | Celery worker + Dual-Tier fallback |
+| Curated Stock Leaderboards | `market:screener` · `market:screener:last_known` | 1h / 7d | 3-Tier cache (In-memory + Redis + Fallback) |
 | Market indices / heatmap / gainers / spikes | `market:indices` · `market:heatmap` · `market:gainers` | 30–60s | Celery job overwrites |
 | Technical indicators / symbol | `indicators:{symbol}:{period}` | 5 min | Cache-miss recompute or scheduled job |
 | Fundamentals / symbol | `fundamentals:{symbol}` | 24h | Quarterly source data |
