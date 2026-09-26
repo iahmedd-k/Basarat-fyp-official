@@ -140,6 +140,11 @@ def run_master_live_aws_audit():
         d = (time.perf_counter() - t0) * 1000
         record("Market Overview", "GET", "/market/quotes", r.status_code, d, r.status_code == 200, f"Total PSX stocks: {r.json().get('total')}")
 
+        t0 = time.perf_counter()
+        r = client.get(f"{BASE_URL}/market/curated?category=high_dividend_yield&limit=5")
+        d = (time.perf_counter() - t0) * 1000
+        record("Market Overview", "GET", "/market/curated", r.status_code, d, r.status_code == 200, f"Curated items: {len(r.json().get('items', [])) if r.status_code == 200 else 0}")
+
         # -------------------------------------------------------------
         # 4. Stocks & Fundamentals
         # -------------------------------------------------------------

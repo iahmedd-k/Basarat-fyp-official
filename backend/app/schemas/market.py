@@ -118,3 +118,28 @@ class SentimentOverview(BaseModel):
     top_movers: list[MarketQuoteItem]
     as_of: str | None = None
     is_stale: bool = True
+
+
+class CuratedStockItem(BaseModel):
+    symbol: str
+    name: str | None = None
+    sector: str | None = None
+    price: float | None = None
+    change_pct: float | None = None
+    dividend_yield_pct: float | None = None
+    return_1y_pct: float | None = None
+    pe_ratio: float | None = None
+    market_cap: str | None = None
+    volume_30d_avg: int | None = None
+    metric_value: float | None = None
+    metric_label: str | None = None
+
+
+class CuratedStocksResponse(BaseModel):
+    category: str
+    title: str
+    description: str
+    total_count: int
+    items: list[CuratedStockItem]
+    as_of: str | None = None
+    is_stale: bool = False

@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
@@ -12,9 +13,11 @@ from app.schemas.market import (
     SentimentOverview,
     SectorPerformanceResponse,
     VolumeSpikesResponse,
+    CuratedStocksResponse,
 )
 from app.services.market_service import MarketService
 
+log = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -260,3 +263,39 @@ async def get_market_quotes(
         )
     except Exception:
         raise ServiceUnavailableError("Failed to fetch market quotes")
+
+@router.get(
+    "/market/curated",
+    response_model=CuratedStocksResponse,
+    summary="Get curated stock leaderboards (High Dividend Yield, Best Returning, Value, Liquid)",
+)
+@limiter.limit("60/minute")
+async def get_curated_stocks(
+    request: Request,
+    category: str = Query("high_dividend_yield", description="Curated category: high_dividend_yield, best_returning_1y, value_investing, most_liquid, fastest_growth"),
+    limit: int = Query(20, ge=1, le=100, description="Max results to return"),
+    min_volume: int = Query(5000, ge=0, description="Minimum 30-day average volume filter"),
+    sector: str | None = Query(None, description="Optional PSX sector filter"),
+    service: MarketService = Depends(MarketService),
+):
+    """
+    Public Curated Lists of PSX stocks.
+    
+    Provides ranked lists for:
+    - `high_dividend_yield`: Top dividend paying equities
+    - `best_returning_1y`: Highest 1-year capital appreciation
+    - `value_investing`: Lowest P/E profitable companies
+    - `most_liquid`: Highest 30-day volume
+    - `fastest_growth`: High momentum & growth
+    """
+    try:
+        data = await service.get_curated_stocks(
+            category=category,
+            limit=limit,
+            min_volume=min_volume,
+            sector=sector,
+        )
+        return CuratedStocksResponse(**data)
+    except Exception as exc:
+        log.exception("Error in get_curated_stocks: %s", exc)
+        raise ServiceUnavailableError(f"Failed to fetch curated stock leaderboards: {exc}")

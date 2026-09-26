@@ -26,6 +26,9 @@ SECTOR_MAP_TTL_SECONDS = 86400  # PSX classifications rarely change; refresh dai
 PSX_SCREENER_URL = "https://dps.psx.com.pk/screener"
 
 
+_STATIC_SCREENER_CACHE: list[dict] = []
+_STATIC_SCREENER_TIMESTAMP: float = 0.0
+
 _STATIC_SECTOR_MAP: dict[str, str] = {
     "ABL": "COMMERCIAL BANKS",
     "AKBL": "COMMERCIAL BANKS",
@@ -819,4 +822,164 @@ class MarketService:
             "classified_companies": classified,
             "unclassified_companies": len(data) - classified,
             **self.quote_freshness(),
+        }
+
+    async def get_screener_data(self, force_refresh: bool = False) -> list[dict]:
+        """Fetch and cache full 560-stock PSX screener metrics with 3-tier caching."""
+        global _STATIC_SCREENER_CACHE, _STATIC_SCREENER_TIMESTAMP
+        cache_key = "market:screener"
+        fallback_key = "market:screener:last_known"
+        
+        # Tier 1: In-memory Process Cache (< 1ms)
+        import time as _t
+        now = _t.monotonic()
+        if not force_refresh and _STATIC_SCREENER_CACHE and (now - _STATIC_SCREENER_TIMESTAMP) < 600:
+            return _STATIC_SCREENER_CACHE
+
+        # Tier 2: Redis Distributed Cache (< 15ms)
+        if not force_refresh:
+            cached = await cache_get(cache_key)
+            if cached and isinstance(cached, list) and len(cached) > 10:
+                _STATIC_SCREENER_CACHE = cached
+                _STATIC_SCREENER_TIMESTAMP = now
+                return cached
+
+        def _scrape():
+            import requests
+            from bs4 import BeautifulSoup
+            try:
+                res = requests.get(PSX_SCREENER_URL, timeout=10.0, headers={"User-Agent": "Mozilla/5.0"})
+                if res.status_code != 200:
+                    return []
+                soup = BeautifulSoup(res.text, "html.parser")
+                table = soup.find("table")
+                if not table:
+                    return []
+                rows = table.find_all("tr")
+                items = []
+                for tr in rows[1:]:
+                    cols = [td.get_text(strip=True) for td in tr.find_all("td")]
+                    if len(cols) >= 11:
+                        def _num(val):
+                            try:
+                                return float(val.replace("%", "").replace(",", "").strip())
+                            except Exception:
+                                return None
+                        def _int(val):
+                            try:
+                                return int(val.replace(",", "").strip())
+                            except Exception:
+                                return 0
+                        items.append({
+                            "symbol": cols[0].upper(),
+                            "sector_code": cols[1],
+                            "market_cap": cols[3],
+                            "price": _num(cols[4]),
+                            "change_pct": _num(cols[5]),
+                            "return_1y_pct": _num(cols[6]),
+                            "pe_ratio": _num(cols[7]),
+                            "dividend_yield_pct": _num(cols[8]),
+                            "free_float": cols[9],
+                            "volume_30d_avg": _int(cols[10]),
+                        })
+                return items
+            except Exception as e:
+                log.warning("Failed to scrape PSX screener: %s", e)
+                return []
+
+        screener_items = await asyncio.to_thread(_scrape)
+        
+        sector_map = await asyncio.to_thread(self._load_sector_map_sync)
+        if sector_map and screener_items:
+            for it in screener_items:
+                it["sector"] = sector_map.get(it["symbol"], "Unclassified")
+        
+        if screener_items:
+            _STATIC_SCREENER_CACHE = screener_items
+            _STATIC_SCREENER_TIMESTAMP = now
+            await cache_set(cache_key, screener_items, 3600)
+            await cache_set(fallback_key, screener_items, FALLBACK_TTL_SECONDS)
+            return screener_items
+        
+        # Tier 3: Persistent Fallback Cache
+        fallback = await cache_get(fallback_key)
+        if fallback and isinstance(fallback, list):
+            _STATIC_SCREENER_CACHE = fallback
+            _STATIC_SCREENER_TIMESTAMP = now
+            return fallback
+        return []
+
+    async def get_curated_stocks(
+        self,
+        category: str = "high_dividend_yield",
+        limit: int = 20,
+        min_volume: int = 5000,
+        sector: str | None = None,
+    ) -> dict:
+        """Return curated, ranked PSX stock leaderboards with full metrics."""
+        raw_items = await self.get_screener_data()
+        
+        if sector:
+            raw_items = [it for it in raw_items if str(it.get("sector", "")).casefold() == sector.casefold()]
+            
+        filtered = [it for it in raw_items if (it.get("volume_30d_avg") or 0) >= min_volume]
+        if not filtered and raw_items:
+            filtered = raw_items
+
+        cat = category.lower().replace("-", "_")
+        
+        if cat in {"high_dividend_yield", "dividend", "dividends", "highest_yielding"}:
+            title = "Highest Dividend Yielding Stocks"
+            desc = "Top PSX companies delivering superior dividend yields to shareholders."
+            valid = [it for it in filtered if (it.get("dividend_yield_pct") or 0) > 0]
+            valid.sort(key=lambda x: x.get("dividend_yield_pct") or 0, reverse=True)
+            for it in valid:
+                it["metric_label"] = "Dividend Yield"
+                it["metric_value"] = it.get("dividend_yield_pct")
+                
+        elif cat in {"best_returning", "best_returning_1y", "top_performers", "highest_return"}:
+            title = "Best 1-Year Returning Stocks"
+            desc = "Leading PSX equities ranked by 1-year capital appreciation."
+            valid = [it for it in filtered if it.get("return_1y_pct") is not None]
+            valid.sort(key=lambda x: x.get("return_1y_pct") or -999, reverse=True)
+            for it in valid:
+                it["metric_label"] = "1-Year Return"
+                it["metric_value"] = it.get("return_1y_pct")
+                
+        elif cat in {"value_investing", "value_stocks", "lowest_pe", "undervalued"}:
+            title = "Undervalued Value Stocks"
+            desc = "Profitable PSX companies trading at low P/E multiples with solid yield."
+            valid = [it for it in filtered if (it.get("pe_ratio") or 0) > 0 and (it.get("dividend_yield_pct") or 0) >= 0]
+            valid.sort(key=lambda x: x.get("pe_ratio") or 9999)
+            for it in valid:
+                it["metric_label"] = "P/E Ratio"
+                it["metric_value"] = it.get("pe_ratio")
+                
+        elif cat in {"most_liquid", "high_volume", "most_active"}:
+            title = "Most Liquid and Active Stocks"
+            desc = "Equities with the highest 30-day average trading volume on the PSX."
+            valid = list(filtered)
+            valid.sort(key=lambda x: x.get("volume_30d_avg") or 0, reverse=True)
+            for it in valid:
+                it["metric_label"] = "30D Avg Volume"
+                it["metric_value"] = float(it.get("volume_30d_avg") or 0)
+                
+        else:
+            title = "Fast-Growing PSX Equities"
+            desc = "High-momentum PSX equities with robust growth metrics."
+            valid = [it for it in filtered if (it.get("return_1y_pct") or 0) > 0]
+            valid.sort(key=lambda x: (x.get("return_1y_pct") or 0) + (x.get("dividend_yield_pct") or 0), reverse=True)
+            for it in valid:
+                it["metric_label"] = "1-Year Return"
+                it["metric_value"] = it.get("return_1y_pct")
+
+        results = valid[:limit]
+        return {
+            "category": cat,
+            "title": title,
+            "description": desc,
+            "total_count": len(valid),
+            "items": results,
+            "as_of": datetime.now(timezone.utc).isoformat(),
+            "is_stale": False,
         }
