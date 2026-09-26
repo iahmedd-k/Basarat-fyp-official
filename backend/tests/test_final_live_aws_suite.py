@@ -182,9 +182,9 @@ def run_master_live_aws_audit():
         record("Recommendations", "GET", "/recommendations/OGDC", r.status_code, d, r.status_code == 200, f"Decision: {r.json().get('decision', {}).get('signal')}")
 
         t0 = time.perf_counter()
-        r = client.get(f"{BASE_URL}/recommendations/weights", headers=headers)
+        r = client.get(f"{BASE_URL}/recommendations/engine-weights", headers=headers)
         d = (time.perf_counter() - t0) * 1000
-        record("Recommendations", "GET", "/recommendations/weights", r.status_code, d, r.status_code == 200)
+        record("Recommendations", "GET", "/recommendations/engine-weights", r.status_code, d, r.status_code == 200)
 
         # -------------------------------------------------------------
         # 6. Risk Management

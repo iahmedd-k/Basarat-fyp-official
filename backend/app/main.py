@@ -32,6 +32,7 @@ from app.api.v1 import (
     system,
     users,
     webhooks,
+    ws,
 )
 from app.api.v1.community import (
     posts_router as community_posts_router,
@@ -87,6 +88,7 @@ TAGS_METADATA = [
     {"name": "Notifications", "description": "In-app notification center inbox and unread state management."},
     {"name": "Shariah", "description": "AAOIFI & KMI-30 Shariah compliance screening and dividend purification calculators."},
     {"name": "Community", "description": "Social trading feed, stock discussions, comments, follow network, and user moderation."},
+    {"name": "WebSockets", "description": "Real-time PSX market live quote streams and instant price trigger alerts."},
     {"name": "Assistant", "description": "AI investment assistant chatbot with portfolio context and market guardrails."},
     {"name": "Admin Community", "description": "Moderator and admin actions for managing reported posts and comments."},
     {"name": "Health", "description": "Service liveness and dependency readiness health probes."},
@@ -159,6 +161,10 @@ app.include_router(community_notifications_router, prefix=settings.API_V1_PREFIX
 
 # Module 12 — Assistant
 app.include_router(assistant_chat_router, prefix=settings.API_V1_PREFIX, tags=["Assistant"])
+
+# Module 13 — WebSockets (Live Market & Alerts)
+app.include_router(ws.router, prefix=settings.API_V1_PREFIX, tags=["WebSockets"])
+app.include_router(ws.router, prefix="", include_in_schema=False)
 
 # Admin Community
 app.include_router(admin_community_router, prefix=settings.API_V1_PREFIX, tags=["Admin Community"])
