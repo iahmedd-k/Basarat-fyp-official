@@ -893,6 +893,23 @@ class MarketService:
         if sector_map and screener_items:
             for it in screener_items:
                 it["sector"] = sector_map.get(it["symbol"], "Unclassified")
+
+        # Enrich company names and sectors from active quote catalog
+        try:
+            quotes = await self.get_market_data(read_only=True)
+            quote_map = {str(q.get("symbol", "")).upper(): q for q in quotes if q.get("symbol")}
+            for it in screener_items:
+                sym = it["symbol"]
+                q = quote_map.get(sym)
+                if q:
+                    it["name"] = q.get("name") or sym
+                    if it.get("sector") in (None, "", "Unclassified", "unknown"):
+                        it["sector"] = q.get("sector") or it.get("sector")
+                else:
+                    it["name"] = sym
+        except Exception:
+            for it in screener_items:
+                it.setdefault("name", it["symbol"])
         
         if screener_items:
             _STATIC_SCREENER_CACHE = screener_items
@@ -931,7 +948,8 @@ class MarketService:
         if cat in {"high_dividend_yield", "dividend", "dividends", "highest_yielding"}:
             title = "Highest Dividend Yielding Stocks"
             desc = "Top PSX companies delivering superior dividend yields to shareholders."
-            valid = [it for it in filtered if (it.get("dividend_yield_pct") or 0) > 0]
+            # Exclude extreme statistical anomalies (> 100% liquidation yields) for realistic leaderboards
+            valid = [it for it in filtered if 0 < (it.get("dividend_yield_pct") or 0) <= 100]
             valid.sort(key=lambda x: x.get("dividend_yield_pct") or 0, reverse=True)
             for it in valid:
                 it["metric_label"] = "Dividend Yield"
