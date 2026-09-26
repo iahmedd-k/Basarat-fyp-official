@@ -28,22 +28,22 @@ import {
  */
 
 const TRY_TICKERS = [
-  { symbol: "EFERT", emoji: "🌱", bg: "bg-emerald-100" },
-  { symbol: "LUCK", emoji: "🌺", bg: "bg-rose-100" },
-  { symbol: "HBL", emoji: "HBL", bg: "bg-emerald-800 text-white text-[9px] font-bold" },
-  { symbol: "SYS", emoji: "S", bg: "bg-gray-100 text-gray-700 font-bold" },
-  { symbol: "OGDC", emoji: "🌐", bg: "bg-blue-100" },
+  { symbol: "EFERT", emoji: "EF", bg: "bg-emerald-100 text-emerald-800 font-bold" },
+  { symbol: "LUCK", emoji: "LK", bg: "bg-rose-100 text-rose-800 font-bold" },
+  { symbol: "HBL", emoji: "HB", bg: "bg-emerald-800 text-white font-bold" },
+  { symbol: "SYS", emoji: "SY", bg: "bg-gray-100 text-gray-700 font-bold" },
+  { symbol: "OGDC", emoji: "OG", bg: "bg-blue-100 text-blue-800 font-bold" },
 ];
 
 const LOGO_ROW = [
-  { symbol: "EFERT", emoji: "🌱", bg: "bg-emerald-100" },
-  { symbol: "LUCK", emoji: "🌺", bg: "bg-rose-100" },
-  { symbol: "HBL", emoji: "HBL", bg: "bg-emerald-800 text-white text-[8px] font-bold" },
-  { symbol: "OGDC", emoji: "🌐", bg: "bg-blue-100" },
-  { symbol: "SYS", emoji: "S", bg: "bg-gray-100 text-gray-700 font-bold" },
-  { symbol: "PSO", emoji: "🛢️", bg: "bg-orange-100" },
-  { symbol: "MARI", emoji: "🔶", bg: "bg-amber-100" },
-  { symbol: "MCB", emoji: "🏦", bg: "bg-gray-200" },
+  { symbol: "EFERT", emoji: "EF", bg: "bg-emerald-100 text-emerald-800 font-bold" },
+  { symbol: "LUCK", emoji: "LK", bg: "bg-rose-100 text-rose-800 font-bold" },
+  { symbol: "HBL", emoji: "HB", bg: "bg-emerald-800 text-white font-bold" },
+  { symbol: "OGDC", emoji: "OG", bg: "bg-blue-100 text-blue-800 font-bold" },
+  { symbol: "SYS", emoji: "SY", bg: "bg-gray-100 text-gray-700 font-bold" },
+  { symbol: "PSO", emoji: "PS", bg: "bg-amber-100 text-amber-800 font-bold" },
+  { symbol: "MARI", emoji: "MR", bg: "bg-orange-100 text-orange-800 font-bold" },
+  { symbol: "MCB", emoji: "MC", bg: "bg-gray-200 text-gray-800 font-bold" },
 ];
 
 const STATS = [
