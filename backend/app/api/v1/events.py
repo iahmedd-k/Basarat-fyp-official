@@ -58,10 +58,10 @@ async def get_events_calendar(
                 id=e.id,
                 event_type=e.event_type,
                 symbol=e.symbol,
-                company_name=e.company_name,
+                company_name=e.company_name or e.symbol or "Pakistan Stock Exchange",
                 event_date=e.event_date.isoformat(),
                 title=e.title,
-                description=e.description,
+                description=e.description or e.title or "PSX Corporate Event",
                 source=e.source,
                 source_url=e.source_url,
             )

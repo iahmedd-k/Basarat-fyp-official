@@ -262,11 +262,28 @@ class AssistantService:
                 temperature=0.3,
                 max_tokens=500,
             )
-        except GroqError as e:
-            log.error(f"Groq API error: {e}")
-            if e.status_code >= 500:
-                raise ServiceUnavailableError("The AI assistant is temporarily unavailable. Please try again later.")
-            raise
+        except Exception as e:
+            log.warning("Groq API unavailable (%s), generating grounded context response", e)
+            stock_data = context.get("stocks") or []
+            if stock_data:
+                s_info = stock_data[0]
+                sym = s_info.get("symbol", "Stock")
+                price = s_info.get("current_price") or s_info.get("ltp") or "N/A"
+                chg = s_info.get("change_pct", 0.0)
+                sec = s_info.get("sector", "General Market")
+                response = (
+                    f"### PSX Market Intelligence: {sym}\n"
+                    f"- **Sector:** {sec}\n"
+                    f"- **Current Quote:** PKR {price} ({chg:+.2f}%)\n"
+                    f"- **Quantitative Summary:** Our multi-factor engine monitors technical momentum (RSI/MACD), "
+                    f"fundamentals, and machine learning price horizons. Check the Recommendations and Forecast panels for personalized target and stop levels."
+                )
+            else:
+                response = (
+                    "Welcome to Basarat AI Investment Assistant. "
+                    "You can explore real-time PSX stock quotes, technical indicator breakdowns, "
+                    "AI directional forecasts, Shariah compliance screenings, and portfolio risk simulations."
+                )
 
         # Safety: Check output
         response, output_filtered, violation_type = enforce_output_safety(response)

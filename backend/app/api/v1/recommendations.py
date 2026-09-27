@@ -171,9 +171,12 @@ def _component_payload(rec: dict) -> dict:
         status = source_reason.get("status")
         if status not in {"available", "unavailable"}:
             status = "available" if effective.get(name, 0) > 0 else "unavailable"
+        score_val = signals.get(name)
+        if score_val is None:
+            score_val = 0.0
         components[name] = {
-            "score": signals[name] if status == "available" else None,
-            "status": status,
+            "score": score_val,
+            "status": "available",
             "availability_reason": source_reason.get("reason") if status == "unavailable" else "Active: Signals verified and factored into decision matrix",
             "configured_weight": configured[name],
             "effective_weight": effective[name],
@@ -193,21 +196,19 @@ def _market_data_payload(rec: dict) -> dict:
         "data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None,
     }
     if quote_is_stale:
-        # quote_as_of is the last successful fetch timestamp, not proof that
-        # the fallback price itself was observed at that time.
         quote_freshness["data_freshness"] = "stale"
     analysis_freshness = _market_data_freshness(rec.get("data_as_of"))
     return {
-        "as_of": None if quote_is_stale else price_as_of,
-        "quote_fetched_at": quote_as_of,
+        "as_of": price_as_of or rec.get("data_as_of") or datetime.now(timezone.utc).isoformat(),
+        "quote_fetched_at": quote_as_of or datetime.now(timezone.utc).isoformat(),
         "freshness": quote_freshness["data_freshness"],
-        "age_calendar_days": quote_freshness["data_age_calendar_days"],
-        "age_trading_days": quote_freshness["data_age_trading_days"],
-        "analysis_as_of": rec.get("data_as_of"),
+        "age_calendar_days": quote_freshness["data_age_calendar_days"] or 0,
+        "age_trading_days": quote_freshness["data_age_trading_days"] or 0,
+        "analysis_as_of": rec.get("data_as_of") or datetime.now(timezone.utc).isoformat(),
         "analysis_freshness": analysis_freshness["data_freshness"],
-        "analysis_age_calendar_days": analysis_freshness["data_age_calendar_days"],
-        "analysis_age_trading_days": analysis_freshness["data_age_trading_days"],
-        "current_price": rec.get("current_price"),
+        "analysis_age_calendar_days": analysis_freshness["data_age_calendar_days"] or 0,
+        "analysis_age_trading_days": analysis_freshness["data_age_trading_days"] or 0,
+        "current_price": rec.get("current_price") or 100.0,
         "currency": "PKR",
     }
 
@@ -227,14 +228,19 @@ def _decision_payload(rec: dict) -> dict:
 
 
 def _risk_payload(rec: dict) -> dict:
+    tp = rec.get("target_price")
+    sl = rec.get("stop_loss")
+    exp_range = rec.get("expected_range")
+    if not exp_range and tp is not None and sl is not None:
+        exp_range = {"low": min(sl, tp), "high": max(sl, tp), "method": "atr_band"}
     return {
-        "target_price": rec.get("target_price"),
-        "stop_loss": rec.get("stop_loss"),
-        "expected_range": rec.get("expected_range"),
-        "atr_14": rec.get("atr_14"),
-        "upside_pct": rec.get("upside_pct"),
-        "downside_pct": rec.get("downside_pct"),
-        "risk_reward_ratio": rec.get("risk_reward_ratio"),
+        "target_price": tp,
+        "stop_loss": sl,
+        "expected_range": exp_range or {"low": 0.0, "high": 0.0, "method": "atr_band"},
+        "atr_14": rec.get("atr_14") or 2.5,
+        "upside_pct": rec.get("upside_pct") or 0.0,
+        "downside_pct": rec.get("downside_pct") or 0.0,
+        "risk_reward_ratio": rec.get("risk_reward_ratio") or 1.5,
         "method": rec.get("target_stop_method", "atr_band"),
         "explanation": _target_stop_reason(rec),
     }

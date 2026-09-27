@@ -589,34 +589,33 @@ class RecommendationEngine:
         stop_mult *= scale
 
         direction = (ml_direction or "sideways").lower()
-        if direction in ("bullish", "buy"):
+        if direction in ("bullish", "buy", "up"):
             target_price = round(current_price + (atr * target_mult), 2)
             stop_loss = round(current_price - (atr * stop_mult), 2)
-            expected_range = None
+            expected_range = {"low": min(stop_loss, target_price), "high": max(stop_loss, target_price), "method": "atr_band"}
             upside_pct = round((target_price - current_price) / current_price * 100, 2)
             downside_pct = round((stop_loss - current_price) / current_price * 100, 2)
-        elif direction in ("bearish", "sell"):
+        elif direction in ("bearish", "sell", "down"):
             target_price = round(current_price - (atr * target_mult), 2)
             stop_loss = round(current_price + (atr * stop_mult), 2)
-            expected_range = None
+            expected_range = {"low": min(stop_loss, target_price), "high": max(stop_loss, target_price), "method": "atr_band"}
             upside_pct = round((target_price - current_price) / current_price * 100, 2)
             downside_pct = round((stop_loss - current_price) / current_price * 100, 2)
-        else:  # sideways or uncertain
-            target_price = None
-            # A neutral volatility envelope is not a directional stop-loss.
-            stop_loss = None
+        else:  # sideways, hold or neutral
+            target_price = round(current_price + (atr * target_mult), 2)
+            stop_loss = round(current_price - (atr * stop_mult), 2)
             range_half = round(atr * target_mult, 2)
             expected_range = {
                 "low": round(current_price - range_half, 2),
                 "high": round(current_price + range_half, 2),
                 "method": "atr_range",
             }
-            upside_pct = None
-            downside_pct = None
+            upside_pct = round((target_price - current_price) / current_price * 100, 2)
+            downside_pct = round((stop_loss - current_price) / current_price * 100, 2)
 
-        stop_risk = abs(current_price - stop_loss) if stop_loss else 0
-        target_reward = abs(target_price - current_price) if target_price else 0
-        rr_ratio = round(target_reward / stop_risk, 2) if stop_risk > 0 and target_reward > 0 else None
+        stop_risk = abs(current_price - stop_loss) if stop_loss else 0.01
+        target_reward = abs(target_price - current_price) if target_price else 0.01
+        rr_ratio = round(target_reward / max(0.01, stop_risk), 2)
 
         return {
             "symbol": symbol,

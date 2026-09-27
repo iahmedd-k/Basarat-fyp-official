@@ -229,7 +229,7 @@ class NewsService:
             "event_type": article.event_type or "market_update",
             "sentiment": None if article.sentiment_label is None else {
                 "label": article.sentiment_label,
-                "score": float(article.sentiment_score) if article.sentiment_score else None,
+                "score": float(article.sentiment_score) if article.sentiment_score is not None else 0.0,
                 "method": article.sentiment_method,
             },
             "impact_score": article.impact_score or 50,

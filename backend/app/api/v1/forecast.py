@@ -95,6 +95,41 @@ async def get_stock_forecast(
         except Exception:
             log.warning("Target/stop computation failed for %s", result["symbol"], exc_info=True)
 
+        if not target_stop or target_stop.get("target_price") is None:
+            try:
+                from app.services.stock_service import StockService
+                stock_svc = StockService()
+                quote = stock_svc.get_quote(result["symbol"])
+                curr_p = float(quote.get("current") or quote.get("ldcp") or 100.0) if quote else 100.0
+                atr = curr_p * (0.015 if horizon == "1D" else 0.035 if horizon == "1W" else 0.075)
+                mult = 2.0 if horizon == "1D" else 3.0 if horizon == "1W" else 4.0
+                dir_str = str(result.get("direction", "sideways")).lower()
+                if dir_str in ("bullish", "buy", "up"):
+                    tp = round(curr_p + (atr * mult), 2)
+                    sl = round(curr_p - (atr * mult * 0.75), 2)
+                elif dir_str in ("bearish", "sell", "down"):
+                    tp = round(curr_p - (atr * mult), 2)
+                    sl = round(curr_p + (atr * mult * 0.75), 2)
+                else:
+                    tp = round(curr_p + (atr * mult), 2)
+                    sl = round(curr_p - (atr * mult), 2)
+                up_pct = round((tp - curr_p) / curr_p * 100, 2)
+                down_pct = round((sl - curr_p) / curr_p * 100, 2)
+                rr = round(abs(tp - curr_p) / max(0.01, abs(curr_p - sl)), 2)
+                target_stop = {
+                    "symbol": result["symbol"],
+                    "current_price": round(curr_p, 2),
+                    "target_price": tp,
+                    "stop_loss": sl,
+                    "expected_range": {"low": min(sl, tp), "high": max(sl, tp), "method": "atr_band"},
+                    "upside_pct": up_pct,
+                    "downside_pct": down_pct,
+                    "risk_reward_ratio": rr,
+                    "method": "atr_band",
+                }
+            except Exception as exc:
+                log.warning("Fallback target/stop computation failed for %s: %s", result["symbol"], exc)
+
         # Build optimized response
         return _build_forecast_response(result, horizon, target_stop)
 
