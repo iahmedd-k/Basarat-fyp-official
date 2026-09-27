@@ -35,6 +35,7 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc))
 
     portfolio_transactions = relationship("PortfolioTransaction", back_populates="user", lazy="selectin")
+    watchlists = relationship("Watchlist", back_populates="user", lazy="selectin", cascade="all, delete-orphan")
     alerts = relationship("Alert", back_populates="user", lazy="selectin")
     devices = relationship("Device", back_populates="user", lazy="selectin")
     community_posts = relationship("CommunityPost", back_populates="author", lazy="selectin")

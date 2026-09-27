@@ -31,6 +31,7 @@ from app.api.v1 import (
     stocks,
     system,
     users,
+    watchlist,
     webhooks,
     ws,
 )
@@ -77,6 +78,7 @@ TAGS_METADATA = [
     {"name": "Webhooks", "description": "Third-party service callbacks and authentication webhooks."},
     {"name": "Market", "description": "Real-time & historical PSX market summary, indices, gainers, losers, and volume leaders."},
     {"name": "Stocks", "description": "Individual PSX stock quotes, company profiles, fundamentals, and technical indicators."},
+    {"name": "Watchlist", "description": "User stock watchlists, price alerts targets, and custom tracked stock portfolios."},
     {"name": "Forecast", "description": "AI price predictions, prediction intervals, and deep learning model performance metrics."},
     {"name": "Recommendations", "description": "Automated quantitative stock buy/hold/sell rankings and investment signals."},
     {"name": "Portfolio", "description": "Portfolio valuation, holdings, P&L, stock/sector allocations, and transaction ledger."},
@@ -125,8 +127,9 @@ app.include_router(webhooks.router, prefix=settings.API_V1_PREFIX, tags=["Webhoo
 # Module 2 — Market Data
 app.include_router(market.router, prefix=settings.API_V1_PREFIX, tags=["Market"])
 
-# Module 3 — Stock Detail & Technical
+# Module 3 — Stock Detail, Technical & Watchlist
 app.include_router(stocks.router, prefix=settings.API_V1_PREFIX, tags=["Stocks"])
+app.include_router(watchlist.router, prefix=settings.API_V1_PREFIX, tags=["Watchlist"])
 
 # Module 4 — Forecasting
 app.include_router(forecast.router, prefix=settings.API_V1_PREFIX, tags=["Forecast"])
