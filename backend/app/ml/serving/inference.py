@@ -194,18 +194,31 @@ def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None) 
         return None
 
 
+HORIZON_WEIGHTS = {
+    "1D": {"gru": 0.65, "xgb": 0.35},
+    "1W": {"gru": 0.50, "xgb": 0.50},
+    "1M": {"gru": 0.35, "xgb": 0.65},
+}
+
+
 def _ensemble_decide(
     gru_result: dict | None,
     xgb_result: dict | None,
+    horizon: str = "1D",
     near_tie_threshold_pp: float = NEAR_TIE_THRESHOLD_PP,
 ) -> dict:
-    """Apply dual-model ensemble decision logic.
+    """Apply horizon-aware dual-model ensemble decision logic.
 
-    Rules:
-      1. If only one model available, use its prediction (no ensemble possible)
-      2. If either model has gap <= near_tie_threshold_pp -> "uncertain"
-      3. If both non-near-tie AND agree (same predicted class) -> return that direction
-      4. If both non-near-tie AND disagree -> blend probabilities
+    Domain specialization:
+      - Attention-BiGRU: High-frequency sequential momentum & price velocity (65% weight on 1D).
+      - XGBoost v4: Cross-sectional valuation, fundamentals & macro events (65% weight on 1M).
+
+    Logic:
+      1. Single model fallback if only one model is available.
+      2. Both available: Compute weighted probabilities based on investment horizon.
+      3. Agreement: If both models agree on direction, output high-conviction signal.
+      4. Balanced / Near-tie: If directional gap <= near_tie_threshold_pp, output clean sideways/neutral.
+      5. Disagreement with clear spread: Weighted majority direction with moderate conviction.
     """
     has_gru = gru_result is not None
     has_xgb = xgb_result is not None
@@ -217,69 +230,75 @@ def _ensemble_decide(
         return _single_model_result(xgb_result, getattr(artifacts, "xgb_model_version", "xgb_v4_event_fundamentals"), near_tie_threshold_pp)
 
     if not has_gru and not has_xgb:
-        return {"direction": "uncertain", "top_class_probability": 0.0,
-                "bullish_pct": 0.0, "bearish_pct": 0.0, "sideways_pct": 0.0,
-                "model_version": "none", "gate_reason": "no_models_available",
-                "status": "no_models_available"}
-
-    # Both models available — apply ensemble rules
-    gru_near_tie = gru_result["gap_pp"] <= near_tie_threshold_pp
-    xgb_near_tie = xgb_result["gap_pp"] <= near_tie_threshold_pp
-
-    if gru_near_tie or xgb_near_tie:
-        # Rule 2: either near-tie -> uncertain
-        better = gru_result if gru_result["top_class_probability"] >= xgb_result["top_class_probability"] else xgb_result
-        probabilities_source = "gru" if better is gru_result else "xgb"
-        reason = []
-        if gru_near_tie:
-            reason.append(f"gru_gap={gru_result['gap_pp']}pp")
-        if xgb_near_tie:
-            reason.append(f"xgb_gap={xgb_result['gap_pp']}pp")
         return {
-            "direction": "uncertain",
-            "bullish_pct": better["bullish_pct"],
-            "bearish_pct": better["bearish_pct"],
-            "sideways_pct": better["sideways_pct"],
-            "top_class_probability": better["top_class_probability"],
-            "model_version": "ensemble",
-            "probabilities_source": probabilities_source,
-            "gate_reason": f"near_tie({', '.join(reason)})",
+            "direction": "sideways",
+            "top_class_probability": 50.0,
+            "bullish_pct": 33.3,
+            "bearish_pct": 33.3,
+            "sideways_pct": 33.4,
+            "model_version": "none",
+            "gate_reason": "no_models_available",
+            "status": "no_models_available",
         }
 
-    # Both non-near-tie — check agreement
-    if gru_result["direction"] == xgb_result["direction"]:
-        avg_bull = round((gru_result["bullish_pct"] + xgb_result["bullish_pct"]) / 2, 1)
-        avg_bear = round((gru_result["bearish_pct"] + xgb_result["bearish_pct"]) / 2, 1)
-        avg_side = round((gru_result["sideways_pct"] + xgb_result["sideways_pct"]) / 2, 1)
-        avg_pcts = {"bullish": avg_bull, "bearish": avg_bear, "sideways": avg_side}
+    weights = HORIZON_WEIGHTS.get(horizon, {"gru": 0.50, "xgb": 0.50})
+    w_gru = weights["gru"]
+    w_xgb = weights["xgb"]
+
+    # Blended weighted probabilities
+    b_bull = round(gru_result["bullish_pct"] * w_gru + xgb_result["bullish_pct"] * w_xgb, 1)
+    b_bear = round(gru_result["bearish_pct"] * w_gru + xgb_result["bearish_pct"] * w_xgb, 1)
+    b_side = round(gru_result["sideways_pct"] * w_gru + xgb_result["sideways_pct"] * w_xgb, 1)
+
+    # Normalize to 100%
+    tot = b_bull + b_bear + b_side
+    if tot > 0 and abs(tot - 100.0) > 0.1:
+        b_bull = round(b_bull / tot * 100, 1)
+        b_bear = round(b_bear / tot * 100, 1)
+        b_side = round(max(0.0, 100.0 - b_bull - b_bear), 1)
+
+    directional_gap = abs(b_bull - b_bear)
+
+    # 1. Both models agree
+    if gru_result["direction"] == xgb_result["direction"] and gru_result["direction"] in ("bullish", "bearish"):
+        direction = gru_result["direction"]
+        top_prob = b_bull if direction == "bullish" else b_bear
         return {
-            "direction": gru_result["direction"],
-            "bullish_pct": avg_bull,
-            "bearish_pct": avg_bear,
-            "sideways_pct": avg_side,
-            "top_class_probability": compute_confidence(avg_pcts),
+            "direction": direction,
+            "bullish_pct": b_bull,
+            "bearish_pct": b_bear,
+            "sideways_pct": b_side,
+            "top_class_probability": top_prob,
             "model_version": "ensemble",
-            "gate_reason": f"agree({gru_result['direction']})",
+            "gate_reason": f"consensus_agree({direction})",
+            "conviction": "High Conviction",
         }
 
-    # Disagree branch — blend instead of zeroing out
-    bullish_pct = round((gru_result["bullish_pct"] + xgb_result["bullish_pct"]) / 2, 1)
-    bearish_pct = round((gru_result["bearish_pct"] + xgb_result["bearish_pct"]) / 2, 1)
-    sideways_pct = round((gru_result["sideways_pct"] + xgb_result["sideways_pct"]) / 2, 1)
+    # 2. Balanced / near-tie regime -> clean sideways/neutral
+    if directional_gap <= near_tie_threshold_pp:
+        return {
+            "direction": "sideways",
+            "bullish_pct": b_bull,
+            "bearish_pct": b_bear,
+            "sideways_pct": b_side,
+            "top_class_probability": round(max(b_side, 50.0), 1),
+            "model_version": "ensemble",
+            "gate_reason": f"neutral_regime(gap={round(directional_gap, 1)}pp, gru={gru_result['direction']}, xgb={xgb_result['direction']})",
+            "conviction": "Neutral / Risk-Off",
+        }
 
-    pct_map = {"bullish": bullish_pct, "bearish": bearish_pct, "sideways": sideways_pct}
-    blended_direction = max(pct_map, key=pct_map.get)
-    top_prob = compute_confidence(pct_map)
-
+    # 3. Decisive majority
+    direction = "bullish" if b_bull > b_bear else "bearish"
+    top_prob = b_bull if direction == "bullish" else b_bear
     return {
-        "direction": blended_direction,
-        "bullish_pct": bullish_pct,
-        "bearish_pct": bearish_pct,
-        "sideways_pct": sideways_pct,
+        "direction": direction,
+        "bullish_pct": b_bull,
+        "bearish_pct": b_bear,
+        "sideways_pct": b_side,
         "top_class_probability": top_prob,
         "model_version": "ensemble",
-        "status": "disagree_blended",
-        "gate_reason": f"disagree(gru={gru_result['direction']}, xgb={xgb_result['direction']}, blended={blended_direction})",
+        "gate_reason": f"weighted_majority(dir={direction}, horizon={horizon}, gru={gru_result['direction']}, xgb={xgb_result['direction']})",
+        "conviction": "Moderate Conviction",
     }
 
 
@@ -376,7 +395,7 @@ def get_forecast(symbol: str, horizon: str = "1D", sym_df: pd.DataFrame | None =
     xgb_result = _run_xgb(symbol, as_of_date, sym_df)
 
     # ── Ensemble decision ──────────────────────────────────────────────
-    ensemble = _ensemble_decide(gru_result, xgb_result)
+    ensemble = _ensemble_decide(gru_result, xgb_result, horizon=horizon)
 
     # ── Calculate predicted_for_date based on horizon ──────────────────
     HORIZON_DAYS = {"1D": 1, "1W": 5, "1M": 22}

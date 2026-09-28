@@ -139,7 +139,7 @@ async def align_and_generate():
                 as_of_date = sym_df["date"].iloc[-1].date()
                 gru_result = _run_gru(sym, sym_df)
                 xgb_result = _run_xgb(sym, as_of_date, sym_df)
-                ensemble = _ensemble_decide(gru_result, xgb_result)
+                ensemble = _ensemble_decide(gru_result, xgb_result, horizon="1D")
 
                 # Target date calculation (1 business day ahead)
                 target_date = as_of_date
