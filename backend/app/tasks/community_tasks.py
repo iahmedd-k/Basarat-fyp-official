@@ -102,8 +102,26 @@ async def _process_report_threshold(session: AsyncSession, post_id: str) -> dict
             is_read=False,
         )
         session.add(notification)
-
         await session.flush()
+
+        try:
+            from app.core.task_runner import dispatch_task
+            from app.tasks.push_notifications import send_to_user
+
+            dispatch_task(
+                send_to_user,
+                post.author_id,
+                "Post Temporarily Hidden",
+                "Your post has been temporarily hidden for review due to multiple reports.",
+                {
+                    "type": "community_notification",
+                    "notification_type": NotificationType.POST_AUTO_HIDDEN.value,
+                    "post_id": str(post_id),
+                },
+            )
+        except Exception as push_err:
+            log.warning("Could not dispatch auto-hidden push notification: %s", push_err)
+
         log.info("Post %s auto-hidden due to %d pending reports", post_id, pending_count)
         return {"post_id": post_id, "action": "auto_hidden", "pending_count": pending_count}
 

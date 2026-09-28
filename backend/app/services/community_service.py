@@ -1018,6 +1018,26 @@ class CommunityService:
         )
         self.db.add(notification)
         await self.db.flush()
+
+        try:
+            from app.core.task_runner import dispatch_task
+            from app.tasks.push_notifications import send_to_user
+
+            dispatch_task(
+                send_to_user,
+                recipient_id,
+                title,
+                message,
+                {
+                    "type": "community_notification",
+                    "notification_type": type.value,
+                    "post_id": str(post_id or ""),
+                    "comment_id": str(comment_id or ""),
+                },
+            )
+        except Exception as push_err:
+            log.warning("Could not dispatch community push notification: %s", push_err)
+
         return notification
 
     async def get_notifications(

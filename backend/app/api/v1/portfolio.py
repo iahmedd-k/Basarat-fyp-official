@@ -284,6 +284,13 @@ async def create_transaction(
             transaction_date=data.transaction_date,
         )
         
+        try:
+            from app.core.task_runner import dispatch_task
+            from app.tasks.risk_tasks import check_threshold_breaches_task
+            dispatch_task(check_threshold_breaches_task, user.id)
+        except Exception as risk_err:
+            logger.warning("Could not dispatch risk threshold check: %s", risk_err)
+
         return TransactionResponse(
             id=txn.id,
             symbol=txn.symbol,

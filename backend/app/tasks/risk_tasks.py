@@ -278,3 +278,32 @@ def _send_alerts_sync(user_id: str, breaches: list[dict]):
             )
     finally:
         db.close()
+
+
+@shared_task(
+    name="app.tasks.risk_tasks.check_all_portfolios_risk_breaches",
+    bind=True,
+    max_retries=1,
+    acks_late=True,
+)
+def check_all_portfolios_risk_breaches(self):
+    """Check risk threshold breaches across all users with active portfolio holdings."""
+    from app.models.portfolio import PortfolioTransaction
+    from sqlalchemy import select
+
+    db = _get_sync_db()
+    try:
+        user_ids = list(db.scalars(
+            select(PortfolioTransaction.user_id).distinct()
+        ))
+        log.info("Checking risk breaches for %d portfolio owners", len(user_ids))
+        results = {}
+        for uid in user_ids:
+            try:
+                res = check_threshold_breaches_task(uid)
+                results[uid] = len(res.get("breaches", []))
+            except Exception as e:
+                log.warning("Risk breach check failed for user %s: %s", uid, e)
+        return {"status": "completed", "evaluated_users": len(user_ids), "breach_summary": results}
+    finally:
+        db.close()

@@ -1,0 +1,314 @@
+"""Tests for Alert Evaluation Engine, Watchlist Target Monitoring, and Push Dispatching."""
+
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from unittest.mock import MagicMock
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.db.base import Base
+from app.models.alert import Alert, AlertRule
+from app.models.assistant import AssistantConversation, AssistantMessage
+from app.models.community import (
+    CommunityComment,
+    CommunityModerationAction,
+    CommunityNotification,
+    CommunityPost,
+    CommunityPostLike,
+    CommunityReport,
+)
+from app.models.portfolio import PortfolioTransaction, TransactionType
+from app.models.stock import Stock, StockPrice
+from app.models.user import (
+    Device,
+    EmailVerificationToken,
+    PasswordResetToken,
+    RefreshToken,
+    User,
+)
+from app.models.watchlist import Watchlist, WatchlistItem
+from app.tasks.alert_tasks import _check_and_set_cooldown, evaluate_alert_rules_task
+from app.tasks.risk_tasks import check_all_portfolios_risk_breaches
+
+TEST_TABLES = [
+    User.__table__,
+    Device.__table__,
+    RefreshToken.__table__,
+    PasswordResetToken.__table__,
+    EmailVerificationToken.__table__,
+    Stock.__table__,
+    StockPrice.__table__,
+    Alert.__table__,
+    AlertRule.__table__,
+    Watchlist.__table__,
+    WatchlistItem.__table__,
+    PortfolioTransaction.__table__,
+    CommunityPost.__table__,
+    CommunityComment.__table__,
+    CommunityNotification.__table__,
+    CommunityPostLike.__table__,
+    CommunityReport.__table__,
+    CommunityModerationAction.__table__,
+    AssistantConversation.__table__,
+    AssistantMessage.__table__,
+]
+
+
+@pytest.fixture
+def sync_db():
+    """In-memory SQLite database for synchronous Celery task testing."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=TEST_TABLES)
+    session_factory = sessionmaker(bind=engine)
+    session = session_factory()
+    yield session, engine
+    session.close()
+    Base.metadata.drop_all(engine, tables=TEST_TABLES)
+
+
+def test_cooldown_helper():
+    mock_redis = MagicMock()
+    mock_redis.set.return_value = True
+    assert _check_and_set_cooldown(mock_redis, "test_key", 1800) is True
+    mock_redis.set.assert_called_with("test_key", "1", nx=True, ex=1800)
+
+    mock_redis.set.return_value = False
+    assert _check_and_set_cooldown(mock_redis, "test_key", 1800) is False
+
+    # Graceful fallback when redis is None
+    assert _check_and_set_cooldown(None, "test_key") is True
+
+
+def test_evaluate_alert_rules_price_above_and_watchlist(sync_db, monkeypatch):
+    session, engine = sync_db
+
+    # 1. Seed user, device, stock, alert rule, and watchlist
+    user = User(
+        id=uuid4().hex,
+        email="trader@basarat.com",
+        username="trader1",
+        hashed_password="hashed_pw_123",
+    )
+    device = Device(
+        id=uuid4().hex,
+        user_id=user.id,
+        fcm_token="sample_fcm_token_123",
+        platform="android",
+        is_active=True,
+    )
+    stock_ogdc = Stock(
+        id=uuid4().hex,
+        symbol="OGDC",
+        name="Oil and Gas Development Company",
+    )
+    stock_sys = Stock(
+        id=uuid4().hex,
+        symbol="SYS",
+        name="Systems Limited",
+    )
+    # Rule 1: OGDC price_above 150.0 (Should trigger because quote will be 155.0)
+    rule_ogdc = AlertRule(
+        id=uuid4().hex,
+        user_id=user.id,
+        stock_id=stock_ogdc.id,
+        condition="price_above",
+        threshold=150.0,
+        is_active=True,
+    )
+    # Rule 2: SYS price_above 500.0 (Should NOT trigger because quote is 420.0)
+    rule_sys = AlertRule(
+        id=uuid4().hex,
+        user_id=user.id,
+        stock_id=stock_sys.id,
+        condition="price_above",
+        threshold=500.0,
+        is_active=True,
+    )
+    # Watchlist Item: SYS target_price 400.0 (Should trigger because quote is 420.0 >= 400.0)
+    watchlist = Watchlist(
+        id=uuid4().hex,
+        user_id=user.id,
+        name="Main Watchlist",
+        is_default=True,
+    )
+    wl_item = WatchlistItem(
+        id=uuid4().hex,
+        watchlist_id=watchlist.id,
+        symbol="SYS",
+        target_price=Decimal("400.00"),
+    )
+
+    session.add_all([user, device, stock_ogdc, stock_sys, rule_ogdc, rule_sys, watchlist, wl_item])
+    session.commit()
+
+    # Mock DB session in evaluate_alert_rules_task to use test sync_db
+    monkeypatch.setattr("app.tasks.alert_tasks._get_sync_session", lambda: sessionmaker(bind=engine)())
+
+    # Mock StockService quotes
+    mock_quotes = [
+        {"symbol": "OGDC", "current": 155.0, "change": 5.0, "change_pct": 3.33},
+        {"symbol": "SYS", "current": 420.0, "change": -2.0, "change_pct": -0.47},
+    ]
+    monkeypatch.setattr("app.services.stock_service.StockService.get_quote_batch", lambda self, syms: mock_quotes)
+
+    # Track dispatched push notifications
+    dispatched_pushes = []
+
+    def mock_dispatch(task, *args, **kwargs):
+        dispatched_pushes.append((args, kwargs))
+
+    monkeypatch.setattr("app.core.task_runner.dispatch_task", mock_dispatch)
+
+    # Execute task
+    result = evaluate_alert_rules_task()
+
+    assert result["status"] == "success"
+    assert result["evaluated_rules"] == 2
+    assert result["evaluated_watchlist_items"] == 1
+    # 1 rule triggered (OGDC) + 1 watchlist item triggered (SYS) = 2
+    assert result["triggered_alerts"] == 2
+    assert len(dispatched_pushes) == 2
+
+    # Verify Alert records in database
+    with Session(engine) as check_session:
+        alerts = list(check_session.scalars(select(Alert).where(Alert.user_id == user.id)))
+        assert len(alerts) == 2
+        titles = [a.title for a in alerts]
+        assert "Price Alert: OGDC" in titles
+        assert "Watchlist Target: SYS" in titles
+
+
+def test_evaluate_alert_rules_cooldown_suppresses_duplicates(sync_db, monkeypatch):
+    session, engine = sync_db
+
+    user = User(
+        id=uuid4().hex,
+        email="cooldown_user@basarat.com",
+        username="cd_user",
+        hashed_password="pw",
+    )
+    stock = Stock(
+        id=uuid4().hex,
+        symbol="LUCK",
+        name="Lucky Cement",
+    )
+    rule = AlertRule(
+        id=uuid4().hex,
+        user_id=user.id,
+        stock_id=stock.id,
+        condition="price_above",
+        threshold=800.0,
+        is_active=True,
+    )
+    session.add_all([user, stock, rule])
+    session.commit()
+
+    monkeypatch.setattr("app.tasks.alert_tasks._get_sync_session", lambda: sessionmaker(bind=engine)())
+    monkeypatch.setattr("app.services.stock_service.StockService.get_quote_batch", lambda self, syms: [
+        {"symbol": "LUCK", "current": 905.0, "change": 10.0, "change_pct": 1.12}
+    ])
+
+    # Simulate in-memory fake redis set with cooldown
+    fake_redis_store = set()
+
+    def fake_check_cooldown(client, key, **kwargs):
+        if key in fake_redis_store:
+            return False
+        fake_redis_store.add(key)
+        return True
+
+    monkeypatch.setattr("app.tasks.alert_tasks._check_and_set_cooldown", fake_check_cooldown)
+    dispatched = []
+    monkeypatch.setattr("app.core.task_runner.dispatch_task", lambda t, *a, **k: dispatched.append(a))
+
+    # First run: Should trigger
+    res1 = evaluate_alert_rules_task()
+    assert res1["triggered_alerts"] == 1
+    assert len(dispatched) == 1
+
+    # Second run immediately after: Should be suppressed by cooldown
+    res2 = evaluate_alert_rules_task()
+    assert res2["triggered_alerts"] == 0
+    assert len(dispatched) == 1  # No new push dispatched
+
+
+def test_check_all_portfolios_risk_breaches(sync_db, monkeypatch):
+    session, engine = sync_db
+
+    user1_id = uuid4().hex
+    user2_id = uuid4().hex
+    user1 = User(id=user1_id, email="u1@b.com", username="u1", hashed_password="pw")
+    user2 = User(id=user2_id, email="u2@b.com", username="u2", hashed_password="pw")
+    session.add_all([user1, user2])
+    session.commit()
+
+    monkeypatch.setattr("app.tasks.risk_tasks._get_sync_db", lambda: sessionmaker(bind=engine)())
+
+    called_users = []
+
+    def mock_check(uid):
+        called_users.append(uid)
+        return {"status": "checked", "breaches": []}
+
+    monkeypatch.setattr("app.tasks.risk_tasks.check_threshold_breaches_task", mock_check)
+
+    txn1 = PortfolioTransaction(
+        id=uuid4().hex,
+        user_id=user1_id,
+        symbol="OGDC",
+        transaction_type=TransactionType.BUY,
+        quantity=Decimal("100"),
+        price=Decimal("150.0"),
+        transaction_date=date.today(),
+    )
+    session.add(txn1)
+    session.commit()
+
+    res = check_all_portfolios_risk_breaches()
+    assert res["status"] == "completed"
+    assert res["evaluated_users"] == 1
+    assert user1_id in called_users
+
+
+def test_community_push_dispatch(sync_db, monkeypatch):
+    session, engine = sync_db
+
+    from app.models.community import NotificationType
+    from app.services.community_service import CommunityService
+
+    # Create mock AsyncSession for CommunityService
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    mock_db = AsyncMock()
+    mock_scalars = MagicMock()
+    mock_scalars.first.return_value = None
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = mock_scalars
+    mock_db.execute.return_value = mock_result
+
+    dispatched = []
+    monkeypatch.setattr("app.core.task_runner.dispatch_task", lambda t, *a, **k: dispatched.append((a, k)))
+
+    service = CommunityService(mock_db)
+    notif = asyncio.run(service._create_notification(
+        recipient_id="user_recipient_1",
+        type=NotificationType.POST_COMMENTED,
+        title="New Comment",
+        message="Someone commented on your post",
+        post_id="post_123",
+        actor_id="user_actor_2",
+    ))
+
+    assert notif.recipient_id == "user_recipient_1"
+    assert len(dispatched) == 1
+    args, kwargs = dispatched[0]
+    # args: (recipient_id, title, message, data_dict)
+    assert args[0] == "user_recipient_1"
+    assert args[1] == "New Comment"
+    assert args[3]["type"] == "community_notification"
+    assert args[3]["post_id"] == "post_123"
+

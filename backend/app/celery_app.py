@@ -22,6 +22,7 @@ celery = Celery(
         "app.tasks.sentiment_tasks",
         "app.tasks.community_tasks",
         "app.tasks.push_notifications",
+        "app.tasks.alert_tasks",
         "app.tasks.email",
     ],
 )
@@ -70,6 +71,16 @@ celery.conf.update(
             "kwargs": {"refresh_reference": True},
             "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
         },
+        # ── Evaluate Alert Rules & Watchlist Targets every 5 minutes during market hours ──
+        "evaluate-alert-rules": {
+            "task": "app.tasks.alert_tasks.evaluate_alert_rules",
+            "schedule": crontab(minute="*/5"),
+        },
+        # ── Daily Portfolio Risk Breach Monitoring ──
+        "daily-risk-threshold-monitoring": {
+            "task": "app.tasks.risk_tasks.check_all_portfolios_risk_breaches",
+            "schedule": crontab(hour=18, minute=30, day_of_week="1-5"),
+        },
         # Sentiment and recommendation publication run as dependent final
         # stages of daily-workflow, after OHLCV/features/forecast finish.
         # ── News ingestion: every 30 min on the clock, task gates on market hours ──
@@ -106,5 +117,3 @@ def reset_db_connections(**kwargs):
             _sync_engine.dispose()
     except Exception:
         pass
-
-
