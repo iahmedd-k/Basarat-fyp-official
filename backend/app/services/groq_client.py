@@ -35,7 +35,7 @@ class GroqClient:
                     "Authorization": f"Bearer {self.settings.GROQ_API_KEY}",
                     "Content-Type": "application/json",
                 },
-                timeout=httpx.Timeout(30.0, connect=10.0),
+                timeout=httpx.Timeout(5.0, connect=3.0),
             )
         return self._client
 
