@@ -564,8 +564,8 @@ class StockService:
         if q.get("current") in (None, 0.0) and q.get("volume") == 0:
             return {"symbol": symbol, "message": "no data"}
         curr_p = self._num(q.get("current")) or self._num(q.get("ldcp")) or 0.0
-        high = q["high"] or self._quote_field(quote, "HIGH")
-        low = q["low"] or self._quote_field(quote, "LOW")
+        high = q["high"] or self._quote_field(q, "HIGH")
+        low = q["low"] or self._quote_field(q, "LOW")
         high = high if high is not None and high > 0 else curr_p
         low = low if low is not None and low > 0 else curr_p
 
@@ -573,11 +573,11 @@ class StockService:
         market_cap_m = self._market_cap_m(symbol)
         if market_cap_m is None and curr_p > 0:
             market_cap_m = round(curr_p * 100_000_000 / 1_000_000, 2)
-        pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
+        pe_ratio = self._quote_field(q, "P/E RATIO (TTM) **")
         if pe_ratio is None:
             pe_ratio = 12.5
-        year_change_pct = self._quote_field(quote, "1-YEAR CHANGE * ^")
-        ytd_change_pct = self._quote_field(quote, "YTD CHANGE * ^")
+        year_change_pct = self._quote_field(q, "1-YEAR CHANGE * ^")
+        ytd_change_pct = self._quote_field(q, "YTD CHANGE * ^")
 
         if ytd_change_pct is None:
             ytd_change_pct = self._ytd_change_from_history(symbol)
