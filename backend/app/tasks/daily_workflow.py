@@ -204,7 +204,11 @@ def generate_predictions_task(self):
                 # Ensemble decision
                 ensemble = _ensemble_decide(gru_result, xgb_result)
 
-                # Calculate target_date (1D horizon)
+                # Temporal alignment: predicted_at matches session date at close
+                if as_of_date < date.today():
+                    pred_at = datetime.combine(as_of_date, datetime.min.time().replace(hour=16, minute=0))
+                else:
+                    pred_at = datetime.utcnow()
                 target_date = as_of_date
                 days_added = 0
                 while days_added < 1:
@@ -247,7 +251,7 @@ def generate_predictions_task(self):
                     {
                         "symbol": sym,
                         "horizon": "1D",
-                        "predicted_at": datetime.utcnow(),
+                        "predicted_at": pred_at,
                         "predicted_direction": ensemble["direction"],
                         "bullish_pct": ensemble["bullish_pct"],
                         "bearish_pct": ensemble["bearish_pct"],
