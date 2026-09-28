@@ -98,7 +98,7 @@ class GroqClient:
         try:
             data = response.json()
             content = data["choices"][0]["message"]["content"]
-            return content.strip()
+            return content.replace("**", "").strip()
         except (KeyError, IndexError, ValueError) as e:
             log.error(f"Invalid Groq response format: {e}")
             raise GroqError("Invalid response from Groq API", 502)
@@ -159,13 +159,15 @@ class GroqClient:
                                 # Providers often emit tiny tokenizer fragments. Batch them
                                 # into useful UI updates while flushing promptly at line breaks.
                                 if pending_chars >= 48 or "\n" in content:
-                                    yield "".join(pending)
+                                    chunk_text = "".join(pending).replace("**", "")
+                                    yield chunk_text
                                     pending.clear()
                                     pending_chars = 0
                         except (KeyError, IndexError, json.JSONDecodeError):
                             continue
                 if pending:
-                    yield "".join(pending)
+                    chunk_text = "".join(pending).replace("**", "")
+                    yield chunk_text
         except httpx.TimeoutException:
             log.error("Groq API streaming timeout")
             raise GroqError("Groq API timeout", 504)

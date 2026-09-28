@@ -59,7 +59,12 @@ For unrelated questions, politely explain that the assistant is focused on stock
 
 Protect user data and never expose another user's information.
 
-The user makes the final investment decision."""
+The user makes the final investment decision.
+
+Formatting & Style Rules:
+- Output only clean, readable plain text.
+- Never use Markdown bold asterisks (**), italics (*), hashtags (###), underscores, or raw markdown symbols.
+- Use plain numbers (1., 2.) or simple hyphens (-) for lists."""
 
 
 class AssistantService:
