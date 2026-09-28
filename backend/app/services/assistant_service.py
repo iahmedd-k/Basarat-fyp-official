@@ -388,17 +388,17 @@ class AssistantService:
         context = await context_builder.build_context(message, intent, history)
         messages = context_builder.build_messages(context, message, history)
 
-        # Buffer model output until the complete answer passes output safety.
-        # Emitting raw fragments here could expose advice that a later safety
-        # check would otherwise replace.
         full_response_chunks = []
+        emitted_live = False
         try:
             async for chunk in groq_client.stream_chat_completion(
                 messages=messages,
                 temperature=0.3,
-                max_tokens=500,
+                max_tokens=350,
             ):
                 full_response_chunks.append(chunk)
+                emitted_live = True
+                yield f"data: {json.dumps({'event': 'chunk', 'chunk': chunk, 'conversation_id': conversation.id})}\n\n"
         except Exception as e:
             log.warning(f"Groq streaming failed or unavailable, falling back to contextual response: {e}")
             stock_info = (context.get("stock") or context.get("stock_info")) if isinstance(context, dict) else None
@@ -458,6 +458,13 @@ class AssistantService:
         if output_filtered:
             log.warning("Output safety filtered streamed response for user %s: %s", user_id, violation_type)
 
+        # If fallback was used and not emitted live, stream out the chunks now
+        if not emitted_live:
+            chunk_size = 64
+            for offset in range(0, len(full_response), chunk_size):
+                chunk = full_response[offset:offset + chunk_size]
+                yield f"data: {json.dumps({'event': 'chunk', 'chunk': chunk, 'conversation_id': conversation.id})}\n\n"
+
         # Save to database
         await self._save_message(conversation.id, "user", message)
         await self._save_message(conversation.id, "assistant", full_response)
@@ -467,13 +474,6 @@ class AssistantService:
             conversation.title = title
 
         await self.db.commit()
-
-        # Keep the chunk contract while ensuring every emitted fragment is a
-        # slice of the already-validated final response.
-        chunk_size = 96
-        for offset in range(0, len(full_response), chunk_size):
-            chunk = full_response[offset:offset + chunk_size]
-            yield f"data: {json.dumps({'event': 'chunk', 'chunk': chunk, 'conversation_id': conversation.id})}\n\n"
 
         yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': full_response, 'safety_filtered': output_filtered})}\n\n"
 
