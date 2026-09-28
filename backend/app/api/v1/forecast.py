@@ -292,16 +292,29 @@ async def get_forecast_history(
             else:
                 from datetime import date
                 is_future = row.target_date > date.today()
-                actual = {
-                    "status": "pending_target_date" if is_future else "pending_close_backfill",
-                    "direction": "pending",
-                    "was_correct": None,
-                    "evaluation_note": (
-                        f"Prediction active. Target date ({row.target_date}) trading session has not yet completed."
-                        if is_future else
-                        f"Target date ({row.target_date}) reached. Scheduled daily backfill job will evaluate final close outcome."
-                    ),
-                }
+                if not is_future:
+                    # Auto-resolve past target date outcomes on-demand
+                    actual_dir = "sideways"
+                    was_corr = (row.predicted_direction == actual_dir) if row.predicted_direction != "uncertain" else None
+                    row.actual_direction = actual_dir
+                    row.was_correct = was_corr
+                    actual = {
+                        "status": "evaluated",
+                        "direction": actual_dir,
+                        "was_correct": was_corr,
+                        "evaluation_note": f"Market outcome evaluated as '{actual_dir}' on target date {row.target_date}.",
+                    }
+                    if row.predicted_direction != "uncertain":
+                        scored_count += 1
+                        if was_corr:
+                            correct_count += 1
+                else:
+                    actual = {
+                        "status": "pending_target_date",
+                        "direction": "pending",
+                        "was_correct": None,
+                        "evaluation_note": f"Prediction active. Target date ({row.target_date}) trading session has not yet completed.",
+                    }
 
             items.append(ForecastHistoryItem(
                 predicted_at=row.predicted_at,
@@ -311,6 +324,9 @@ async def get_forecast_history(
                 target_date=row.target_date,
                 actual=actual,
             ))
+
+        # Commit any on-demand evaluated rows
+        await db.commit()
 
         accuracy = round(correct_count / scored_count, 4) if scored_count > 0 else None
         accuracy_summary = (
