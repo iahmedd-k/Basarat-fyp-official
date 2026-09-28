@@ -18,8 +18,10 @@ from app.api.v1 import (
     alerts,
     auth,
     devices,
+    etfs,
     events,
     forecast,
+    ipos,
     market,
     news,
     notifications,
@@ -92,6 +94,8 @@ TAGS_METADATA = [
     {"name": "Community", "description": "Social trading feed, stock discussions, comments, follow network, and user moderation."},
     {"name": "WebSockets", "description": "Real-time PSX market live quote streams and instant price trigger alerts."},
     {"name": "Assistant", "description": "AI investment assistant chatbot with portfolio context and market guardrails."},
+    {"name": "ETFs", "description": "Exchange Traded Funds (ETFs) directory, live quotes, benchmark tracking, and historical performance."},
+    {"name": "IPOs", "description": "Initial Public Offerings (IPOs) directory, calendar, book building, and post-listing performance."},
     {"name": "Admin Community", "description": "Moderator and admin actions for managing reported posts and comments."},
     {"name": "Health", "description": "Service liveness and dependency readiness health probes."},
 ]
@@ -168,6 +172,10 @@ app.include_router(assistant_chat_router, prefix=settings.API_V1_PREFIX, tags=["
 # Module 13 — WebSockets (Live Market & Alerts)
 app.include_router(ws.router, prefix=settings.API_V1_PREFIX, tags=["WebSockets"])
 app.include_router(ws.router, prefix="", include_in_schema=False)
+
+# Module 14 — ETFs & IPOs (Public & Admin CRUD)
+app.include_router(etfs.router, prefix=settings.API_V1_PREFIX, tags=["ETFs"])
+app.include_router(ipos.router, prefix=settings.API_V1_PREFIX, tags=["IPOs"])
 
 # Admin Community
 app.include_router(admin_community_router, prefix=settings.API_V1_PREFIX, tags=["Admin Community"])

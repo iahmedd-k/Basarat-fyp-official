@@ -14,6 +14,8 @@ from app.models.shariah import ShariahScreening
 from app.models.model_registry import ModelRegistry
 from app.models.training_run import TrainingRun
 from app.models.assistant import AssistantConversation, AssistantMessage
+from app.models.ipo import IPO
+from app.models.etf import ETF
 from app.models.community import (
     CommunityPost,
     CommunityPostLike,
