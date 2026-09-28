@@ -192,12 +192,14 @@ _POSITIVE_WORDS = {
     "profit", "gain", "rise", "surge", "rally", "bullish", "upgrade",
     "outperform", "buy", "strong", "growth", "revenue", "beat", "exceed",
     "record", "dividend", "positive", "recovery", "boom", "jump",
+    "boost", "soar", "climb", "higher", "profitable", "expansion", "inflow", "upbeat", "ease", "eased",
 }
 
 _NEGATIVE_WORDS = {
     "loss", "fall", "drop", "crash", "bearish", "downgrade", "underperform",
     "sell", "weak", "decline", "miss", "deficit", "default",
     "bankruptcy", "fraud", "negative", "recession", "slump", "plunge", "down",
+    "shrink", "tariff", "debt", "curtail", "shutdown", "layoff", "penalty", "sanction", "slowdown", "deteriorate",
 }
 
 _NEGATION_WORDS = {
@@ -207,6 +209,18 @@ _NEGATION_WORDS = {
 }
 
 _CLAUSE_BREAKERS = {".", ",", ";", "!", "?", "but", "however", "although", "yet", "except"}
+
+
+def _match_sentiment_token(token: str, word_set: set[str]) -> bool:
+    """Match token directly or via common financial suffix stemming."""
+    if token in word_set:
+        return True
+    for suffix in ("ing", "ed", "es", "s", "er"):
+        if token.endswith(suffix) and len(token) > len(suffix) + 2:
+            stem = token[:-len(suffix)]
+            if stem in word_set or (stem + "e") in word_set:
+                return True
+    return False
 
 
 def _heuristic_score(text: str) -> tuple[float, float, float, float, str]:
@@ -269,12 +283,12 @@ def _heuristic_score(text: str) -> tuple[float, float, float, float, str]:
             negation_window = 5
             continue
 
-        if clean_token in _POSITIVE_WORDS:
+        if _match_sentiment_token(clean_token, _POSITIVE_WORDS):
             if negate:
                 neg_word_count += 1
             else:
                 pos_word_count += 1
-        elif clean_token in _NEGATIVE_WORDS:
+        elif _match_sentiment_token(clean_token, _NEGATIVE_WORDS):
             if negate:
                 pos_word_count += 1
             else:
