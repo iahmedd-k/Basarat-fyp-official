@@ -13,6 +13,12 @@ env/
 !.env.example
 backend/.route-test-secrets
 
+# Secrets & Credentials
+backend/secrets/
+secrets/
+*.pem
+*.key
+
 # Editors / OS
 .vscode/
 .idea/
@@ -42,8 +48,6 @@ backend/research/**/data/
 backend/research/**/*.parquet
 backend/research/**/*.csv
 backend/research/backup_models/
-
-
 
 # Log files
 *.log
