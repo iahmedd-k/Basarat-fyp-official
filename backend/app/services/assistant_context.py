@@ -259,23 +259,30 @@ class ContextBuilder:
             log.warning(f"Failed to add stock context for {symbol}: {e}")
 
     async def _extract_symbol(self, message: str) -> Optional[str]:
-        """Resolve a likely PSX ticker without treating arbitrary words as one."""
+        """Resolve a likely PSX ticker from symbols, company names, or static aliases."""
+        message_lower = message.lower()
+        
+        # 1. Match company names and aliases directly
+        from app.services.news_pipeline.symbol_tagger import _STATIC_ALIASES
+        for sym, aliases in _STATIC_ALIASES.items():
+            for alias in aliases:
+                # Word boundary match for alias
+                if re.search(r"\b" + re.escape(alias) + r"\b", message_lower):
+                    return sym
+
+        # 2. Match explicit uppercase ticker words (e.g. OGDC, MEBL, SYS)
         words = re.findall(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]{1,5}(?![A-Za-z0-9])", message)
         explicit = [word.upper() for word in words if word.isupper()]
         candidates = list(dict.fromkeys(explicit))
         if not candidates:
-            if not re.search(
-                r"\b(stock|share|price|quote|ticker|symbol|company|holding|holdings|portfolio|forecast|mine|own)\b",
-                message,
-                re.IGNORECASE,
-            ):
-                return None
             candidates = [
                 word.upper() for word in words
                 if word.upper() not in STOP_WORDS and 2 <= len(word) <= 6
             ][:5]
 
         for candidate in candidates:
+            if candidate in _STATIC_ALIASES:
+                return candidate
             try:
                 quote = await asyncio.to_thread(self.stock_service.get_quote, candidate)
                 if quote and quote.get("current") not in (None, 0):
