@@ -102,26 +102,55 @@ async def create_post(
         raise ServiceUnavailableError("Failed to create post")
 
 
+def _build_post_response(post, liked_by_me: bool) -> CommunityPostResponse:
+    return CommunityPostResponse(
+        id=post.id,
+        author_id=post.author_id,
+        author_username=post.author.username if post.author else None,
+        author_full_name=post.author.full_name if post.author else None,
+        author_avatar_url=post.author.avatar_url if post.author else None,
+        post_type=PostType(post.post_type),
+        stock_symbol=post.stock_symbol,
+        stock_name=post.stock.name if post.stock else None,
+        content=post.content,
+        image_url=post.image_url,
+        like_count=post.like_count,
+        comment_count=post.comment_count,
+        report_count=post.report_count,
+        status=post.status,
+        removed_reason=post.removed_reason,
+        liked_by_me=liked_by_me,
+        created_at=post.created_at,
+        updated_at=post.updated_at,
+    )
+
+
 @router.get(
     "/community/feed",
     response_model=CommunityPostListResponse,
-    summary="Get community feed",
+    summary="Get community feed with optional keyword search and stock/market filtering",
 )
 async def get_feed(
-    stock_symbol: str | None = Query(None),
-    post_type: PostType | None = Query(None),
-    mine: bool = Query(False),
-    following: bool = Query(False),
-    cursor: str | None = Query(None),
-    limit: int = Query(20, ge=1, le=50),
+    q: str | None = Query(None, description="Search keyword, symbol, cashtag, or phrase"),
+    search: str | None = Query(None, description="Alias for search query"),
+    stock_symbol: str | None = Query(None, description="Filter by stock symbol (e.g. HBL, OGDC)"),
+    post_type: PostType | None = Query(None, description="Filter by post type: STOCK or GENERAL_MARKET"),
+    author_username: str | None = Query(None, description="Filter by author username"),
+    mine: bool = Query(False, description="Filter to current user's posts"),
+    following: bool = Query(False, description="Filter to posts from followed authors"),
+    cursor: str | None = Query(None, description="Pagination cursor"),
+    limit: int = Query(20, ge=1, le=50, description="Items per page"),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        search_query = q or search
         posts, next_cursor, has_more = await service.get_feed(
             current_user_id=user.id,
             stock_symbol=stock_symbol,
             post_type=post_type,
+            search_query=search_query,
+            author_username=author_username,
             mine=mine,
             following=following,
             cursor=cursor,
@@ -131,28 +160,7 @@ async def get_feed(
         post_responses = []
         for post in posts:
             liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(
-                CommunityPostResponse(
-                    id=post.id,
-                    author_id=post.author_id,
-                    author_username=post.author.username if post.author else None,
-                    author_full_name=post.author.full_name if post.author else None,
-                    author_avatar_url=post.author.avatar_url if post.author else None,
-                    post_type=PostType(post.post_type),
-                    stock_symbol=post.stock_symbol,
-                    stock_name=post.stock.name if post.stock else None,
-                    content=post.content,
-                    image_url=post.image_url,
-                    like_count=post.like_count,
-                    comment_count=post.comment_count,
-                    report_count=post.report_count,
-                    status=post.status,
-                    removed_reason=post.removed_reason,
-                    liked_by_me=liked_by_me,
-                    created_at=post.created_at,
-                    updated_at=post.updated_at,
-                )
-            )
+            post_responses.append(_build_post_response(post, liked_by_me))
 
         return CommunityPostListResponse(
             posts=post_responses,
@@ -162,6 +170,122 @@ async def get_feed(
     except Exception as e:
         log.exception("Get feed failed")
         raise ServiceUnavailableError("Failed to get feed")
+
+
+@router.get(
+    "/community/posts/search",
+    response_model=CommunityPostListResponse,
+    summary="Search community posts with multi-factor filters",
+)
+async def search_posts(
+    q: str | None = Query(None, description="Search text query across post content and symbols"),
+    search: str | None = Query(None, description="Alias for search query"),
+    stock_symbol: str | None = Query(None, description="Filter by stock ticker symbol"),
+    post_type: PostType | None = Query(None, description="Filter by post type (STOCK or GENERAL_MARKET)"),
+    author_username: str | None = Query(None, description="Filter by author username"),
+    cursor: str | None = Query(None, description="Pagination cursor"),
+    limit: int = Query(20, ge=1, le=50, description="Items per page"),
+    user: User = Depends(get_current_user),
+    service: CommunityService = Depends(_get_service),
+):
+    try:
+        search_query = q or search
+        posts, next_cursor, has_more = await service.get_feed(
+            current_user_id=user.id,
+            stock_symbol=stock_symbol,
+            post_type=post_type,
+            search_query=search_query,
+            author_username=author_username,
+            cursor=cursor,
+            limit=limit,
+        )
+
+        post_responses = []
+        for post in posts:
+            liked_by_me = await service.has_liked(post.id, user.id)
+            post_responses.append(_build_post_response(post, liked_by_me))
+
+        return CommunityPostListResponse(
+            posts=post_responses,
+            cursor=next_cursor,
+            has_more=has_more,
+        )
+    except Exception as e:
+        log.exception("Search posts failed")
+        raise ServiceUnavailableError("Failed to search community posts")
+
+
+@router.get(
+    "/community/posts/market",
+    response_model=CommunityPostListResponse,
+    summary="Get general market community posts",
+)
+async def get_market_posts(
+    q: str | None = Query(None, description="Optional search query within general market posts"),
+    cursor: str | None = Query(None, description="Pagination cursor"),
+    limit: int = Query(20, ge=1, le=50, description="Items per page"),
+    user: User = Depends(get_current_user),
+    service: CommunityService = Depends(_get_service),
+):
+    try:
+        posts, next_cursor, has_more = await service.get_feed(
+            current_user_id=user.id,
+            post_type=PostType.GENERAL_MARKET,
+            search_query=q,
+            cursor=cursor,
+            limit=limit,
+        )
+
+        post_responses = []
+        for post in posts:
+            liked_by_me = await service.has_liked(post.id, user.id)
+            post_responses.append(_build_post_response(post, liked_by_me))
+
+        return CommunityPostListResponse(
+            posts=post_responses,
+            cursor=next_cursor,
+            has_more=has_more,
+        )
+    except Exception as e:
+        log.exception("Get market posts failed")
+        raise ServiceUnavailableError("Failed to get market posts")
+
+
+@router.get(
+    "/community/posts/stock/{symbol}",
+    response_model=CommunityPostListResponse,
+    summary="Get all posts related to a specific stock symbol",
+)
+async def get_stock_posts(
+    symbol: str,
+    q: str | None = Query(None, description="Optional search query within stock posts"),
+    cursor: str | None = Query(None, description="Pagination cursor"),
+    limit: int = Query(20, ge=1, le=50, description="Items per page"),
+    user: User = Depends(get_current_user),
+    service: CommunityService = Depends(_get_service),
+):
+    try:
+        posts, next_cursor, has_more = await service.get_feed(
+            current_user_id=user.id,
+            stock_symbol=symbol,
+            search_query=q,
+            cursor=cursor,
+            limit=limit,
+        )
+
+        post_responses = []
+        for post in posts:
+            liked_by_me = await service.has_liked(post.id, user.id)
+            post_responses.append(_build_post_response(post, liked_by_me))
+
+        return CommunityPostListResponse(
+            posts=post_responses,
+            cursor=next_cursor,
+            has_more=has_more,
+        )
+    except Exception as e:
+        log.exception("Get stock posts failed for symbol %s", symbol)
+        raise ServiceUnavailableError(f"Failed to get posts for stock {symbol}")
 
 
 @router.get(

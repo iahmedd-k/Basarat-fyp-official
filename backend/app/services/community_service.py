@@ -246,7 +246,9 @@ class CommunityService:
         self,
         current_user_id: str,
         stock_symbol: Optional[str] = None,
-        post_type: Optional[PostType] = None,
+        post_type: Optional[PostType | str] = None,
+        search_query: Optional[str] = None,
+        author_username: Optional[str] = None,
         mine: bool = False,
         following: bool = False,
         cursor: Optional[str] = None,
@@ -274,10 +276,44 @@ class CommunityService:
                 .where(CommunityPost.status == PostStatus.PUBLISHED.value)
             )
 
-        if stock_symbol:
-            query = query.where(CommunityPost.stock_symbol == stock_symbol)
+        # Stock symbol filter
+        if stock_symbol and stock_symbol.strip():
+            sym_clean = stock_symbol.strip().lstrip("$#").upper()
+            query = query.where(
+                or_(
+                    CommunityPost.stock_symbol == sym_clean,
+                    CommunityPost.content.ilike(f"%${sym_clean}%"),
+                    CommunityPost.content.ilike(f"%#{sym_clean}%"),
+                )
+            )
+
+        # Post type / Market filter
         if post_type:
-            query = query.where(CommunityPost.post_type == post_type.value)
+            pt_val = post_type.value if hasattr(post_type, "value") else str(post_type).upper()
+            if pt_val in ("GENERAL_MARKET", "MARKET", "GENERAL"):
+                query = query.where(CommunityPost.post_type == PostType.GENERAL_MARKET.value)
+            elif pt_val in ("STOCK", "STOCKS"):
+                query = query.where(CommunityPost.post_type == PostType.STOCK.value)
+            else:
+                query = query.where(CommunityPost.post_type == pt_val)
+
+        # Text keyword and cashtag search
+        if search_query and search_query.strip():
+            q_clean = search_query.strip()
+            ticker_candidate = q_clean.lstrip("$#").upper()
+            query = query.where(
+                or_(
+                    CommunityPost.content.ilike(f"%{q_clean}%"),
+                    CommunityPost.stock_symbol.ilike(f"%{ticker_candidate}%"),
+                    CommunityPost.content.ilike(f"%${ticker_candidate}%"),
+                    CommunityPost.content.ilike(f"%#{ticker_candidate}%"),
+                )
+            )
+
+        # Author username filter
+        if author_username and author_username.strip():
+            author_subq = select(User.id).where(User.username.ilike(f"%{author_username.strip()}%"))
+            query = query.where(CommunityPost.author_id.in_(author_subq))
 
         query = query.order_by(CommunityPost.created_at.desc(), CommunityPost.id.desc())
 
