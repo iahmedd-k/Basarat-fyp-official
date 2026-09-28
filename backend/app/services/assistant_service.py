@@ -402,6 +402,8 @@ class AssistantService:
         except Exception as e:
             log.warning(f"Groq streaming failed or unavailable, falling back to contextual response: {e}")
             stock_info = (context.get("stock") or context.get("stock_info")) if isinstance(context, dict) else None
+            m_lower = message.lower()
+            
             if stock_info and isinstance(stock_info, dict):
                 sym = stock_info.get("symbol", "Stock")
                 name = stock_info.get("name") or sym
@@ -420,20 +422,27 @@ class AssistantService:
                     f"- **Current Market Price:** PKR {price} ({chg:+.2f}%)\n",
                     f"- **Valuation (P/E):** {pe}\n",
                     f"- **AI Directional Forecast:** {direction}{conf_str}\n",
-                    f"- **Multi-Factor Summary:** The quantitative engine evaluates technical momentum (RSI/MACD), volume liquidity, and valuation. For tailored risk-adjusted entry/exit targets, review the Forecast & Recommendations tabs."
+                    f"- **Quantitative Trade Guidance:** Always utilize stop-loss levels and check the multi-factor risk/reward score in your Recommendations tab."
                 ]
-            elif "kse" in message.lower() or "market" in message.lower() or "index" in message.lower():
+            elif "shariah" in m_lower or "halal" in m_lower or "kmi" in m_lower:
+                full_response_chunks = [
+                    "### Shariah & Islamic Compliance Screening\n",
+                    "- **Screening Criteria:** PSX KMI-30 Shariah compliance requires debt-to-assets < 37%, non-compliant income < 5%, and illiquid assets > 25%.\n",
+                    "- **Islamic Banking / Shariah Stocks:** Companies like Meezan Bank (MEBL) and certified Islamic funds operate in full accordance with AAOIFI and SECP Islamic capital market standards.\n",
+                    "- **Verification:** Check the Shariah Screener tab in Basarat for real-time compliance badges on any PSX ticker."
+                ]
+            elif "kse" in m_lower or "market" in m_lower or "index" in m_lower:
                 full_response_chunks = [
                     "### PSX KSE-100 Market Overview\n",
                     "- **Market Status:** Active trading & index surveillance.\n",
                     "- **Key Drivers:** Institutional liquidity, monetary policy sentiment, and corporate earnings announcements.\n",
                     "- **Platform Tools:** Use the Screener to filter top gainers/losers, and explore the AI Stock Analysis tab for deep multi-factor insights."
                 ]
-            elif "portfolio" in message.lower() or "risk" in message.lower() or "diversif" in message.lower():
+            elif "portfolio" in m_lower or "risk" in m_lower or "diversif" in m_lower or "volatil" in m_lower:
                 full_response_chunks = [
                     "### Portfolio Risk & Allocation Intelligence\n",
                     "- **Diversification Strategy:** Maintain balanced exposure across high-dividend defensive sectors (e.g. Fertilizer, Power) and growth cyclicals (e.g. Commercial Banks, Cement).\n",
-                    "- **Risk Management:** Utilize automated Stop-Loss thresholds and ATR volatility buffers calculated in the Forecast module to protect capital."
+                    "- **Risk Management:** Utilize automated Stop-Loss thresholds and ATR volatility buffers calculated in the Forecast module to protect capital against sudden market drawdowns."
                 ]
             else:
                 full_response_chunks = [

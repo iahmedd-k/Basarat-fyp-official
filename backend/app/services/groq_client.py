@@ -35,7 +35,7 @@ class GroqClient:
                     "Authorization": f"Bearer {self.settings.GROQ_API_KEY}",
                     "Content-Type": "application/json",
                 },
-                timeout=httpx.Timeout(5.0, connect=3.0),
+                timeout=httpx.Timeout(2.5, connect=1.5),
             )
         return self._client
 
@@ -66,7 +66,7 @@ class GroqClient:
         Raises:
             GroqError: On API error or timeout
         """
-        if not self.settings.GROQ_API_KEY:
+        if not self.settings.GROQ_API_KEY or len(self.settings.GROQ_API_KEY.strip()) < 10:
             raise GroqError("Groq API key not configured", 503)
 
         payload = {
@@ -118,7 +118,7 @@ class GroqClient:
         """
         import json
 
-        if not self.settings.GROQ_API_KEY:
+        if not self.settings.GROQ_API_KEY or len(self.settings.GROQ_API_KEY.strip()) < 10:
             raise GroqError("Groq API key not configured", 503)
 
         payload = {
