@@ -178,7 +178,7 @@ class AssistantService:
         Returns dict with: response, conversation_id, message_id
         """
         # Get or create conversation gracefully
-        cid = conversation_id.strip() if conversation_id and isinstance(conversation_id, str) and conversation_id.strip() not in ("", "null", "undefined") else None
+        cid = conversation_id.strip() if conversation_id and isinstance(conversation_id, str) and conversation_id.strip().lower() not in ("", "null", "undefined", "string", "none") else None
         if cid:
             try:
                 conversation = await self.get_conversation(cid, user_id)
@@ -214,10 +214,10 @@ class AssistantService:
                 "blocked": True,
             }
 
-        # Classify intent
+        # Classify intent for context gathering
         intent = classify_intent(message)
 
-        # Handle special intents
+        # Handle hard unsafe exploits
         if intent == "unsafe":
             log.warning(f"Unsafe request from user {user_id}: {message[:100]}")
             safe_response = (
@@ -231,20 +231,6 @@ class AssistantService:
                 "response": safe_response,
                 "conversation_id": conversation.id,
                 "blocked": True,
-            }
-
-        if intent == "off_topic":
-            safe_response = (
-                "I'm designed to help with PSX stocks, portfolios, financial concepts, "
-                "forecasts, and features of this application. I can't help with "
-                "unrelated topics like jokes, games, general knowledge, or programming."
-            )
-            await self._save_message(conversation.id, "user", message)
-            await self._save_message(conversation.id, "assistant", safe_response)
-            await self.db.commit()
-            return {
-                "response": safe_response,
-                "conversation_id": conversation.id,
             }
 
         # Build context
@@ -318,7 +304,7 @@ class AssistantService:
         Yields strings formatted as: `data: {...}\n\n`
         """
         # Get or create conversation gracefully
-        cid = conversation_id.strip() if conversation_id and isinstance(conversation_id, str) and conversation_id.strip() not in ("", "null", "undefined") else None
+        cid = conversation_id.strip() if conversation_id and isinstance(conversation_id, str) and conversation_id.strip().lower() not in ("", "null", "undefined", "string", "none") else None
         if cid:
             try:
                 conversation = await self.get_conversation(cid, user_id)
@@ -344,7 +330,7 @@ class AssistantService:
             yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': safe_response, 'blocked': True})}\n\n"
             return
 
-        # Classify intent
+        # Classify intent for context gathering
         intent = classify_intent(message)
 
         if intent == "unsafe":
@@ -358,19 +344,6 @@ class AssistantService:
             await self.db.commit()
             yield f"data: {json.dumps({'event': 'chunk', 'chunk': safe_response, 'conversation_id': conversation.id})}\n\n"
             yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': safe_response, 'blocked': True})}\n\n"
-            return
-
-        if intent == "off_topic":
-            safe_response = (
-                "I'm designed to help with PSX stocks, portfolios, financial concepts, "
-                "forecasts, and features of this application. I can't help with "
-                "unrelated topics like jokes, games, general knowledge, or programming."
-            )
-            await self._save_message(conversation.id, "user", message)
-            await self._save_message(conversation.id, "assistant", safe_response)
-            await self.db.commit()
-            yield f"data: {json.dumps({'event': 'chunk', 'chunk': safe_response, 'conversation_id': conversation.id})}\n\n"
-            yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': safe_response})}\n\n"
             return
 
         # Build context
@@ -394,7 +367,7 @@ class AssistantService:
             async for chunk in groq_client.stream_chat_completion(
                 messages=messages,
                 temperature=0.3,
-                max_tokens=350,
+                max_tokens=800,
             ):
                 full_response_chunks.append(chunk)
                 emitted_live = True

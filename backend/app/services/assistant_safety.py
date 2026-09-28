@@ -41,7 +41,7 @@ INTENT_KEYWORDS = {
         "stock", "share", "price", "quote", "chart", "technical", "rsi", "macd",
         "bollinger", "moving average", "sma", "ema", "volume", "ohlcv",
         "fundamental", "earnings", "pe ratio", "dividend", "market cap",
-        "overview", "company", "sector", "symbol"
+        "overview", "company", "sector", "symbol", "shariah", "islamic", "islamci", "halal", "kmi", "kmi30"
     ],
     "market_information": [
         "market", "kse", "index", "kse100", "kse30", "kmi30", "gainers", "losers",
@@ -84,21 +84,20 @@ INTENT_KEYWORDS = {
         "how much to sell", "how much to invest", "how much should i invest",
         "target allocation", "allocation advice", "entry price", "exit price",
         "best stock for me", "recommend me", "what should i do",
-        "tell me what to buy", "tell me what to sell", "what to buy",
-        "what to sell", "guaranteed", "sure thing", "best bet",
+        "tell me what to buy", "tell me what to sell",
         "how much to allocate", "what to allocate"
     ],
     "off_topic": [
         "joke", "game", "recipe", "weather", "movie", "music", "sports",
-        "politics", "religion", "programming", "code", "python", "javascript",
-        "quantum", "world war", "history", "biology", "chemistry", "physics",
+        "politics", "programming", "code", "python", "javascript",
+        "quantum", "world war", "biology", "chemistry", "physics",
         "essay", "story", "poem", "creative writing"
     ],
     "unsafe": [
-        "system prompt", "ignore previous", "ignore instructions", "reveal",
-        "secret", "api key", "password", "credential", "token", "database",
-        "internal", "configuration", "admin", "root", "sudo", "hack",
-        "exploit", "bypass", "override", "jailbreak"
+        "system prompt", "ignore previous", "ignore instructions", "reveal secret",
+        "api key", "password", "credential", "database dump",
+        "internal system", "admin root", "hack server",
+        "exploit", "jailbreak"
     ],
 }
 
