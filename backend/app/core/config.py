@@ -84,7 +84,7 @@ class Settings(BaseSettings):
 
     # Groq (LLM for Stock AI Assistant)
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL: str = "qwen/qwen3.8-27b"
 
     # ML
     GRU_MODEL_PATH: str = "models/gru_v1"
