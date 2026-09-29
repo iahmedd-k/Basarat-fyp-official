@@ -1,70 +1,33 @@
+"""Basarat Stock AI Assistant orchestration service."""
+
+from __future__ import annotations
+
 import json
 import logging
-from typing import Optional, AsyncGenerator
-from uuid import uuid4
+from typing import AsyncGenerator, Optional
 
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, ForbiddenError, ServiceUnavailableError
-from app.db.session import get_db
+from app.core.exceptions import NotFoundError
 from app.models.assistant import AssistantConversation, AssistantMessage
 from app.models.user import User
-
-from app.services.groq_client import groq_client, GroqError
 from app.services.assistant_context import ContextBuilder
 from app.services.assistant_safety import (
     classify_intent,
     enforce_output_safety,
     check_prompt_injection,
 )
+from app.services.groq_client import groq_client
 
 log = logging.getLogger(__name__)
 
-# Conversation history window
-MAX_HISTORY_MESSAGES = 20
-
-# System prompt for the assistant
-SYSTEM_PROMPT = """You are the AI assistant for Basarat, a PSX (Pakistan Stock Exchange) stock-market application.
-
-Your purpose is to help users understand financial information, stock-market data, portfolios, forecasts, and application features.
-
-You provide educational information and decision-support analysis.
-
-You do NOT make personalized investment decisions.
-
-Never tell a user to buy, sell, hold, avoid, or allocate a specific amount of money to a security.
-
-Do not provide personalized entry or exit instructions.
-
-When a user asks for a direct investment decision, do not simply refuse. Redirect the user toward useful analysis and explain the relevant factors that they can consider.
-
-Use the user's profile and portfolio only when relevant.
-
-Never invent stock prices, forecasts, holdings, portfolio values, market statistics, or other financial data.
-
-Treat model forecasts as probabilistic model outputs, not guarantees.
-
-Clearly distinguish:
-- factual data
-- historical information
-- model predictions
-- general financial education
-- uncertainty
-
-Only answer questions within the application's supported scope.
-
-For unrelated questions, politely explain that the assistant is focused on stocks, portfolios, financial education, and the application.
-
-Protect user data and never expose another user's information.
-
-The user makes the final investment decision.
-
-Formatting & Style Rules:
-- Output only clean, readable plain text.
-- Never use Markdown bold asterisks (**), italics (*), hashtags (###), underscores, or raw markdown symbols.
-- Use plain numbers (1., 2.) or simple hyphens (-) for lists."""
+# Lean history window for free-tier token budgets + lower latency
+MAX_HISTORY_MESSAGES = 8
+CHAT_TEMPERATURE = 0.55
+CHAT_MAX_TOKENS = 700
+STREAM_MAX_TOKENS = 800
 
 
 class AssistantService:
@@ -74,16 +37,11 @@ class AssistantService:
         self.db = db
         self.settings = get_settings()
 
-    # ─────────────────────────────────────────────────────────────────
-    # Conversation Management
-    # ─────────────────────────────────────────────────────────────────
-
     async def create_conversation(
         self,
         user_id: str,
         title: Optional[str] = None,
     ) -> AssistantConversation:
-        """Create a new conversation."""
         conversation = AssistantConversation(
             user_id=user_id,
             title=title or "New Conversation",
@@ -98,7 +56,6 @@ class AssistantService:
         conversation_id: str,
         user_id: str,
     ) -> AssistantConversation:
-        """Get a conversation by ID, verifying ownership."""
         result = await self.db.execute(
             select(AssistantConversation).where(
                 AssistantConversation.id == conversation_id,
@@ -116,7 +73,6 @@ class AssistantService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[AssistantConversation]:
-        """List user's conversations."""
         result = await self.db.execute(
             select(AssistantConversation)
             .where(AssistantConversation.user_id == user_id)
@@ -126,91 +82,158 @@ class AssistantService:
         )
         return list(result.scalars().all())
 
-    async def update_conversation_title(
-        self,
-        conversation_id: str,
-        user_id: str,
-        title: str,
-    ) -> AssistantConversation:
-        """Update conversation title."""
-        conversation = await self.get_conversation(conversation_id, user_id)
-        conversation.title = title
-        await self.db.flush()
-        await self.db.refresh(conversation)
-        return conversation
-
-    async def delete_conversation(
-        self,
-        conversation_id: str,
-        user_id: str,
-    ) -> None:
-        """Delete a conversation."""
-        conversation = await self.get_conversation(conversation_id, user_id)
-        await self.db.delete(conversation)
-        await self.db.flush()
-
     async def get_conversation_messages(
         self,
         conversation_id: str,
         user_id: str,
         limit: int = 100,
     ) -> list[AssistantMessage]:
-        """Get messages for a conversation."""
-        # Verify ownership first
         await self.get_conversation(conversation_id, user_id)
-
         result = await self.db.execute(
             select(AssistantMessage)
             .where(AssistantMessage.conversation_id == conversation_id)
-            .order_by(AssistantMessage.created_at.asc())
+            .order_by(AssistantMessage.created_at)
             .limit(limit)
         )
         return list(result.scalars().all())
 
-    # ─────────────────────────────────────────────────────────────────
-    # Chat Processing
-    # ─────────────────────────────────────────────────────────────────
+    async def update_conversation_title(
+        self,
+        conversation_id: str,
+        user_id: str,
+        title: str,
+    ) -> AssistantConversation:
+        conversation = await self.get_conversation(conversation_id, user_id)
+        conversation.title = title
+        await self.db.commit()
+        await self.db.refresh(conversation)
+        return conversation
+
+    async def delete_conversation(self, conversation_id: str, user_id: str) -> None:
+        conversation = await self.get_conversation(conversation_id, user_id)
+        await self.db.delete(conversation)
+        await self.db.commit()
+
+    def _normalize_conversation_id(self, conversation_id: Optional[str]) -> Optional[str]:
+        if not conversation_id or not isinstance(conversation_id, str):
+            return None
+        cid = conversation_id.strip()
+        if cid.lower() in ("", "null", "undefined", "string", "none"):
+            return None
+        return cid
+
+    async def _resolve_conversation(
+        self,
+        user_id: str,
+        conversation_id: Optional[str],
+    ) -> AssistantConversation:
+        cid = self._normalize_conversation_id(conversation_id)
+        if cid:
+            try:
+                return await self.get_conversation(cid, user_id)
+            except NotFoundError:
+                return await self.create_conversation(user_id)
+        return await self.create_conversation(user_id)
+
+    async def _load_history(self, conversation_id: str, user_id: str) -> list[dict]:
+        history_messages = await self.get_conversation_messages(
+            conversation_id, user_id, limit=MAX_HISTORY_MESSAGES
+        )
+        # Keep only the most recent window (messages come oldest-first)
+        window = history_messages[-MAX_HISTORY_MESSAGES:]
+        return [
+            {"role": msg.role, "content": msg.content}
+            for msg in window
+            if not (msg.role == "user" and check_prompt_injection(msg.content))
+        ]
+
+    @staticmethod
+    def _blocked_response() -> str:
+        return (
+            "I can't process that request. Ask me about PSX stocks, your portfolio, "
+            "forecasts, financial concepts, or Basarat app features."
+        )
+
+    def _grounded_fallback(self, message: str, context: dict) -> str:
+        """Plain-text fallback when Groq is unavailable — still useful, never markdown."""
+        stock = context.get("stock") if isinstance(context, dict) else None
+        market = context.get("market") if isinstance(context, dict) else None
+        portfolio = context.get("portfolio") if isinstance(context, dict) else None
+        m_lower = message.lower()
+
+        if isinstance(stock, dict):
+            sym = stock.get("symbol", "Stock")
+            name = stock.get("name") or sym
+            price = stock.get("current_price")
+            chg = stock.get("change_pct")
+            sector = stock.get("sector") or "n/a"
+            forecast = stock.get("forecast") or {}
+            direction = forecast.get("direction") or "unavailable"
+            lines = [
+                f"{sym} ({name}) — retrieved live snapshot:",
+                f"- Sector: {sector}",
+                f"- Price: PKR {price} ({chg}% change)" if price is not None else "- Price: unavailable",
+                f"- Model forecast direction: {direction}",
+            ]
+            if stock.get("quote_is_stale"):
+                lines.append("- Note: quote may be stale.")
+            lines.append(
+                "The AI model is briefly unavailable, so this is a data snapshot only. "
+                "Ask again shortly for a full explanation."
+            )
+            return "\n".join(lines)
+
+        if portfolio and isinstance(portfolio, dict):
+            s = portfolio.get("summary") or {}
+            return (
+                f"Portfolio snapshot (model temporarily unavailable):\n"
+                f"- Value: {s.get('value')}\n"
+                f"- P&L: {s.get('pnl')} ({s.get('pnl_pct')}%)\n"
+                f"- Holdings: {s.get('holdings_count')}\n"
+                "Try again in a moment for a full narrative analysis."
+            )
+
+        if market and isinstance(market, dict) or any(k in m_lower for k in ("market", "kse", "index", "psx")):
+            breadth = (market or {}).get("breadth") if isinstance(market, dict) else None
+            if breadth:
+                return (
+                    f"PSX breadth snapshot: {breadth.get('advancing')} advancing, "
+                    f"{breadth.get('declining')} declining across {breadth.get('symbols_count')} symbols. "
+                    "Full commentary is temporarily unavailable — please retry shortly."
+                )
+            return (
+                "Market overview is temporarily limited because the language model is unavailable. "
+                "Check the Market tab for live indices, or retry this chat in a moment."
+            )
+
+        if any(k in m_lower for k in ("shariah", "halal", "kmi", "islamic")):
+            return (
+                "Shariah screening in Basarat uses KMI-style filters (debt, non-compliant income, "
+                "illiquid assets). Open the Shariah screener for live badges, or retry chat shortly "
+                "for a guided explanation."
+            )
+
+        return (
+            "I'm Basarat Assistant for PSX stocks, portfolios, forecasts, and app help. "
+            "The language model is temporarily unavailable — please try again in a few seconds."
+        )
 
     async def process_chat(
         self,
         user_id: str,
         message: str,
         conversation_id: Optional[str] = None,
+        *,
+        skip_save_user: bool = False,
     ) -> dict:
-        """
-        Process a chat message and return the assistant's response.
+        conversation = await self._resolve_conversation(user_id, conversation_id)
+        history = await self._load_history(conversation.id, user_id)
 
-        Returns dict with: response, conversation_id, message_id
-        """
-        # Get or create conversation gracefully
-        cid = conversation_id.strip() if conversation_id and isinstance(conversation_id, str) and conversation_id.strip().lower() not in ("", "null", "undefined", "string", "none") else None
-        if cid:
-            try:
-                conversation = await self.get_conversation(cid, user_id)
-            except NotFoundError:
-                conversation = await self.create_conversation(user_id)
-        else:
-            # Create new conversation with auto-generated title
-            conversation = await self.create_conversation(user_id)
-
-        # Get conversation history
-        history_messages = await self.get_conversation_messages(
-            conversation.id, user_id, limit=MAX_HISTORY_MESSAGES
-        )
-        history = [
-            {"role": msg.role, "content": msg.content}
-            for msg in history_messages
-            if not (msg.role == "user" and check_prompt_injection(msg.content))
-        ]
-
-        # Safety: Check for prompt injection
         if check_prompt_injection(message):
-            log.warning(f"Prompt injection detected from user {user_id}")
-            safe_response = (
-                "I can't process that request. Please ask about stocks, portfolios, "
-                "financial concepts, forecasts, or application features."
-            )
-            await self._save_message(conversation.id, "user", message)
+            log.warning("Prompt injection detected from user %s", user_id)
+            safe_response = self._blocked_response()
+            if not skip_save_user:
+                await self._save_message(conversation.id, "user", message)
             await self._save_message(conversation.id, "assistant", safe_response)
             await self.db.commit()
             return {
@@ -219,17 +242,12 @@ class AssistantService:
                 "blocked": True,
             }
 
-        # Classify intent for context gathering
         intent = classify_intent(message)
-
-        # Handle hard unsafe exploits
         if intent == "unsafe":
-            log.warning(f"Unsafe request from user {user_id}: {message[:100]}")
-            safe_response = (
-                "I can't process that request. I'm designed to help with PSX stocks, "
-                "portfolios, financial concepts, forecasts, and application features."
-            )
-            await self._save_message(conversation.id, "user", message)
+            log.warning("Unsafe request from user %s: %s", user_id, message[:100])
+            safe_response = self._blocked_response()
+            if not skip_save_user:
+                await self._save_message(conversation.id, "user", message)
             await self._save_message(conversation.id, "assistant", safe_response)
             await self.db.commit()
             return {
@@ -238,64 +256,38 @@ class AssistantService:
                 "blocked": True,
             }
 
-        # Build context
         user = await self.db.get(User, user_id)
         context_builder = ContextBuilder(self.db, user)
         context = await context_builder.build_context(message, intent, history)
-
-        # Build messages for Groq
         messages = context_builder.build_messages(context, message, history)
 
-        # Call Groq
         try:
             response = await groq_client.chat_completion(
                 messages=messages,
-                temperature=0.3,
-                max_tokens=500,
+                temperature=CHAT_TEMPERATURE,
+                max_tokens=CHAT_MAX_TOKENS,
             )
         except Exception as e:
-            log.warning("Groq API unavailable (%s), generating grounded context response", e)
-            stock_data = context.get("stocks") or []
-            if stock_data:
-                s_info = stock_data[0]
-                sym = s_info.get("symbol", "Stock")
-                price = s_info.get("current_price") or s_info.get("ltp") or "N/A"
-                chg = s_info.get("change_pct", 0.0)
-                sec = s_info.get("sector", "General Market")
-                response = (
-                    f"### PSX Market Intelligence: {sym}\n"
-                    f"- **Sector:** {sec}\n"
-                    f"- **Current Quote:** PKR {price} ({chg:+.2f}%)\n"
-                    f"- **Quantitative Summary:** Our multi-factor engine monitors technical momentum (RSI/MACD), "
-                    f"fundamentals, and machine learning price horizons. Check the Recommendations and Forecast panels for personalized target and stop levels."
-                )
-            else:
-                response = (
-                    "Welcome to Basarat AI Investment Assistant. "
-                    "You can explore real-time PSX stock quotes, technical indicator breakdowns, "
-                    "AI directional forecasts, Shariah compliance screenings, and portfolio risk simulations."
-                )
+            log.warning("Groq unavailable (%s); using grounded fallback", e)
+            response = self._grounded_fallback(message, context)
 
-        # Safety: Check output
         response, output_filtered, violation_type = enforce_output_safety(response)
         if output_filtered:
-            log.warning("Output safety filtered response for user %s: %s", user_id, violation_type)
+            log.warning("Output safety adjusted response for user %s: %s", user_id, violation_type)
 
-        # Save messages
-        await self._save_message(conversation.id, "user", message)
+        if not skip_save_user:
+            await self._save_message(conversation.id, "user", message)
         await self._save_message(conversation.id, "assistant", response)
 
-        # Update conversation title if it's the first exchange
         if conversation.title == "New Conversation":
-            # Generate title from first message
-            title = message[:50] + ("..." if len(message) > 50 else "")
-            conversation.title = title
+            conversation.title = message[:50] + ("..." if len(message) > 50 else "")
 
         await self.db.commit()
-
         return {
             "response": response,
             "conversation_id": conversation.id,
+            "intent": intent,
+            "safety_filtered": output_filtered,
         }
 
     async def process_chat_stream(
@@ -305,29 +297,14 @@ class AssistantService:
         conversation_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """
-        Stream chat response using Server-Sent Events (SSE) format.
-        Yields strings formatted as: `data: {...}\n\n`
+        SSE stream. Chunks may stream live for latency; `done.full_response` is always
+        the safety-checked final text. If live text was replaced, `replaced` is true.
         """
-        # Get or create conversation gracefully
-        cid = conversation_id.strip() if conversation_id and isinstance(conversation_id, str) and conversation_id.strip().lower() not in ("", "null", "undefined", "string", "none") else None
-        if cid:
-            try:
-                conversation = await self.get_conversation(cid, user_id)
-            except NotFoundError:
-                conversation = await self.create_conversation(user_id)
-        else:
-            conversation = await self.create_conversation(user_id)
-
-        # Notify stream start
+        conversation = await self._resolve_conversation(user_id, conversation_id)
         yield f"data: {json.dumps({'event': 'start', 'conversation_id': conversation.id})}\n\n"
 
-        # Check prompt injection
-        if check_prompt_injection(message):
-            log.warning(f"Prompt injection detected from user {user_id}")
-            safe_response = (
-                "I can't process that request. Please ask about stocks, portfolios, "
-                "financial concepts, forecasts, or application features."
-            )
+        if check_prompt_injection(message) or classify_intent(message) == "unsafe":
+            safe_response = self._blocked_response()
             await self._save_message(conversation.id, "user", message)
             await self._save_message(conversation.id, "assistant", safe_response)
             await self.db.commit()
@@ -335,125 +312,50 @@ class AssistantService:
             yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': safe_response, 'blocked': True})}\n\n"
             return
 
-        # Classify intent for context gathering
         intent = classify_intent(message)
-
-        if intent == "unsafe":
-            log.warning(f"Unsafe request from user {user_id}: {message[:100]}")
-            safe_response = (
-                "I can't process that request. I'm designed to help with PSX stocks, "
-                "portfolios, financial concepts, forecasts, and application features."
-            )
-            await self._save_message(conversation.id, "user", message)
-            await self._save_message(conversation.id, "assistant", safe_response)
-            await self.db.commit()
-            yield f"data: {json.dumps({'event': 'chunk', 'chunk': safe_response, 'conversation_id': conversation.id})}\n\n"
-            yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': safe_response, 'blocked': True})}\n\n"
-            return
-
-        # Build context
-        history_messages = await self.get_conversation_messages(
-            conversation.id, user_id, limit=MAX_HISTORY_MESSAGES
-        )
-        history = [
-            {"role": msg.role, "content": msg.content}
-            for msg in history_messages
-            if not (msg.role == "user" and check_prompt_injection(msg.content))
-        ]
-
+        history = await self._load_history(conversation.id, user_id)
         user = await self.db.get(User, user_id)
         context_builder = ContextBuilder(self.db, user)
         context = await context_builder.build_context(message, intent, history)
         messages = context_builder.build_messages(context, message, history)
 
-        full_response_chunks = []
+        live_chunks: list[str] = []
         emitted_live = False
         try:
             async for chunk in groq_client.stream_chat_completion(
                 messages=messages,
-                temperature=0.3,
-                max_tokens=800,
+                temperature=CHAT_TEMPERATURE,
+                max_tokens=STREAM_MAX_TOKENS,
             ):
-                full_response_chunks.append(chunk)
+                live_chunks.append(chunk)
                 emitted_live = True
                 yield f"data: {json.dumps({'event': 'chunk', 'chunk': chunk, 'conversation_id': conversation.id})}\n\n"
         except Exception as e:
-            log.warning(f"Groq streaming failed or unavailable, falling back to contextual response: {e}")
-            stock_info = (context.get("stock") or context.get("stock_info")) if isinstance(context, dict) else None
-            m_lower = message.lower()
-            
-            if stock_info and isinstance(stock_info, dict):
-                sym = stock_info.get("symbol", "Stock")
-                name = stock_info.get("name") or sym
-                price = stock_info.get("current_price") or stock_info.get("ltp") or "N/A"
-                chg = stock_info.get("change_pct", 0.0)
-                sec = stock_info.get("sector", "General Market")
-                pe = stock_info.get("pe_ratio", "N/A")
-                forecast_data = stock_info.get("forecast") or {}
-                direction = forecast_data.get("direction", "NEUTRAL")
-                conf = forecast_data.get("confidence")
-                conf_str = f" ({float(conf)*100:.1f}% confidence)" if conf is not None else ""
-                
-                full_response_chunks = [
-                    f"### PSX Market Intelligence: {sym} ({name})\n",
-                    f"- **Sector:** {sec}\n",
-                    f"- **Current Market Price:** PKR {price} ({chg:+.2f}%)\n",
-                    f"- **Valuation (P/E):** {pe}\n",
-                    f"- **AI Directional Forecast:** {direction}{conf_str}\n",
-                    f"- **Quantitative Trade Guidance:** Always utilize stop-loss levels and check the multi-factor risk/reward score in your Recommendations tab."
-                ]
-            elif "shariah" in m_lower or "halal" in m_lower or "kmi" in m_lower:
-                full_response_chunks = [
-                    "### Shariah & Islamic Compliance Screening\n",
-                    "- **Screening Criteria:** PSX KMI-30 Shariah compliance requires debt-to-assets < 37%, non-compliant income < 5%, and illiquid assets > 25%.\n",
-                    "- **Islamic Banking / Shariah Stocks:** Companies like Meezan Bank (MEBL) and certified Islamic funds operate in full accordance with AAOIFI and SECP Islamic capital market standards.\n",
-                    "- **Verification:** Check the Shariah Screener tab in Basarat for real-time compliance badges on any PSX ticker."
-                ]
-            elif "kse" in m_lower or "market" in m_lower or "index" in m_lower:
-                full_response_chunks = [
-                    "### PSX KSE-100 Market Overview\n",
-                    "- **Market Status:** Active trading & index surveillance.\n",
-                    "- **Key Drivers:** Institutional liquidity, monetary policy sentiment, and corporate earnings announcements.\n",
-                    "- **Platform Tools:** Use the Screener to filter top gainers/losers, and explore the AI Stock Analysis tab for deep multi-factor insights."
-                ]
-            elif "portfolio" in m_lower or "risk" in m_lower or "diversif" in m_lower or "volatil" in m_lower:
-                full_response_chunks = [
-                    "### Portfolio Risk & Allocation Intelligence\n",
-                    "- **Diversification Strategy:** Maintain balanced exposure across high-dividend defensive sectors (e.g. Fertilizer, Power) and growth cyclicals (e.g. Commercial Banks, Cement).\n",
-                    "- **Risk Management:** Utilize automated Stop-Loss thresholds and ATR volatility buffers calculated in the Forecast module to protect capital against sudden market drawdowns."
-                ]
-            else:
-                full_response_chunks = [
-                    "Welcome to Basarat AI Investment Assistant.\n\n",
-                    "I provide real-time Pakistan Stock Exchange (PSX) market intelligence, ",
-                    "technical momentum indicators, ML-driven price directional forecasts (XGBoost & GRU), ",
-                    "and multi-factor portfolio optimization. How can I assist with your investment analysis today?"
-                ]
+            log.warning("Groq streaming failed (%s); grounded fallback", e)
+            live_chunks = [self._grounded_fallback(message, context)]
 
-        full_response = "".join(full_response_chunks).strip()
-
-        full_response, output_filtered, violation_type = enforce_output_safety(full_response)
+        raw = "".join(live_chunks).strip()
+        full_response, output_filtered, violation_type = enforce_output_safety(raw)
         if output_filtered:
-            log.warning("Output safety filtered streamed response for user %s: %s", user_id, violation_type)
+            log.warning("Stream output safety adjusted for user %s: %s", user_id, violation_type)
 
-        # If fallback was used and not emitted live, stream out the chunks now
+        replaced = emitted_live and full_response != raw
         if not emitted_live:
-            chunk_size = 64
-            for offset in range(0, len(full_response), chunk_size):
-                chunk = full_response[offset:offset + chunk_size]
+            # Fake-stream fallback so Android still gets progressive UX
+            for offset in range(0, len(full_response), 56):
+                chunk = full_response[offset:offset + 56]
                 yield f"data: {json.dumps({'event': 'chunk', 'chunk': chunk, 'conversation_id': conversation.id})}\n\n"
+        elif replaced:
+            yield f"data: {json.dumps({'event': 'replace', 'conversation_id': conversation.id, 'full_response': full_response})}\n\n"
 
-        # Save to database
         await self._save_message(conversation.id, "user", message)
         await self._save_message(conversation.id, "assistant", full_response)
 
         if conversation.title == "New Conversation":
-            title = message[:50] + ("..." if len(message) > 50 else "")
-            conversation.title = title
+            conversation.title = message[:50] + ("..." if len(message) > 50 else "")
 
         await self.db.commit()
-
-        yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': full_response, 'safety_filtered': output_filtered})}\n\n"
+        yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': full_response, 'safety_filtered': output_filtered, 'replaced': replaced, 'intent': intent})}\n\n"
 
     async def _save_message(
         self,
@@ -461,7 +363,6 @@ class AssistantService:
         role: str,
         content: str,
     ) -> AssistantMessage:
-        """Save a message to the database."""
         message = AssistantMessage(
             conversation_id=conversation_id,
             role=role,
@@ -471,19 +372,13 @@ class AssistantService:
         await self.db.flush()
         return message
 
-    # ─────────────────────────────────────────────────────────────────
-    # Regeneration / Retry
-    # ─────────────────────────────────────────────────────────────────
-
     async def regenerate_response(
         self,
         conversation_id: str,
         user_id: str,
     ) -> dict:
-        """Regenerate the last assistant response."""
-        conversation = await self.get_conversation(conversation_id, user_id)
+        await self.get_conversation(conversation_id, user_id)
 
-        # Get the last user message
         result = await self.db.execute(
             select(AssistantMessage)
             .where(
@@ -497,7 +392,6 @@ class AssistantService:
         if not last_user_msg:
             raise NotFoundError("No user message to regenerate")
 
-        # Delete the last assistant message
         result = await self.db.execute(
             select(AssistantMessage)
             .where(
@@ -512,5 +406,23 @@ class AssistantService:
             await self.db.delete(last_assistant_msg)
             await self.db.flush()
 
-        # Re-process the user message
-        return await self.process_chat(user_id, last_user_msg.content, conversation_id)
+        return await self.process_chat(
+            user_id,
+            last_user_msg.content,
+            conversation_id,
+            skip_save_user=True,
+        )
+
+    @staticmethod
+    def quick_prompts() -> list[dict]:
+        """Suggested chips for Android / web."""
+        return [
+            {"id": "market_today", "label": "How is the PSX market today?", "message": "How is the PSX market today?"},
+            {"id": "my_portfolio", "label": "Summarize my portfolio", "message": "Summarize my portfolio performance"},
+            {"id": "explain_rsi", "label": "What is RSI?", "message": "Explain RSI in simple terms"},
+            {"id": "ogdc_snapshot", "label": "OGDC snapshot", "message": "Give me a quick snapshot of OGDC"},
+            {"id": "forecast_hbl", "label": "HBL forecast", "message": "What does the forecast say for HBL?"},
+            {"id": "shariah", "label": "Shariah screening", "message": "How does Shariah screening work in Basarat?"},
+            {"id": "create_portfolio", "label": "Create a portfolio", "message": "How do I create a portfolio in the app?"},
+            {"id": "risk_profile", "label": "My risk profile", "message": "What is my risk profile and what does it mean?"},
+        ]

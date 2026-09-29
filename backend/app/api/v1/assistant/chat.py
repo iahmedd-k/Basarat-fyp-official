@@ -21,6 +21,8 @@ from app.schemas.assistant import (
     AssistantConversationUpdate,
     AssistantConversationMessagesResponse,
     AssistantMessageResponse,
+    AssistantQuickPromptsResponse,
+    AssistantQuickPrompt,
 )
 from app.services.assistant_service import AssistantService
 
@@ -59,6 +61,8 @@ async def chat(
         return AssistantChatResponse(
             message=result["response"],
             conversation_id=result["conversation_id"],
+            intent=result.get("intent"),
+            safety_filtered=bool(result.get("safety_filtered")),
         )
     except ServiceUnavailableError:
         raise
@@ -69,9 +73,24 @@ async def chat(
         raise ServiceUnavailableError("Failed to process chat message")
 
 
+@router.get(
+    "/assistant/quick-prompts",
+    response_model=AssistantQuickPromptsResponse,
+    summary="Suggested starter prompts for the assistant",
+)
+async def quick_prompts(
+    user: User = Depends(get_current_user),
+):
+    """Return chip suggestions for Android / web chat UIs."""
+    _ = user
+    return AssistantQuickPromptsResponse(
+        prompts=[AssistantQuickPrompt(**p) for p in AssistantService.quick_prompts()]
+    )
+
+
 @router.post(
     "/assistant/chat/stream",
-    summary="Stream safety-checked assistant response (Server-Sent Events)",
+    summary="Stream assistant response (Server-Sent Events)",
 )
 @limiter.limit("30/minute")
 async def chat_stream(
@@ -82,18 +101,15 @@ async def chat_stream(
 ):
     """
     Stream a response from the Stock AI Assistant using SSE (text/event-stream).
-    To prevent unvalidated text from reaching the user, the model response is
-    fully generated and safety-checked before chunk events are emitted.
 
-    SSE Events format:
-    - `data: {"event": "start", "conversation_id": "..."}`
-    - `data: {"event": "chunk", "chunk": "text fragment", "conversation_id": "..."}`
-    - `data: {"event": "done", "conversation_id": "...", "full_response": "...", "safety_filtered": false}`
-    - `data: {"event": "error", "error": "...", "conversation_id": "..."}`
+    Events:
+    - start: conversation_id
+    - chunk: progressive text (may stream live for low latency)
+    - replace: optional; final safety-adjusted text if live chunks differed
+    - done: full_response (always the text to persist/display), safety_filtered, intent
+    - error: rare transport failures
 
-    Chunk events are emitted only after full-response safety validation. They
-    are slices of `full_response`; `safety_filtered` indicates a safe redirect
-    replaced a policy-violating model answer.
+    Android clients should treat `done.full_response` (or `replace`) as the source of truth.
     """
     stream_generator = service.process_chat_stream(
         user_id=user.id,
@@ -224,6 +240,8 @@ async def regenerate_response(
         return AssistantChatResponse(
             message=result["response"],
             conversation_id=result["conversation_id"],
+            intent=result.get("intent"),
+            safety_filtered=bool(result.get("safety_filtered")),
         )
     except NotFoundError:
         raise

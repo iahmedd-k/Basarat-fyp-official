@@ -1,8 +1,10 @@
-"""Safety and guardrails for the Stock AI Assistant."""
+"""Safety and guardrails for the Basarat Stock AI Assistant."""
+
+from __future__ import annotations
 
 import logging
 import re
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional
 
 log = logging.getLogger(__name__)
 
@@ -15,10 +17,6 @@ class SafetyError(Exception):
         super().__init__(message)
 
 
-# ──────────────────────────────────────────────────────────────────────
-# Intent Classification
-# ──────────────────────────────────────────────────────────────────────
-
 IntentType = Literal[
     "stock_information",
     "market_information",
@@ -30,125 +28,78 @@ IntentType = Literal[
     "portfolio_analysis",
     "stock_analysis",
     "personalized_investment_advice",
+    "general",
     "off_topic",
     "unsafe",
 ]
 
 
-# Keywords for intent classification
-INTENT_KEYWORDS = {
-    "stock_information": [
-        "stock", "share", "price", "quote", "chart", "technical", "rsi", "macd",
-        "bollinger", "moving average", "sma", "ema", "volume", "ohlcv",
-        "fundamental", "earnings", "pe ratio", "dividend", "market cap",
-        "overview", "company", "sector", "symbol", "shariah", "islamic", "islamci", "halal", "kmi", "kmi30"
-    ],
-    "market_information": [
-        "market", "kse", "index", "kse100", "kse30", "kmi30", "gainers", "losers",
-        "volume spikes", "market status", "trading hours", "sentiment overview"
-    ],
-    "portfolio_information": [
-        "portfolio", "holding", "holdings", "my stocks", "my portfolio",
-        "allocation", "diversification", "concentration", "exposure",
-        "pnl", "profit", "loss", "performance", "returns", "weight"
-    ],
-    "risk_profile": [
-        "risk profile", "risk tolerance", "conservative", "moderate", "aggressive",
-        "investment horizon", "sector preference", "risk appetite"
-    ],
-    "forecast_explanation": [
-        "forecast", "prediction", "predict", "model", "gru", "xgb", "ensemble",
-        "bullish", "bearish", "sideways", "confidence", "probability",
-        "direction", "target price", "stop loss", "forecast history"
-    ],
-    "financial_education": [
-        "what is", "define", "explain", "how does", "what does", "meaning of",
-        "rsi", "macd", "pe ratio", "volatility", "diversification", "var",
-        "cvar", "monte carlo", "stress test", "sharpe", "drawdown"
-    ],
-    "application_help": [
-        "how to", "how do i", "feature", "app", "application", "setting",
-        "notification", "alert", "community", "shariah", "portfolio"
-    ],
-    "portfolio_analysis": [
-        "analyze my portfolio", "portfolio analysis", "evaluate portfolio",
-        "portfolio review", "sector concentration", "diversification"
-    ],
-    "stock_analysis": [
-        "analyze", "evaluate", "assess", "review", "deep dive", "technical analysis",
-        "fundamental analysis", "should i buy", "should i sell", "good investment",
-        "good stock", "bad stock", "worth buying", "worth selling"
-    ],
-    "personalized_investment_advice": [
-        "should i buy", "should i sell", "should i hold", "how much to buy",
-        "how much to sell", "how much to invest", "how much should i invest",
-        "target allocation", "allocation advice", "entry price", "exit price",
-        "best stock for me", "recommend me", "what should i do",
-        "tell me what to buy", "tell me what to sell",
-        "how much to allocate", "what to allocate"
-    ],
-    "off_topic": [
-        "joke", "game", "recipe", "weather", "movie", "music", "sports",
-        "politics", "programming", "code", "python", "javascript",
-        "quantum", "world war", "biology", "chemistry", "physics",
-        "essay", "story", "poem", "creative writing"
-    ],
-    "unsafe": [
-        "system prompt", "ignore previous", "ignore instructions", "reveal secret",
-        "api key", "password", "credential", "database dump",
-        "internal system", "admin root", "hack server",
-        "exploit", "jailbreak"
-    ],
-}
-
+# ──────────────────────────────────────────────────────────────────────
+# Intent Classification (soft routing for context, not hard refusals)
+# ──────────────────────────────────────────────────────────────────────
 
 def classify_intent(message: str) -> str:
-    """
-    Classify user message intent using keyword matching and rules.
-
-    Returns one of the IntentType values.
-    """
+    """Classify intent for context gathering. Prefer helpful defaults over off_topic."""
     message_lower = message.lower().strip()
 
-    # Check for unsafe / prompt injection first (highest priority)
     if check_prompt_injection(message):
         return "unsafe"
-    for keyword in INTENT_KEYWORDS["unsafe"]:
-        if keyword in message_lower:
-            return "unsafe"
 
-    # Check for off-topic (unless specifically discussing finance concepts)
-    for keyword in INTENT_KEYWORDS["off_topic"]:
-        if keyword in message_lower:
-            return "off_topic"
+    # Clear non-finance topics only
+    if re.search(
+        r"\b(?:tell me a joke|write (?:a |me )?(?:poem|essay|story)|weather|"
+        r"recipe|movie recommendation|play (?:a )?game|world war|"
+        r"quantum (?:mechanics|physics)|biology homework|chemistry homework)\b",
+        message_lower,
+    ):
+        return "off_topic"
+    if re.search(
+        r"\b(?:write|code|program)\b.{0,40}\b(?:python|javascript|java|c\+\+)\b",
+        message_lower,
+    ) and not re.search(r"\b(?:stock|portfolio|psx|market|finance)\b", message_lower):
+        return "off_topic"
 
-    # Check for personalized investment advice (critical safety)
-    for keyword in INTENT_KEYWORDS["personalized_investment_advice"]:
-        if keyword in message_lower:
-            return "personalized_investment_advice"
+    # Personalized advice — still serve analysis context; prompt handles redirect tone
+    if re.search(
+        r"\bshould i (?:buy|sell|hold)\b|"
+        r"\bhow much (?:should i |to )?(?:buy|sell|invest|allocate)\b|"
+        r"\b(?:best|ideal) stock for (?:me|you)\b|"
+        r"\brecommend (?:me |a stock|stocks)\b|"
+        r"\btell me (?:exactly )?what to (?:buy|sell)\b|"
+        r"\bwhat should i (?:buy|sell|do)\b|"
+        r"\b(?:entry|exit) price\b|"
+        r"\btarget allocation\b|"
+        r"\bhow much to allocate\b",
+        message_lower,
+    ):
+        return "personalized_investment_advice"
 
-    # Portfolio analysis vs portfolio info
-    if re.search(r"\banalyze\s+(?:my\s+)?portfolio\b|\bevaluate\s+(?:my\s+)?portfolio\b", message_lower):
+    if re.search(r"\banalyze\s+(?:my\s+)?portfolio\b|\bevaluate\s+(?:my\s+)?portfolio\b|\bportfolio (?:analysis|review)\b", message_lower):
         return "portfolio_analysis"
 
-    # Stock analysis
-    if re.search(r"\banalyze\s+[a-z0-9]+\b|\bevaluate\s+[a-z0-9]+\b|\bassess\s+[a-z0-9]+\b|\bthoughts\s+on\b|\bview\s+on\b|\boutlook\b", message_lower):
+    if re.search(
+        r"\banalyze\s+[a-z0-9]+\b|\bevaluate\s+[a-z0-9]+\b|\bassess\s+[a-z0-9]+\b|"
+        r"\bthoughts\s+on\b|\bview\s+on\b|\boutlook\s+(?:on|for)\b|"
+        r"\b(?:technical|fundamental) analysis\b",
+        message_lower,
+    ):
         return "stock_analysis"
 
-    # App navigation/setup questions take precedence over the word
-    # "portfolio" (for example, "How do I create a portfolio?").
-    if re.search(r"\bhow\s+do\s+i\b|\bhow\s+to\b|\bfeatures?\b|\bhelp\b|\bsettings?\b|\balerts?\b", message_lower):
+    # App how-to before generic portfolio keyword
+    if re.search(
+        r"\bhow\s+do\s+i\b|\bhow\s+to\b|\b(?:app|application)\s+feature|"
+        r"\bhelp (?:me )?(?:with|using) (?:the )?(?:app|basarat)\b|"
+        r"\b(?:set(?:\s+up)?|create|enable)\s+(?:an?\s+)?(?:alert|notification|portfolio)\b",
+        message_lower,
+    ):
         return "application_help"
 
-    # Forecast explanation
-    if "forecast" in message_lower or "prediction" in message_lower or "predict" in message_lower or "target" in message_lower:
+    if re.search(r"\bforecast\b|\bprediction\b|\bpredict\b|\bbullish\b|\bbearish\b|\bmodel (?:says|output)\b", message_lower):
         return "forecast_explanation"
 
-    # Risk profile
-    if re.search(r"\brisk\s+profile\b|\brisk\s+tolerance\b|\bhorizon\b|\bconservative\b|\baggressive\b", message_lower):
+    if re.search(r"\brisk\s+profile\b|\brisk\s+tolerance\b|\binvestment\s+horizon\b|\baggressive\b|\bconservative\b", message_lower):
         return "risk_profile"
 
-    # Portfolio information
     if re.search(
         r"\bholdings?\b|\bmy\s+(?:portfolio|stocks?|positions?|investments?)\b|"
         r"\bportfolio\s+(?:value|pnl|performance|allocation|holdings?)\b|"
@@ -160,43 +111,50 @@ def classify_intent(message: str) -> str:
     ):
         return "portfolio_information"
 
-    # Explicit Stock Ticker Lookup (prioritized before general market terms)
-    concept_abbreviations = {"RSI", "MACD", "SMA", "EMA", "ATR", "VAR", "CVAR", "EPS", "ROI", "PPE", "KSE", "KSE100", "KSE30", "KMI30", "PSX"}
+    concept_abbreviations = {
+        "RSI", "MACD", "SMA", "EMA", "ATR", "VAR", "CVAR", "EPS", "ROI",
+        "PPE", "KSE", "KSE100", "KSE30", "KMI30", "PSX",
+    }
     explicit_tickers = re.findall(r"(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,5}(?![A-Za-z0-9])", message)
     if any(ticker not in concept_abbreviations for ticker in explicit_tickers):
         return "stock_information"
 
-    # Market information
-    if re.search(r"\bmarket\b|\bgainers?\b|\blosers?\b|\bindices\b|\bkse\b|\bkse100\b|\bkse30\b|\bkmi30\b|\bpsx\b|\bturnover\b|\bvolume\b|\bnews\b|\bannouncements?\b", message_lower):
+    if re.search(
+        r"\bmarket\b|\bgainers?\b|\blosers?\b|\bindices\b|\bkse\b|\bkse100\b|"
+        r"\bkse30\b|\bkmi30\b|\bpsx\b|\bturnover\b|\bvolume\b|\bnews\b|\bannouncements?\b",
+        message_lower,
+    ):
         return "market_information"
 
-    # General financial education should not be misclassified merely because
-    # the concept (RSI, P/E, dividend) is also a supported stock metric.
-    if re.search(r"\bwhat\s+is\b|\bexplain\b|\bdefine\b|\bmeaning\s+of\b|\bhow\s+does\b|\bconcept\b|\bdividend\b|\bpe\s+ratio\b|\bvaluation\b|\bshariah\b", message_lower):
+    if re.search(
+        r"\bwhat\s+is\b|\bexplain\b|\bdefine\b|\bmeaning\s+of\b|\bhow\s+does\b|"
+        r"\bconcept\b|\bdividend\b|\bpe\s+ratio\b|\bvaluation\b|\bshariah\b|\bhalal\b",
+        message_lower,
+    ):
         return "financial_education"
 
-    # Route live company/metric lookups after education intents.
-    for kw in INTENT_KEYWORDS["stock_information"]:
-        if kw in message_lower:
-            return "stock_information"
-
-    # If message contains uppercase candidate ticker or financial query terms
-    if any(term in message_lower for term in ["about", "detail", "performance", "shares", "company", "price", "rate", "status"]):
+    stock_terms = (
+        "stock", "share", "price", "quote", "chart", "technical", "fundamental",
+        "earnings", "sector", "symbol", "company", "shariah", "islamic", "halal",
+    )
+    if any(term in message_lower for term in stock_terms):
         return "stock_information"
 
-    # If there is a plausible stock symbol (2-5 uppercase chars)
-    words = [re.sub(r'[^A-Za-z0-9]', '', w) for w in message.split()]
+    if any(term in message_lower for term in ("about", "detail", "performance", "shares", "rate", "status")):
+        return "stock_information"
+
+    words = [re.sub(r"[^A-Za-z0-9]", "", w) for w in message.split()]
     if any(w.isupper() and 2 <= len(w) <= 6 for w in words):
         return "stock_information"
 
-    return "off_topic"
+    # Ambiguous but not clearly off-topic → keep the assistant helpful
+    return "general"
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Output Safety Check
+# Output Safety
 # ──────────────────────────────────────────────────────────────────────
 
-# Patterns that indicate personalized investment advice
 PROHIBITED_PATTERNS = [
     (r"\byou should buy\b", "direct_buy_advice"),
     (r"\byou should (?:purchase|invest in)\b", "direct_buy_advice"),
@@ -231,193 +189,191 @@ PROHIBITED_PATTERNS = [
     (r"\b(?:tomorrow|today|now)\s+(?:buy|sell)\b", "timing_instruction"),
 ]
 
-# Compile patterns for performance
 PROHIBITED_REGEX = [(re.compile(pattern, re.IGNORECASE), vtype) for pattern, vtype in PROHIBITED_PATTERNS]
+
+_DISCLAIMER = (
+    "\n\nThis is educational decision-support only - not personalized buy, sell, or allocate advice."
+)
 
 
 def check_output_safety(response: str) -> tuple[bool, Optional[str]]:
-    """
-    Check if the assistant's response contains prohibited content.
-
-    Returns:
-        (is_safe, violation_type)
-    """
+    """Return (is_safe, violation_type)."""
     for pattern, vtype in PROHIBITED_REGEX:
         if pattern.search(response):
-            log.warning(f"Output safety violation: {vtype} - matched: {pattern.pattern}")
+            log.warning("Output safety violation: %s - matched: %s", vtype, pattern.pattern)
             return False, vtype
     return True, None
 
 
 def sanitize_response(response: str) -> str:
-    """
-    Attempt to sanitize a response by removing or replacing prohibited patterns.
-
-    This is a best-effort sanitization. If the response is heavily violating,
-    it's better to regenerate.
-    """
+    """Best-effort rewrite of prohibited phrasing while keeping useful analysis."""
     sanitized = response
     for pattern, vtype in PROHIBITED_REGEX:
-        if pattern.search(sanitized):
-            # Replace with a generic safe alternative
-            if "buy" in vtype:
-                sanitized = pattern.sub("consider analyzing whether to buy", sanitized)
-            elif "sell" in vtype:
-                sanitized = pattern.sub("consider analyzing whether to sell", sanitized)
-            elif "hold" in vtype:
-                sanitized = pattern.sub("consider your holding strategy", sanitized)
-            elif "allocate" in vtype or "allocation" in vtype or "invest" in vtype or "percentage" in vtype or "amount" in vtype:
-                sanitized = pattern.sub("consider your allocation strategy", sanitized)
-            elif "guaranteed" in vtype:
-                sanitized = pattern.sub("potential", sanitized)
-            elif "need to" in vtype:
-                sanitized = pattern.sub("could consider", sanitized)
-            elif "best stock for" in vtype:
-                sanitized = pattern.sub("stocks matching your criteria", sanitized)
-            elif "tell me what" in vtype:
-                sanitized = pattern.sub("I can help you analyze", sanitized)
-            elif "entry price" in vtype or "exit price" in vtype:
-                sanitized = pattern.sub("price levels to watch", sanitized)
-            elif "timing" in vtype or "tomorrow" in vtype:
-                sanitized = pattern.sub("in the near term", sanitized)
-            else:
-                sanitized = pattern.sub("[analysis redirected]", sanitized)
-
+        if not pattern.search(sanitized):
+            continue
+        if vtype in ("direct_buy_advice", "direct_buy_instruction", "necessity_buy", "direct_buy_request"):
+            sanitized = pattern.sub("it may be worth analyzing a purchase of", sanitized)
+        elif vtype in ("direct_sell_advice", "direct_sell_instruction", "necessity_sell", "direct_sell_request"):
+            sanitized = pattern.sub("it may be worth analyzing a sale of", sanitized)
+        elif "hold" in vtype:
+            sanitized = pattern.sub("consider your holding strategy for", sanitized)
+        elif "avoid" in vtype:
+            sanitized = pattern.sub("review the risks of", sanitized)
+        elif vtype == "direct_trade_instruction":
+            sanitized = pattern.sub("review", sanitized)
+        elif "allocate" in vtype or "allocation" in vtype or "percentage" in vtype or "amount" in vtype:
+            sanitized = pattern.sub("consider allocation carefully for", sanitized)
+        elif "guaranteed" in vtype:
+            sanitized = pattern.sub("potential", sanitized)
+        elif "personalized" in vtype:
+            sanitized = pattern.sub("a stock matching your criteria could be", sanitized)
+        elif "entry price" in vtype or "exit price" in vtype:
+            sanitized = pattern.sub("a price level to watch is", sanitized)
+        elif "timing" in vtype:
+            sanitized = pattern.sub("near-term price action for", sanitized)
+        else:
+            sanitized = pattern.sub("review the available analysis on", sanitized)
     return sanitized
 
 
 def enforce_output_safety(response: str) -> tuple[str, bool, Optional[str]]:
-    """Return one complete response that passes the output policy.
-
-    Callers must emit this checked response, never the unchecked model text.
-    """
+    """Prefer sanitizing useful answers over wiping them with a canned refusal."""
     is_safe, violation_type = check_output_safety(response)
     if is_safe:
         return response, False, None
 
-    # Avoid fragile in-place edits that can change the meaning of a financial
-    # sentence. Replace the whole answer with a vetted, topic-specific redirect.
-    return get_safety_response(violation_type or "default"), True, violation_type
+    sanitized = sanitize_response(response)
+    safe_after, still_type = check_output_safety(sanitized)
+    if safe_after and len(sanitized.strip()) >= 40:
+        if _DISCLAIMER.strip() not in sanitized:
+            sanitized = sanitized.rstrip() + _DISCLAIMER
+        return sanitized, True, violation_type
+
+    # Last resort: short redirect that still invites a useful follow-up
+    return get_safety_response(still_type or violation_type or "default"), True, violation_type
 
 
 def check_prompt_injection(message: str) -> bool:
-    """
-    Check for prompt injection attempts.
+    """Detect real jailbreak / prompt-theft attempts — not normal roleplay wording."""
+    message_lower = message.lower()
 
-    Returns True if injection detected.
-    """
-    injection_patterns = [
-        r"ignore (?:all )?previous instructions",
+    strong_patterns = [
+        r"ignore (?:all )?(?:previous |prior |above )?instructions",
         r"ignore (?:all )?instructions",
         r"reveal (?:your )?system prompt",
         r"reveal (?:your )?instructions",
         r"show (?:me )?(?:your )?system prompt",
         r"what (?:is|are) (?:your )?system prompt",
-        r"forget (?:all )?(?:previous|above)",
-        r"you are now",
-        r"act as",
-        r"pretend to be",
-        r"roleplay as",
+        r"forget (?:all )?(?:previous|above) instructions",
         r"developer mode",
         r"admin mode",
         r"god mode",
-        r"unrestricted",
-        r"no (?:rules|restrictions|limits)",
-        r"bypass",
-        r"override",
         r"jailbreak",
+        r"bypass (?:the )?(?:safety|guardrail|rules|restrictions)",
+        r"override (?:the )?(?:safety|guardrail|instructions|rules)",
+        r"no (?:rules|restrictions|limits)(?:\s+mode)?",
+        r"unrestricted (?:mode|access)",
+        r"(?:api key|password|credential|database dump)",
     ]
-
-    message_lower = message.lower()
-    for pattern in injection_patterns:
+    for pattern in strong_patterns:
         if re.search(pattern, message_lower):
-            log.warning(f"Prompt injection detected: {pattern}")
+            log.warning("Prompt injection detected: %s", pattern)
             return True
+
+    # Role-switch only when paired with unrestricted / override language
+    if re.search(
+        r"(?:you are now|act as|pretend to be|roleplay as).{0,60}"
+        r"(?:unrestricted|no rules|ignore (?:all )?instructions|jailbreak|without (?:any )?(?:rules|restrictions))",
+        message_lower,
+    ):
+        log.warning("Prompt injection detected: role-switch + override")
+        return True
+
+    if re.search(r"you are now in (?:developer|admin|god) mode", message_lower):
+        log.warning("Prompt injection detected: privileged mode")
+        return True
+
     return False
 
 
 def get_safety_response(violation_type: str) -> str:
-    """Get a safe, educational response for a safety violation."""
+    """Educational redirect when a response cannot be safely sanitized."""
     responses = {
         "direct_buy_advice": (
-            "I can't provide personalized buy recommendations, but I can help you analyze "
-            "the stock's fundamentals, technical indicators, forecasts, and how it might fit "
-            "your portfolio and risk profile."
+            "I can't give a personalized buy instruction, but I can walk through the stock's "
+            "price, fundamentals, forecast probabilities, and portfolio fit so you can decide."
         ),
         "direct_sell_advice": (
-            "I can't provide personalized sell recommendations, but I can help you evaluate "
-            "your holding's performance, forecast outlook, and how it aligns with your "
-            "investment goals and risk tolerance."
+            "I can't give a personalized sell instruction, but I can review performance, "
+            "forecast outlook, and concentration risk for that holding."
         ),
         "direct_hold_advice": (
-            "I can't tell you whether to hold, but I can help you review the stock's "
-            "recent performance, forecast, and how it fits your investment horizon and risk profile."
+            "I can't tell you to hold, but I can summarize recent performance, forecast, "
+            "and how the position lines up with your risk profile."
         ),
         "direct_avoid_instruction": (
-            "I can't tell you to avoid a specific stock, but I can help review its "
-            "retrieved fundamentals, price history, forecast, and relevant risks."
+            "I can't tell you to avoid a stock, but I can review its retrieved fundamentals, "
+            "price action, forecast, and key risks."
         ),
         "direct_trade_instruction": (
-            "I can't give a direct trade instruction. I can summarize the retrieved "
-            "market, company, and risk information so you can make your own decision."
+            "I can't issue a trade instruction. Ask for an analysis of the symbol, forecast, "
+            "or how it fits your portfolio and I'll use live Basarat data."
         ),
         "allocation_instruction": (
-            "I can't specify portfolio allocations, but I can show you your current "
-            "diversification, sector exposure, and concentration metrics so you can decide."
+            "I can't set allocation percentages, but I can show your current weights, "
+            "sector exposure, and concentration so you can decide."
         ),
         "amount_instruction": (
             "I can't specify investment amounts, but I can explain position sizing concepts "
-            "and risk management principles."
+            "and how risk links to portfolio concentration."
         ),
         "percentage_instruction": (
-            "I can't specify percentage allocations, but I can show you your current "
-            "portfolio weights and sector concentrations."
+            "I can't specify percentage allocations, but I can show current portfolio weights "
+            "and sector concentrations."
         ),
         "guaranteed_return": (
-            "No investment has guaranteed returns. I can explain the forecast probabilities "
-            "and historical volatility to help you understand the risk/return profile."
+            "No investment has guaranteed returns. I can explain forecast probabilities and "
+            "historical volatility so you can judge risk versus reward."
         ),
         "guaranteed_profit": (
-            "There are no guaranteed profits in the stock market. I can help you understand "
-            "the risk/reward profile based on forecasts, technicals, and fundamentals."
+            "There are no guaranteed profits. I can help interpret forecasts, technicals, "
+            "and fundamentals as probabilistic signals."
         ),
         "necessity_buy": (
-            "You're not obligated to buy any stock. I can help you evaluate whether a "
-            "stock aligns with your investment criteria."
+            "You're not obligated to buy. I can help evaluate whether a stock matches your "
+            "stated risk profile and goals."
         ),
         "necessity_sell": (
-            "You're not obligated to sell. I can help you assess whether selling aligns "
-            "with your investment thesis and risk management."
+            "You're not obligated to sell. I can help assess whether selling aligns with "
+            "your thesis and risk limits."
         ),
         "personalized_recommendation": (
-            "I can't recommend specific stocks for you personally, but I can help you "
-            "analyze stocks based on your stated risk profile, sector preferences, and "
-            "investment horizon."
+            "I can't pick stocks for you personally, but I can analyze candidates against "
+            "your risk profile, sector preferences, and live market data."
         ),
         "direct_buy_request": (
-            "I can't make buy decisions for you, but I can walk you through the analysis "
-            "framework: fundamentals, technicals, forecasts, and portfolio fit."
+            "I can't make buy decisions for you. Ask me to analyze a symbol's fundamentals, "
+            "technicals, forecast, or portfolio fit."
         ),
         "direct_sell_request": (
-            "I can't make sell decisions for you, but I can help you evaluate whether "
-            "selling aligns with your investment thesis."
+            "I can't make sell decisions for you. Ask me to review performance, forecast, "
+            "or concentration for a holding."
         ),
         "entry_price_instruction": (
-            "I can't set entry prices, but I can show you current levels, support/resistance, "
-            "and forecast ranges."
+            "I can't set entry prices, but I can show current levels, ranges, and forecast "
+            "probabilities from retrieved data."
         ),
         "exit_price_instruction": (
-            "I can't set exit prices, but I can show you target/stop-loss calculations "
-            "based on ATR and your risk tolerance."
+            "I can't set exit prices, but I can show model outlook and risk metrics from "
+            "retrieved Basarat data."
         ),
         "timing_instruction": (
-            "I can't time the market for you, but I can share the forecast horizon and "
-            "what the model suggests for the near term."
+            "I can't time the market for you, but I can share the near-term forecast horizon "
+            "and what the model currently suggests."
         ),
         "default": (
-            "I can't provide personalized investment decisions. I can help you analyze "
-            "stocks, understand forecasts, review your portfolio, and explain financial concepts "
-            "so you can make informed decisions."
+            "I provide educational decision-support for PSX stocks, portfolios, forecasts, "
+            "and Basarat features — not personalized trade instructions. What would you like to analyze?"
         ),
     }
     return responses.get(violation_type, responses["default"])

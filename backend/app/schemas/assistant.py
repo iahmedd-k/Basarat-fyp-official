@@ -12,6 +12,18 @@ class AssistantChatRequest(BaseModel):
 class AssistantChatResponse(BaseModel):
     message: str
     conversation_id: str
+    intent: Optional[str] = None
+    safety_filtered: bool = False
+
+
+class AssistantQuickPrompt(BaseModel):
+    id: str
+    label: str
+    message: str
+
+
+class AssistantQuickPromptsResponse(BaseModel):
+    prompts: List[AssistantQuickPrompt]
 
 
 class AssistantMessageResponse(BaseModel):

@@ -82,9 +82,12 @@ class Settings(BaseSettings):
     # HuggingFace (FinBERT sentiment via Inference API)
     HF_API_TOKEN: str = ""
 
-    # Groq (LLM for Stock AI Assistant)
+    # Groq (LLM for Stock AI Assistant) — models available on free keys vary; use list from /models
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "qwen/qwen3.8-27b"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    # Prefer smaller free-tier OSS model; fall back to Qwen mid-size.
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
+    GROQ_FALLBACK_MODEL: str = "qwen/qwen3.8-27b"
 
     # ML
     GRU_MODEL_PATH: str = "models/gru_v1"

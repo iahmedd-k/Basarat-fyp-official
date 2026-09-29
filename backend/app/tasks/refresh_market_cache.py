@@ -45,11 +45,18 @@ def refresh_market_cache(self, refresh_reference: bool = False, refresh_constitu
                 results["indices"] = len(indices)
 
             if refresh_constituents:
-                for code in ("KSE100",):
+                for code in ("KSE100", "KSE30", "KMI30"):
                     values = await service.get_index_constituents(
                         code, force_refresh=True, read_only=False
                     )
                     results["constituents"][code] = len(values)
+                try:
+                    from app.services.assistant_context_cache import warm_assistant_universe
+                    universe = await warm_assistant_universe(force_refresh_constituents=False)
+                    results["assistant_universe"] = universe.get("symbol_count", 0)
+                except Exception as exc:
+                    log.warning("Assistant universe warm failed: %s", exc)
+                    results["assistant_universe"] = 0
             return results
         finally:
             # Celery tasks use a short-lived asyncio loop. Do not retain an
