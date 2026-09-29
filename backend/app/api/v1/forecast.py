@@ -1,11 +1,15 @@
-"""Forecast API — ML inference endpoints.
+"""Forecast API — ML predict, save, and history (professional contract).
 
-Returns clean, flat JSON optimized for frontend rendering.
+Core flow:
+  GET /forecast/{symbol}           → predict + upsert into predictions
+  GET /forecast/{symbol}/history   → read saved predictions + real outcomes only
+  GET /forecast/pipeline           → when Celery background jobs run (PKT)
+
+Outcomes are written only by Celery evaluate_pending (after target close is in features).
+History never invents sideways/actual labels.
 """
 
 import logging
-from datetime import timedelta
-from pathlib import Path
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
@@ -22,6 +26,7 @@ from app.ml.serving.inference import (
 )
 from app.ml.serving.model_loader import artifacts
 from app.ml.serving.prediction_logger import log_prediction
+from app.ml.serving.prediction_store import pkt_today, pipeline_schedule_info
 from app.models.prediction import Prediction
 from app.models.user import User
 from app.services.recommendation_service import RecommendationEngine
@@ -30,6 +35,7 @@ from app.ml.serving.schemas import (
     ErrorResponse,
     ForecastHistoryItem,
     ForecastHistoryResponse,
+    ForecastPipelineResponse,
     ForecastResponse,
 )
 
@@ -39,9 +45,35 @@ router = APIRouter()
 
 
 @router.get(
+    "/forecast/pipeline",
+    response_model=ForecastPipelineResponse,
+    summary="Forecast background job schedule (when predict + evaluate run)",
+)
+async def get_forecast_pipeline(user: User = Depends(get_current_user)):
+    """
+    Documents the Celery Beat daily pipeline for Android / ops.
+
+    **Mon–Fri 18:00 Asia/Karachi** (skips weekends & exchange holidays):
+    1. Scrape OHLCV → 2. Features → 3. Upsert predictions → 4. Evaluate outcomes
+    → 5. Sentiment → 6. Recommendations
+
+    A prediction made for `target_date = next trading day` is normally scored on
+    the **following** 18:00 run, once that day's close exists in features.
+    """
+    info = pipeline_schedule_info()
+    return ForecastPipelineResponse(
+        timezone=info["timezone"],
+        current_date_pkt=pkt_today().isoformat(),
+        daily_pipeline=info["daily_pipeline"],
+        outcome_timing=info["outcome_timing"],
+        api_paths=info["api_paths"],
+    )
+
+
+@router.get(
     "/forecast/{symbol}",
     response_model=ForecastResponse,
-    summary="Get ML forecast for a stock",
+    summary="Predict bullish/bearish/sideways and save to history",
     responses={
         404: {"model": ErrorResponse, "description": "Symbol not found"},
         503: {"model": ErrorResponse, "description": "ML model not ready"},
@@ -53,13 +85,19 @@ async def get_stock_forecast(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Run ensemble inference for a PSX symbol, **upsert** the prediction into
+    `predictions`, and return the live forecast payload.
+
+    Daily batch also upserts all active symbols at 18:00 PKT. Calling this
+    endpoint mid-day refreshes the same unique (symbol, horizon, as_of_date) row.
+    """
     try:
         if not artifacts.model_ready:
             raise ServiceUnavailableError("ML model is not loaded yet")
 
         result = get_forecast(symbol, horizon=horizon)
 
-        # Log prediction to database
         await log_prediction(
             db,
             symbol=result["symbol"],
@@ -72,23 +110,29 @@ async def get_stock_forecast(
             as_of_date=result["as_of_date"],
             target_date=result["predicted_for_date"],
             model_version=result["model_version"],
+            gate_reason=result.get("gate_reason", ""),
+            model_details=result.get("model_details"),
         )
 
-        # Compute current_price / target_price / stop_loss via ATR method
         target_stop = {"current_price": None, "target_price": None, "stop_loss": None}
         try:
-            features_path = Path("data/features/features_daily.parquet")
-            if not features_path.exists():
-                from app.ml.serving.inference import FEATURES_PATH
-                features_path = FEATURES_PATH
+            from app.ml.serving.inference import FEATURES_PATH
+
+            features_path = FEATURES_PATH
             if features_path.exists():
                 df = pd.read_parquet(features_path)
                 df["date"] = pd.to_datetime(df["date"])
-                sym_df = df[df["symbol"] == result["symbol"]].copy().sort_values("date").reset_index(drop=True)
+                sym_df = (
+                    df[df["symbol"] == result["symbol"]]
+                    .copy()
+                    .sort_values("date")
+                    .reset_index(drop=True)
+                )
                 if not sym_df.empty:
                     engine = RecommendationEngine()
                     target_stop = engine.compute_target_stop(
-                        result["symbol"], sym_df,
+                        result["symbol"],
+                        sym_df,
                         ml_direction=result.get("direction"),
                         horizon=horizon,
                     )
@@ -98,9 +142,12 @@ async def get_stock_forecast(
         if not target_stop or target_stop.get("target_price") is None:
             try:
                 from app.services.stock_service import StockService
+
                 stock_svc = StockService()
                 quote = stock_svc.get_quote(result["symbol"])
-                curr_p = float(quote.get("current") or quote.get("ldcp") or 100.0) if quote else 100.0
+                curr_p = (
+                    float(quote.get("current") or quote.get("ldcp") or 100.0) if quote else 100.0
+                )
                 atr = curr_p * (0.015 if horizon == "1D" else 0.035 if horizon == "1W" else 0.075)
                 mult = 2.0 if horizon == "1D" else 3.0 if horizon == "1W" else 4.0
                 dir_str = str(result.get("direction", "sideways")).lower()
@@ -128,9 +175,12 @@ async def get_stock_forecast(
                     "method": "atr_band",
                 }
             except Exception as exc:
-                log.warning("Fallback target/stop computation failed for %s: %s", result["symbol"], exc)
+                log.warning(
+                    "Fallback target/stop computation failed for %s: %s",
+                    result["symbol"],
+                    exc,
+                )
 
-        # Build optimized response
         return _build_forecast_response(result, horizon, target_stop)
 
     except SymbolNotFoundError as exc:
@@ -158,7 +208,6 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
         "sideways": result["sideways_pct"],
     }
 
-    # Institutional Signal Rating
     if direction == "bullish":
         signal_rating = "Strong Buy" if probabilities["bullish"] >= 58.0 or confidence >= 0.58 else "Buy"
     elif direction == "bearish":
@@ -166,7 +215,6 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
     else:
         signal_rating = "Neutral / Hold"
 
-    # Transform model_details into clean format
     models = None
     if result.get("model_details"):
         models = {}
@@ -180,7 +228,6 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
                 "gap_pp": detail["gap_pp"],
             }
 
-    # Populate price and risk/reward metrics
     current_price = None
     target_price = None
     stop_loss = None
@@ -198,7 +245,6 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
         downside_pct = target_stop.get("downside_pct")
         risk_reward_ratio = target_stop.get("risk_reward_ratio")
 
-    # Clear explanatory rationale for price targets and stop loss
     if current_price and (target_price is None or stop_loss is None):
         mult = 1.5 if horizon == "1D" else 2.5 if horizon == "1W" else 3.5
         atr = current_price * (0.015 if horizon == "1D" else 0.035 if horizon == "1W" else 0.075)
@@ -214,7 +260,9 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
             f"Neutral trading channel [{sl} - {tp}] calculated via ATR volatility band for {horizon} horizon."
         )
     elif target_price is not None and stop_loss is not None:
-        price_target_rationale = f"Target price and stop-loss calculated via ATR volatility interval for {horizon} horizon."
+        price_target_rationale = (
+            f"Target price and stop-loss calculated via ATR volatility interval for {horizon} horizon."
+        )
     else:
         price_target_rationale = "Target and stop-loss calculations are pending current session price data."
 
@@ -245,36 +293,53 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
 @router.get(
     "/forecast/{symbol}/history",
     response_model=ForecastHistoryResponse,
-    summary="Get historical forecast accuracy",
+    summary="Get saved forecast history and real accuracy",
     responses={
-        404: {"model": ErrorResponse, "description": "Symbol not found"},
+        404: {"model": ErrorResponse, "description": "No history for symbol"},
     },
 )
 async def get_forecast_history(
     symbol: str,
+    horizon: str = Query("1D", pattern="^(1D|1W|1M)$", description="Filter by prediction horizon"),
     limit: int = Query(30, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Read durable predictions for a symbol.
+
+    - **evaluated**: `actual_direction` set by the daily evaluate job from real closes
+    - **pending_target_date**: target session not finished yet (PKT)
+    - **pending_evaluation**: target day passed but close not scored yet (job pending / missing data)
+
+    This endpoint is read-only — it never invents outcomes.
+    """
     try:
         symbol = symbol.upper()
+        today = pkt_today()
 
         result = await db.execute(
             select(Prediction)
-            .where(Prediction.symbol == symbol)
-            .order_by(Prediction.predicted_at.desc())
+            .where(
+                Prediction.symbol == symbol,
+                Prediction.horizon == horizon,
+            )
+            .order_by(Prediction.as_of_date.desc(), Prediction.predicted_at.desc())
             .limit(limit)
         )
         rows = result.scalars().all()
 
         if not rows:
-            raise NotFoundError(f"No forecast history found for symbol '{symbol}'")
+            raise NotFoundError(
+                f"No forecast history found for symbol '{symbol}' horizon '{horizon}'. "
+                "Predictions appear after GET /forecast/{symbol} or the 18:00 PKT daily job."
+            )
 
-        # Build optimized history items
         items = []
         scored_count = 0
         correct_count = 0
         neutral_count = 0
+        pending_count = 0
 
         for row in rows:
             probs = {
@@ -289,7 +354,10 @@ async def get_forecast_history(
                     "status": "evaluated",
                     "direction": row.actual_direction,
                     "was_correct": row.was_correct,
-                    "evaluation_note": f"Market outcome evaluated as '{row.actual_direction}' on target date {row.target_date}.",
+                    "evaluation_note": (
+                        f"Market outcome evaluated as '{row.actual_direction}' "
+                        f"using close on target date {row.target_date}."
+                    ),
                 }
                 if row.predicted_direction in ("bullish", "bearish"):
                     scored_count += 1
@@ -297,64 +365,65 @@ async def get_forecast_history(
                         correct_count += 1
                 else:
                     neutral_count += 1
+            elif row.target_date > today:
+                pending_count += 1
+                actual = {
+                    "status": "pending_target_date",
+                    "direction": "pending",
+                    "was_correct": None,
+                    "evaluation_note": (
+                        f"Prediction active. Target date ({row.target_date}) has not completed yet (PKT)."
+                    ),
+                }
             else:
-                from datetime import date
-                is_future = row.target_date > date.today()
-                if not is_future:
-                    # Auto-resolve past target date outcomes on-demand
-                    actual_dir = "sideways"
-                    was_corr = (row.predicted_direction == actual_dir) if row.predicted_direction in ("bullish", "bearish") else None
-                    row.actual_direction = actual_dir
-                    row.was_correct = was_corr
-                    actual = {
-                        "status": "evaluated",
-                        "direction": actual_dir,
-                        "was_correct": was_corr,
-                        "evaluation_note": f"Market outcome evaluated as '{actual_dir}' on target date {row.target_date}.",
-                    }
-                    if row.predicted_direction in ("bullish", "bearish"):
-                        scored_count += 1
-                        if was_corr:
-                            correct_count += 1
-                    else:
-                        neutral_count += 1
-                else:
-                    actual = {
-                        "status": "pending_target_date",
-                        "direction": "pending",
-                        "was_correct": None,
-                        "evaluation_note": f"Prediction active. Target date ({row.target_date}) trading session has not yet completed.",
-                    }
+                pending_count += 1
+                actual = {
+                    "status": "pending_evaluation",
+                    "direction": "pending",
+                    "was_correct": None,
+                    "evaluation_note": (
+                        f"Target date {row.target_date} has passed; waiting for daily evaluate job "
+                        "once the close is present in features (normally next 18:00 PKT pipeline)."
+                    ),
+                }
 
-            items.append(ForecastHistoryItem(
-                predicted_at=row.predicted_at,
-                predicted_direction=row.predicted_direction,
-                probabilities=probs,
-                confidence=conf,
-                target_date=row.target_date,
-                actual=actual,
-            ))
-
-        # Commit any on-demand evaluated rows
-        await db.commit()
+            items.append(
+                ForecastHistoryItem(
+                    predicted_at=row.predicted_at,
+                    predicted_direction=row.predicted_direction,
+                    probabilities=probs,
+                    confidence=conf,
+                    as_of_date=row.as_of_date,
+                    target_date=row.target_date,
+                    actual=actual,
+                )
+            )
 
         accuracy = round(correct_count / scored_count, 4) if scored_count > 0 else None
         if accuracy is not None:
             accuracy_summary = (
-                f"Directional accuracy: {round(accuracy * 100, 1)}% across {scored_count} decisive signals "
-                f"({neutral_count} neutral capital-protection regimes)."
+                f"Directional accuracy: {round(accuracy * 100, 1)}% across {scored_count} "
+                f"decisive bullish/bearish signals "
+                f"({neutral_count} neutral; {pending_count} pending)."
+            )
+        elif pending_count:
+            accuracy_summary = (
+                f"{pending_count} prediction(s) still pending evaluation; "
+                f"{neutral_count} neutral. Accuracy appears after outcomes are scored."
             )
         else:
             accuracy_summary = (
-                f"All {len(items)} predictions in this window are categorized under neutral holding regimes or active."
+                f"All {len(items)} predictions in this window are neutral/holding regimes."
             )
 
         return ForecastHistoryResponse(
             symbol=symbol,
-            horizon="1D",
+            horizon=horizon,
             count=len(items),
             accuracy=accuracy,
             accuracy_summary=accuracy_summary,
+            pending_count=pending_count,
+            scored_count=scored_count,
             history=items,
         )
 

@@ -96,7 +96,7 @@ TAGS_METADATA = [
     {"name": "Market", "description": "PSX market summary, indices, gainers/losers, live discovery (GET /market/live), and cache-backed quotes for REST fallback."},
     {"name": "Stocks", "description": "Individual PSX stock quotes, company profiles, fundamentals, and technical indicators."},
     {"name": "Watchlist", "description": "User stock watchlists, price alerts targets, and custom tracked stock portfolios."},
-    {"name": "Forecast", "description": "AI price predictions, prediction intervals, and deep learning model performance metrics."},
+    {"name": "Forecast", "description": "ML directional forecasts (bullish/bearish/sideways): predict+save, history with real outcomes, pipeline schedule at GET /forecast/pipeline (daily 18:00 PKT)."},
     {"name": "Recommendations", "description": "Automated quantitative stock buy/hold/sell rankings and investment signals."},
     {"name": "Portfolio", "description": "Portfolio valuation, holdings, P&L, stock/sector allocations, and transaction ledger."},
     {"name": "Risk", "description": "Portfolio risk analytics, Value-at-Risk (VaR), CVaR, Monte Carlo simulations, and stress tests."},

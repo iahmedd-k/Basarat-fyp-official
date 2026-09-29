@@ -1,11 +1,10 @@
-"""Prediction logger — writes each served forecast to the predictions table."""
+"""Prediction logger — API path upserts into predictions via shared store."""
 
 import logging
-from datetime import date, datetime, time
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ml.serving.prediction_store import build_prediction_payload, upsert_prediction_async
 from app.models.prediction import Prediction
 
 log = logging.getLogger(__name__)
@@ -24,57 +23,43 @@ async def log_prediction(
     as_of_date,
     target_date,
     model_version: str = "ensemble",
+    gate_reason: str = "",
+    gru_result: dict | None = None,
+    xgb_result: dict | None = None,
+    model_details: dict | None = None,
 ) -> Prediction:
-    """Upsert one forecast observation per symbol, horizon, session and model."""
-    today = datetime.utcnow().date()
-    as_of_d = as_of_date.date() if isinstance(as_of_date, datetime) else as_of_date
-    target_d = target_date.date() if isinstance(target_date, datetime) else target_date
+    """Upsert one forecast observation per symbol, horizon, and session date."""
+    if model_details and not gru_result:
+        gru_result = model_details.get("gru") or model_details.get("gru_v1")
+    if model_details and not xgb_result:
+        xgb_result = model_details.get("xgb") or model_details.get("xgb_v1")
 
-    # Align predicted_at with market session
-    if as_of_d < today:
-        pred_time = datetime.combine(as_of_d, time(16, 0, 0))
-    else:
-        pred_time = datetime.utcnow()
-
-    result = await db.execute(
-        select(Prediction)
-        .where(
-            Prediction.symbol == symbol,
-            Prediction.horizon == horizon,
-            Prediction.as_of_date == as_of_d,
-            Prediction.model_version == model_version,
-            Prediction.actual_direction.is_(None),
-        )
-        .order_by(Prediction.predicted_at.desc())
-        .limit(1)
+    ensemble = {
+        "direction": predicted_direction,
+        "bullish_pct": bullish_pct,
+        "bearish_pct": bearish_pct,
+        "sideways_pct": sideways_pct,
+        "top_class_probability": top_class_probability,
+        "model_version": model_version,
+        "gate_reason": gate_reason,
+    }
+    payload = build_prediction_payload(
+        symbol=symbol,
+        horizon=horizon,
+        ensemble=ensemble,
+        as_of_date=as_of_date,
+        target_date=target_date,
+        gru_result=gru_result,
+        xgb_result=xgb_result,
     )
-    row = result.scalar_one_or_none()
-    if row is None:
-        row = Prediction(
-            symbol=symbol,
-            horizon=horizon,
-            predicted_at=pred_time,
-            predicted_direction=predicted_direction,
-            bullish_pct=bullish_pct,
-            bearish_pct=bearish_pct,
-            sideways_pct=sideways_pct,
-            top_class_probability=top_class_probability,
-            as_of_date=as_of_d,
-            target_date=target_d,
-            model_version=model_version,
-            actual_direction=None,
-            was_correct=None,
-        )
-        db.add(row)
-    else:
-        row.predicted_at = pred_time
-        row.predicted_direction = predicted_direction
-        row.bullish_pct = bullish_pct
-        row.bearish_pct = bearish_pct
-        row.sideways_pct = sideways_pct
-        row.top_class_probability = top_class_probability
-        row.target_date = target_d
-    await db.flush()
-    log.info("Logged prediction: %s %s -> %s (%.1f%%) target=%s",
-             symbol, horizon, predicted_direction, top_class_probability, target_d)
+    row = await upsert_prediction_async(db, payload)
+    log.info(
+        "Logged prediction: %s %s -> %s (%.1f%%) as_of=%s target=%s",
+        symbol,
+        horizon,
+        predicted_direction,
+        top_class_probability,
+        payload["as_of_date"],
+        payload["target_date"],
+    )
     return row

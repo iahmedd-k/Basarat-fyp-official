@@ -1,12 +1,14 @@
-"""Prediction ORM model — stores every forecast served by the API.
+"""Prediction ORM model — stores every forecast served by the API / daily job.
 
 Preserves individual GRU and XGB model outputs alongside the ensemble
 result for audit trail and model comparison purposes.
+
+Uniqueness: one durable prediction per (symbol, horizon, as_of_date).
 """
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, String
+from sqlalchemy import Boolean, Date, DateTime, Float, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -14,6 +16,14 @@ from app.db.base import Base
 
 class Prediction(Base):
     __tablename__ = "predictions"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol",
+            "horizon",
+            "as_of_date",
+            name="uq_predictions_symbol_horizon_as_of",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     symbol: Mapped[str] = mapped_column(String(20), index=True, nullable=False)

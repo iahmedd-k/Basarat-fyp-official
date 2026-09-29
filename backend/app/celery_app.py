@@ -44,10 +44,11 @@ celery.conf.update(
     task_time_limit=7200,
     beat_schedule={
         # ── Daily: data update + features + predictions + evaluation ──
+        # Mon–Fri 18:00 Asia/Karachi (task skips weekends/holidays):
+        #   update_market_data → generate_features → generate_predictions (upsert)
+        #   → evaluate_pending (set actual_direction from closes) → sentiment → recs
         "daily-workflow": {
             "task": "app.tasks.daily_workflow.run_daily_pipeline",
-            # Refresh after PSX's trading session so OHLCV/features and
-            # forecasts include the latest completed trading day.
             "schedule": crontab(hour=18, minute=0, day_of_week="1-5"),  # after close, Mon-Fri PKT
         },
         # ── Weekly: retraining pipeline ──

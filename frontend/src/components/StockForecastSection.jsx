@@ -3,7 +3,6 @@ import { forecastApi } from '../api/forecast'
 import { getCached, getCacheKey } from '../api/cache'
 import {
   FALLBACK_STOCK_FORECASTS,
-  generateFallbackHistory,
 } from '../api/forecastFallback'
 
 function formatNumber(value, fractionDigits = 2) {
@@ -86,10 +85,10 @@ export default function StockForecastSection({ symbol = 'MEBL', onStock }) {
       if (data && Array.isArray(data.history) && data.history.length > 0) {
         setHistory(data)
       } else {
-        setHistory(generateFallbackHistory(sym, 15))
+        setHistory({ symbol: sym, horizon: '1D', count: 0, history: [], accuracy: null, accuracy_summary: 'No forecast history yet. Open this stock after the 18:00 PKT daily job, or request a live forecast first.' })
       }
     } catch {
-      setHistory(generateFallbackHistory(sym, 15))
+      setHistory({ symbol: sym, horizon: '1D', count: 0, history: [], accuracy: null, accuracy_summary: 'Forecast history unavailable.' })
     } finally {
       setHistoryLoading(false)
     }

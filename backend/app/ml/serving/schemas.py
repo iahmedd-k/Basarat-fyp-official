@@ -222,12 +222,19 @@ class ForecastHistoryItem(BaseModel):
     confidence: float = Field(
         ..., description="Top class probability normalized to [0,1]"
     )
+    as_of_date: date | None = Field(
+        default=None,
+        description="Feature session date the prediction was based on",
+    )
     target_date: date = Field(
         ..., description="Date this prediction targeted"
     )
     actual: dict | None = Field(
         default=None,
-        description="Actual outcome: {direction, was_correct}",
+        description=(
+            "Outcome object: status=evaluated|pending_target_date|pending_evaluation; "
+            "direction; was_correct; evaluation_note"
+        ),
     )
 
     model_config = {"from_attributes": True, "populate_by_name": True}
@@ -243,13 +250,31 @@ class ForecastHistoryResponse(BaseModel):
     )
     accuracy: float | None = Field(
         default=None,
-        description="Overall accuracy across scored predictions (excludes uncertain)",
+        description="Directional accuracy across scored bullish/bearish predictions only",
     )
     accuracy_summary: str = Field(
         default="Accuracy calculation pending: Predictions in this history window are either currently active or categorized under holding/uncertain regime.",
         description="Human-readable explanation of accuracy metric or pending status.",
     )
+    pending_count: int = Field(
+        default=0,
+        description="Rows still waiting for target date or evaluate job",
+    )
+    scored_count: int = Field(
+        default=0,
+        description="Bullish/bearish rows with a real evaluated outcome",
+    )
     history: list[ForecastHistoryItem]
+
+
+class ForecastPipelineResponse(BaseModel):
+    """When Celery predicts and evaluates (Asia/Karachi)."""
+
+    timezone: str
+    current_date_pkt: str
+    daily_pipeline: dict
+    outcome_timing: dict
+    api_paths: dict
 
 
 class ErrorResponse(BaseModel):

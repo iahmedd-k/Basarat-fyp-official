@@ -62,8 +62,13 @@ export const forecastApi = {
    * @param {string} symbol - PSX ticker
    * @param {number} limit - Number of historical records (default 30)
    */
-  getForecastHistory: (symbol, limit = 30, force = false) =>
-    request(`/forecast/${encodeURIComponent(symbol)}/history?limit=${limit}`, {}, CACHE_TTLS.SEMI_STATIC, force),
+  getForecastHistory: (symbol, limit = 30, force = false, horizon = '1D') =>
+    request(
+      `/forecast/${encodeURIComponent(symbol)}/history?horizon=${encodeURIComponent(horizon)}&limit=${limit}`,
+      {},
+      CACHE_TTLS.SEMI_STATIC,
+      force,
+    ),
 }
 
 export default forecastApi
