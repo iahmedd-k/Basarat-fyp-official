@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,16 +7,50 @@ from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
 from app.db.session import get_db
 from app.models.alert import Alert, AlertRule
-from app.models.stock import Stock
+from app.models.stock import Stock, StockPrice
 from app.models.user import User
+from app.services.stock_service import StockService
 from app.schemas.auth import (
     AlertResponse,
     AlertRuleCreate,
     AlertRuleResponse,
     AlertRuleUpdate,
+    AlertStockCheckResponse,
+    QuickAlertRuleCreate,
+    QuickAlertRuleResponse,
 )
 
+from uuid import uuid4
+
 router = APIRouter()
+
+
+async def _get_current_stock_price(db: AsyncSession, stock: Stock) -> float:
+    """Fetch current market price or latest close price for a stock."""
+    try:
+        service = StockService()
+        quotes = await asyncio.to_thread(service.get_quote_batch, [stock.symbol])
+        if quotes and isinstance(quotes, list):
+            q = quotes[0]
+            if isinstance(q, dict) and q.get("current") is not None:
+                curr = float(q["current"])
+                if curr > 0:
+                    return curr
+    except Exception:
+        pass
+
+    stmt = (
+        select(StockPrice.close)
+        .where(StockPrice.stock_id == stock.id)
+        .order_by(StockPrice.date.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    latest_close = result.scalar()
+    if latest_close is not None and float(latest_close) > 0:
+        return float(latest_close)
+
+    raise NotFoundError(f"Could not retrieve live price or price history for '{stock.symbol}'.")
 
 
 async def _resolve_stock(
@@ -66,6 +101,184 @@ async def _resolve_stock(
         return stock
 
     return None
+
+
+@router.post(
+    "/alerts/quick-rule",
+    response_model=QuickAlertRuleResponse,
+    status_code=201,
+    summary="1-Click automatic price alert for a stock",
+)
+async def create_quick_alert_rule(
+    data: QuickAlertRuleCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """1-Click setup: Stores current market price and sets smart +/- % swing alert rules.
+
+    - **symbol** / **stock_name** / **stock_id**: Target stock identifier.
+    - **percent_threshold**: Movement percentage (default: 3.0%).
+    - **direction**: 'both' (default), 'up', or 'down'.
+    """
+    try:
+        stock = await _resolve_stock(db, data.stock_id, data.symbol, data.stock_name)
+        if not stock:
+            raise NotFoundError("Stock symbol or name is required for 1-click alert.")
+
+        base_price = await _get_current_stock_price(db, stock)
+        pct = float(data.percent_threshold)
+        direction = str(data.direction).lower().strip()
+
+        # Deactivate previous active rules for this user + stock
+        await db.execute(
+            update(AlertRule)
+            .where(AlertRule.user_id == user.id, AlertRule.stock_id == stock.id, AlertRule.is_active == True)
+            .values(is_active=False)
+        )
+
+        created_rules = []
+        messages = []
+
+        if direction in ("both", "up"):
+            upper_threshold = round(base_price * (1.0 + pct / 100.0), 2)
+            r_up = AlertRule(
+                id=uuid4().hex,
+                user_id=user.id,
+                stock_id=stock.id,
+                condition="price_above",
+                threshold=upper_threshold,
+                is_active=True,
+            )
+            db.add(r_up)
+            created_rules.append(r_up)
+            messages.append(f"above PKR {upper_threshold:.2f} (+{pct:.1f}%)")
+
+        if direction in ("both", "down"):
+            lower_threshold = round(base_price * (1.0 - pct / 100.0), 2)
+            r_down = AlertRule(
+                id=uuid4().hex,
+                user_id=user.id,
+                stock_id=stock.id,
+                condition="price_below",
+                threshold=lower_threshold,
+                is_active=True,
+            )
+            db.add(r_down)
+            created_rules.append(r_down)
+            messages.append(f"below PKR {lower_threshold:.2f} (-{pct:.1f}%)")
+
+        await db.flush()
+        for r in created_rules:
+            await db.refresh(r)
+
+        rule_responses = [
+            AlertRuleResponse(
+                id=r.id,
+                user_id=r.user_id,
+                stock_id=r.stock_id,
+                symbol=stock.symbol,
+                stock_name=stock.name,
+                condition=r.condition,
+                threshold=float(r.threshold),
+                is_active=r.is_active,
+                created_at=r.created_at.isoformat() if r.created_at else "",
+            )
+            for r in created_rules
+        ]
+
+        msg = f"Alert set for {stock.symbol} (Base: PKR {base_price:.2f}). You will be notified if price moves {' or '.join(messages)}."
+
+        return QuickAlertRuleResponse(
+            symbol=stock.symbol,
+            stock_name=stock.name,
+            stock_id=stock.id,
+            base_price=base_price,
+            percent_threshold=pct,
+            direction=direction,
+            rules=rule_responses,
+            message=msg,
+        )
+    except NotFoundError:
+        raise
+    except Exception as exc:
+        raise ServiceUnavailableError(f"Failed to set quick alert: {exc}")
+
+
+@router.get(
+    "/alerts/rules/check/{symbol}",
+    response_model=AlertStockCheckResponse,
+    summary="Check active alert rules for a specific stock",
+)
+async def check_stock_alerts(
+    symbol: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns active alert rules configured for a stock symbol."""
+    try:
+        clean_sym = symbol.strip().upper()
+        stmt = (
+            select(AlertRule, Stock)
+            .join(Stock, AlertRule.stock_id == Stock.id)
+            .where(
+                AlertRule.user_id == user.id,
+                AlertRule.is_active == True,
+                func.upper(Stock.symbol) == clean_sym,
+            )
+        )
+        result = await db.execute(stmt)
+        rows = result.all()
+
+        rules = [
+            AlertRuleResponse(
+                id=r.id,
+                user_id=r.user_id,
+                stock_id=r.stock_id,
+                symbol=s.symbol,
+                stock_name=s.name,
+                condition=r.condition,
+                threshold=float(r.threshold),
+                is_active=r.is_active,
+                created_at=r.created_at.isoformat() if r.created_at else "",
+            )
+            for r, s in rows
+        ]
+
+        return AlertStockCheckResponse(
+            symbol=clean_sym,
+            has_active_alert=len(rules) > 0,
+            rules=rules,
+        )
+    except Exception as exc:
+        raise ServiceUnavailableError(f"Failed to check stock alerts: {exc}")
+
+
+@router.delete(
+    "/alerts/rules/stock/{symbol}",
+    status_code=204,
+    summary="Delete / disable all alert rules for a stock",
+)
+async def delete_stock_alerts(
+    symbol: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deletes all alert rules for a given stock symbol owned by the authenticated user."""
+    try:
+        clean_sym = symbol.strip().upper()
+        stock_res = await db.execute(select(Stock.id).where(func.upper(Stock.symbol) == clean_sym))
+        stock_id = stock_res.scalar()
+        if stock_id:
+            from sqlalchemy import delete
+            await db.execute(
+                delete(AlertRule).where(
+                    AlertRule.user_id == user.id,
+                    AlertRule.stock_id == stock_id,
+                )
+            )
+            await db.flush()
+    except Exception as exc:
+        raise ServiceUnavailableError(f"Failed to delete stock alerts: {exc}")
 
 
 @router.get(

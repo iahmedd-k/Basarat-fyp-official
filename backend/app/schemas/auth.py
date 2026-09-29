@@ -332,6 +332,31 @@ class AlertRuleResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class QuickAlertRuleCreate(BaseModel):
+    symbol: str | None = None
+    stock_name: str | None = None
+    stock_id: str | None = None
+    percent_threshold: float = Field(default=3.0, ge=0.5, le=50.0, description="Percentage swing threshold (default 3.0%)")
+    direction: str = Field(default="both", description="Trigger direction: 'both', 'up', or 'down'")
+
+
+class QuickAlertRuleResponse(BaseModel):
+    symbol: str
+    stock_name: str | None = None
+    stock_id: str
+    base_price: float
+    percent_threshold: float
+    direction: str
+    rules: list[AlertRuleResponse]
+    message: str
+
+
+class AlertStockCheckResponse(BaseModel):
+    symbol: str
+    has_active_alert: bool
+    rules: list[AlertRuleResponse]
+
+
 class AlertResponse(BaseModel):
     id: str
     user_id: str
