@@ -303,12 +303,16 @@ class DeviceResponse(BaseModel):
 
 class AlertRuleCreate(BaseModel):
     stock_id: str | None = None
+    symbol: str | None = None
+    stock_name: str | None = None
     condition: str = Field(..., min_length=1, max_length=100)
     threshold: float
 
 
 class AlertRuleUpdate(BaseModel):
     stock_id: str | None = None
+    symbol: str | None = None
+    stock_name: str | None = None
     condition: str | None = Field(None, min_length=1, max_length=100)
     threshold: float | None = None
     is_active: bool | None = None
@@ -318,6 +322,8 @@ class AlertRuleResponse(BaseModel):
     id: str
     user_id: str
     stock_id: str | None = None
+    symbol: str | None = None
+    stock_name: str | None = None
     condition: str
     threshold: float
     is_active: bool

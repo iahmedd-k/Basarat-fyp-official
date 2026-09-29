@@ -5,6 +5,8 @@ from pydantic import ValidationError
 
 from app.schemas.auth import (
     AlertRuleCreate,
+    AlertRuleResponse,
+    AlertRuleUpdate,
     ChangePasswordRequest,
     DeviceRegisterRequest,
     LoginRequest,
@@ -126,10 +128,47 @@ class TestAlertRuleCreate:
     def test_valid_alert(self):
         s = AlertRuleCreate(condition="price_above", threshold=100.0)
         assert s.threshold == 100.0
+        assert s.stock_id is None
+        assert s.symbol is None
+        assert s.stock_name is None
+
+    def test_valid_alert_with_symbol(self):
+        s = AlertRuleCreate(symbol="SYS", condition="price_above", threshold=450.0)
+        assert s.symbol == "SYS"
+        assert s.threshold == 450.0
+
+    def test_valid_alert_with_stock_name(self):
+        s = AlertRuleCreate(stock_name="Systems Limited", condition="price_below", threshold=400.0)
+        assert s.stock_name == "Systems Limited"
 
     def test_empty_condition(self):
         with pytest.raises(ValidationError):
             AlertRuleCreate(condition="", threshold=100.0)
+
+
+class TestAlertRuleUpdate:
+    def test_partial_update_with_symbol(self):
+        u = AlertRuleUpdate(symbol="OGDC", threshold=250.0)
+        assert u.symbol == "OGDC"
+        assert u.threshold == 250.0
+        assert u.condition is None
+
+
+class TestAlertRuleResponse:
+    def test_response_with_symbol_and_name(self):
+        r = AlertRuleResponse(
+            id="rule-1",
+            user_id="user-1",
+            stock_id="stock-1",
+            symbol="SYS",
+            stock_name="Systems Limited",
+            condition="price_above",
+            threshold=450.0,
+            is_active=True,
+            created_at="2026-09-29T10:00:00",
+        )
+        assert r.symbol == "SYS"
+        assert r.stock_name == "Systems Limited"
 
 
 # ── Stock schemas ───────────────────────────────────────────────────────────

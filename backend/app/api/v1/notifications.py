@@ -79,6 +79,28 @@ async def get_notifications(
 
 
 @router.patch(
+    "/notifications/read-all",
+    status_code=204,
+    summary="Mark all notifications as read",
+)
+async def mark_all_notifications_read(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark all unread notifications for the authenticated user as read."""
+    try:
+        from sqlalchemy import update
+        await db.execute(
+            update(Alert)
+            .where(Alert.user_id == user.id, Alert.is_read == False)
+            .values(is_read=True)
+        )
+        await db.flush()
+    except Exception as exc:
+        raise ServiceUnavailableError("Failed to mark all notifications as read")
+
+
+@router.patch(
     "/notifications/{notification_id}/read",
     status_code=204,
     summary="Mark a notification as read",
