@@ -81,6 +81,38 @@ class MarketQuotesResponse(BaseModel):
     filtered: bool = False
     as_of: str | None = None
     is_stale: bool = True
+    recommended_poll_seconds: int | None = None
+    transport_hint: str | None = Field(
+        default=None,
+        description="Prefer websocket; use rest_polling when WS is unavailable",
+    )
+
+
+class LiveTransportInfo(BaseModel):
+    primary: str = "websocket"
+    fallback: str = "rest_polling"
+    websocket_path: str
+    websocket_url: str | None = None
+    rest_quotes_path: str
+    protocol_docs_path: str
+    recommended_rest_poll_seconds: int
+    session_refresh_seconds: int
+    protocol_version: str
+
+
+class MarketLiveResponse(BaseModel):
+    """Android discovery endpoint: how to consume live PSX quotes (WS + REST fallback)."""
+
+    market_status: str
+    is_market_open: bool
+    timezone: str = "Asia/Karachi"
+    current_time_pkt: str | None = None
+    as_of: str | None = None
+    is_stale: bool = True
+    quote_count: int = 0
+    session_refresh_enabled: bool = True
+    transport: LiveTransportInfo
+    android_integration: list[str] = Field(default_factory=list)
 
 
 class SectorPerformance(BaseModel):

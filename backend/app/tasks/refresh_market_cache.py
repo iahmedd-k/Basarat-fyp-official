@@ -1,12 +1,163 @@
-"""Central, scheduled refresh of shared PSX market snapshots."""
+"""Central, scheduled refresh of shared PSX market snapshots.
+
+API handlers stay read-only. Celery owns upstream scrapes:
+  - refresh_market_session: every ~60s during PSX open hours → Redis + live bus
+  - refresh_market_cache: close/startup/weekly reference refresh
+"""
+
+from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from uuid import uuid4
 
 from app.celery_app import celery
+from app.core.config import get_settings
 
 log = logging.getLogger(__name__)
+
+LOCK_KEY = "jobs:market-cache:lock"
+CIRCUIT_KEY = "jobs:market-cache:circuit_open"
+ACCESS_DENIED_MARKERS = (
+    "403",
+    "429",
+    "access denied",
+    "too many requests",
+    "rate limit",
+    "blocked",
+)
+
+
+def _run_async(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _acquire_lock(ttl_seconds: int) -> tuple[str, object | None, str | None]:
+    """Returns (status, client, token) where status is acquired|held|no_redis."""
+    lock_token = uuid4().hex
+    try:
+        from app.core.redis import get_sync_redis_client
+
+        client = get_sync_redis_client()
+        if not client:
+            return "no_redis", None, None
+        if not client.set(LOCK_KEY, lock_token, nx=True, ex=ttl_seconds):
+            return "held", client, None
+        return "acquired", client, lock_token
+    except Exception as exc:
+        log.warning("Redis market refresh lock unavailable; continuing without lock: %s", exc)
+        return "no_redis", None, None
+
+
+def _release_lock(lock_client, lock_token: str | None) -> None:
+    if not lock_client or not lock_token:
+        return
+    try:
+        lock_client.eval(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            1,
+            LOCK_KEY,
+            lock_token,
+        )
+    except Exception:
+        log.warning("Could not release market refresh lock", exc_info=True)
+
+
+def _circuit_is_open(lock_client) -> bool:
+    if not lock_client:
+        try:
+            from app.core.redis import get_sync_redis_client
+
+            lock_client = get_sync_redis_client()
+        except Exception:
+            return False
+    if not lock_client:
+        return False
+    try:
+        return bool(lock_client.get(CIRCUIT_KEY))
+    except Exception:
+        return False
+
+
+def _open_circuit(lock_client, reason: str) -> None:
+    settings = get_settings()
+    ttl = max(60, int(settings.MARKET_CIRCUIT_BREAKER_SECONDS))
+    client = lock_client
+    if not client:
+        try:
+            from app.core.redis import get_sync_redis_client
+
+            client = get_sync_redis_client()
+        except Exception:
+            client = None
+    if not client:
+        log.warning("Circuit open requested (%s) but Redis unavailable", reason)
+        return
+    try:
+        client.setex(CIRCUIT_KEY, ttl, reason[:200])
+        log.warning("Opened market scrape circuit for %ss: %s", ttl, reason)
+    except Exception as exc:
+        log.warning("Failed to open market circuit: %s", exc)
+
+
+def _looks_like_access_denied(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return any(marker in text for marker in ACCESS_DENIED_MARKERS)
+
+
+async def _refresh_quotes_and_optional_reference(
+    *,
+    refresh_reference: bool,
+    refresh_constituents: bool,
+    publish_live: bool,
+    source: str,
+) -> dict:
+    from app.services.market_service import MarketService
+    from app.core.redis import close_async_redis_client
+
+    service = MarketService()
+    results: dict = {"quotes": 0, "indices": 0, "constituents": {}, "published": False}
+    try:
+        quotes = await service.get_market_data(force_refresh=True, read_only=False)
+        results["quotes"] = len(quotes)
+
+        if refresh_reference:
+            indices = await service.get_indices(force_refresh=True, read_only=False)
+            results["indices"] = len(indices)
+
+        if refresh_constituents:
+            for code in ("KSE100", "KSE30", "KMI30"):
+                values = await service.get_index_constituents(
+                    code, force_refresh=True, read_only=False
+                )
+                results["constituents"][code] = len(values)
+            try:
+                from app.services.assistant_context_cache import warm_assistant_universe
+
+                universe = await warm_assistant_universe(force_refresh_constituents=False)
+                results["assistant_universe"] = universe.get("symbol_count", 0)
+            except Exception as exc:
+                log.warning("Assistant universe warm failed: %s", exc)
+                results["assistant_universe"] = 0
+
+        if publish_live and quotes:
+            freshness = await asyncio.to_thread(service.quote_freshness)
+            from app.services.market_live_bus import publish_board_update_sync
+
+            results["published"] = publish_board_update_sync(
+                quotes,
+                as_of=freshness.get("as_of"),
+                is_stale=bool(freshness.get("is_stale", False)),
+                source=source,
+            )
+        return results
+    finally:
+        await close_async_redis_client()
 
 
 @celery.task(
@@ -17,68 +168,96 @@ log = logging.getLogger(__name__)
     acks_late=True,
 )
 def refresh_market_cache(self, refresh_reference: bool = False, refresh_constituents: bool = False):
-    """Refresh PSX once in a worker; API handlers only read shared cache."""
-    lock_client = None
-    lock_token = uuid4().hex
-    lock_key = "jobs:market-cache:lock"
+    """Full/reference refresh (startup, close snapshot, weekly constituents)."""
+    status, lock_client, lock_token = _acquire_lock(ttl_seconds=900)
+    if status == "held":
+        log.info("Skipping market refresh; another worker holds the refresh lock")
+        return {"status": "skipped", "reason": "already_running"}
+
+    if _circuit_is_open(lock_client):
+        _release_lock(lock_client, lock_token)
+        return {"status": "skipped", "reason": "circuit_open"}
+
     try:
-        from app.core.redis import get_sync_redis_client
-        lock_client = get_sync_redis_client()
-        if lock_client and not lock_client.set(lock_key, lock_token, nx=True, ex=900):
-            log.info("Skipping market refresh; another worker holds the refresh lock")
-            return {"status": "skipped", "reason": "already_running"}
-    except Exception as exc:
-        log.warning("Redis market refresh lock unavailable; continuing without distributed lock: %s", exc)
-        lock_client = None
-
-    async def _refresh():
-        from app.services.market_service import MarketService
-
-        service = MarketService()
-        results = {"quotes": 0, "indices": 0, "constituents": {}}
-        try:
-            quotes = await service.get_market_data(force_refresh=True, read_only=False)
-            results["quotes"] = len(quotes)
-
-            if refresh_reference:
-                indices = await service.get_indices(force_refresh=True, read_only=False)
-                results["indices"] = len(indices)
-
-            if refresh_constituents:
-                for code in ("KSE100", "KSE30", "KMI30"):
-                    values = await service.get_index_constituents(
-                        code, force_refresh=True, read_only=False
-                    )
-                    results["constituents"][code] = len(values)
-                try:
-                    from app.services.assistant_context_cache import warm_assistant_universe
-                    universe = await warm_assistant_universe(force_refresh_constituents=False)
-                    results["assistant_universe"] = universe.get("symbol_count", 0)
-                except Exception as exc:
-                    log.warning("Assistant universe warm failed: %s", exc)
-                    results["assistant_universe"] = 0
-            return results
-        finally:
-            # Celery tasks use a short-lived asyncio loop. Do not retain an
-            # async Redis connection pool bound to the loop after it closes.
-            from app.core.redis import close_async_redis_client
-            await close_async_redis_client()
-
-    loop = asyncio.new_event_loop()
-    try:
-        result = loop.run_until_complete(_refresh())
+        result = _run_async(
+            _refresh_quotes_and_optional_reference(
+                refresh_reference=refresh_reference,
+                refresh_constituents=refresh_constituents,
+                publish_live=True,
+                source="market_cache_refresh",
+            )
+        )
         log.info("PSX market cache refresh completed: %s", result)
         return {"status": "completed", **result}
     except Exception as exc:
+        if _looks_like_access_denied(exc):
+            _open_circuit(lock_client, str(exc))
+            return {"status": "circuit_open", "error": str(exc)}
         log.exception("PSX market cache refresh failed")
         raise self.retry(exc=exc)
     finally:
-        loop.close()
-        if lock_client:
-            try:
-                lock_client.eval(
-                    "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-                    1, lock_key, lock_token,
-                )
-            except Exception:
-                log.warning("Could not release market refresh lock", exc_info=True)
+        _release_lock(lock_client, lock_token)
+
+
+@celery.task(
+    name="app.tasks.refresh_market_cache.refresh_market_session",
+    bind=True,
+    max_retries=1,
+    default_retry_delay=30,
+    acks_late=True,
+    soft_time_limit=90,
+    time_limit=120,
+)
+def refresh_market_session(self):
+    """Intraday shared snapshot: scrape once, cache, publish to all WS clients via Redis bus."""
+    settings = get_settings()
+    if not settings.MARKET_SESSION_REFRESH_ENABLED:
+        return {"status": "skipped", "reason": "disabled"}
+
+    # Small jitter so multiple beat/worker races never stampede PSX.
+    jitter = random.uniform(0.0, 2.5)
+    if jitter:
+        import time as _time
+
+        _time.sleep(jitter)
+
+    from app.services.news_pipeline.market_schedule import is_market_hours, market_status
+
+    status_info = _run_async(market_status())
+    if not _run_async(is_market_hours()):
+        return {
+            "status": "skipped",
+            "reason": "market_closed",
+            "market_status": status_info.get("status"),
+        }
+
+    if _circuit_is_open(None):
+        return {"status": "skipped", "reason": "circuit_open"}
+
+    lock_ttl = max(45, int(settings.MARKET_SESSION_REFRESH_SECONDS) + 15)
+    lock_status, lock_client, lock_token = _acquire_lock(ttl_seconds=lock_ttl)
+    if lock_status == "held":
+        return {"status": "skipped", "reason": "already_running"}
+
+    try:
+        result = _run_async(
+            _refresh_quotes_and_optional_reference(
+                refresh_reference=False,
+                refresh_constituents=False,
+                publish_live=True,
+                source="session_refresh",
+            )
+        )
+        if result.get("quotes", 0) == 0:
+            log.warning("Session refresh returned 0 quotes; keeping last_known cache")
+            return {"status": "empty", **result, "market_status": status_info.get("status")}
+        log.info("PSX session market refresh completed: %s", result)
+        return {"status": "completed", **result, "market_status": status_info.get("status")}
+    except Exception as exc:
+        if _looks_like_access_denied(exc):
+            _open_circuit(lock_client, str(exc))
+            return {"status": "circuit_open", "error": str(exc)}
+        log.exception("PSX session market refresh failed")
+        raise self.retry(exc=exc)
+    finally:
+        _release_lock(lock_client, lock_token)

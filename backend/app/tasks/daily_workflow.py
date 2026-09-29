@@ -166,7 +166,10 @@ def generate_predictions_task(self):
             _ensemble_decide,
             FEATURES_PATH,
         )
-        from app.ml.serving.model_loader import artifacts
+        from app.ml.serving.model_loader import artifacts, load_artifacts
+
+        if not artifacts.model_ready:
+            load_artifacts()
 
         if not artifacts.model_ready:
             log.warning("[PREDICTION] Model not ready — skipping")

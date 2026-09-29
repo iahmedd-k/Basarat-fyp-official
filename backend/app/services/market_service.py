@@ -9,6 +9,7 @@ import httpx
 import pypsx_toolkit
 from bs4 import BeautifulSoup
 
+from app.core.config import get_settings
 from app.core.redis import (
     cache_get,
     cache_get_sync,
@@ -18,9 +19,19 @@ from app.core.redis import (
 
 log = logging.getLogger(__name__)
 
-QUOTES_TTL_SECONDS = 600  # refreshed by Celery every 5 minutes
-INDICES_TTL_SECONDS = 28800  # 8 hours; Celery refreshes every 6 hours
-CONSTITUENTS_TTL_SECONDS = 86400  # 24 hours; Celery refreshes daily
+
+def _quotes_ttl() -> int:
+    """Redis TTL for live board quotes (session Celery refresh + buffer)."""
+    try:
+        return max(30, int(get_settings().MARKET_QUOTES_TTL_SECONDS))
+    except Exception:
+        return 90
+
+
+# Kept as module attribute for importers; prefer _quotes_ttl() at write time.
+QUOTES_TTL_SECONDS = 90
+INDICES_TTL_SECONDS = 28800  # 8 hours; refreshed with close/weekly jobs
+CONSTITUENTS_TTL_SECONDS = 86400  # 24 hours; Celery refreshes weekly
 FALLBACK_TTL_SECONDS = 86400 * 7  # 7 days persistent fallback
 SECTOR_MAP_TTL_SECONDS = 86400  # PSX classifications rarely change; refresh daily
 PSX_SCREENER_URL = "https://dps.psx.com.pk/screener"
@@ -262,7 +273,7 @@ class MarketService:
         try:
             stamp = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
             age = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
-            return {"as_of": fetched_at, "is_stale": age > QUOTES_TTL_SECONDS}
+            return {"as_of": fetched_at, "is_stale": age > _quotes_ttl()}
         except (TypeError, ValueError):
             return {"as_of": None, "is_stale": True}
 
@@ -554,7 +565,7 @@ class MarketService:
                     "market_cap_m": self._safe_float(row.get("MARKET CAP (M)")),
                 })
 
-            cache_set_sync(cache_key, rows, QUOTES_TTL_SECONDS)
+            cache_set_sync(cache_key, rows, _quotes_ttl())
             cache_set_sync(fallback_key, rows, FALLBACK_TTL_SECONDS)
             cache_set_sync("market:quotes:fetched_at", datetime.now(timezone.utc).isoformat(), FALLBACK_TTL_SECONDS)
             log.info("Stored %d market quotes in centralized cache (sync)", len(rows))
@@ -632,14 +643,15 @@ class MarketService:
                 })
 
             if rows:
-                await cache_set(cache_key, rows, QUOTES_TTL_SECONDS)
+                ttl = _quotes_ttl()
+                await cache_set(cache_key, rows, ttl)
                 await cache_set(fallback_key, rows, FALLBACK_TTL_SECONDS)
                 await cache_set("market:quotes:fetched_at", datetime.now(timezone.utc).isoformat(), FALLBACK_TTL_SECONDS)
                 # Recommendations and StockService read market snapshots via
                 # the synchronous Redis client. Mirror only this successful
                 # upstream fetch so both API paths observe the same live quote
                 # and freshness timestamp (never promote the stale fallback).
-                await asyncio.to_thread(cache_set_sync, cache_key, rows, QUOTES_TTL_SECONDS)
+                await asyncio.to_thread(cache_set_sync, cache_key, rows, ttl)
                 await asyncio.to_thread(cache_set_sync, fallback_key, rows, FALLBACK_TTL_SECONDS)
                 await asyncio.to_thread(
                     cache_set_sync,
@@ -779,7 +791,7 @@ class MarketService:
             if sector_map:
                 for quote in data:
                     quote["sector"] = sector_map.get(str(quote.get("symbol", "")).upper(), "Unclassified")
-                await cache_set("market:quotes", data, QUOTES_TTL_SECONDS)
+                await cache_set("market:quotes", data, _quotes_ttl())
                 await cache_set("market:quotes:last_known", data, FALLBACK_TTL_SECONDS)
 
         grouped = defaultdict(list)

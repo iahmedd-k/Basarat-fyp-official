@@ -57,7 +57,10 @@ def _run_batch_forecast():
         _run_xgb,
         FEATURES_PATH,
     )
-    from app.ml.serving.model_loader import artifacts
+    from app.ml.serving.model_loader import artifacts, load_artifacts
+
+    if not artifacts.model_ready:
+        load_artifacts()
 
     if not artifacts.model_ready:
         log.warning("Model not ready — skipping batch forecast")

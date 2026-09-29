@@ -59,6 +59,10 @@ def test_websocket_market_subscribe_and_unsubscribe():
             assert "SYS" in sub_res["symbols"]
             assert "LUCK" in sub_res["symbols"]
 
+            # Subscribe also immediately pushes initial price snapshot
+            snapshot_res = ws.receive_json()
+            assert snapshot_res["event"] == "snapshot"
+
             # Verify stats reflect subscriptions
             stats_res = client.get("/api/v1/ws/stats")
             assert stats_res.json()["subscribed_symbols_count"] >= 2
@@ -76,8 +80,8 @@ def test_websocket_market_broadcast_delivery():
         with client.websocket_connect("/ws/market") as ws:
             _ = ws.receive_json()  # welcome
 
-            # Subscribe to SYS
-            ws.send_json({"action": "subscribe", "symbols": ["SYS"]})
+            # Subscribe to SYS (disable snapshot to test broadcast tick directly)
+            ws.send_json({"action": "subscribe", "symbols": ["SYS"], "snapshot": False})
             _ = ws.receive_json()  # sub confirmation
 
             # Trigger quote broadcast via REST API

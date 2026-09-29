@@ -71,7 +71,12 @@ celery.conf.update(
             "kwargs": {"refresh_reference": True},
             "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
         },
-        # ── Evaluate Alert Rules & Watchlist Targets every 5 minutes during market hours ──
+        # ── Intraday shared snapshot during PSX open hours (task self-gates) ──
+        "refresh-market-session": {
+            "task": "app.tasks.refresh_market_cache.refresh_market_session",
+            "schedule": float(max(30, int(getattr(settings, "MARKET_SESSION_REFRESH_SECONDS", 60)))),
+        },
+        # ── Evaluate Alert Rules & Watchlist Targets every 5 minutes (task gates hours) ──
         "evaluate-alert-rules": {
             "task": "app.tasks.alert_tasks.evaluate_alert_rules",
             "schedule": crontab(minute="*/5"),

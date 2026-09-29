@@ -43,6 +43,22 @@ def evaluate_alert_rules_task(self):
     """Evaluate active alert rules and watchlist target prices against current market quotes."""
     log.info("Starting alert rules and watchlist target price evaluation")
 
+    # Only evaluate during PSX session — quotes are refreshed then; off-hours would re-fire on stale LTPs.
+    try:
+        import asyncio
+        from app.services.news_pipeline.market_schedule import is_market_hours
+
+        loop = asyncio.new_event_loop()
+        try:
+            open_now = loop.run_until_complete(is_market_hours())
+        finally:
+            loop.close()
+        if not open_now:
+            log.info("Skipping alert evaluation; market is closed")
+            return {"status": "skipped", "reason": "market_closed", "triggered": 0}
+    except Exception as exc:
+        log.warning("Market-hours gate failed for alerts; continuing: %s", exc)
+
     from sqlalchemy import select
     from app.core.redis import get_sync_redis_client
     from app.core.task_runner import dispatch_task

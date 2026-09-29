@@ -8,6 +8,8 @@ from app.schemas.market import (
     IndexConstituentsResponse,
     IndicesResponse,
     LosersResponse,
+    LiveTransportInfo,
+    MarketLiveResponse,
     MarketQuotesResponse,
     MarketQuoteItem,
     SentimentOverview,
@@ -16,9 +18,82 @@ from app.schemas.market import (
     CuratedStocksResponse,
 )
 from app.services.market_service import MarketService
+from app.core.config import get_settings
+from app.services.websocket_manager import PROTOCOL_VERSION
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.get(
+    "/market/live",
+    response_model=MarketLiveResponse,
+    summary="Live market transport discovery (WebSocket primary + REST fallback)",
+    response_description="Authoritative contract for Android/web live quotes integration",
+)
+@limiter.limit("60/minute")
+async def get_market_live(request: Request, service: MarketService = Depends(MarketService)):
+    """
+    **Start here for Android live prices.**
+
+    1. Connect WebSocket to `transport.websocket_path`
+    2. Send `{"action":"subscribe","symbols":["SYS","LUCK"]}` (or `["ALL"]`)
+    3. Handle `board_update` / `snapshot` events
+    4. If WS fails → poll `GET /api/v1/market/quotes` every `recommended_rest_poll_seconds`
+    5. Reconnect WS with backoff in the background
+
+    Quotes are scraped once into a shared Redis snapshot during PSX open hours;
+    this endpoint and REST quotes never scrape PSX per request.
+    """
+    settings = get_settings()
+    prefix = settings.API_V1_PREFIX.rstrip("/")
+    host = request.headers.get("host") or request.url.netloc
+    ws_scheme = "wss" if request.url.scheme == "https" else "ws"
+    ws_path = f"{prefix}/ws/market"
+    ws_url = f"{ws_scheme}://{host}{ws_path}" if host else None
+
+    market_state = {
+        "status": "closed",
+        "current_time_pkt": None,
+        "timezone": "Asia/Karachi",
+    }
+    try:
+        from app.services.news_pipeline.market_schedule import is_market_hours, market_status
+
+        market_state = await market_status()
+        is_open = await is_market_hours()
+    except Exception:
+        is_open = False
+
+    freshness = service.quote_freshness()
+    quotes = await service.get_market_data(read_only=True)
+
+    return MarketLiveResponse(
+        market_status=str(market_state.get("status") or "closed"),
+        is_market_open=bool(is_open),
+        timezone=str(market_state.get("timezone") or "Asia/Karachi"),
+        current_time_pkt=market_state.get("current_time_pkt"),
+        as_of=freshness.get("as_of"),
+        is_stale=bool(freshness.get("is_stale", True)),
+        quote_count=len(quotes or []),
+        session_refresh_enabled=bool(settings.MARKET_SESSION_REFRESH_ENABLED),
+        transport=LiveTransportInfo(
+            websocket_path=ws_path,
+            websocket_url=ws_url,
+            rest_quotes_path=f"{prefix}/market/quotes",
+            protocol_docs_path=f"{prefix}/ws/protocol",
+            recommended_rest_poll_seconds=settings.MARKET_REST_POLL_SECONDS,
+            session_refresh_seconds=settings.MARKET_SESSION_REFRESH_SECONDS,
+            protocol_version=PROTOCOL_VERSION,
+        ),
+        android_integration=[
+            "Call GET /api/v1/market/live once at app start",
+            "Open transport.websocket_url and subscribe to needed symbols (or ALL)",
+            "On WS failure, poll transport.rest_quotes_path every recommended_rest_poll_seconds",
+            "Show as_of / is_stale in UI when data is older than session_refresh_seconds",
+            "Full message schema: GET /api/v1/ws/protocol",
+        ],
+    )
 
 
 @router.get(
@@ -259,6 +334,8 @@ async def get_market_quotes(
             limit=limit,
             offset=offset,
             filtered=filtered,
+            recommended_poll_seconds=get_settings().MARKET_REST_POLL_SECONDS,
+            transport_hint="websocket_preferred_rest_fallback",
             **MarketService.quote_freshness(),
         )
     except Exception:

@@ -59,6 +59,14 @@ async def lifespan(app: FastAPI):
     from app.ml.serving.model_loader import load_artifacts
     load_artifacts()
 
+    # Redis → WebSocket fan-out so Celery session refreshes reach connected clients
+    try:
+        from app.services.market_live_bus import start_live_bus_listener
+
+        await start_live_bus_listener()
+    except Exception as exc:
+        log.warning("Could not start market live bus listener: %s", exc)
+
     # Ask the shared Celery worker to warm market snapshots. Never scrape
     # from every API container's startup hook.
     if settings.USE_CELERY:
@@ -70,6 +78,13 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    try:
+        from app.services.market_live_bus import stop_live_bus_listener
+
+        await stop_live_bus_listener()
+    except Exception as exc:
+        log.warning("Market live bus shutdown error: %s", exc)
+
     await engine.dispose()
 
 
@@ -78,7 +93,7 @@ TAGS_METADATA = [
     {"name": "Users", "description": "User profile details, risk profile settings, and notification channel preferences."},
     {"name": "Devices", "description": "Firebase Cloud Messaging (FCM) device registration for mobile push notifications."},
     {"name": "Webhooks", "description": "Third-party service callbacks and authentication webhooks."},
-    {"name": "Market", "description": "Real-time & historical PSX market summary, indices, gainers, losers, and volume leaders."},
+    {"name": "Market", "description": "PSX market summary, indices, gainers/losers, live discovery (GET /market/live), and cache-backed quotes for REST fallback."},
     {"name": "Stocks", "description": "Individual PSX stock quotes, company profiles, fundamentals, and technical indicators."},
     {"name": "Watchlist", "description": "User stock watchlists, price alerts targets, and custom tracked stock portfolios."},
     {"name": "Forecast", "description": "AI price predictions, prediction intervals, and deep learning model performance metrics."},
@@ -92,7 +107,7 @@ TAGS_METADATA = [
     {"name": "Notifications", "description": "In-app notification center inbox and unread state management."},
     {"name": "Shariah", "description": "AAOIFI & KMI-30 Shariah compliance screening and dividend purification calculators."},
     {"name": "Community", "description": "Social trading feed, stock discussions, comments, follow network, and user moderation."},
-    {"name": "WebSockets", "description": "Real-time PSX market live quote streams and instant price trigger alerts."},
+    {"name": "WebSockets", "description": "Live PSX quote stream (WS primary). See GET /api/v1/ws/protocol and GET /api/v1/market/live for Android integration + REST fallback."},
     {"name": "Assistant", "description": "AI investment assistant chatbot with portfolio context and market guardrails."},
     {"name": "ETFs", "description": "Exchange Traded Funds (ETFs) directory, live quotes, benchmark tracking, and historical performance."},
     {"name": "IPOs", "description": "Initial Public Offerings (IPOs) directory, calendar, book building, and post-listing performance."},

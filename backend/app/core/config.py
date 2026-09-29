@@ -111,6 +111,13 @@ class Settings(BaseSettings):
     # Post-market ingestion window
     POST_MARKET_CLOSE_HOUR: int = 17
     POST_MARKET_CLOSE_MINUTE: int = 0
+    # Live session quotes (scraper-backed shared snapshot; API stays read-only)
+    MARKET_SESSION_REFRESH_ENABLED: bool = True
+    MARKET_SESSION_REFRESH_SECONDS: int = 60  # Celery Beat cadence during open hours
+    MARKET_QUOTES_TTL_SECONDS: int = 90  # Redis TTL ≈ refresh + buffer
+    MARKET_LIVE_PUBSUB_CHANNEL: str = "market:quotes:live"
+    MARKET_CIRCUIT_BREAKER_SECONDS: int = 900  # pause scrapes after PSX 403/429
+    MARKET_REST_POLL_SECONDS: int = 15  # Android/web REST fallback interval (cache-only)
     # Ingestion interval during active windows (seconds)
     NEWS_INGESTION_INTERVAL_MARKET: int = 1800      # 30 min during market
     NEWS_INGESTION_INTERVAL_POST_MARKET: int = 3600  # 60 min post-market
