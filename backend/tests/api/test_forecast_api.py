@@ -102,3 +102,38 @@ class TestForecastHistoryEndpoint:
     async def test_history_limit_validation(self, client: AsyncClient, auth_headers):
         resp = await client.get("/api/v1/forecast/SYS/history?limit=150", headers=auth_headers)
         assert resp.status_code == 422
+
+    async def test_history_success_returns_items(self, client: AsyncClient, auth_headers, db_session):
+        from datetime import date, datetime
+        from app.models.prediction import Prediction
+
+        pred = Prediction(
+            symbol="SYS",
+            horizon="1D",
+            predicted_at=datetime.utcnow(),
+            predicted_direction="bullish",
+            bullish_pct=70.0,
+            bearish_pct=20.0,
+            sideways_pct=10.0,
+            top_class_probability=70.0,
+            as_of_date=date(2026, 9, 1),
+            target_date=date(2026, 9, 2),
+            model_version="v1.0",
+            actual_direction="bullish",
+            was_correct=True,
+        )
+        db_session.add(pred)
+        await db_session.commit()
+
+        resp = await client.get("/api/v1/forecast/SYS/history?horizon=1D&limit=10", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["symbol"] == "SYS"
+        assert data["horizon"] == "1D"
+        assert data["count"] >= 1
+        assert "history" in data
+        item = data["history"][0]
+        assert item["predicted_direction"] == "bullish"
+        assert item["probabilities"]["bullish"] == 70.0
+        assert item["actual"]["status"] == "evaluated"
+        assert item["actual"]["was_correct"] is True
