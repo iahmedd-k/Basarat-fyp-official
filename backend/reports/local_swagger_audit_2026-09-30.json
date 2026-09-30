@@ -1,0 +1,2251 @@
+{
+  "operation_count": 169,
+  "success_count": 62,
+  "useful_success_count": 58,
+  "temporary_fixture_user_id": "edc7d5a5be8743c19cdd13d4fc811eab",
+  "failures": [
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/signup",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'missing', 'loc': ['body', 'email'], 'msg': 'Field required', 'input': {}}, {'type': 'missing', 'loc': ['body', 'password'], 'msg': 'Field required', 'input': {}}]}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/verify-email",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'email'], 'msg': 'value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email.', 'input': 'api-audit@example.invalid', 'c"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/resend-verification",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'missing', 'loc': ['body', 'email'], 'msg': 'Field required', 'input': {}}]}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'email'], 'msg': 'value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email.', 'input': 'api-audit@example.invalid', 'c"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/google",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired Google ID token.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/apple",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Apple sign-in is not configured.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired refresh token.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/forgot-password",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'missing', 'loc': ['body', 'email'], 'msg': 'Field required', 'input': {}}]}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/verify-reset-code",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'email'], 'msg': 'value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email.', 'input': 'api-audit@example.invalid', 'c"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/reset-password",
+      "status": 400,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'BAD_REQUEST', 'message': 'Either reset_token or email and code is required.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/change-password",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Current password is incorrect.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/me",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'avatar_url'], 'msg': 'Value error, avatar_url must be a valid HTTP or HTTPS URL.', 'input': 'audit', 'ctx': {'error': {}}}, {'type': 'enum', 'loc': ['body', 'risk_tolerance'], 'msg': \"Inp"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/me",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'avatar_url'], 'msg': 'Value error, avatar_url must be a valid HTTP or HTTPS URL.', 'input': 'audit', 'ctx': {'error': {}}}, {'type': 'enum', 'loc': ['body', 'risk_tolerance'], 'msg': \"Inp"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/me/notification-preferences",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'list_type', 'loc': ['body', 'channels'], 'msg': 'Input should be a valid list', 'input': 'audit'}, {'type': 'list_type', 'loc': ['body', 'categories'], 'msg': 'Input should be a valid list', 'input': 'audit'}]}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/devices/register",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'string_pattern_mismatch', 'loc': ['body', 'platform'], 'msg': \"String should match pattern '^(android|ios|web)$'\", 'input': 'audit', 'ctx': {'pattern': '^(android|ios|web)$'}}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/devices/{device_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'Device not found'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/webhooks/clerk",
+      "status": 503,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': 'Clerk webhook is not configured'}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stocks/search",
+      "status": 200,
+      "success": true,
+      "quality": "empty/null payload",
+      "snippet": "{'results': []}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stocks/{symbol}/overview",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Stock 'SYS' not found or no data available\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/watchlists",
+      "status": 200,
+      "success": true,
+      "quality": "empty/null payload",
+      "snippet": "[]"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/watchlists/toggle/{symbol}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/watchlists/{watchlist_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with ID '00000000-0000-4000-8000-000000000000' not found\"}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/watchlists/{watchlist_id}",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'bool_parsing', 'loc': ['body', 'is_default'], 'msg': 'Input should be a valid boolean, unable to interpret input', 'input': 'audit'}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/watchlists/{watchlist_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with ID '00000000-0000-4000-8000-000000000000' not found\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/watchlists/name/{name}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with name 'API-audit-fixture' not found\"}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/watchlists/name/{name}",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'bool_parsing', 'loc': ['body', 'is_default'], 'msg': 'Input should be a valid boolean, unable to interpret input', 'input': 'audit'}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/watchlists/name/{name}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with name 'API-audit-fixture' not found\"}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/watchlists/{watchlist_id}/items",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with ID '00000000-0000-4000-8000-000000000000' not found\"}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/watchlists/name/{name}/items",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with name 'API-audit-fixture' not found\"}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/watchlists/{watchlist_id}/items/{symbol}",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'float_parsing', 'loc': ['body', 'target_price'], 'msg': 'Input should be a valid number, unable to parse string as a number', 'input': 'audit'}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/watchlists/{watchlist_id}/items/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with ID '00000000-0000-4000-8000-000000000000' not found\"}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/watchlists/name/{name}/items/{symbol}",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'float_parsing', 'loc': ['body', 'target_price'], 'msg': 'Input should be a valid number, unable to parse string as a number', 'input': 'audit'}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/watchlists/name/{name}/items/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with name 'API-audit-fixture' not found\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/forecast/{symbol}",
+      "status": 503,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'SERVICE_UNAVAILABLE', 'message': 'ML model is not loaded yet'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recommendations",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recommendations/engine-weights",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body'], 'msg': \"Value error, could not convert string to float: 'audit'\", 'input': {'gru_weight': 0.4, 'ml_weight': 'audit', 'technical_weight': 0.35, 'fundamental_weight': 0.25, 'sentiment_weigh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/holdings",
+      "status": 200,
+      "success": true,
+      "quality": "empty/null payload",
+      "snippet": "[]"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/holdings/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'No transactions found for SYS'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/allocation",
+      "status": 200,
+      "success": true,
+      "quality": "empty/null payload",
+      "snippet": "{'by_stock': [], 'by_sector': []}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolio/transactions",
+      "status": 500,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'INTERNAL_ERROR', 'message': 'An unexpected error occurred'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/transactions/{transaction_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'Transaction not found'}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/portfolio/transactions/{transaction_id}",
+      "status": 500,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'INTERNAL_ERROR', 'message': 'An unexpected error occurred'}}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/portfolio/transactions/{transaction_id}",
+      "status": 500,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'INTERNAL_ERROR', 'message': 'An unexpected error occurred'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/portfolio/transactions/{transaction_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'Transaction not found'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolio/transactions/completed-trade",
+      "status": 500,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'INTERNAL_ERROR', 'message': 'An unexpected error occurred'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/risk/monte-carlo",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'int_parsing', 'loc': ['body', 'seed'], 'msg': 'Input should be a valid integer, unable to parse string as an integer', 'input': 'audit'}]}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/monte-carlo/{task_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'Task not found.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/news/refresh",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/news/{article_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"News article '00000000-0000-4000-8000-000000000000' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/events/calendar",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/alerts/quick-rule",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Stock with id '00000000-0000-4000-8000-000000000000' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alerts/rules/check/{symbol}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/alerts/rules/stock/{symbol}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alerts/rules",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/alerts/rules",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/alerts/rules/{rule_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/alerts/rules/{rule_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alerts",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/alerts/read-all",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/alerts/{alert_id}/read",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/notifications/read-all",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/notifications/{notification_id}/read",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/posts",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/feed",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/search",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/market",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/stock/{symbol}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/{post_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/community/posts/{post_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/community/posts/{post_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/posts/{post_id}/like",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/community/posts/{post_id}/like",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/posts/{post_id}/report",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/posts/{post_id}/comments",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/{post_id}/comments",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/community/comments/{comment_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/comments/{comment_id}/report",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/users/{user_id}/follow",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/community/users/{user_id}/follow",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}/follow-status",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}/followers",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}/following",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/me",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/me/posts",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}/posts",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/notifications",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/notifications/unread-count",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/notifications/{notification_id}/read",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/notifications/read-all",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/chat",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistant/quick-prompts",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/chat/stream",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistant/conversations",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/conversations",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistant/conversations/{conversation_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/assistant/conversations/{conversation_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/assistant/conversations/{conversation_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/conversations/{conversation_id}/regenerate",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/etfs/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"ETF 'SYS' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/etfs/{symbol}/performance",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"ETF 'SYS' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipos/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"IPO for 'SYS' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/community/reports",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/community/reports/{report_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/community/posts/{post_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/community/posts/{post_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/community/posts/{post_id}/restore",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/community/posts/{post_id}/remove",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/community/comments/{comment_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/community/moderation-actions",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    }
+  ],
+  "results": [
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/signup",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'missing', 'loc': ['body', 'email'], 'msg': 'Field required', 'input': {}}, {'type': 'missing', 'loc': ['body', 'password'], 'msg': 'Field required', 'input': {}}]}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/verify-email",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'email'], 'msg': 'value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email.', 'input': 'api-audit@example.invalid', 'c"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/resend-verification",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'missing', 'loc': ['body', 'email'], 'msg': 'Field required', 'input': {}}]}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'email'], 'msg': 'value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email.', 'input': 'api-audit@example.invalid', 'c"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/google",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired Google ID token.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/apple",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Apple sign-in is not configured.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired refresh token.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "status": 204,
+      "success": true,
+      "quality": "ok",
+      "snippet": ""
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/forgot-password",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'missing', 'loc': ['body', 'email'], 'msg': 'Field required', 'input': {}}]}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/verify-reset-code",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'email'], 'msg': 'value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email.', 'input': 'api-audit@example.invalid', 'c"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/reset-password",
+      "status": 400,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'BAD_REQUEST', 'message': 'Either reset_token or email and code is required.'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/change-password",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Current password is incorrect.'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/me",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'id': 'edc7d5a5be8743c19cdd13d4fc811eab', 'email': 'swagger-audit-edc7d5a5be8743c19cdd13d4fc811eab@example.invalid', 'username': 'swagger_audit_edc7d5a5be8743c1', 'full_name': 'Temporary Swagger Audit', 'avatar_url': None, 'is_active': Tru"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/me",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'avatar_url'], 'msg': 'Value error, avatar_url must be a valid HTTP or HTTPS URL.', 'input': 'audit', 'ctx': {'error': {}}}, {'type': 'enum', 'loc': ['body', 'risk_tolerance'], 'msg': \"Inp"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/me",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body', 'avatar_url'], 'msg': 'Value error, avatar_url must be a valid HTTP or HTTPS URL.', 'input': 'audit', 'ctx': {'error': {}}}, {'type': 'enum', 'loc': ['body', 'risk_tolerance'], 'msg': \"Inp"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/me/notification-preferences",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'list_type', 'loc': ['body', 'channels'], 'msg': 'Input should be a valid list', 'input': 'audit'}, {'type': 'list_type', 'loc': ['body', 'categories'], 'msg': 'Input should be a valid list', 'input': 'audit'}]}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/investment-profile/options",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'risk_tolerances': ['conservative', 'moderate', 'aggressive'], 'investment_horizons': ['short_term', 'medium_term', 'long_term'], 'sectors': ['All Sectors', 'Commercial Banks', 'Oil & Gas', 'Cement', 'Fertilizer', 'Technology', 'Pharmaceut"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/devices/register",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'string_pattern_mismatch', 'loc': ['body', 'platform'], 'msg': \"String should match pattern '^(android|ios|web)$'\", 'input': 'audit', 'ctx': {'pattern': '^(android|ios|web)$'}}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/devices/{device_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'Device not found'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/webhooks/clerk",
+      "status": 503,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': 'Clerk webhook is not configured'}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/live",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'market_status': 'market_hours', 'is_market_open': True, 'timezone': 'Asia/Karachi', 'current_time_pkt': '2026-09-30T09:53:45.216502+05:00', 'as_of': None, 'is_stale': True, 'quote_count': 0, 'session_refresh_enabled': True, 'transport': {"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/sectors/performance",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'sectors': [], 'total_sectors': 0, 'total_companies': 0, 'classified_companies': 0, 'unclassified_companies': 0, 'as_of': None, 'is_stale': True}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/indices",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'indices': [], 'as_of': None, 'is_stale': True}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/indices/kse-100",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'index': 'KSE-100', 'code': 'KSE100', 'shariah_compliant': None, 'constituents': [], 'as_of': None, 'is_stale': True}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/indices/kse-30",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'index': 'KSE-30', 'code': 'KSE30', 'shariah_compliant': None, 'constituents': [], 'as_of': None, 'is_stale': True}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/indices/kmi-30",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'index': 'KMI-30', 'code': 'KMI30', 'shariah_compliant': True, 'constituents': [], 'as_of': None, 'is_stale': True}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/gainers",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'gainers': [], 'as_of': None, 'is_stale': True}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/losers",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'losers': [], 'as_of': None, 'is_stale': True}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/volume-spikes",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'volume_spikes': [], 'as_of': None, 'is_stale': True}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/sentiment-overview",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'market_mood': 'neutral', 'advancing': 0, 'declining': 0, 'unchanged': 0, 'advance_decline_ratio': 1.0, 'gainers_pct': 0.0, 'losers_pct': 0.0, 'sector_performance': [], 'top_movers': [], 'as_of': None, 'is_stale': True}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/all-stocks",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'stocks': [], 'total': 0, 'limit': 500, 'offset': 0, 'filtered': False, 'as_of': None, 'is_stale': True, 'recommended_poll_seconds': 15, 'transport_hint': 'websocket_preferred_rest_fallback'}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/quotes",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'stocks': [], 'total': 0, 'limit': 500, 'offset': 0, 'filtered': False, 'as_of': None, 'is_stale': True, 'recommended_poll_seconds': 15, 'transport_hint': 'websocket_preferred_rest_fallback'}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/curated",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'category': 'high_dividend_yield', 'title': 'Highest Dividend Yielding Stocks', 'description': 'Top PSX companies delivering superior dividend yields to shareholders.', 'total_count': 165, 'items': [{'symbol': 'CENI', 'name': 'CENI', 'sect"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stocks/search",
+      "status": 200,
+      "success": true,
+      "quality": "empty/null payload",
+      "snippet": "{'results': []}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stocks/{symbol}/overview",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Stock 'SYS' not found or no data available\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stocks/{symbol}/price-history",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'range': '1M', 'bars': [{'date': '2026-08-31', 'open': 131.0, 'high': 132.4, 'low': 122.8, 'close': 124.54, 'volume': 4946062}, {'date': '2026-09-01', 'open': 124.89, 'high': 129.0, 'low': 124.69, 'close': 127.72, 'volume'"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stocks/{symbol}/technical-indicators",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'period': 14, 'as_of_date': '2026-09-18', 'data_age_days': 12, 'is_stale': True, 'overall_signal': 'NEUTRAL', 'summary_message': 'Technical outlook is Neutral / Consolidating with 1 buy, 2 neutral, and 1 sell signals.', 's"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stocks/{symbol}/fundamentals",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'data_status': 'complete', 'data_message': 'Company fundamentals, governance, equity profile, and financial statements loaded successfully.', 'psx_official_url': 'https://dps.psx.com.pk/company/SYS', 'company_profile': {'n"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/watchlists",
+      "status": 200,
+      "success": true,
+      "quality": "empty/null payload",
+      "snippet": "[]"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/watchlists",
+      "status": 201,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'id': 'd6d53f5e38dd4549a1f1594bfd3f3a3e', 'user_id': 'edc7d5a5be8743c19cdd13d4fc811eab', 'name': 'API audit fixture', 'description': None, 'is_default': True, 'item_count': 0, 'created_at': '2026-09-30T04:54:39.445266+00:00', 'updated_at':"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/watchlists/default",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'id': 'd6d53f5e38dd4549a1f1594bfd3f3a3e', 'user_id': 'edc7d5a5be8743c19cdd13d4fc811eab', 'name': 'API audit fixture', 'description': None, 'is_default': True, 'items': [], 'created_at': '2026-09-30T04:54:39.445266+00:00', 'updated_at': '20"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/watchlists/check/{symbol}",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'is_in_watchlist': False, 'watchlist_ids': []}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/watchlists/toggle/{symbol}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/watchlists/{watchlist_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with ID '00000000-0000-4000-8000-000000000000' not found\"}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/watchlists/{watchlist_id}",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'bool_parsing', 'loc': ['body', 'is_default'], 'msg': 'Input should be a valid boolean, unable to interpret input', 'input': 'audit'}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/watchlists/{watchlist_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with ID '00000000-0000-4000-8000-000000000000' not found\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/watchlists/name/{name}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with name 'API-audit-fixture' not found\"}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/watchlists/name/{name}",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'bool_parsing', 'loc': ['body', 'is_default'], 'msg': 'Input should be a valid boolean, unable to interpret input', 'input': 'audit'}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/watchlists/name/{name}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with name 'API-audit-fixture' not found\"}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/watchlists/{watchlist_id}/items",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with ID '00000000-0000-4000-8000-000000000000' not found\"}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/watchlists/name/{name}/items",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with name 'API-audit-fixture' not found\"}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/watchlists/{watchlist_id}/items/{symbol}",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'float_parsing', 'loc': ['body', 'target_price'], 'msg': 'Input should be a valid number, unable to parse string as a number', 'input': 'audit'}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/watchlists/{watchlist_id}/items/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with ID '00000000-0000-4000-8000-000000000000' not found\"}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/watchlists/name/{name}/items/{symbol}",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'float_parsing', 'loc': ['body', 'target_price'], 'msg': 'Input should be a valid number, unable to parse string as a number', 'input': 'audit'}]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/watchlists/name/{name}/items/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Watchlist with name 'API-audit-fixture' not found\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/forecast/pipeline",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'timezone': 'Asia/Karachi', 'current_date_pkt': '2026-09-30', 'daily_pipeline': {'task': 'app.tasks.daily_workflow.run_daily_pipeline', 'schedule': 'Mon\u2013Fri 18:00 PKT', 'crontab': '0 18 * * 1-5', 'steps': [{'step': 1, 'name': 'update_marke"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/forecast/{symbol}",
+      "status": 503,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'SERVICE_UNAVAILABLE', 'message': 'ML model is not loaded yet'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/forecast/{symbol}/history",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'horizon': '1D', 'count': 2, 'accuracy': 0.0, 'accuracy_summary': 'Directional accuracy: 0.0% across 2 decisive bullish/bearish signals (0 neutral; 0 pending).', 'pending_count': 0, 'scored_count': 2, 'history': [{'predict"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recommendations",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recommendations/engine-weights",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'weights': {'ml': 0.3, 'technical': 0.25, 'fundamental': 0.25, 'sentiment': 0.2}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recommendations/engine-weights",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'value_error', 'loc': ['body'], 'msg': \"Value error, could not convert string to float: 'audit'\", 'input': {'gru_weight': 0.4, 'ml_weight': 'audit', 'technical_weight': 0.35, 'fundamental_weight': 0.25, 'sentiment_weigh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recommendations/{symbol}",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'name': 'SYS', 'sector': None, 'generated_at': '2026-09-30T04:59:07.627409Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.126, 'confidence': 0.252, 'confidence_type': 'heuristic_signal_strength', 'status': 'availab"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recommendations/{symbol}/target-stop",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'generated_at': '2026-09-30T04:59:14.918859Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.126, 'confidence': 0.252, 'confidence_type': 'heuristic_signal_strength', 'status': 'available', 'horizon': '5 trading days"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'summary': {'total_invested': '0', 'current_value': '0', 'total_pnl': '0', 'total_pnl_percent': 0.0, 'today_pnl': '0'}, 'holdings': [], 'updated_at': '2026-09-30T04:59:23.584380'}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/summary",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'summary': {'total_invested': '0', 'current_value': '0', 'total_pnl': '0', 'total_pnl_percent': 0.0, 'today_pnl': '0'}, 'holdings': [], 'updated_at': '2026-09-30T04:59:31.068085'}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/holdings",
+      "status": 200,
+      "success": true,
+      "quality": "empty/null payload",
+      "snippet": "[]"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/holdings/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'No transactions found for SYS'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/pnl",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'realized_pnl': '0', 'unrealized_pnl': '0', 'total_pnl': '0', 'total_pnl_percent': 0.0, 'today_pnl': '0'}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/allocation",
+      "status": 200,
+      "success": true,
+      "quality": "empty/null payload",
+      "snippet": "{'by_stock': [], 'by_sector': []}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/performance",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'period': '1M', 'data': []}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/transactions",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'items': [], 'total': 0, 'page': 1, 'limit': 20}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolio/transactions",
+      "status": 500,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'INTERNAL_ERROR', 'message': 'An unexpected error occurred'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/portfolio/transactions/{transaction_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'Transaction not found'}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/portfolio/transactions/{transaction_id}",
+      "status": 500,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'INTERNAL_ERROR', 'message': 'An unexpected error occurred'}}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/portfolio/transactions/{transaction_id}",
+      "status": 500,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'INTERNAL_ERROR', 'message': 'An unexpected error occurred'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/portfolio/transactions/{transaction_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'Transaction not found'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolio/transactions/completed-trade",
+      "status": 500,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'INTERNAL_ERROR', 'message': 'An unexpected error occurred'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/prices/{symbol}",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'ldcp': 121.86, 'current_price': 121.95, 'change': 0.09, 'change_percent': 0.0739, 'volume': 1074914, 'market_status': 'CLOSED', 'last_updated': '2026-09-18', 'stale': True, 'available': True}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/prices/bulk",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'prices': {'SYS': {'symbol': 'SYS', 'ldcp': 121.86, 'current_price': 121.95, 'change': 0.09, 'change_percent': 0.0739, 'volume': 1074914, 'market_status': 'CLOSED', 'last_updated': '2026-09-18', 'stale': True, 'available': True}}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/var",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'confidence': 95, 'horizon': '1D', 'var_value': None, 'cvar_value': None, 'method': 'historical_simulation', 'num_observations': 0, 'annualized_volatility': None, 'status': 'no_holdings', 'message': 'Portfolio has no positive market value."
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/risk/monte-carlo",
+      "status": 422,
+      "success": false,
+      "quality": "",
+      "snippet": "{'detail': [{'type': 'int_parsing', 'loc': ['body', 'seed'], 'msg': 'Input should be a valid integer, unable to parse string as an integer', 'input': 'audit'}]}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/monte-carlo/{task_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': 'Task not found.'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/stress-test",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'scenario': '2008_crash', 'name': '2008_crash', 'description': 'No holdings', 'portfolio_impact': 0.0, 'portfolio_impact_value': 0.0, 'worst_case_loss': 0.0, 'volatility_multiplier': 1.0, 'recovery_days': 0, 'current_value': 0.0, 'stressed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sentiment/market-overview",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'market_mood': 'bullish', 'overall_score': 0.1538, 'article_count': 13, 'advancing': 77, 'declining': 24, 'unchanged': 2, 'advance_decline_ratio': 3.21, 'news_sentiment_avg': 0.1538, 'score_distribution': {'positive': 2, 'neutral': 11, 'ne"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sentiment/{symbol}/history",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'period': '1M', 'data': []}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sentiment/{symbol}/news",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'items': [{'id': '3d8500db7c9b4af1bf85ac6387ef6024', 'title': 'Systems Limited SYS expands international footprint with new European cloud contracts', 'source': 'Business Recorder', 'published_at': '2026-09-23T21:19:25.189"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sentiment/{symbol}",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'score': 0.0654, 'label': 'neutral', 'confidence': 0.23, 'positive_ratio': 0.1667, 'neutral_ratio': 0.8333, 'negative_ratio': 0.0, 'article_count': 6, 'trend': 'declining', 'daily_scores': [{'date': '2026-09-23', 'score': "
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/news",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'items': [{'id': 'f90fdff8d0ea4c04aa9e47c26d113582', 'title': 'Military chiefs of Turkiye, Pakistan, KSA hold talks', 'url': 'https://www.brecorder.com/news/40441302/military-chiefs-of-turkiye-pakistan-ksa-hold-talks', 'external_url': 'htt"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/news/refresh",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/news/refresh/status",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'state': 'failed', 'last_success_at': '2026-09-16T10:30:00+00:00', 'new_articles': 16}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/news/market-status",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'timezone': 'Asia/Karachi', 'current_time_pkt': '2026-09-30T10:04:04.729714+05:00', 'status': 'market_hours', 'is_weekend': False, 'is_holiday': False, 'ingestion_allowed': True, 'gating_enabled': True, 'within_run_window': True, 'session_"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/news/sources",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'sources': [{'key': 'psx', 'name': 'PSX Official Announcements', 'type': 'official', 'last_success_at': '2026-09-26T10:26:29.846648+00:00', 'last_error': None, 'consecutive_failures': 0, 'healthy': True}, {'key': 'secp', 'name': 'SECP Regu"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/news/{article_id}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"News article '00000000-0000-4000-8000-000000000000' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stocks/{symbol}/news",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'items': [{'id': 'a18a705e203a4c9f87c5107924effb7f', 'title': 'World Bank team reviews property tax collection system in Sindh', 'url': 'https://www.brecorder.com/news/40441268/world-bank-team-reviews-property-tax-collection-system-in-sind"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/events/calendar",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/alerts/quick-rule",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"Stock with id '00000000-0000-4000-8000-000000000000' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alerts/rules/check/{symbol}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/alerts/rules/stock/{symbol}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alerts/rules",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/alerts/rules",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/alerts/rules/{rule_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/alerts/rules/{rule_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alerts",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/alerts/read-all",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/alerts/{alert_id}/read",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/notifications/read-all",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/notifications/{notification_id}/read",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/shariah/kmi30",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'index': 'KMI-30', 'total_constituents': 30, 'as_of': '2025-12-31T00:00:00Z', 'is_stale': True, 'effective_from': '2026-05-25T00:00:00Z', 'source_url': 'https://dps.psx.com.pk/download/attachment/277332-1.pdf', 'constituents': [{'symbol': "
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/shariah/{symbol}",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'screening_available': True, 'is_shariah_compliant': True, 'overall_score': None, 'screening_method': 'PSX KMI-30 screening notice PSX/N-610 (2026-05-15)', 'screened_at': '2025-12-31T00:00:00', 'data_as_of': '2025-12-31T00"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/shariah/{symbol}/criteria",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'screening_available': True, 'is_shariah_compliant': True, 'criteria': [{'name': 'Core Business Permissibility', 'threshold': 1.0, 'value': 1.0, 'passed': True, 'description': 'Core business activities must be halal and fr"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/shariah/{symbol}/purification",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'dividend_income': 1.0, 'purification_amount': 0.0, 'purification_rate': 0.0009, 'notes': 'Using the PSX screening rate dated 2025-12-31, calculate PKR 0.00 (0.09% of dividend income). ', 'data_as_of': '2025-12-31T00:00:00"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/posts",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/feed",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/search",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/market",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/stock/{symbol}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/{post_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/community/posts/{post_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/community/posts/{post_id}",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/posts/{post_id}/like",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/community/posts/{post_id}/like",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/posts/{post_id}/report",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/posts/{post_id}/comments",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/posts/{post_id}/comments",
+      "status": 0,
+      "success": false,
+      "quality": "runtime error",
+      "snippet": "TimeoutError: TimeoutError()"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/community/comments/{comment_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/comments/{comment_id}/report",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/users/{user_id}/follow",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/community/users/{user_id}/follow",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}/follow-status",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}/followers",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}/following",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/me",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/me/posts",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/users/{user_id}/posts",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/notifications",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/community/notifications/unread-count",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/notifications/{notification_id}/read",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/community/notifications/read-all",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/chat",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistant/quick-prompts",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/chat/stream",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistant/conversations",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/conversations",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistant/conversations/{conversation_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/assistant/conversations/{conversation_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/assistant/conversations/{conversation_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistant/conversations/{conversation_id}/regenerate",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ws/protocol",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'protocol_version': '1.0', 'primary_transport': 'websocket', 'fallback_transport': 'rest_polling', 'websocket_path': '/api/v1/ws/market', 'websocket_url_template': '{scheme}://{host}/api/v1/ws/market', 'alerts_websocket_path': '/api/v1/ws/"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ws/stats",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'total_connections': 0, 'subscribed_symbols_count': 0, 'authenticated_users_count': 0, 'subscribed_symbols': [], 'protocol_version': '1.0', 'timestamp': '2026-09-30T05:22:56.847056Z'}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/etfs",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'total': 6, 'shariah_count': 2, 'conventional_count': 4, 'etfs': [{'id': '91a4d34e21a547a887c1fb5b6619616b', 'symbol': 'HBLTETF', 'name': 'HBL Total Treasury ETF', 'fund_manager': 'HBL Asset Management Limited', 'category': 'Treasury / Deb"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/etfs/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"ETF 'SYS' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/etfs/{symbol}/history",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'symbol': 'SYS', 'timeframe': '1M', 'count': 0, 'history': []}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/etfs/{symbol}/performance",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"ETF 'SYS' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipos",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'total': 5, 'upcoming_count': 1, 'active_count': 1, 'listed_count': 3, 'ipos': [{'id': '930ddc382341413cab552dbaaf12ea80', 'symbol': 'PRX', 'company_name': 'Pharmarex Laboratories Limited', 'sector': 'Pharmaceuticals', 'status': 'UPCOMING'"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipos/calendar",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'total_events': 10, 'upcoming_milestones': [{'ipo_id': '012770bfaffb495d8f60d3054ea2f9c0', 'symbol': 'GTECH', 'company_name': 'Green Technology Solutions Ltd', 'event_type': 'BOOK_BUILDING_START', 'event_date': '2026-10-05', 'status': 'SCH"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipos/performance",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'total_listed': 3, 'average_listing_day_gain_pct': 0.0, 'top_performers': [{'symbol': 'FAST', 'company_name': 'Fast Cables Limited', 'sector': 'Engineering', 'listing_date': '2024-06-12', 'offer_price': 24.45, 'first_day_close': 24.45, 'cu"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipos/{symbol}",
+      "status": 404,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'NOT_FOUND', 'message': \"IPO for 'SYS' not found.\"}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/community/reports",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/community/reports/{report_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/community/posts/{post_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/community/posts/{post_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/community/posts/{post_id}/restore",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/community/posts/{post_id}/remove",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/community/comments/{comment_id}",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/community/moderation-actions",
+      "status": 401,
+      "success": false,
+      "quality": "",
+      "snippet": "{'success': False, 'error': {'code': 'UNAUTHORIZED', 'message': 'Invalid or expired token'}}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'status': 'ok'}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health/ready",
+      "status": 200,
+      "success": true,
+      "quality": "ok",
+      "snippet": "{'status': 'healthy', 'services': {'api': 'ready', 'database': 'ready', 'redis': 'ready', 'celery_worker': 'ready', 'celery_beat': 'ready'}}"
+    }
+  ],
+  "temporary_fixture_cleaned": true
+}
