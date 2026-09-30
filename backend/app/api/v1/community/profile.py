@@ -71,9 +71,10 @@ async def get_my_posts(
             limit=limit,
         )
 
+        liked_post_ids = await service.get_liked_post_ids([post.id for post in posts], user.id)
         post_responses = []
         for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
+            liked_by_me = post.id in liked_post_ids
             post_responses.append(
                 CommunityPostResponse(
                     id=post.id,
@@ -166,9 +167,10 @@ async def get_user_posts(
             limit=limit,
         )
 
+        liked_post_ids = await service.get_liked_post_ids([post.id for post in posts], user.id)
         post_responses = []
         for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
+            liked_by_me = post.id in liked_post_ids
             post_responses.append(
                 CommunityPostResponse(
                     id=post.id,

@@ -35,6 +35,16 @@ async def get_current_user(
         raise UnauthorizedError("User not found")
     if not user.is_active:
         raise ForbiddenError("Inactive user")
+    try:
+        user_tv = int(getattr(user, "token_version", 0) or 0)
+    except (TypeError, ValueError):
+        user_tv = 0
+    try:
+        token_tv = int(payload["tv"]) if "tv" in payload and payload["tv"] is not None else 0
+    except (TypeError, ValueError):
+        token_tv = 0
+    if token_tv != user_tv:
+        raise UnauthorizedError("Token has been revoked. Please log in again.")
     return user
 
 
@@ -54,6 +64,16 @@ async def get_optional_current_user(
             return None
         user = await db.get(User, user_id)
         if user is None or not user.is_active:
+            return None
+        try:
+            user_tv = int(getattr(user, "token_version", 0) or 0)
+        except (TypeError, ValueError):
+            user_tv = 0
+        try:
+            token_tv = int(payload["tv"]) if "tv" in payload and payload["tv"] is not None else 0
+        except (TypeError, ValueError):
+            token_tv = 0
+        if token_tv != user_tv:
             return None
         return user
     except Exception:

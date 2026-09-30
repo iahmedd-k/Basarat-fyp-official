@@ -314,8 +314,8 @@ class TestMarketSentiment:
         
         assert resp.status_code == 200
         data = resp.json()
-        assert "score" in data
-        assert "label" in data
+        assert "overall_score" in data
+        assert "market_mood" in data
         assert "article_count" in data
 
     async def test_get_market_sentiment_requires_auth(self, client: AsyncClient):

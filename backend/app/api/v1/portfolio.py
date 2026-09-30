@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
-from app.core.exceptions import BadRequestError, NotFoundError, ValidationFailedError
+from app.core.exceptions import (
+    AppError,
+    NotFoundError,
+    ServiceUnavailableError,
+    ValidationFailedError,
+)
 from app.db.session import get_db
 from app.models.portfolio import TransactionType
 from app.models.user import User
@@ -64,9 +69,33 @@ async def get_portfolio(
     """
     try:
         return await service.get_portfolio(user.id)
-    except Exception as exc:
+    except AppError:
+        raise
+    except Exception:
         logger.exception("Get portfolio failed")
-        raise BadRequestError(f"Failed to fetch portfolio: {exc}")
+        raise ServiceUnavailableError("Failed to fetch portfolio")
+
+
+@router.get(
+    "/portfolio/summary",
+    response_model=PortfolioResponse,
+    summary="Get portfolio summary with live valuations and P&L",
+    description=(
+        "Alias of `GET /portfolio`. Restores the historical `/portfolio/summary` path "
+        "from the former portfolio_routes package so clients have a dedicated summary URL."
+    ),
+)
+async def get_portfolio_summary(
+    user: User = Depends(get_current_user),
+    service: PortfolioService = Depends(get_portfolio_service),
+):
+    try:
+        return await service.get_portfolio(user.id)
+    except AppError:
+        raise
+    except Exception:
+        logger.exception("Get portfolio summary failed")
+        raise ServiceUnavailableError("Failed to fetch portfolio summary")
 
 
 # ── Holdings ──────────────────────────────────────────────────────────────────
@@ -83,9 +112,11 @@ async def get_holdings(
     """Get list of active holdings with current market values."""
     try:
         return await service.get_holdings(user.id)
-    except Exception as exc:
+    except AppError:
+        raise
+    except Exception:
         logger.exception("Get holdings failed")
-        raise BadRequestError(f"Failed to fetch holdings: {exc}")
+        raise ServiceUnavailableError("Failed to fetch holdings")
 
 
 @router.get(
@@ -103,9 +134,11 @@ async def get_holding_detail(
         return await service.get_holding_detail(user.id, symbol)
     except NotFoundError:
         raise
-    except Exception as exc:
+    except AppError:
+        raise
+    except Exception:
         logger.exception("Get holding detail failed")
-        raise BadRequestError(f"Failed to fetch holding detail: {exc}")
+        raise ServiceUnavailableError("Failed to fetch holding detail")
 
 
 # ── P&L ───────────────────────────────────────────────────────────────────────
@@ -122,9 +155,11 @@ async def get_pnl(
     """Get realized, unrealized, and total P&L for the portfolio."""
     try:
         return await service.get_pnl(user.id)
-    except Exception as exc:
+    except AppError:
+        raise
+    except Exception:
         logger.exception("Get P&L failed")
-        raise BadRequestError(f"Failed to fetch P&L: {exc}")
+        raise ServiceUnavailableError("Failed to fetch P&L")
 
 
 # ── Allocation ────────────────────────────────────────────────────────────────
@@ -141,9 +176,11 @@ async def get_allocation(
     """Get portfolio allocation breakdown by individual stocks and sectors."""
     try:
         return await service.get_allocation(user.id)
-    except Exception as exc:
+    except AppError:
+        raise
+    except Exception:
         logger.exception("Get allocation failed")
-        raise BadRequestError(f"Failed to fetch allocation: {exc}")
+        raise ServiceUnavailableError("Failed to fetch allocation")
 
 
 # ── Performance ───────────────────────────────────────────────────────────────
@@ -163,9 +200,11 @@ async def get_performance(
     """Get portfolio performance time series for the specified period."""
     try:
         return await service.get_performance(user.id, period)
-    except Exception as exc:
+    except AppError:
+        raise
+    except Exception:
         logger.exception("Get performance failed")
-        raise BadRequestError(f"Failed to fetch performance: {exc}")
+        raise ServiceUnavailableError("Failed to fetch performance")
 
 
 # ── Transaction History ───────────────────────────────────────────────────────
@@ -219,9 +258,11 @@ async def get_transactions(
             page=page,
             limit=limit,
         )
-    except Exception as exc:
+    except AppError:
+        raise
+    except Exception:
         logger.exception("Get transactions failed")
-        raise BadRequestError(f"Failed to fetch transactions: {exc}")
+        raise ServiceUnavailableError("Failed to fetch transactions")
 
 
 @router.get(
@@ -248,11 +289,11 @@ async def get_transaction(
             created_at=txn.created_at,
             updated_at=txn.updated_at,
         )
-    except NotFoundError:
+    except AppError:
         raise
-    except Exception as exc:
+    except Exception:
         logger.exception("Get transaction failed")
-        raise BadRequestError(f"Failed to fetch transaction: {exc}")
+        raise ServiceUnavailableError("Failed to fetch transaction")
 
 
 # ── Create Transaction ────────────────────────────────────────────────────────
@@ -306,11 +347,11 @@ async def create_transaction(
         raise ValidationFailedError(str(e), code="INVALID_SYMBOL", field="symbol")
     except InsufficientHoldingError as e:
         raise ValidationFailedError(str(e), code="INSUFFICIENT_HOLDING", field="quantity")
-    except ValidationFailedError:
+    except AppError:
         raise
-    except Exception as exc:
+    except Exception:
         logger.exception("Create transaction failed")
-        raise BadRequestError(f"Failed to create transaction: {exc}")
+        raise ServiceUnavailableError("Failed to create transaction")
 
 
 @router.post(
@@ -386,11 +427,11 @@ async def create_completed_trade(
         raise ValidationFailedError(str(e), code="INVALID_SYMBOL", field="symbol")
     except (InsufficientHoldingError, InvalidTransactionHistoryError) as e:
         raise ValidationFailedError(str(e), code="INVALID_TRANSACTION_SEQUENCE")
-    except ValidationFailedError:
+    except AppError:
         raise
-    except Exception as exc:
+    except Exception:
         logger.exception("Create completed trade failed")
-        raise BadRequestError(f"Failed to create completed trade: {exc}")
+        raise ServiceUnavailableError("Failed to create completed trade")
 
 
 # ── Update Transaction ────────────────────────────────────────────────────────
@@ -439,6 +480,26 @@ async def update_transaction(
     except Exception as exc:
         logger.exception("Update transaction failed")
         raise BadRequestError(f"Failed to update transaction: {exc}")
+
+
+@router.put(
+    "/portfolio/transactions/{transaction_id}",
+    response_model=TransactionResponse,
+    summary="Update a transaction (PUT alias of PATCH)",
+    description="Same behavior as PATCH — restores the historical PUT contract from portfolio_routes.",
+)
+async def put_transaction(
+    transaction_id: str,
+    data: TransactionUpdate,
+    user: User = Depends(get_current_user),
+    service: PortfolioService = Depends(get_portfolio_service),
+):
+    return await update_transaction(
+        transaction_id=transaction_id,
+        data=data,
+        user=user,
+        service=service,
+    )
 
 
 # ── Delete Transaction ────────────────────────────────────────────────────────

@@ -163,6 +163,7 @@ def run_monte_carlo_task(
         result = {
             "job_id": job_id,
             "status": "failed",
+            "user_id": user_id,
             "error": str(exc),
             "completed_at": datetime.utcnow().isoformat(),
         }

@@ -1,147 +1,212 @@
-import logging
-from datetime import datetime, timedelta
-from decimal import Decimal
-from typing import Optional
+"""Redis-backed live quote cache for portfolio / market price endpoints."""
 
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
+from typing import Any
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.portfolio import PriceCache, MarketStatus
-from app.repository.portfolio_repository import PortfolioRepository
-from app.services.portfolio.psx_client import PSXApiClient
+from app.core.redis import cache_get, cache_set
+from app.models.stock import Stock, StockPrice
+from app.services.market_service import MarketService
+from app.services.stock_service import StockService
 
 logger = logging.getLogger(__name__)
 
-CACHE_TTL_SECONDS = 30  # 30-60s TTL as per spec
+CACHE_TTL_SECONDS = 30
 
 
 class PriceCacheService:
-    """Manages PriceCache with TTL and PSX fallback."""
+    """Live PSX quote helper with short Redis TTL (no DB PriceCache table required)."""
 
     def __init__(
         self,
-        db: AsyncSession,
-        psx_client: PSXApiClient,
-        repo: Optional[PortfolioRepository] = None,
+        stock_service: StockService | None = None,
+        market_service: MarketService | None = None,
+        db: AsyncSession | None = None,
     ):
+        self.stock_service = stock_service or StockService()
+        self.market_service = market_service or MarketService()
         self.db = db
-        self.psx_client = psx_client
-        self.repo = repo or PortfolioRepository(db)
 
-    async def get_price(self, symbol: str) -> dict:
-        """
-        Get price for a symbol. Checks cache first (TTL ~30s).
-        If stale, fetches from PSX, updates cache, returns price.
-        If PSX fails, returns last cached price with stale=true.
-        """
-        symbol = symbol.upper()
-        cache = await self.repo.get_price_cache(symbol)
+    async def get_price(self, symbol: str) -> dict[str, Any]:
+        symbol = symbol.strip().upper()
+        cache_key = f"price:quote:v1:{symbol}"
+        cached = await cache_get(cache_key)
+        if cached:
+            cached = dict(cached)
+            cached["stale"] = False
+            return cached
 
-        now = datetime.utcnow()
-        is_stale = False
+        stale_key = f"price:quote:stale:v1:{symbol}"
 
-        if cache:
-            age = (now - cache.last_updated).total_seconds()
-            if age <= CACHE_TTL_SECONDS:
-                # Cache is fresh
-                return self._cache_to_dict(cache, stale=False)
+        # Prefer the shared market-watch snapshot. StockService's per-symbol
+        # PSX endpoint can be unavailable even while the regular market refresh
+        # has a valid quote for the same symbol.
+        market_rows = await self.market_service.get_market_data(read_only=True)
+        market_quote = next(
+            (row for row in market_rows if str(row.get("symbol", "")).strip().upper() == symbol),
+            None,
+        )
+        if market_quote and self._has_positive_price(market_quote.get("current")):
+            freshness = self.market_service.quote_freshness()
+            payload = self._quote_to_payload(market_quote, stale=bool(freshness.get("is_stale", True)))
+            payload["last_updated"] = freshness.get("as_of") or payload["last_updated"]
+            if payload["stale"]:
+                await cache_set(
+                    f"price:quote:stale:v1:{symbol}",
+                    payload,
+                    ttl_seconds=CACHE_TTL_SECONDS * 20,
+                )
+            else:
+                await cache_set(cache_key, payload, ttl_seconds=CACHE_TTL_SECONDS)
+                await cache_set(
+                    f"price:quote:stale:v1:{symbol}",
+                    payload,
+                    ttl_seconds=CACHE_TTL_SECONDS * 20,
+                )
+            return payload
 
-        # Cache is stale or missing - try to fetch from PSX
-        quote = self.psx_client.fetch_quote(symbol)
-
-        if quote:
-            # Update cache with fresh data
-            market_status = self._determine_market_status(quote)
-            updated_cache = await self.repo.upsert_price_cache(
-                symbol=symbol,
-                ldcp=quote.get("ldcp", 0),
-                current_price=quote.get("current", quote.get("ldcp", 0)),
-                change=quote.get("change", 0),
-                change_percent=quote.get("change_pct", 0),
-                market_status=market_status,
+        quote = self.stock_service.get_quote(symbol)
+        if quote and float(quote.get("current") or 0) > 0:
+            payload = self._quote_to_payload(quote, stale=False)
+            await cache_set(cache_key, payload, ttl_seconds=CACHE_TTL_SECONDS)
+            await cache_set(
+                stale_key,
+                payload,
+                ttl_seconds=CACHE_TTL_SECONDS * 20,
             )
-            return self._cache_to_dict(updated_cache, stale=False)
+            return payload
 
-        # PSX fetch failed - return stale cache if available
-        if cache:
-            logger.warning(f"PSX fetch failed for {symbol}, returning stale cache")
-            return self._cache_to_dict(cache, stale=True)
+        # Soft stale: try longer-lived fallback key
+        stale = await cache_get(stale_key)
+        if stale:
+            stale = dict(stale)
+            stale["stale"] = True
+            return stale
 
-        # No cache and PSX failed - return empty/default
-        logger.error(f"No price data available for {symbol}")
+        historical = await self._historical_price(symbol)
+        if historical:
+            await cache_set(stale_key, historical, ttl_seconds=CACHE_TTL_SECONDS * 20)
+            return historical
+
+        logger.warning("No live price available for %s", symbol)
         return {
             "symbol": symbol,
             "ldcp": 0.0,
             "current_price": 0.0,
             "change": 0.0,
             "change_percent": 0.0,
-            "market_status": MarketStatus.CLOSED.value,
-            "last_updated": now,
+            "volume": 0,
+            "market_status": self._market_status(0),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
             "stale": True,
+            "available": False,
         }
 
-    async def get_bulk_prices(self, symbols: list[str]) -> dict[str, dict]:
-        """Get prices for multiple symbols. Uses batch fetch from PSX."""
+    async def _historical_price(self, symbol: str) -> dict[str, Any] | None:
+        """Return a real last close, explicitly marked stale, when quotes fail."""
+        if self.db is None:
+            return None
+        result = await self.db.execute(
+            select(StockPrice.date, StockPrice.close, StockPrice.volume)
+            .join(Stock, Stock.id == StockPrice.stock_id)
+            .where(Stock.symbol == symbol, StockPrice.close.is_not(None), StockPrice.close > 0)
+            .order_by(StockPrice.date.desc())
+            .limit(2)
+        )
+        rows = result.all()
+        if not rows:
+            return None
+
+        latest = rows[0]
+        current = float(latest.close)
+        ldcp = float(rows[1].close) if len(rows) > 1 and rows[1].close else 0.0
+        change = round(current - ldcp, 4) if ldcp else 0.0
+        change_percent = round(change / ldcp * 100, 4) if ldcp else 0.0
+        return {
+            "symbol": symbol,
+            "ldcp": round(ldcp, 4),
+            "current_price": round(current, 4),
+            "change": change,
+            "change_percent": change_percent,
+            "volume": int(latest.volume or 0),
+            "market_status": "CLOSED",
+            "last_updated": latest.date.isoformat(),
+            "stale": True,
+            "available": True,
+        }
+
+    @staticmethod
+    def _has_positive_price(value: Any) -> bool:
+        try:
+            return value is not None and float(value) > 0
+        except (TypeError, ValueError):
+            return False
+
+    async def get_bulk_prices(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
         if not symbols:
             return {}
 
-        upper_symbols = [s.upper() for s in symbols]
+        upper = [s.strip().upper() for s in symbols if s and str(s).strip()]
+        results: dict[str, dict[str, Any]] = {}
+        missing: list[str] = []
 
-        # Check cache for all symbols
-        cache_map = await self.repo.get_bulk_price_cache(upper_symbols)
-        now = datetime.utcnow()
+        for symbol in upper:
+            cache_key = f"price:quote:v1:{symbol}"
+            cached = await cache_get(cache_key)
+            if cached:
+                cached = dict(cached)
+                cached["stale"] = False
+                results[symbol] = cached
+            else:
+                missing.append(symbol)
 
-        fresh_results = {}
-        stale_symbols = []
+        if missing:
+            quotes = self.stock_service.get_quote_batch(missing)
+            by_sym = {str(q.get("symbol", "")).upper(): q for q in quotes}
+            for symbol in missing:
+                quote = by_sym.get(symbol)
+                if quote and float(quote.get("current") or 0) > 0:
+                    payload = self._quote_to_payload(quote, stale=False)
+                    await cache_set(f"price:quote:v1:{symbol}", payload, ttl_seconds=CACHE_TTL_SECONDS)
+                    await cache_set(
+                        f"price:quote:stale:v1:{symbol}",
+                        payload,
+                        ttl_seconds=CACHE_TTL_SECONDS * 20,
+                    )
+                    results[symbol] = payload
+                else:
+                    results[symbol] = await self.get_price(symbol)
 
-        for symbol in upper_symbols:
-            cache = cache_map.get(symbol)
-            if cache:
-                age = (now - cache.last_updated).total_seconds()
-                if age <= CACHE_TTL_SECONDS:
-                    fresh_results[symbol] = self._cache_to_dict(cache, stale=False)
-                    continue
-            stale_symbols.append(symbol)
+        return results
 
-        # Fetch stale/missing symbols from PSX in batch
-        if stale_symbols:
-            quotes = self.psx_client.fetch_quote_batch(stale_symbols)
-            for quote in quotes:
-                symbol = quote["symbol"]
-                market_status = self._determine_market_status(quote)
-                await self.repo.upsert_price_cache(
-                    symbol=symbol,
-                    ldcp=quote.get("ldcp", 0),
-                    current_price=quote.get("current", quote.get("ldcp", 0)),
-                    change=quote.get("change", 0),
-                    change_percent=quote.get("change_pct", 0),
-                    market_status=market_status,
-                )
-                fresh_results[symbol] = {
-                    "current_price": quote.get("current", 0),
-                    "change_percent": quote.get("change_pct", 0),
-                    "market_status": market_status,
-                }
-
-        return fresh_results
-
-    def _determine_market_status(self, quote: dict) -> str:
-        """Determine market status from quote data."""
-        # PSX market hours: 9:30 AM - 3:30 PM PKT, Mon-Fri
-        # For now, use volume as proxy - if volume > 0, likely open
-        # In production, use proper market calendar
-        volume = quote.get("volume", 0)
-        if volume > 0:
-            return MarketStatus.OPEN.value
-        return MarketStatus.CLOSED.value
-
-    def _cache_to_dict(self, cache: PriceCache, stale: bool = False) -> dict:
+    def _quote_to_payload(self, quote: dict, stale: bool = False) -> dict[str, Any]:
+        volume = int(quote.get("volume") or 0)
+        current = float(quote.get("current") or 0)
+        ldcp = float(quote.get("ldcp") or 0)
+        change = quote.get("change")
+        if change is None and current and ldcp:
+            change = current - ldcp
+        change_pct = quote.get("change_pct")
+        if change_pct is None and change is not None and ldcp:
+            change_pct = (float(change) / ldcp) * 100.0
         return {
-            "symbol": cache.symbol,
-            "ldcp": float(cache.ldcp),
-            "current_price": float(cache.current_price),
-            "change": float(cache.change),
-            "change_percent": float(cache.change_percent),
-            "market_status": cache.market_status,
-            "last_updated": cache.last_updated,
+            "symbol": str(quote.get("symbol", "")).upper(),
+            "ldcp": round(ldcp, 4),
+            "current_price": round(current, 4),
+            "change": round(float(change or 0), 4),
+            "change_percent": round(float(change_pct or 0), 4),
+            "volume": volume,
+            "market_status": self._market_status(volume),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
             "stale": stale,
+            "available": current > 0,
         }
+
+    @staticmethod
+    def _market_status(volume: int) -> str:
+        return "OPEN" if volume and volume > 0 else "CLOSED"

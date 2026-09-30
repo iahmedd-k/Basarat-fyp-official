@@ -43,67 +43,68 @@ celery.conf.update(
     task_soft_time_limit=3600,
     task_time_limit=7200,
     beat_schedule={
-        # ── Daily: data update + features + predictions + evaluation ──
-        # Mon–Fri 18:00 Asia/Karachi (task skips weekends/holidays):
-        #   update_market_data → generate_features → generate_predictions (upsert)
-        #   → evaluate_pending (set actual_direction from closes) → sentiment → recs
-        "daily-workflow": {
-            "task": "app.tasks.daily_workflow.run_daily_pipeline",
-            "schedule": crontab(hour=18, minute=0, day_of_week="1-5"),  # after close, Mon-Fri PKT
+        # ── 1. Intraday Live Quotes (Mon–Fri 09:15 to 15:30 PKT Only) ──
+        # Scrapes PSX once a minute during active trading session only.
+        "refresh-market-session": {
+            "task": "app.tasks.refresh_market_cache.refresh_market_session",
+            "schedule": crontab(minute="*/1", hour="9-15", day_of_week="1-5"),
         },
-        # ── Weekly: retraining pipeline ──
-        "weekly-retraining": {
-            "task": "app.tasks.weekly_retraining.run_weekly_pipeline",
-            "schedule": crontab(day_of_week=0, hour=4, minute=0),  # Sunday 04:00 PKT
+        # ── 2. Intraday Alert Rules Evaluation (Mon–Fri 09:15 to 15:30 PKT Only) ──
+        # Evaluates price triggers and target thresholds during trading session.
+        "evaluate-alert-rules": {
+            "task": "app.tasks.alert_tasks.evaluate_alert_rules",
+            "schedule": crontab(minute="*/5", hour="9-15", day_of_week="1-5"),
         },
-        # ── Monitoring: daily ──
-        "daily-performance-monitoring": {
-            "task": "app.tasks.model_monitoring.monitor_performance",
-            "schedule": crontab(hour=6, minute=0),
+        # ── 3. News & Announcement Ingestion (Mon–Fri 09:00 to 17:00 PKT Only) ──
+        # Ingests market news during active trading and post-close disclosure window.
+        "news-ingestion-market-aware": {
+            "task": "app.tasks.scrape_news.run",
+            "schedule": crontab(minute="*/30", hour="9-17", day_of_week="1-5"),
         },
-        "daily-drift-detection": {
-            "task": "app.tasks.model_monitoring.detect_drift",
-            "schedule": crontab(hour=7, minute=0),
-        },
-        # ── Save the previous session's final quote snapshot once after close ──
-        # API handlers serve this shared Redis snapshot; they do not scrape PSX.
+        # ── 4. Market Close Final Snapshot (Mon–Fri 17:00 PKT Once) ──
+        # Ingests final session quotes and locks the daily close snapshot into Redis cache.
+        # This saved data serves all evening and weekend users until next morning.
         "refresh-market-close-snapshot": {
             "task": "app.tasks.refresh_market_cache.refresh_market_cache",
             "kwargs": {"refresh_reference": True},
             "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
         },
-        # ── Intraday shared snapshot during PSX open hours (task self-gates) ──
-        "refresh-market-session": {
-            "task": "app.tasks.refresh_market_cache.refresh_market_session",
-            "schedule": float(max(30, int(getattr(settings, "MARKET_SESSION_REFRESH_SECONDS", 60)))),
+        # ── 5. Master Daily Pipeline (Mon–Fri 18:00 PKT Once) ──
+        # Reconciles yesterday's predictions, saves today's closes, generates ML features,
+        # computes tomorrow's directional forecasts, and recalculates stock recommendations.
+        "daily-workflow": {
+            "task": "app.tasks.daily_workflow.run_daily_pipeline",
+            "schedule": crontab(hour=18, minute=0, day_of_week="1-5"),
         },
-        # ── Evaluate Alert Rules & Watchlist Targets every 5 minutes (task gates hours) ──
-        "evaluate-alert-rules": {
-            "task": "app.tasks.alert_tasks.evaluate_alert_rules",
-            "schedule": crontab(minute="*/5"),
-        },
-        # ── Daily Portfolio Risk Breach Monitoring ──
+        # ── 6. Daily Portfolio Risk Monitoring (Mon–Fri 18:30 PKT Once) ──
         "daily-risk-threshold-monitoring": {
             "task": "app.tasks.risk_tasks.check_all_portfolios_risk_breaches",
             "schedule": crontab(hour=18, minute=30, day_of_week="1-5"),
         },
-        # Sentiment and recommendation publication run as dependent final
-        # stages of daily-workflow, after OHLCV/features/forecast finish.
-        # ── News ingestion: every 30 min on the clock, task gates on market hours ──
-        "news-ingestion-market-aware": {
-            "task": "app.tasks.scrape_news.run",
-            "schedule": crontab(minute="*/30"),  # Every 30 min on the clock
+        # ── 7. Rescore Failed Sentiment (Mon–Fri 10:00 to 17:00 PKT Hourly) ──
+        "rescore-failed-sentiment": {
+            "task": "app.tasks.sentiment_tasks.rescore_failed_sentiment",
+            "schedule": crontab(minute=0, hour="10-17", day_of_week="1-5"),
         },
-        # Index membership changes rarely; refresh it weekly, not on every API day.
+        # ── 8. Daily Drift & Performance Monitoring (Daily 06:00 & 07:00 PKT) ──
+        "daily-performance-monitoring": {
+            "task": "app.tasks.model_monitoring.monitor_performance",
+            "schedule": crontab(hour=6, minute=0, day_of_week="1-5"),
+        },
+        "daily-drift-detection": {
+            "task": "app.tasks.model_monitoring.detect_drift",
+            "schedule": crontab(hour=7, minute=0, day_of_week="1-5"),
+        },
+        # ── 9. Weekly Index Constituents Refresh (Sunday 04:15 PKT Once) ──
         "refresh-market-constituents": {
             "task": "app.tasks.refresh_market_cache.refresh_market_cache",
             "kwargs": {"refresh_reference": True, "refresh_constituents": True},
             "schedule": crontab(day_of_week=0, minute=15, hour=4),
         },
-        # ── Rescore failed sentiment: hourly ──
-        "rescore-failed-sentiment": {
-            "task": "app.tasks.sentiment_tasks.rescore_failed_sentiment",
-            "schedule": crontab(minute=0),  # Hourly
+        # ── 10. Weekly ML Model Retraining (Sunday 04:00 PKT Once) ──
+        "weekly-retraining": {
+            "task": "app.tasks.weekly_retraining.run_weekly_pipeline",
+            "schedule": crontab(day_of_week=0, hour=4, minute=0),
         },
     },
 )

@@ -34,9 +34,7 @@ def _verify_clerk_webhook(
       - svix-signature: comma-separated signatures (e.g. v1,g0hM...)
     """
     if not webhook_secret:
-        # If no secret configured, skip in dev/test with a warning
-        log.warning("CLERK_WEBHOOK_SECRET is not configured; skipping signature verification.")
-        return True
+        return False
 
     msg_id = headers.get("svix-id")
     msg_timestamp = headers.get("svix-timestamp")
@@ -92,18 +90,34 @@ async def clerk_webhook(
     settings = get_settings()
     body_bytes = await request.body()
 
-    # ── 1. Signature Verification ──────────────────────────────────────────
+    # ── 1. Signature Verification (fail closed when secret missing outside local/test) ──
     headers = {
         "svix-id": svix_id or "",
         "svix-timestamp": svix_timestamp or "",
         "svix-signature": svix_signature or "",
     }
-    if settings.CLERK_WEBHOOK_SECRET:
-        if not _verify_clerk_webhook(body_bytes, headers, settings.CLERK_WEBHOOK_SECRET):
+    webhook_secret = (settings.CLERK_WEBHOOK_SECRET or "").strip()
+    if not webhook_secret:
+        if settings.ENVIRONMENT in {"staging", "production"}:
+            log.error("CLERK_WEBHOOK_SECRET is not configured; rejecting webhook.")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid webhook signature",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Clerk webhook is not configured",
             )
+        log.warning(
+            "CLERK_WEBHOOK_SECRET is not configured; rejecting webhook "
+            "(set secret even in development to accept events)."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Clerk webhook is not configured",
+        )
+
+    if not _verify_clerk_webhook(body_bytes, headers, webhook_secret):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid webhook signature",
+        )
 
     # ── 2. Parse Event ─────────────────────────────────────────────────────
     try:
@@ -156,13 +170,21 @@ async def clerk_webhook(
         first_name = (data.get("first_name") or "").strip()
         last_name = (data.get("last_name") or "").strip()
         full_name = f"{first_name} {last_name}".strip() or None
-        username = data.get("username") or primary_email.split("@")[0]
+        desired_username = (data.get("username") or primary_email.split("@")[0] or "user").strip()[:100]
         avatar_url = data.get("image_url") or data.get("profile_image_url")
 
-        # Find existing user in database
-        stmt = select(User).where((User.email == primary_email) | (User.username == username))
-        res = await db.execute(stmt)
-        user = res.scalars().first()
+        # Match by Clerk oauth_id first, then email only — never username (collision risk)
+        user = None
+        if clerk_user_id:
+            res = await db.execute(
+                select(User).where(
+                    (User.oauth_provider == "clerk") & (User.oauth_id == str(clerk_user_id))
+                )
+            )
+            user = res.scalars().first()
+        if user is None:
+            res = await db.execute(select(User).where(User.email == primary_email))
+            user = res.scalars().first()
 
         if user:
             # Update user info and automatic verification
@@ -173,19 +195,29 @@ async def clerk_webhook(
                 user.avatar_url = avatar_url
             user.is_verified = is_verified
             user.is_active = True
+            user.oauth_provider = "clerk"
+            if clerk_user_id:
+                user.oauth_id = str(clerk_user_id)
             log.info("Updated existing user %s via Clerk (is_verified=%s)", user.id, is_verified)
         else:
-            # Create new user provisioned via Clerk
+            # Ensure username uniqueness without matching on username for lookup
+            username = desired_username
+            clash = await db.execute(select(User).where(User.username == username))
+            if clash.scalars().first():
+                username = f"{desired_username[:80]}_{uuid4().hex[:8]}"
+
             user = User(
                 id=str(uuid4().hex),
                 email=primary_email,
                 username=username,
                 full_name=full_name,
                 avatar_url=avatar_url,
-                hashed_password=hash_password(uuid4().hex),  # Random unusable password for OAuth/Clerk users
+                hashed_password=hash_password(uuid4().hex),
                 is_active=True,
                 is_verified=is_verified,
                 is_admin=False,
+                oauth_provider="clerk",
+                oauth_id=str(clerk_user_id) if clerk_user_id else None,
             )
             db.add(user)
             log.info("Created new user %s via Clerk (is_verified=%s)", user.id, is_verified)
@@ -198,14 +230,23 @@ async def clerk_webhook(
         email_addresses = data.get("email_addresses", [])
         primary_email = email_addresses[0].get("email_address") if email_addresses else None
 
-        if primary_email:
-            stmt = select(User).where(User.email == primary_email.strip().lower())
-            res = await db.execute(stmt)
+        user = None
+        if clerk_user_id:
+            res = await db.execute(
+                select(User).where(
+                    (User.oauth_provider == "clerk") & (User.oauth_id == str(clerk_user_id))
+                )
+            )
             user = res.scalars().first()
-            if user:
-                user.is_active = False
-                await db.commit()
-                log.info("Deactivated user %s via Clerk user.deleted", user.id)
+        if user is None and primary_email:
+            res = await db.execute(
+                select(User).where(User.email == primary_email.strip().lower())
+            )
+            user = res.scalars().first()
+        if user:
+            user.is_active = False
+            await db.commit()
+            log.info("Deactivated user %s via Clerk user.deleted", user.id)
 
         return {"success": True, "status": "deleted"}
 

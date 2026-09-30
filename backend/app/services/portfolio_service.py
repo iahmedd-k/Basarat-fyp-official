@@ -529,7 +529,10 @@ class PortfolioService:
         name = symbol
         sector = "Other"
 
-        if quote and quote.get("symbol"):
+        # StockService returns a zero-filled placeholder for symbols missing
+        # from the live market frame. A symbol field alone is not evidence that
+        # the ticker exists; accept a quote only when it carries a positive price.
+        if quote and quote.get("symbol") and self._has_positive_price(quote):
             is_valid = True
             name = quote.get("name") or symbol
             sector = quote.get("sector") or "Other"
@@ -559,3 +562,13 @@ class PortfolioService:
             return stock
 
         return None
+
+    @staticmethod
+    def _has_positive_price(quote: dict) -> bool:
+        for key in ("current", "current_price", "price", "ltp"):
+            try:
+                if quote.get(key) is not None and Decimal(str(quote[key])) > 0:
+                    return True
+            except (ArithmeticError, TypeError, ValueError):
+                continue
+        return False

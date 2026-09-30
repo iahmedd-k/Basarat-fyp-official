@@ -84,9 +84,10 @@ def calculate_position(transactions: list[PortfolioTransaction]) -> Position:
             # New total cost = old cost + (qty * price) + fee
             total_cost_basis += qty * price + fee
             total_bought += qty
-            # Recalculate average cost
-            if total_bought > 0:
-                average_cost = total_cost_basis / total_bought
+            # Average cost over *current* open quantity (not lifetime buys)
+            remaining = total_bought - total_sold
+            if remaining > 0:
+                average_cost = total_cost_basis / remaining
 
         elif txn.transaction_type == TransactionType.SELL:
             if total_bought - total_sold < qty:

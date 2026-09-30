@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     BadRequestError,
-    ConflictError,
     NotFoundError,
     UnauthorizedError,
     ValidationFailedError,
@@ -48,12 +47,21 @@ class AuthService:
 
     async def signup(self, email: str, password: str, full_name: str | None = None) -> dict:
         email = email.strip().lower()
+        generic_message = "Account created. Please check your email for the verification code."
 
         existing = await self.db.execute(
             select(User).where((User.email == email))
         )
-        if existing.scalars().first():
-            raise ConflictError("A user with this email already exists.")
+        existing_user = existing.scalars().first()
+        if existing_user:
+            # Anti-enumeration: same response whether email exists or not.
+            # Re-send OTP only for unverified accounts so signup can continue.
+            if not existing_user.is_verified:
+                try:
+                    await self._send_verification_otp(existing_user)
+                except Exception:
+                    log.warning("Failed to re-send verification OTP for existing signup attempt")
+            return {"message": generic_message}
 
         username = await self._generate_unique_username()
 
@@ -78,7 +86,7 @@ class AuthService:
         # Generate and send OTP
         await self._send_verification_otp(user)
 
-        return {"message": "Account created. Please check your email for the verification code."}
+        return {"message": generic_message}
 
     async def verify_email(self, email: str, code: str) -> dict:
         email = email.strip().lower()
@@ -161,9 +169,11 @@ class AuthService:
             raise BadRequestError("Google ID token is required.")
 
         settings = get_settings()
-        payload = None
+        if not settings.GOOGLE_CLIENT_ID:
+            raise UnauthorizedError("Google sign-in is not configured.")
 
-        # 1. Primary verification: Google TokenInfo API via HTTP
+        payload = None
+        # Signature + claims verification via Google tokeninfo only (no unverified fallback).
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
@@ -172,30 +182,44 @@ class AuthService:
                 )
                 if resp.status_code == 200:
                     payload = resp.json()
+                else:
+                    log.warning("Google tokeninfo rejected token: HTTP %s", resp.status_code)
         except Exception as exc:
             log.warning("Google tokeninfo HTTP call failed: %s", exc)
-
-        # 2. Fallback verification: parse unverified claims if valid JWT structure
-        if not payload:
-            try:
-                from jose import jwt as jose_jwt
-                payload = jose_jwt.get_unverified_claims(id_token)
-            except Exception:
-                pass
 
         if not payload or not isinstance(payload, dict):
             raise UnauthorizedError("Invalid or expired Google ID token.")
 
-        # Audience validation when configured
         aud = payload.get("aud")
-        if settings.GOOGLE_CLIENT_ID and aud and aud != settings.GOOGLE_CLIENT_ID:
-            log.warning("Google token aud '%s' does not match configured '%s'", aud, settings.GOOGLE_CLIENT_ID)
+        if isinstance(aud, (list, tuple)):
+            aud_ok = settings.GOOGLE_CLIENT_ID in aud
+        else:
+            aud_ok = aud == settings.GOOGLE_CLIENT_ID
+        if not aud_ok:
+            raise UnauthorizedError("Invalid Google ID token audience.")
+
+        iss = str(payload.get("iss") or "")
+        if iss not in {"accounts.google.com", "https://accounts.google.com"}:
+            raise UnauthorizedError("Invalid Google ID token issuer.")
+
+        try:
+            exp = int(payload.get("exp") or 0)
+        except (TypeError, ValueError):
+            exp = 0
+        if exp and exp < int(datetime.now(timezone.utc).timestamp()):
+            raise UnauthorizedError("Google ID token has expired.")
+
+        email_verified = payload.get("email_verified")
+        if email_verified is not None and str(email_verified).lower() not in {"true", "1"}:
+            raise UnauthorizedError("Google account email is not verified.")
 
         email = (payload.get("email") or "").strip().lower()
         if not email:
             raise BadRequestError("Google account has no associated email address.")
 
         google_sub = str(payload.get("sub") or "").strip()
+        if not google_sub:
+            raise UnauthorizedError("Invalid Google ID token subject.")
         full_name = payload.get("name") or payload.get("given_name")
         avatar_url = payload.get("picture")
 
@@ -252,15 +276,19 @@ class AuthService:
         if not id_token or not str(id_token).strip():
             raise BadRequestError("Apple identity token is required.")
 
-        payload = None
+        settings = get_settings()
+        if not settings.APPLE_CLIENT_ID:
+            raise UnauthorizedError("Apple sign-in is not configured.")
+
         try:
-            from jose import jwt as jose_jwt
-            payload = jose_jwt.get_unverified_claims(id_token)
-            iss = payload.get("iss")
-            if iss and iss != "https://appleid.apple.com":
-                raise UnauthorizedError("Invalid Apple token issuer.")
+            payload = await self._verify_apple_identity_token(
+                id_token.strip(),
+                audience=settings.APPLE_CLIENT_ID,
+            )
+        except UnauthorizedError:
+            raise
         except Exception as exc:
-            log.warning("Apple token claims parsing error: %s", exc)
+            log.warning("Apple token verification failed: %s", exc)
             raise UnauthorizedError("Invalid Apple identity token.")
 
         if not payload or not isinstance(payload, dict):
@@ -340,14 +368,22 @@ class AuthService:
             select(RefreshToken).where(
                 RefreshToken.jti == jti,
                 RefreshToken.user_id == user_id,
-                RefreshToken.revoked == False,
-                RefreshToken.expires_at > datetime.now(timezone.utc)
-            )
+            ).with_for_update()
         )
         stored_token = rt.scalars().first()
         if not stored_token:
+            raise UnauthorizedError("Invalid or expired refresh token.")
+        if stored_token.revoked:
+            # Persist the replay response's account-wide revocation before the
+            # route raises 401 (the request dependency rolls back on exceptions).
             await self._revoke_all_user_tokens(user_id)
+            await self.db.commit()
             raise UnauthorizedError("Invalid or reused refresh token. Please log in again.")
+        expires_at = stored_token.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= datetime.now(timezone.utc):
+            raise UnauthorizedError("Invalid or expired refresh token.")
 
         user = await self.db.get(User, user_id)
         if user is None:
@@ -517,9 +553,26 @@ class AuthService:
         reset_token_record.used = True
         await self.db.flush()
 
-        # Create temporary signed JWT grant for setting the password
+        # Create temporary signed JWT grant for setting the password (single-use via DB jti)
         settings = get_settings()
         grant_token = create_password_reset_grant_token(user.id, user.email)
+        grant_payload = decode_password_reset_grant_token(grant_token)
+        grant_jti = (grant_payload or {}).get("jti")
+        if not grant_jti:
+            raise BadRequestError("Failed to issue reset session. Please try again.")
+
+        grant_expires = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.PASSWORD_RESET_GRANT_EXPIRE_MINUTES
+        )
+        grant_record = PasswordResetToken(
+            token_hash=_hash_code(f"grant:{grant_jti}"),
+            user_id=user.id,
+            expires_at=grant_expires,
+            used=False,
+        )
+        self.db.add(grant_record)
+        await self.db.flush()
+
         return {
             "reset_token": grant_token,
             "expires_in": settings.PASSWORD_RESET_GRANT_EXPIRE_MINUTES * 60,
@@ -542,9 +595,23 @@ class AuthService:
 
         if reset_token:
             payload = decode_password_reset_grant_token(reset_token)
-            if not payload or not payload.get("sub"):
+            if not payload or not payload.get("sub") or not payload.get("jti"):
                 raise BadRequestError("Invalid or expired reset session. Please request a new code.")
             user_id = payload.get("sub")
+            grant_jti = payload.get("jti")
+            grant_hash = _hash_code(f"grant:{grant_jti}")
+            grant_result = await self.db.execute(
+                select(PasswordResetToken).where(
+                    PasswordResetToken.user_id == user_id,
+                    PasswordResetToken.token_hash == grant_hash,
+                    PasswordResetToken.used == False,
+                    PasswordResetToken.expires_at > datetime.now(timezone.utc),
+                )
+            )
+            grant_record = grant_result.scalars().first()
+            if not grant_record:
+                raise BadRequestError("Invalid or expired reset session. Please request a new code.")
+            grant_record.used = True
             user = await self.db.get(User, user_id)
             if user is None:
                 raise NotFoundError("User not found.")
@@ -579,6 +646,69 @@ class AuthService:
         await self._revoke_all_user_tokens(user.id)
         await self.email_service.send_password_changed_alert(user.email)
 
+    async def _verify_apple_identity_token(self, id_token: str, audience: str) -> dict:
+        """Verify Apple identity token signature against Apple JWKS (RS256)."""
+        import base64
+
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from jose import jwt as jose_jwt
+        from jose.exceptions import JWTError as JoseJWTError
+
+        try:
+            header = jose_jwt.get_unverified_header(id_token)
+        except Exception as exc:
+            raise UnauthorizedError("Invalid Apple identity token.") from exc
+
+        kid = header.get("kid")
+        alg = header.get("alg") or "RS256"
+        if not kid or alg != "RS256":
+            raise UnauthorizedError("Invalid Apple identity token header.")
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get("https://appleid.apple.com/auth/keys")
+                resp.raise_for_status()
+                jwks = resp.json()
+        except Exception as exc:
+            log.warning("Failed to fetch Apple JWKS: %s", exc)
+            raise UnauthorizedError("Unable to verify Apple identity token.") from exc
+
+        key_data = next((k for k in (jwks.get("keys") or []) if k.get("kid") == kid), None)
+        if not key_data or key_data.get("kty") != "RSA":
+            raise UnauthorizedError("Apple identity token signing key not found.")
+
+        def _b64url_uint(val: str) -> int:
+            pad = "=" * (-len(val) % 4)
+            return int.from_bytes(base64.urlsafe_b64decode(val + pad), "big")
+
+        try:
+            public_numbers = rsa.RSAPublicNumbers(
+                _b64url_uint(key_data["e"]),
+                _b64url_uint(key_data["n"]),
+            )
+            public_key = public_numbers.public_key()
+            from cryptography.hazmat.primitives import serialization
+
+            public_pem = public_key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            payload = jose_jwt.decode(
+                id_token,
+                public_pem,
+                algorithms=["RS256"],
+                audience=audience,
+                issuer="https://appleid.apple.com",
+                options={"verify_at_hash": False},
+            )
+        except JoseJWTError as exc:
+            raise UnauthorizedError("Invalid Apple identity token.") from exc
+        except Exception as exc:
+            log.warning("Apple token cryptographic verification failed: %s", exc)
+            raise UnauthorizedError("Invalid Apple identity token.") from exc
+
+        return payload
+
     async def _send_verification_otp(self, user: User) -> None:
         settings = get_settings()
         code = _generate_otp()
@@ -606,7 +736,10 @@ class AuthService:
         return f"user_{uuid4().hex[:8]}_{int(datetime.now(timezone.utc).timestamp())}"
 
     async def _create_token_pair(self, user: User) -> dict:
-        token_data = {"sub": user.id}
+        token_data = {
+            "sub": user.id,
+            "tv": int(getattr(user, "token_version", 0) or 0),
+        }
         access_token = create_access_token(token_data)
         refresh_token = create_refresh_token(token_data)
         rt_payload = decode_token(refresh_token)
@@ -625,6 +758,13 @@ class AuthService:
             "token_type": "bearer",
             "user": UserSummary.model_validate(user),
         }
+
+    async def _bump_token_version(self, user_id: str) -> None:
+        user = await self.db.get(User, user_id)
+        if user is None:
+            return
+        user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+        await self.db.flush()
 
     async def _revoke_token_by_jti(self, jti: str, user_id: str) -> None:
         rt = await self.db.execute(
@@ -646,4 +786,5 @@ class AuthService:
                 RefreshToken.revoked == False
             )
         )
+        await self._bump_token_version(user_id)
         await self.db.flush()

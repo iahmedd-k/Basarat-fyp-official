@@ -157,10 +157,10 @@ async def get_feed(
             limit=limit,
         )
 
+        liked_post_ids = await service.get_liked_post_ids([post.id for post in posts], user.id)
         post_responses = []
         for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(_build_post_response(post, liked_by_me))
+            post_responses.append(_build_post_response(post, post.id in liked_post_ids))
 
         return CommunityPostListResponse(
             posts=post_responses,
@@ -200,10 +200,10 @@ async def search_posts(
             limit=limit,
         )
 
+        liked_post_ids = await service.get_liked_post_ids([post.id for post in posts], user.id)
         post_responses = []
         for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(_build_post_response(post, liked_by_me))
+            post_responses.append(_build_post_response(post, post.id in liked_post_ids))
 
         return CommunityPostListResponse(
             posts=post_responses,
@@ -236,10 +236,10 @@ async def get_market_posts(
             limit=limit,
         )
 
+        liked_post_ids = await service.get_liked_post_ids([post.id for post in posts], user.id)
         post_responses = []
         for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(_build_post_response(post, liked_by_me))
+            post_responses.append(_build_post_response(post, post.id in liked_post_ids))
 
         return CommunityPostListResponse(
             posts=post_responses,
@@ -273,10 +273,10 @@ async def get_stock_posts(
             limit=limit,
         )
 
+        liked_post_ids = await service.get_liked_post_ids([post.id for post in posts], user.id)
         post_responses = []
         for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(_build_post_response(post, liked_by_me))
+            post_responses.append(_build_post_response(post, post.id in liked_post_ids))
 
         return CommunityPostListResponse(
             posts=post_responses,
@@ -303,7 +303,9 @@ async def get_post(
         post_data = await service.get_post_with_details(
             post_id,
             current_user_id=user.id,
-            include_hidden=is_admin or True,
+            # Load hidden posts so owners/admins can see them; visibility is
+            # checked immediately below for everyone else.
+            include_hidden=True,
         )
         post = post_data["post"]
 

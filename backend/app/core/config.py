@@ -23,11 +23,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # CORS
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-    ]
+    CORS_ORIGINS: list[str] = ["*"]
     TRUSTED_PROXY_IPS: list[str] = []
 
     # Database
@@ -157,10 +153,14 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT in {"staging", "production"}:
             if self.DEBUG:
                 raise ValueError("DEBUG must be false outside development")
-            if not self.CORS_ORIGINS:
-                raise ValueError("CORS_ORIGINS must be explicitly configured outside development")
+            if not self.CORS_ORIGINS or any(o.strip() == "*" for o in self.CORS_ORIGINS if o):
+                raise ValueError("CORS_ORIGINS must be an explicit allowlist outside development (no '*')")
             if "postgres:postgres@" in self.DATABASE_URL or "adminadmin" in self.DATABASE_URL:
                 raise ValueError("DATABASE_URL must not use development credentials outside development")
+            if not self.CLERK_WEBHOOK_SECRET:
+                logging.getLogger(__name__).warning(
+                    "CLERK_WEBHOOK_SECRET is empty; POST /webhooks/clerk will reject all events."
+                )
             if self.FIREBASE_ENABLED and (
                 not self.FIREBASE_CREDENTIALS_PATH
                 or not Path(self.FIREBASE_CREDENTIALS_PATH).is_file()

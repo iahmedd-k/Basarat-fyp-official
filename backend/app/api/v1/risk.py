@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authorization import get_current_user
 from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError
 from app.core.rate_limiter import limiter
+from app.core.redis import cache_get, cache_set
 from app.db.session import get_db
 from app.models.portfolio import PortfolioTransaction, TransactionType
 from app.models.stock import Stock
@@ -32,6 +33,30 @@ from app.ml.serving.schemas import (
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Ownership map so PENDING/FAILURE polls cannot leak job existence across users.
+_MC_OWNER_KEY = "risk:monte_carlo:owner:{task_id}"
+_MC_OWNER_TTL_SECONDS = 60 * 60 * 24  # 24h
+
+
+async def _register_monte_carlo_owner(task_id: str, user_id: str) -> None:
+    await cache_set(_MC_OWNER_KEY.format(task_id=task_id), user_id, ttl_seconds=_MC_OWNER_TTL_SECONDS)
+
+
+async def _assert_monte_carlo_owner(task_id: str, user_id: str, result: object | None = None) -> None:
+    """Raise NotFoundError unless the caller owns this job.
+
+    Prefer the registry written at dispatch time (covers PENDING/FAILURE).
+    Fall back to SUCCESS payload user_id when the registry entry expired.
+    """
+    owner = await cache_get(_MC_OWNER_KEY.format(task_id=task_id))
+    if owner and owner == user_id:
+        return
+    if isinstance(result, dict):
+        result_owner = result.get("user_id")
+        if result_owner and result_owner == user_id:
+            return
+    raise NotFoundError("Task not found.")
 
 
 @dataclass
@@ -171,10 +196,11 @@ async def run_monte_carlo(
             horizon_days=data.horizon_days,
             seed=data.seed,
         )
-        task_id = getattr(task_future, "id", uuid.uuid4().hex)
+        task_id = str(getattr(task_future, "id", uuid.uuid4().hex))
+        await _register_monte_carlo_owner(task_id, user.id)
 
         return MonteCarloResponse(
-            job_id=str(task_id),
+            job_id=task_id,
             status="pending",
             num_simulations=data.num_simulations,
             horizon_days=data.horizon_days,
@@ -209,6 +235,9 @@ async def get_monte_carlo_result(
             task_result = AsyncResult(task_id, app=run_monte_carlo_task.app)
             state, result, error = task_result.state, task_result.result, None
 
+        # Enforce ownership for every state (PENDING/FAILURE/SUCCESS/other).
+        await _assert_monte_carlo_owner(task_id, user.id, result=result if state == "SUCCESS" else None)
+
         if state == "PENDING":
             return MonteCarloResultResponse(
                 job_id=task_id, status="pending",
@@ -222,9 +251,6 @@ async def get_monte_carlo_result(
         elif state == "SUCCESS":
             if not isinstance(result, dict):
                 raise ServiceUnavailableError("Simulation returned an invalid result.")
-            result_owner = result.get("user_id")
-            if not result_owner or result_owner != user.id:
-                raise NotFoundError("Task not found.")
 
             calc_failed = result.get("status") in {"error", "failed"}
             return MonteCarloResultResponse(

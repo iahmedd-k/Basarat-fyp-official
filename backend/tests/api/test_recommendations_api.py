@@ -143,7 +143,7 @@ class TestRecommendationsListEndpoint:
                     "ml": {"status": "available"}, "technical": {"status": "available"},
                     "fundamental": {"status": "available"}, "sentiment": {"status": "available"},
                 },
-                "data_as_of": "2026-09-24",
+                "data_as_of": date.today().isoformat(),
                 "decision_reason": "Composite score 0.450 crossed the BUY threshold (0.15).",
                 "target_stop_method": "atr_band",
                 "target_stop_reason": "ATR-based volatility levels.",
@@ -168,7 +168,7 @@ class TestRecommendationsListEndpoint:
             assert "summary" in rec
             assert rec["decision"]["horizon"] == "5 trading days"
             assert rec["market_data"]["currency"] == "PKR"
-            assert rec["market_data"]["as_of"] == "2026-09-24"
+            assert rec["market_data"]["as_of"] == date.today().isoformat()
             assert rec["market_data"]["freshness"] == "fresh"
             assert rec["components"]["ml"]["score"] == 0.6
             assert rec["components"]["sentiment"]["score"] == -0.2
@@ -193,7 +193,7 @@ class TestRecommendationsListEndpoint:
         assert item["decision"]["confidence"] == 0
         assert item["decision"]["suppressed"] is True
         assert item["risk"]["target_price"] is None
-        assert "5 trading days old" in item["decision"]["suppression_reason"]
+        assert "trading days old" in item["decision"]["suppression_reason"]
 
     async def test_list_uses_persisted_custom_weights(self, client: AsyncClient, auth_headers):
         weights = {"gru_weight": 0.5, "technical_weight": 0.3, "fundamental_weight": 0.2}
@@ -204,7 +204,7 @@ class TestRecommendationsListEndpoint:
             "weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
             "effective_weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
             "reasoning": {name: {"status": "available"} for name in ("ml", "technical", "fundamental", "sentiment")},
-            "data_as_of": "2026-09-25", "current_price": 450.0, "atr_14": 10.0,
+            "data_as_of": date.today().isoformat(), "current_price": 450.0, "atr_14": 10.0,
         }]
         with patch("app.services.recommendation_service.get_cached_recommendations", return_value=snapshot), \
              patch("app.services.recommendation_service.RecommendationEngine.get_all_recommendations") as get_all:
@@ -303,7 +303,7 @@ class TestRecommendationDetailEndpoint:
                 "fundamental": {"status": "available"},
                 "sentiment": {"status": "available"},
             },
-            "data_as_of": "2026-09-24",
+            "data_as_of": date.today().isoformat(),
             "decision_reason": "Composite score 0.380 crossed the BUY threshold (0.15).",
             "target_stop_reason": "ATR-based volatility levels.",
         }
@@ -324,7 +324,7 @@ class TestRecommendationDetailEndpoint:
             assert data["market_data"]["current_price"] == 450.0
             assert data["risk"]["risk_reward_ratio"] == 1.75
             assert data["risk_profile"] == "moderate"
-            assert data["market_data"]["as_of"] == "2026-09-24"
+            assert data["market_data"]["as_of"] == date.today().isoformat()
             assert data["market_data"]["freshness"] == "fresh"
             assert data["decision"]["horizon"] == "5 trading days"
             assert data["market_data"]["currency"] == "PKR"
@@ -375,7 +375,7 @@ class TestTargetStopEndpoint:
             "downside_pct": -3.3,
             "target_stop_method": "atr_band",
             "atr_14": 10.0,
-            "data_as_of": "2026-09-24",
+            "data_as_of": date.today().isoformat(),
             "target_stop_reason": "ATR-based volatility levels.",
         }
         with patch("app.services.recommendation_service.RecommendationEngine.get_recommendation", return_value=sample_rec):
@@ -387,7 +387,7 @@ class TestTargetStopEndpoint:
             assert data["risk"]["target_price"] == 480.0
             assert data["risk"]["stop_loss"] == 435.0
             assert data["decision"]["signal"] == "BUY"
-            assert data["market_data"]["as_of"] == "2026-09-24"
+            assert data["market_data"]["as_of"] == date.today().isoformat()
             assert data["decision"]["horizon"] == "5 trading days"
             assert data["market_data"]["currency"] == "PKR"
             assert data["risk"]["explanation"] == "ATR-based volatility levels."

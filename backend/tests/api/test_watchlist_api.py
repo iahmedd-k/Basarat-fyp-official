@@ -269,3 +269,22 @@ class TestWatchlistEndpoints:
             json={"symbol": "123$$$BAD"},
         )
         assert bad_resp.status_code == 422
+
+    async def test_toggle_watchlist_item(self, client: AsyncClient, auth_headers: dict):
+        # 1. Toggle ON (symbol added to default watchlist)
+        toggle_on = await client.post("/api/v1/watchlists/toggle/OGDC", headers=auth_headers)
+        assert toggle_on.status_code == 200
+        data_on = toggle_on.json()
+        assert data_on["symbol"] == "OGDC"
+        assert data_on["is_in_watchlist"] is True
+        assert data_on["action"] == "added"
+        assert "watchlist_id" in data_on
+
+        # 2. Toggle OFF (symbol removed from default watchlist)
+        toggle_off = await client.post("/api/v1/watchlists/toggle/OGDC", headers=auth_headers)
+        assert toggle_off.status_code == 200
+        data_off = toggle_off.json()
+        assert data_off["symbol"] == "OGDC"
+        assert data_off["is_in_watchlist"] is False
+        assert data_off["action"] == "removed"
+

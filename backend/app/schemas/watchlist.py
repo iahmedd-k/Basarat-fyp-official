@@ -18,6 +18,9 @@ class WatchlistItemResponse(BaseModel):
     symbol: str
     name: str | None = None
     sector: str | None = None
+    added_price: float | None = Field(None, description="Price at the moment the stock was added to the watchlist")
+    change_since_added: float | None = Field(None, description="Absolute price gain or loss in PKR since adding to watchlist")
+    change_since_added_pct: float | None = Field(None, description="Percentage gain or loss since adding to watchlist")
     target_price: float | None = None
     notes: str | None = None
     current_price: float | None = None
@@ -26,6 +29,10 @@ class WatchlistItemResponse(BaseModel):
     high: float | None = None
     low: float | None = None
     volume: int | None = None
+    forecast_direction: str | None = Field(None, description="Latest AI price prediction: bullish, bearish, sideways")
+    signal_rating: str | None = Field(None, description="AI Signal Rating: Strong Buy, Buy, Neutral / Hold, Sell, Strong Sell")
+    sentiment_label: str | None = Field(None, description="FinBERT News Sentiment: Positive, Neutral, Negative")
+    sentiment_score: float | None = Field(None, description="Aggregated sentiment score in range [-1.0, 1.0]")
     is_stale: bool = False
     created_at: str
     updated_at: str
@@ -70,3 +77,12 @@ class WatchlistCheckResponse(BaseModel):
     symbol: str
     is_in_watchlist: bool
     watchlist_ids: list[str] = []
+
+
+class WatchlistToggleResponse(BaseModel):
+    symbol: str
+    is_in_watchlist: bool
+    action: str = Field(..., description="Action performed: 'added' or 'removed'")
+    watchlist_id: str
+    item: WatchlistItemResponse | None = None
+    message: str

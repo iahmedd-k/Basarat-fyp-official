@@ -14,6 +14,7 @@ from app.core.exceptions import NotFoundError
 from app.models.assistant import AssistantConversation, AssistantMessage
 from app.models.user import User
 from app.services.assistant_context import ContextBuilder
+from app.services.assistant_format import format_assistant_plain_text
 from app.services.assistant_safety import (
     classify_intent,
     enforce_output_safety,
@@ -272,6 +273,7 @@ class AssistantService:
             response = self._grounded_fallback(message, context)
 
         response, output_filtered, violation_type = enforce_output_safety(response)
+        response = format_assistant_plain_text(response)
         if output_filtered:
             log.warning("Output safety adjusted response for user %s: %s", user_id, violation_type)
 
@@ -336,6 +338,7 @@ class AssistantService:
 
         raw = "".join(live_chunks).strip()
         full_response, output_filtered, violation_type = enforce_output_safety(raw)
+        full_response = format_assistant_plain_text(full_response)
         if output_filtered:
             log.warning("Stream output safety adjusted for user %s: %s", user_id, violation_type)
 

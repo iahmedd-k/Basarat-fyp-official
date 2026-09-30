@@ -4,11 +4,13 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy import select, update, delete, desc, or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.core.redis import cache_get, cache_set
 from app.models.ipo import IPO
 from app.schemas.ipo import (
     IPOStatus,
+    IPOCreate,
+    IPOUpdate,
     IPOResponse,
     IPOListResponse,
     IPOCalendarMilestone,
@@ -406,3 +408,46 @@ class IPOService:
         )
         await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
         return response
+
+    # ───────────────────────────────────────────────────────────────────
+    # Admin CRUD
+    # ───────────────────────────────────────────────────────────────────
+
+    async def create_ipo(self, data: IPOCreate) -> IPOResponse:
+        sym = data.symbol.strip().upper()
+        existing = await self.db.execute(select(IPO).where(IPO.symbol == sym))
+        if existing.scalars().first():
+            raise ConflictError(f"IPO '{sym}' already exists.")
+        payload = data.model_dump()
+        payload["symbol"] = sym
+        payload["status"] = data.status.value if isinstance(data.status, IPOStatus) else str(data.status)
+        ipo = IPO(**payload)
+        self.db.add(ipo)
+        await self.db.flush()
+        await self.db.refresh(ipo)
+        return self._format_ipo_response(ipo)
+
+    async def update_ipo(self, symbol: str, data: IPOUpdate) -> IPOResponse:
+        sym = symbol.strip().upper()
+        res = await self.db.execute(select(IPO).where(IPO.symbol == sym))
+        ipo = res.scalars().first()
+        if not ipo:
+            raise NotFoundError(f"IPO '{sym}' not found.")
+        updates = data.model_dump(exclude_unset=True)
+        if "status" in updates and updates["status"] is not None:
+            status_val = updates["status"]
+            updates["status"] = status_val.value if isinstance(status_val, IPOStatus) else str(status_val)
+        for key, value in updates.items():
+            setattr(ipo, key, value.strip() if isinstance(value, str) else value)
+        await self.db.flush()
+        await self.db.refresh(ipo)
+        return self._format_ipo_response(ipo)
+
+    async def delete_ipo(self, symbol: str) -> None:
+        sym = symbol.strip().upper()
+        res = await self.db.execute(select(IPO).where(IPO.symbol == sym))
+        ipo = res.scalars().first()
+        if not ipo:
+            raise NotFoundError(f"IPO '{sym}' not found.")
+        await self.db.delete(ipo)
+        await self.db.flush()

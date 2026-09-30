@@ -1103,21 +1103,21 @@ class StockService:
             comp_name = self._company_name(symbol)
 
         if not desc:
-            desc = f"{comp_name} is an active public listed company traded on the Pakistan Stock Exchange under symbol {symbol}, categorized under the {sector or 'equity market'} sector."
+            desc = None
         if not ceo:
-            ceo = "Executive Management (Disclosed in Annual Financials)"
+            ceo = None
         if not chairperson:
-            chairperson = "Board of Directors (Disclosed in Annual Financials)"
+            chairperson = None
         if not secretary:
-            secretary = "Corporate Secretariat (Disclosed in Annual Financials)"
+            secretary = None
         if not website:
-            website = f"https://dps.psx.com.pk/company/{symbol}"
+            website = None
         if not address:
-            address = "Pakistan Stock Exchange Road, Karachi, Pakistan"
+            address = None
 
         company_profile = {
             "name": comp_name,
-            "sector": sector or "General Market",
+            "sector": sector,
             "business_description": desc,
             "ceo": ceo,
             "chairperson": chairperson,
@@ -1129,9 +1129,16 @@ class StockService:
 
         # Obtain reference quote for fallback calculation
         batch = self.get_quote_batch([symbol])
-        curr_price = 100.0
+        curr_price = None
         if batch and batch[0].get("current"):
-            curr_price = float(batch[0]["current"] or batch[0].get("ldcp") or 100.0)
+            try:
+                curr_price = float(batch[0]["current"] or batch[0].get("ldcp") or 0)
+                if curr_price <= 0:
+                    curr_price = None
+            except (TypeError, ValueError):
+                curr_price = None
+        if curr_price is None:
+            curr_price = 0.0
 
         # 2. Equity Profile
         eq = info_dict.get("Equity Profile", {}) if isinstance(info_dict.get("Equity Profile"), dict) else {}

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, Text, Index, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, Index, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -21,6 +21,8 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     oauth_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     oauth_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # Bumped to invalidate outstanding access JWTs (logout / password change / reset)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     # Risk profile
     risk_tolerance: Mapped[str | None] = mapped_column(String(20), default="moderate")
@@ -94,7 +96,7 @@ class Device(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: uuid4().hex)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
-    fcm_token: Mapped[str] = mapped_column(String(500), nullable=False)
+    fcm_token: Mapped[str] = mapped_column(String(500), nullable=False, unique=True, index=True)
     device_name: Mapped[str | None] = mapped_column(String(255))
     platform: Mapped[str | None] = mapped_column(String(50))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

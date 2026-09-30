@@ -28,18 +28,18 @@ async def register_device(
     - **platform**: Client OS (`android`, `ios`, `web`).
     - **device_name**: Optional human-readable device identifier (e.g. `Samsung S23`).
 
-    If the token already exists for the user, it reactivates the device (`is_active = true`).
+    FCM tokens are globally unique. If another account already owns the token, it is
+    reassigned to the current user (prevents cross-user push hijacking).
     """
     try:
+        # Global lookup — one FCM token maps to at most one device/user
         result = await db.execute(
-            select(Device).where(
-                Device.user_id == user.id,
-                Device.fcm_token == data.fcm_token,
-            )
+            select(Device).where(Device.fcm_token == data.fcm_token)
         )
         existing = result.scalars().first()
 
         if existing:
+            existing.user_id = user.id
             existing.platform = data.platform
             existing.device_name = data.device_name
             existing.is_active = True
@@ -72,7 +72,7 @@ async def register_device(
             is_active=device.is_active,
             created_at=device.created_at.isoformat() if device.created_at else "",
         )
-    except Exception as exc:
+    except Exception:
         raise ServiceUnavailableError("Failed to register device")
 
 
@@ -86,7 +86,6 @@ async def unregister_device(
     result = await db.execute(select(Device).where(Device.id == device_id, Device.user_id == user.id))
     device = result.scalars().first()
     if device is None:
-        from app.core.exceptions import NotFoundError
         raise NotFoundError("Device not found")
     device.is_active = False
     await db.flush()

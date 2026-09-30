@@ -145,41 +145,52 @@ async def get_stock_forecast(
 
                 stock_svc = StockService()
                 quote = stock_svc.get_quote(result["symbol"])
-                curr_p = (
-                    float(quote.get("current") or quote.get("ldcp") or 100.0) if quote else 100.0
-                )
-                atr = curr_p * (0.015 if horizon == "1D" else 0.035 if horizon == "1W" else 0.075)
-                mult = 2.0 if horizon == "1D" else 3.0 if horizon == "1W" else 4.0
-                dir_str = str(result.get("direction", "sideways")).lower()
-                if dir_str in ("bullish", "buy", "up"):
-                    tp = round(curr_p + (atr * mult), 2)
-                    sl = round(curr_p - (atr * mult * 0.75), 2)
-                elif dir_str in ("bearish", "sell", "down"):
-                    tp = round(curr_p - (atr * mult), 2)
-                    sl = round(curr_p + (atr * mult * 0.75), 2)
+                curr_raw = None
+                if quote:
+                    curr_raw = quote.get("current")
+                    if curr_raw is None:
+                        curr_raw = quote.get("ldcp")
+                if curr_raw is None:
+                    # Do not invent prices — leave target/stop unavailable
+                    target_stop = None
                 else:
-                    tp = round(curr_p + (atr * mult), 2)
-                    sl = round(curr_p - (atr * mult), 2)
-                up_pct = round((tp - curr_p) / curr_p * 100, 2)
-                down_pct = round((sl - curr_p) / curr_p * 100, 2)
-                rr = round(abs(tp - curr_p) / max(0.01, abs(curr_p - sl)), 2)
-                target_stop = {
-                    "symbol": result["symbol"],
-                    "current_price": round(curr_p, 2),
-                    "target_price": tp,
-                    "stop_loss": sl,
-                    "expected_range": {"low": min(sl, tp), "high": max(sl, tp), "method": "atr_band"},
-                    "upside_pct": up_pct,
-                    "downside_pct": down_pct,
-                    "risk_reward_ratio": rr,
-                    "method": "atr_band",
-                }
+                    curr_p = float(curr_raw)
+                    if curr_p <= 0:
+                        target_stop = None
+                    else:
+                        atr = curr_p * (0.015 if horizon == "1D" else 0.035 if horizon == "1W" else 0.075)
+                        mult = 2.0 if horizon == "1D" else 3.0 if horizon == "1W" else 4.0
+                        dir_str = str(result.get("direction", "sideways")).lower()
+                        if dir_str in ("bullish", "buy", "up"):
+                            tp = round(curr_p + (atr * mult), 2)
+                            sl = round(curr_p - (atr * mult * 0.75), 2)
+                        elif dir_str in ("bearish", "sell", "down"):
+                            tp = round(curr_p - (atr * mult), 2)
+                            sl = round(curr_p + (atr * mult * 0.75), 2)
+                        else:
+                            tp = round(curr_p + (atr * mult), 2)
+                            sl = round(curr_p - (atr * mult), 2)
+                        up_pct = round((tp - curr_p) / curr_p * 100, 2)
+                        down_pct = round((sl - curr_p) / curr_p * 100, 2)
+                        rr = round(abs(tp - curr_p) / max(0.01, abs(curr_p - sl)), 2)
+                        target_stop = {
+                            "symbol": result["symbol"],
+                            "current_price": round(curr_p, 2),
+                            "target_price": tp,
+                            "stop_loss": sl,
+                            "expected_range": {"low": min(sl, tp), "high": max(sl, tp), "method": "atr_band"},
+                            "upside_pct": up_pct,
+                            "downside_pct": down_pct,
+                            "risk_reward_ratio": rr,
+                            "method": "atr_band",
+                        }
             except Exception as exc:
                 log.warning(
                     "Fallback target/stop computation failed for %s: %s",
                     result["symbol"],
                     exc,
                 )
+                target_stop = None
 
         return _build_forecast_response(result, horizon, target_stop)
 
@@ -246,18 +257,15 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
         risk_reward_ratio = target_stop.get("risk_reward_ratio")
 
     if current_price and (target_price is None or stop_loss is None):
-        mult = 1.5 if horizon == "1D" else 2.5 if horizon == "1W" else 3.5
-        atr = current_price * (0.015 if horizon == "1D" else 0.035 if horizon == "1W" else 0.075)
-        tp = round(current_price + atr * mult, 2)
-        sl = round(current_price - atr * mult, 2)
-        target_price = tp
-        stop_loss = sl
-        expected_range = {"low": sl, "high": tp, "method": "atr_band"}
-        upside_pct = round((tp - current_price) / current_price * 100, 2)
-        downside_pct = round((sl - current_price) / current_price * 100, 2)
-        risk_reward_ratio = 1.0
+        # Do not invent ATR bands — surface unavailable targets instead
+        target_price = None
+        stop_loss = None
+        expected_range = None
+        upside_pct = None
+        downside_pct = None
+        risk_reward_ratio = None
         price_target_rationale = (
-            f"Neutral trading channel [{sl} - {tp}] calculated via ATR volatility band for {horizon} horizon."
+            "Target and stop-loss are unavailable; ATR levels could not be computed for this horizon."
         )
     elif target_price is not None and stop_loss is not None:
         price_target_rationale = (

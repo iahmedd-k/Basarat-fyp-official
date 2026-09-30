@@ -82,6 +82,7 @@ class RecommendationEngine:
             effective = {weight_key: float(weights.get(weight_key, 0) or 0) / total_weight
                          for weight_key, _, _ in available} if total_weight else {}
             source_weights = item.get("weights") or {}
+            published_signal = str(item.get("signal") or "hold").lower()
             same_weights = all(
                 abs(float(source_weights.get(key, source_weights.get("gru" if key == "gru" else key, 0)) or 0) - float(value)) < 1e-8
                 for key, value in weights.items()
@@ -110,7 +111,9 @@ class RecommendationEngine:
                 else:
                     atr = float(price) * 0.025
             item["atr_14"] = round(float(atr), 4) if atr else None
-            if atr and price and item.get("signal") in {"buy", "sell"}:
+            has_published_levels = item.get("target_price") is not None or item.get("stop_loss") is not None
+            signal_changed = item.get("signal") != published_signal
+            if atr and price and item.get("signal") in {"buy", "sell"} and (signal_changed or not has_published_levels):
                 multipliers = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])
                 direction = 1 if item["signal"] == "buy" else -1
                 target = float(price) + direction * float(atr) * multipliers["target"]
@@ -121,7 +124,7 @@ class RecommendationEngine:
                 item["downside_pct"] = round((stop - float(price)) / float(price) * 100, 2)
                 item["expected_range"] = None
                 item["risk_reward_ratio"] = round(abs(target - float(price)) / abs(stop - float(price)), 2)
-            elif atr and price:
+            elif atr and price and item.get("signal") == "hold" and (not same_weights or not item.get("expected_range")):
                 target_mult = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])["target"]
                 half_range = round(float(atr) * target_mult, 2)
                 item["expected_range"] = {

@@ -10,6 +10,7 @@ from typing import AsyncIterator, Optional
 import httpx
 
 from app.core.config import get_settings
+from app.services.assistant_format import format_assistant_plain_text, strip_markdown_light
 
 log = logging.getLogger(__name__)
 
@@ -165,7 +166,7 @@ class GroqClient:
         try:
             data = response.json()
             content = data["choices"][0]["message"]["content"]
-            return _strip_markdown_noise(content)
+            return format_assistant_plain_text(content)
         except (KeyError, IndexError, ValueError) as e:
             raise GroqError(f"Invalid response from Groq API: {e}", 502)
 
@@ -228,14 +229,7 @@ class GroqClient:
 
 
 def _strip_markdown_noise(text: str) -> str:
-    return (
-        text.replace("**", "")
-        .replace("__", "")
-        .replace("### ", "")
-        .replace("## ", "")
-        .replace("# ", "")
-        .strip()
-    )
+    return strip_markdown_light(text)
 
 
 groq_client = GroqClient()

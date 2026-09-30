@@ -76,32 +76,68 @@ def test_websocket_market_subscribe_and_unsubscribe():
                 pytest.fail("Did not receive unsubscribed event")
 
 
-def test_websocket_market_broadcast_delivery():
-    """Verify live quote broadcast is delivered to subscribed client."""
+def test_websocket_market_broadcast_requires_admin():
+    """Unauthenticated callers must not inject live quotes."""
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/market") as ws:
-            _ = ws.receive_json()  # welcome
+        bcast_res = client.post(
+            "/api/v1/ws/broadcast",
+            json={
+                "symbol": "SYS",
+                "price": 445.50,
+                "change": 3.25,
+                "change_pct": 0.74,
+                "volume": 2500000,
+            },
+        )
+        assert bcast_res.status_code in (401, 403)
 
-            ws.send_json({"action": "subscribe", "symbols": ["SYS"], "snapshot": False})
-            _ = ws.receive_json()  # sub confirmation
 
-            bcast_res = client.post(
-                "/api/v1/ws/broadcast",
-                json={
-                    "symbol": "SYS",
-                    "price": 445.50,
-                    "change": 3.25,
-                    "change_pct": 0.74,
-                    "volume": 2500000,
-                },
-            )
-            assert bcast_res.status_code == 200
-            assert bcast_res.json()["clients_reached"] >= 1
+def test_websocket_market_broadcast_delivery():
+    """Verify admin broadcast delivers live quote to subscribed client."""
+    from app.core.authorization import get_current_admin
+    from app.models.user import User
 
-            tick = ws.receive_json()
-            assert tick["event"] == "quote_update"
-            assert tick["symbol"] == "SYS"
-            assert tick["data"]["price"] == 445.50
+    admin = User(
+        id="admin-ws-test",
+        email="admin-ws@example.com",
+        username="admin_ws",
+        hashed_password="x",
+        is_admin=True,
+        is_active=True,
+        is_verified=True,
+    )
+
+    async def _admin_override():
+        return admin
+
+    app.dependency_overrides[get_current_admin] = _admin_override
+    try:
+        with TestClient(app) as client:
+            with client.websocket_connect("/ws/market") as ws:
+                _ = ws.receive_json()  # welcome
+
+                ws.send_json({"action": "subscribe", "symbols": ["SYS"], "snapshot": False})
+                _ = ws.receive_json()  # sub confirmation
+
+                bcast_res = client.post(
+                    "/api/v1/ws/broadcast",
+                    json={
+                        "symbol": "SYS",
+                        "price": 445.50,
+                        "change": 3.25,
+                        "change_pct": 0.74,
+                        "volume": 2500000,
+                    },
+                )
+                assert bcast_res.status_code == 200
+                assert bcast_res.json()["clients_reached"] >= 1
+
+                tick = ws.receive_json()
+                assert tick["event"] == "quote_update"
+                assert tick["symbol"] == "SYS"
+                assert tick["data"]["price"] == 445.50
+    finally:
+        app.dependency_overrides.pop(get_current_admin, None)
 
 
 def test_websocket_alerts_authenticated_flow():

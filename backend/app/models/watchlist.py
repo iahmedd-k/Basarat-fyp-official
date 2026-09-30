@@ -60,6 +60,7 @@ class WatchlistItem(Base):
         nullable=False,
     )
     symbol: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    added_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     target_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -386,7 +386,8 @@ async def reset_password(
         "**Change Password:**\n\n"
         "- Requires `Authorization: Bearer <access_token>`.\n"
         "- Validates `current_password` before setting `new_password`.\n"
-        "- Revokes all other refresh tokens for security and sends security email alert."
+        "- Revokes all other refresh tokens for security and sends security email alert.\n"
+        "- Returns a message response with HTTP 200."
     ),
 )
 @limiter.limit("5/minute")

@@ -229,7 +229,9 @@ async def delete_conversation(
     response_model=AssistantChatResponse,
     summary="Regenerate the last assistant response",
 )
+@limiter.limit("30/minute")
 async def regenerate_response(
+    request: Request,
     conversation_id: str,
     user: User = Depends(get_current_user),
     service: AssistantService = Depends(get_assistant_service),

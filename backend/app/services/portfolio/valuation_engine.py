@@ -22,7 +22,7 @@ class ValuationEngine:
     ):
         self.db = db
         self.repo = repo or PortfolioRepository(db)
-        self.price_cache = price_cache_service or PriceCacheService(db)
+        self.price_cache = price_cache_service or PriceCacheService()
 
     async def compute_portfolio_summary(self, user_id: str) -> dict:
         """

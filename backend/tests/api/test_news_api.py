@@ -137,6 +137,17 @@ class TestNewsEndpoints:
         assert response.json()["items"] == []
         assert response.json()["total"] == 0
 
+    async def test_stock_news_invalid_filters_use_app_error_body(self, client: AsyncClient):
+        bad_source = await client.get("/api/v1/stocks/OGDC/news?source_type=rss")
+        assert bad_source.status_code == 400
+        body = bad_source.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "BAD_REQUEST"
+
+        bad_sentiment = await client.get("/api/v1/stocks/OGDC/news?sentiment=meh")
+        assert bad_sentiment.status_code == 400
+        assert bad_sentiment.json()["error"]["code"] == "BAD_REQUEST"
+
 
 @pytest.mark.api
 class TestNewsRefresh:

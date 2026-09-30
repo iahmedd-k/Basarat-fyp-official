@@ -1,16 +1,16 @@
 import logging
-from datetime import datetime, date, timedelta
-from typing import Optional, List, Dict, Any
-from sqlalchemy import select, update, delete, desc, or_, and_, func
+from datetime import datetime, date
+from typing import Optional, List
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-import numpy as np
-import pandas as pd
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.core.redis import cache_get, cache_set
 from app.models.etf import ETF
 from app.schemas.etf import (
     ETFQuote,
+    ETFCreate,
+    ETFUpdate,
     ETFResponse,
     ETFListResponse,
     ETFHistoryItem,
@@ -101,15 +101,8 @@ INITIAL_PSX_ETFS = [
     },
 ]
 
-# Reliable baseline fallbacks for live metrics if scraper is temporarily down
-DEFAULT_ETF_PRICES = {
-    "MIIETF": {"price": 16.24, "change": 0.19, "change_pct": 1.18, "open": 16.05, "high": 16.24, "low": 16.05, "volume": 125000},
-    "UBLPETF": {"price": 28.52, "change": -0.15, "change_pct": -0.52, "open": 28.52, "high": 28.52, "low": 28.30, "volume": 84000},
-    "NITGETF": {"price": 32.83, "change": 0.35, "change_pct": 1.08, "open": 32.83, "high": 33.09, "low": 32.83, "volume": 92000},
-    "MZNPETF": {"price": 17.49, "change": 0.11, "change_pct": 0.63, "open": 17.49, "high": 17.60, "low": 17.30, "volume": 68000},
-    "JSGBETF": {"price": 38.92, "change": -0.22, "change_pct": -0.56, "open": 38.92, "high": 38.95, "low": 38.92, "volume": 45000},
-    "HBLTETF": {"price": 105.40, "change": 0.08, "change_pct": 0.08, "open": 105.32, "high": 105.45, "low": 105.30, "volume": 310000},
-}
+# Hardcoded price/performance maps removed — never invent live market data.
+# Quotes/history/performance return unavailable/null when scraper data is missing.
 
 
 class ETFService:
@@ -134,7 +127,7 @@ class ETFService:
     # ───────────────────────────────────────────────────────────────────
 
     async def get_live_quote(self, symbol: str) -> ETFQuote:
-        """Fetch live ETF quote with multi-tier Redis caching and scraper protection."""
+        """Fetch live ETF quote with Redis caching. Never invents prices."""
         sym = symbol.strip().upper()
         cache_key = f"etf:quote:v1:{sym}"
         cached = await cache_get(cache_key)
@@ -152,51 +145,53 @@ class ETFService:
             if hasattr(frame, "iloc") and len(frame) > 0:
                 row = frame.iloc[-1]
                 close = float(row.get("CURRENT") or row.get("CLOSE") or row.get("PRICE") or row.get("LDCP") or 0.0)
-                if close <= 0.0:
-                    fb = DEFAULT_ETF_PRICES.get(sym, {"price": 25.0})
-                    close = fb["price"]
-                open_p = float(row.get("OPEN") or close)
-                high_p = float(row.get("HIGH") or close)
-                low_p = float(row.get("LOW") or close)
-                vol = int(row.get("VOLUME") or 0)
-                change = float(row.get("CHANGE") or (close - open_p))
-                change_pct = float(row.get("CHANGE_PERCENT") or (change / open_p * 100 if open_p > 0 else 0.0))
+                if close > 0.0:
+                    open_p = float(row.get("OPEN") or close)
+                    high_p = float(row.get("HIGH") or close)
+                    low_p = float(row.get("LOW") or close)
+                    vol = int(row.get("VOLUME") or 0)
+                    change = float(row.get("CHANGE") or (close - open_p))
+                    change_pct = float(
+                        row.get("CHANGE_PERCENT")
+                        or (change / open_p * 100 if open_p > 0 else 0.0)
+                    )
 
-                quote_data = {
-                    "current_price": round(close, 2),
-                    "change": round(change, 2),
-                    "change_percent": round(change_pct, 2),
-                    "open_price": round(open_p, 2),
-                    "high_price": round(high_p, 2),
-                    "low_price": round(low_p, 2),
-                    "close_price": round(close, 2),
-                    "volume": vol,
-                    "bid_price": float(row.get("BID_PRICE") or close),
-                    "ask_price": float(row.get("ASK_PRICE") or close),
-                    "data_as_of": datetime.utcnow().isoformat(),
-                    "quote_source": "psx_live",
-                }
+                    quote_data = {
+                        "current_price": round(close, 2),
+                        "change": round(change, 2),
+                        "change_percent": round(change_pct, 2),
+                        "open_price": round(open_p, 2),
+                        "high_price": round(high_p, 2),
+                        "low_price": round(low_p, 2),
+                        "close_price": round(close, 2),
+                        "volume": vol,
+                        "bid_price": float(row.get("BID_PRICE") or close),
+                        "ask_price": float(row.get("ASK_PRICE") or close),
+                        "data_as_of": datetime.utcnow().isoformat(),
+                        "quote_source": "psx_live",
+                    }
         except Exception as exc:
             log.debug("Live scraper quote fetch timed out/failed for ETF %s: %s", sym, exc)
 
         if not quote_data:
-            fallback = DEFAULT_ETF_PRICES.get(sym, {"price": 25.0, "change": 0.0, "change_pct": 0.0, "open": 25.0, "high": 25.0, "low": 25.0, "volume": 10000})
             quote_data = {
-                "current_price": fallback["price"],
-                "change": fallback["change"],
-                "change_percent": fallback["change_pct"],
-                "open_price": fallback["open"],
-                "high_price": fallback["high"],
-                "low_price": fallback["low"],
-                "close_price": fallback["price"],
-                "volume": fallback["volume"],
-                "bid_price": fallback["price"],
-                "ask_price": fallback["price"],
-                "data_as_of": datetime.utcnow().isoformat(),
-                "quote_source": "cached_fallback",
+                "current_price": None,
+                "change": None,
+                "change_percent": None,
+                "open_price": None,
+                "high_price": None,
+                "low_price": None,
+                "close_price": None,
+                "volume": None,
+                "bid_price": None,
+                "ask_price": None,
+                "data_as_of": None,
+                "quote_source": "unavailable",
             }
+            # Short negative-cache so clients see unavailable quickly without hammering scraper
+            await cache_set(cache_key, quote_data, ttl_seconds=30)
+            return ETFQuote(**quote_data)
 
-        # Cache live quote for 60 seconds
         await cache_set(cache_key, quote_data, ttl_seconds=60)
         return ETFQuote(**quote_data)
 
@@ -317,23 +312,15 @@ class ETFService:
             log.debug("Historical fetch failed for ETF %s: %s", sym, exc)
 
         if not history_items:
-            # Construct synthetic smooth history based on base price
-            base = DEFAULT_ETF_PRICES.get(sym, {}).get("price", 25.0)
-            today = date.today()
-            for i in range(30, -1, -1):
-                d = today - timedelta(days=i)
-                if d.weekday() < 5:
-                    p = round(base * (1.0 + np.sin(i / 5.0) * 0.04), 2)
-                    history_items.append(
-                        ETFHistoryItem(
-                            date=str(d),
-                            open=round(p * 0.995, 2),
-                            high=round(p * 1.01, 2),
-                            low=round(p * 0.99, 2),
-                            close=p,
-                            volume=int(50000 + (i % 7) * 8000),
-                        )
-                    )
+            # Do not invent OHLCV — return empty history when scraper has no data
+            response = ETFHistoryResponse(
+                symbol=sym,
+                timeframe=timeframe,
+                count=0,
+                history=[],
+            )
+            await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=60)
+            return response
 
         response = ETFHistoryResponse(
             symbol=sym,
@@ -345,29 +332,107 @@ class ETFService:
         return response
 
     async def get_performance(self, symbol: str) -> ETFPerformanceResponse:
-        """Calculate returns across standard holding periods."""
+        """Calculate returns from real history when available; otherwise nulls."""
         etf = await self.get_etf_by_symbol(symbol)
         sym = etf.symbol
 
-        # Baseline performance estimates for PSX ETF asset class
-        perf_map = {
-            "MIIETF": {"1D": 1.18, "1W": 2.45, "1M": 5.80, "3M": 14.20, "1Y": 48.50, "YTD": 28.60},
-            "UBLPETF": {"1D": -0.52, "1W": 1.85, "1M": 4.90, "3M": 12.10, "1Y": 42.10, "YTD": 24.30},
-            "NITGETF": {"1D": 1.08, "1W": 2.10, "1M": 5.40, "3M": 13.80, "1Y": 46.20, "YTD": 26.70},
-            "MZNPETF": {"1D": 0.63, "1W": 1.95, "1M": 5.10, "3M": 13.10, "1Y": 44.80, "YTD": 25.90},
-            "JSGBETF": {"1D": -0.56, "1W": 0.90, "1M": 3.40, "3M": 16.50, "1Y": 54.10, "YTD": 32.10},
-            "HBLTETF": {"1D": 0.08, "1W": 0.38, "1M": 1.62, "3M": 5.10, "1Y": 21.40, "YTD": 14.20},
+        history = await self.get_history(sym, timeframe="1Y")
+        closes = [h.close for h in history.history if h.close and h.close > 0]
+        periods = ("1D", "1W", "1M", "3M", "1Y", "YTD")
+        empty_ret = {k: None for k in periods}
+
+        if len(closes) < 2:
+            return ETFPerformanceResponse(
+                symbol=sym,
+                name=etf.name,
+                benchmark_index=etf.benchmark_index,
+                returns=empty_ret,
+                benchmark_returns=empty_ret,
+                tracking_difference_1m=None,
+                volatility_annualized=None,
+            )
+
+        def _pct(lookback: int) -> float | None:
+            if len(closes) <= lookback:
+                return None
+            base = closes[-(lookback + 1)]
+            if not base:
+                return None
+            return round((closes[-1] / base - 1.0) * 100.0, 2)
+
+        ret = {
+            "1D": _pct(1),
+            "1W": _pct(5),
+            "1M": _pct(21),
+            "3M": _pct(63),
+            "1Y": _pct(min(250, len(closes) - 1)),
+            "YTD": None,
         }
 
-        ret = perf_map.get(sym, {"1D": 0.5, "1W": 1.2, "1M": 3.5, "3M": 8.0, "1Y": 25.0, "YTD": 15.0})
-        bench_ret = {k: round(v * 0.98, 2) for k, v in ret.items()}
+        # Approximate YTD using calendar filter when dates exist
+        try:
+            year = date.today().year
+            ytd_items = [h for h in history.history if h.date.startswith(str(year))]
+            if len(ytd_items) >= 2 and ytd_items[0].close:
+                ret["YTD"] = round((ytd_items[-1].close / ytd_items[0].close - 1.0) * 100.0, 2)
+        except Exception:
+            ret["YTD"] = None
 
         return ETFPerformanceResponse(
             symbol=sym,
             name=etf.name,
             benchmark_index=etf.benchmark_index,
             returns=ret,
-            benchmark_returns=bench_ret,
-            tracking_difference_1m=round(ret["1M"] - bench_ret["1M"], 2),
-            volatility_annualized=18.4,
+            benchmark_returns=empty_ret,
+            tracking_difference_1m=None,
+            volatility_annualized=None,
         )
+
+    # ───────────────────────────────────────────────────────────────────
+    # Admin CRUD
+    # ───────────────────────────────────────────────────────────────────
+
+    async def create_etf(self, data: ETFCreate) -> ETFResponse:
+        sym = data.symbol.strip().upper()
+        existing = await self.db.execute(select(ETF).where(ETF.symbol == sym))
+        if existing.scalars().first():
+            raise ConflictError(f"ETF '{sym}' already exists.")
+        etf = ETF(
+            symbol=sym,
+            name=data.name.strip(),
+            fund_manager=data.fund_manager.strip(),
+            category=data.category.strip(),
+            benchmark_index=data.benchmark_index.strip(),
+            is_shariah_compliant=data.is_shariah_compliant,
+            expense_ratio=data.expense_ratio,
+            inception_date=data.inception_date,
+            total_assets_pkr=data.total_assets_pkr,
+            description=data.description,
+            is_active=data.is_active,
+        )
+        self.db.add(etf)
+        await self.db.flush()
+        await self.db.refresh(etf)
+        return await self._format_etf_response(etf)
+
+    async def update_etf(self, symbol: str, data: ETFUpdate) -> ETFResponse:
+        sym = symbol.strip().upper()
+        res = await self.db.execute(select(ETF).where(ETF.symbol == sym))
+        etf = res.scalars().first()
+        if not etf:
+            raise NotFoundError(f"ETF '{sym}' not found.")
+        updates = data.model_dump(exclude_unset=True)
+        for key, value in updates.items():
+            setattr(etf, key, value.strip() if isinstance(value, str) else value)
+        await self.db.flush()
+        await self.db.refresh(etf)
+        return await self._format_etf_response(etf)
+
+    async def delete_etf(self, symbol: str) -> None:
+        sym = symbol.strip().upper()
+        res = await self.db.execute(select(ETF).where(ETF.symbol == sym))
+        etf = res.scalars().first()
+        if not etf:
+            raise NotFoundError(f"ETF '{sym}' not found.")
+        await self.db.delete(etf)
+        await self.db.flush()

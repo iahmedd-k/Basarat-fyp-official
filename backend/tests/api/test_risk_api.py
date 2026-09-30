@@ -78,12 +78,85 @@ class TestRiskMonteCarloPoll:
         resp = await client.get(
             "/api/v1/risk/monte-carlo/nonexistent-task-id", headers=auth_headers
         )
-        assert resp.status_code in (200, 503)
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "NOT_FOUND"
 
     async def test_poll_requires_auth(self, client: AsyncClient):
         resp = await client.get("/api/v1/risk/monte-carlo/some-task-id")
         assert resp.status_code in (401, 403)
 
+    async def test_poll_pending_requires_owner_registry(
+        self, client: AsyncClient, auth_headers, test_user, monkeypatch
+    ):
+        from app.api.v1 import risk as risk_api
+        from app.core import task_runner
+
+        monkeypatch.setattr(
+            task_runner, "get_local_job_result", lambda job_id: ("PENDING", None, None)
+        )
+
+        await risk_api._register_monte_carlo_owner("owned-mc-job", test_user.id)
+        owned = await client.get(
+            "/api/v1/risk/monte-carlo/owned-mc-job", headers=auth_headers
+        )
+        assert owned.status_code == 200
+        assert owned.json()["status"] == "pending"
+
+        await risk_api._register_monte_carlo_owner("foreign-mc-job", "other-user-id")
+        foreign = await client.get(
+            "/api/v1/risk/monte-carlo/foreign-mc-job", headers=auth_headers
+        )
+        assert foreign.status_code == 404
+
+    async def test_poll_success_falls_back_to_result_user_id(
+        self, client: AsyncClient, auth_headers, test_user, monkeypatch
+    ):
+        from app.core import task_runner
+
+        monkeypatch.setattr(
+            task_runner,
+            "get_local_job_result",
+            lambda job_id: (
+                "SUCCESS",
+                {
+                    "user_id": test_user.id,
+                    "status": "completed",
+                    "num_simulations": 100,
+                    "horizon_days": 10,
+                    "percentiles": {},
+                    "stats": {},
+                    "paths_sample": [],
+                    "completed_at": "2026-09-30T00:00:00Z",
+                },
+                None,
+            ),
+        )
+        resp = await client.get(
+            "/api/v1/risk/monte-carlo/legacy-mc-job", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "completed"
+
+        monkeypatch.setattr(
+            task_runner,
+            "get_local_job_result",
+            lambda job_id: (
+                "SUCCESS",
+                {
+                    "user_id": "someone-else",
+                    "status": "completed",
+                    "num_simulations": 100,
+                    "horizon_days": 10,
+                },
+                None,
+            ),
+        )
+        denied = await client.get(
+            "/api/v1/risk/monte-carlo/legacy-mc-job", headers=auth_headers
+        )
+        assert denied.status_code == 404
 
 @pytest.mark.api
 class TestRiskStressTest:

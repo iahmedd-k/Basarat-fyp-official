@@ -46,11 +46,6 @@ jobs:
         working-directory: /opt/basarat/backend
         run: |
           test -s .env || { echo "Missing /opt/basarat/backend/.env; configure it on EC2 before deploying."; exit 1; }
-          sed -i '/^GROQ_/d' .env
-          P1="gsk"
-          P2="_zOsqaf893Puz15lc7PIPWGdyb3FYjtvGPDwkZcXMogGXJbyHNxqE"
-          echo "GROQ_API_KEY=${P1}${P2}" >> .env
-          echo "GROQ_MODEL=qwen/qwen3.8-27b" >> .env
           docker compose -f docker-compose.production.yml config --quiet
           docker compose --parallel 1 -f docker-compose.production.yml up -d --build
           docker compose -f docker-compose.production.yml ps

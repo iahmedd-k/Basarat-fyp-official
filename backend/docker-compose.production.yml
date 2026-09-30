@@ -18,6 +18,8 @@ services:
     environment:
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
+      REDIS_ENABLED: "true"
+      USE_CELERY: "true"
     volumes:
       - market-data:/app/data/raw/ohlcv
       - feature-data:/app/data/features
@@ -37,6 +39,8 @@ services:
     environment:
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
+      REDIS_ENABLED: "true"
+      USE_CELERY: "true"
     volumes:
       - market-data:/app/data/raw/ohlcv
       - feature-data:/app/data/features
@@ -57,6 +61,8 @@ services:
     environment:
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
+      REDIS_ENABLED: ${REDIS_ENABLED:-true}
+      USE_CELERY: ${USE_CELERY:-true}
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped

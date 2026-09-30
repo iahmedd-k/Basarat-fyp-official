@@ -6,10 +6,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password
-from app.models.user import EmailVerificationToken, PasswordResetToken, User
+from app.core.security import create_refresh_token, hash_password
+from app.models.user import EmailVerificationToken, PasswordResetToken, RefreshToken, User
 from app.services.auth_service import _hash_code
 
 
@@ -24,14 +25,17 @@ class TestAuthSignup:
         assert resp.status_code == 201
         data = resp.json()
         assert "message" in data
+        # Anti-enumeration: duplicate signup returns same success shape (not 409)
+        assert "verification" in data["message"].lower() or "email" in data["message"].lower()
 
     async def test_signup_duplicate_email(self, client: AsyncClient, test_user):
         resp = await client.post("/api/v1/auth/signup", json={
             "email": test_user.email,
             "password": "ValidPass123!",
         })
-        assert resp.status_code == 409
-
+        assert resp.status_code == 201
+        data = resp.json()
+        assert "message" in data
     async def test_signup_invalid_email(self, client: AsyncClient):
         resp = await client.post("/api/v1/auth/signup", json={
             "email": "not-an-email",
@@ -222,7 +226,7 @@ class TestAuthRefresh:
         })
         assert resp.status_code == 401
 
-    async def test_refresh_reuse_detection(self, client: AsyncClient, refresh_token_fixture):
+    async def test_refresh_reuse_detection(self, client: AsyncClient, refresh_token_fixture, test_user, db_session):
         resp1 = await client.post("/api/v1/auth/refresh", json={
             "refresh_token": refresh_token_fixture,
         })
@@ -232,6 +236,31 @@ class TestAuthRefresh:
             "refresh_token": refresh_token_fixture,
         })
         assert resp2.status_code == 401
+        await db_session.refresh(test_user)
+        assert test_user.token_version == 1
+        active_tokens = await db_session.execute(
+            select(RefreshToken).where(
+                RefreshToken.user_id == test_user.id,
+                RefreshToken.revoked.is_(False),
+            )
+        )
+        assert active_tokens.scalars().all() == []
+
+    async def test_unknown_signed_refresh_token_does_not_revoke_other_sessions(
+        self, client: AsyncClient, refresh_token_fixture, test_user, db_session
+    ):
+        unknown_token = create_refresh_token({"sub": test_user.id})
+        response = await client.post("/api/v1/auth/refresh", json={"refresh_token": unknown_token})
+        assert response.status_code == 401
+        await db_session.refresh(test_user)
+        assert test_user.token_version == 0
+        active_tokens = await db_session.execute(
+            select(RefreshToken).where(
+                RefreshToken.user_id == test_user.id,
+                RefreshToken.revoked.is_(False),
+            )
+        )
+        assert len(active_tokens.scalars().all()) == 1
 
 
 @pytest.mark.api
@@ -242,9 +271,13 @@ class TestAuthLogout:
         })
         assert resp.status_code == 204
 
-    async def test_logout_success(self, client: AsyncClient, refresh_token_fixture):
+    async def test_logout_success(self, client: AsyncClient, refresh_token_fixture, auth_headers):
         resp = await client.post("/api/v1/auth/logout", json={"refresh_token": refresh_token_fixture})
         assert resp.status_code == 204
+        # Logging out one refresh-token session must not invalidate the user's
+        # access tokens from other sessions.
+        profile = await client.get("/api/v1/users/me", headers=auth_headers)
+        assert profile.status_code == 200
 
 
 @pytest.mark.api

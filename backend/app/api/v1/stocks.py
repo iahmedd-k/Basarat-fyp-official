@@ -2,12 +2,11 @@ import asyncio
 import logging
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, Path, Query, Request
 from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authorization import get_current_user
-from app.core.exceptions import NotFoundError, ServiceUnavailableError
+from app.core.exceptions import NotFoundError, ServiceUnavailableError, ValidationFailedError
 from app.core.rate_limiter import limiter
 from app.db.session import get_db
 from app.models.stock import Stock
@@ -116,7 +115,7 @@ async def get_stock_overview(
     try:
         symbol = _validate_symbol(symbol)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise ValidationFailedError(str(exc), field="symbol")
     try:
         overview = await asyncio.to_thread(service.get_overview, symbol)
         if overview.get("message") == "no data":
@@ -145,7 +144,7 @@ async def get_stock_price_history(
     try:
         symbol = _validate_symbol(symbol)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise ValidationFailedError(str(exc), field="symbol")
     try:
         data = await asyncio.to_thread(service.get_price_history, symbol, range)
         if not data.get("bars"):
@@ -176,7 +175,7 @@ async def get_stock_technical_indicators(
     try:
         symbol = _validate_symbol(symbol)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise ValidationFailedError(str(exc), field="symbol")
     try:
         data = await asyncio.to_thread(
             service.technical_indicators, symbol, indicators, period, limit
@@ -206,7 +205,7 @@ async def get_stock_fundamentals(
     try:
         symbol = _validate_symbol(symbol)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise ValidationFailedError(str(exc), field="symbol")
     try:
         data = await asyncio.to_thread(service.get_fundamentals, symbol)
         return data

@@ -116,6 +116,35 @@ def run_portfolio_math_tests():
     print(" [PASS] Complete liquidation resets open cost basis to 0 while preserving cumulative realized P/L.")
 
     # -------------------------------------------------------------
+    # Test 1.3b: BUY after partial SELL must reweight open qty (not lifetime buys)
+    # -------------------------------------------------------------
+    print("\n--- Test 1.3b: BUY after partial SELL average cost ---")
+    # BUY 100 @ 10 → SELL 50 → BUY 50 @ 20 → remaining 100, avg should be 15
+    tx_a = PortfolioTransaction(
+        id="ra", user_id="u1", symbol="SYS",
+        transaction_type=TransactionType.BUY,
+        quantity=Decimal("100"), price=Decimal("10.00"), fee=Decimal("0"),
+        transaction_date=date(2026, 1, 1),
+    )
+    tx_b = PortfolioTransaction(
+        id="rb", user_id="u1", symbol="SYS",
+        transaction_type=TransactionType.SELL,
+        quantity=Decimal("50"), price=Decimal("12.00"), fee=Decimal("0"),
+        transaction_date=date(2026, 1, 2),
+    )
+    tx_c = PortfolioTransaction(
+        id="rc", user_id="u1", symbol="SYS",
+        transaction_type=TransactionType.BUY,
+        quantity=Decimal("50"), price=Decimal("20.00"), fee=Decimal("0"),
+        transaction_date=date(2026, 1, 3),
+    )
+    pos_reopen = calculate_position([tx_a, tx_b, tx_c])
+    assert pos_reopen.remaining_quantity == Decimal("100.0000")
+    assert pos_reopen.total_cost_basis == Decimal("1500.0000")
+    assert pos_reopen.average_cost == Decimal("15.0000")
+    print(" [PASS] Post-SELL BUY reweights average cost over remaining quantity.")
+
+    # -------------------------------------------------------------
     # Test 1.4: Short-Selling Prevention & Sequence Validation
     # -------------------------------------------------------------
     print("\n--- Test 1.4: Short-Selling Prevention & Sequence Validation ---")

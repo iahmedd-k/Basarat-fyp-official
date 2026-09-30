@@ -5,12 +5,15 @@ import hashlib
 import hmac
 import json
 import time
+from uuid import uuid4
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.models.user import User
+
+TEST_CLERK_WEBHOOK_SECRET = "whsec_testsecret1234567890abcdef"
 
 
 def _generate_svix_signature(secret: str, msg_id: str, timestamp: str, body: bytes) -> str:
@@ -27,6 +30,26 @@ def _generate_svix_signature(secret: str, msg_id: str, timestamp: str, body: byt
 
 @pytest.mark.api
 class TestClerkWebhook:
+    @pytest.fixture(autouse=True)
+    def _configure_test_webhook_secret(self, monkeypatch):
+        monkeypatch.setattr(get_settings(), "CLERK_WEBHOOK_SECRET", TEST_CLERK_WEBHOOK_SECRET)
+
+    async def _post_signed_event(self, client: AsyncClient, payload: dict):
+        body = json.dumps(payload).encode("utf-8")
+        msg_id = f"msg_{uuid4().hex}"
+        timestamp = str(int(time.time()))
+        signature = _generate_svix_signature(TEST_CLERK_WEBHOOK_SECRET, msg_id, timestamp, body)
+        return await client.post(
+            "/api/v1/webhooks/clerk",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "svix-id": msg_id,
+                "svix-timestamp": timestamp,
+                "svix-signature": signature,
+            },
+        )
+
     async def test_user_created_automatic_verification(self, client: AsyncClient, db_session):
         payload = {
             "type": "user.created",
@@ -47,7 +70,7 @@ class TestClerkWebhook:
             },
         }
 
-        resp = await client.post("/api/v1/webhooks/clerk", json=payload)
+        resp = await self._post_signed_event(client, payload)
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
@@ -80,7 +103,7 @@ class TestClerkWebhook:
             },
         }
 
-        resp = await client.post("/api/v1/webhooks/clerk", json=payload)
+        resp = await self._post_signed_event(client, payload)
         assert resp.status_code == 200
         assert resp.json()["is_verified"] is False
 
@@ -106,7 +129,7 @@ class TestClerkWebhook:
                 "last_name": "Name",
             },
         }
-        await client.post("/api/v1/webhooks/clerk", json=create_payload)
+        await self._post_signed_event(client, create_payload)
 
         # Update event with verified status and new name
         update_payload = {
@@ -125,7 +148,7 @@ class TestClerkWebhook:
                 "image_url": "https://img.clerk.com/new.png",
             },
         }
-        resp = await client.post("/api/v1/webhooks/clerk", json=update_payload)
+        resp = await self._post_signed_event(client, update_payload)
         assert resp.status_code == 200
         assert resp.json()["is_verified"] is True
 
@@ -144,7 +167,7 @@ class TestClerkWebhook:
                 "email_addresses": [{"email_address": "to_delete@example.com", "verification": {"status": "verified"}}],
             },
         }
-        await client.post("/api/v1/webhooks/clerk", json=payload)
+        await self._post_signed_event(client, payload)
 
         # Send user.deleted
         del_payload = {
@@ -154,7 +177,7 @@ class TestClerkWebhook:
                 "email_addresses": [{"email_address": "to_delete@example.com"}],
             },
         }
-        resp = await client.post("/api/v1/webhooks/clerk", json=del_payload)
+        resp = await self._post_signed_event(client, del_payload)
         assert resp.status_code == 200
         assert resp.json()["status"] == "deleted"
 

@@ -14,11 +14,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from app.core.authorization import get_current_admin
 from app.core.config import get_settings
 from app.core.security import decode_token
+from app.db.base import async_session_factory
+from app.models.user import User
 from app.services.market_service import MarketService
 from app.services.websocket_manager import PROTOCOL_VERSION, ws_manager
 
@@ -28,6 +31,35 @@ router = APIRouter()
 
 WS_IDLE_TIMEOUT_SECONDS = 120
 MAX_MESSAGE_BYTES = 16_384
+
+
+async def _resolve_active_user_id_from_access_token(token: str | None) -> str | None:
+    """Validate access JWT and ensure the user exists, is active, and token_version matches."""
+    if not token:
+        return None
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access" or not payload.get("sub"):
+        return None
+    user_id = str(payload["sub"])
+    try:
+        token_tv = int(payload["tv"]) if payload.get("tv") is not None else 0
+    except (TypeError, ValueError):
+        token_tv = 0
+    try:
+        async with async_session_factory() as session:
+            user = await session.get(User, user_id)
+            if user is None or not user.is_active:
+                return None
+            try:
+                user_tv = int(getattr(user, "token_version", 0) or 0)
+            except (TypeError, ValueError):
+                user_tv = 0
+            if token_tv != user_tv:
+                return None
+            return user.id
+    except Exception as exc:
+        log.warning("WS auth user lookup failed: %s", exc)
+        return None
 
 
 class BroadcastQuoteRequest(BaseModel):
@@ -157,13 +189,16 @@ async def get_websocket_stats():
 
 @router.post(
     "/ws/broadcast",
-    summary="Publish a single quote tick to WS subscribers (debug/internal)",
-    include_in_schema=True,
+    summary="Publish a single quote tick to WS subscribers (admin/internal only)",
+    include_in_schema=False,
 )
-async def broadcast_quote(data: BroadcastQuoteRequest):
+async def broadcast_quote(
+    data: BroadcastQuoteRequest,
+    _admin: User = Depends(get_current_admin),
+):
     """
-    Manual/debug tick publisher. Production session updates use Redis pub/sub from Celery
-    (`board_update`), not this endpoint.
+    Admin-only tick publisher for debugging. Production session updates use Redis
+    pub/sub from Celery (`board_update`), not this endpoint.
     """
     payload = data.model_dump()
     delivered = await ws_manager.broadcast_market_quote(data.symbol, payload)
@@ -429,11 +464,7 @@ async def websocket_alerts_endpoint(
     Auth: `?token=<JWT>` on connect, or later
     `{"action":"authenticate","token":"<JWT>"}`.
     """
-    user_id = None
-    if token:
-        payload = decode_token(token)
-        if payload and payload.get("type") == "access":
-            user_id = payload.get("sub")
+    user_id = await _resolve_active_user_id_from_access_token(token)
 
     await ws_manager.connect(websocket, user_id=user_id)
 
@@ -499,9 +530,10 @@ async def websocket_alerts_endpoint(
 
             elif action == "authenticate":
                 auth_token = msg.get("token")
-                payload = decode_token(auth_token) if auth_token else None
-                if payload and payload.get("type") == "access" and payload.get("sub"):
-                    new_user_id = str(payload["sub"])
+                new_user_id = await _resolve_active_user_id_from_access_token(
+                    str(auth_token) if auth_token else None
+                )
+                if new_user_id:
                     await ws_manager.bind_user(websocket, new_user_id)
                     await ws_manager.send_json_safe(
                         websocket,
@@ -518,7 +550,7 @@ async def websocket_alerts_endpoint(
                         {
                             "event": "error",
                             "code": "auth_failed",
-                            "message": "Authentication failed: Invalid or expired JWT token.",
+                            "message": "Authentication failed: Invalid, expired, or inactive user token.",
                         },
                     )
             else:

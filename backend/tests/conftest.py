@@ -277,6 +277,14 @@ def mock_stock_service():
                      "high": 93.0, "low": 89.0, "current": 92.0, "change": 2.0, "change_pct": 2.22, "volume": 2000000},
             "LUCK": {"symbol": "LUCK", "name": "LUCK", "sector": "Cement", "ldcp": 620.0, "open": 618.0,
                      "high": 622.0, "low": 610.0, "current": 612.0, "change": -8.0, "change_pct": -1.29, "volume": 500000},
+            "HUBC": {"symbol": "HUBC", "name": "HUBC", "sector": "Power Generation", "ldcp": 85.0, "open": 86.0,
+                     "high": 88.0, "low": 84.0, "current": 87.0, "change": 2.0, "change_pct": 2.35, "volume": 300000},
+            "MEBL": {"symbol": "MEBL", "name": "MEBL", "sector": "Banking", "ldcp": 120.0, "open": 122.0,
+                     "high": 125.0, "low": 119.0, "current": 124.0, "change": 4.0, "change_pct": 3.33, "volume": 400000},
+            "PPL": {"symbol": "PPL", "name": "PPL", "sector": "Oil & Gas", "ldcp": 95.0, "open": 96.0,
+                    "high": 98.0, "low": 94.0, "current": 97.0, "change": 2.0, "change_pct": 2.11, "volume": 1500000},
+            "ENGRO": {"symbol": "ENGRO", "name": "ENGRO", "sector": "Chemicals", "ldcp": 280.0, "open": 282.0,
+                      "high": 285.0, "low": 278.0, "current": 283.0, "change": 3.0, "change_pct": 1.07, "volume": 800000},
         }
         return quotes.get(symbol, {"symbol": symbol, "name": symbol, "sector": "Unknown",
                                    "ldcp": 0.0, "open": 0.0, "high": 0.0, "low": 0.0,
@@ -440,6 +448,10 @@ async def seed_stocks(db_session: AsyncSession) -> list[Stock]:
         Stock(id="stock-luck", symbol="LUCK", name="Lucky Cement", sector="Cement"),
         Stock(id="stock-ubl", symbol="UBL", name="United Bank Limited", sector="Banking"),
         Stock(id="stock-mcb", symbol="MCB", name="MCB Bank Limited", sector="Banking"),
+        Stock(id="stock-hubc", symbol="HUBC", name="Hub Power Company", sector="Power Generation"),
+        Stock(id="stock-mebl", symbol="MEBL", name="Meezan Bank Limited", sector="Banking"),
+        Stock(id="stock-ppl", symbol="PPL", name="Pakistan Petroleum Limited", sector="Oil & Gas"),
+        Stock(id="stock-engro", symbol="ENGRO", name="Engro Corporation Limited", sector="Chemicals"),
     ]
     for stock in stocks:
         db_session.add(stock)

@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from enum import Enum
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class IPOStatus(str, Enum):
@@ -10,6 +10,51 @@ class IPOStatus(str, Enum):
     OPEN_FOR_PUBLIC_SUBSCRIPTION = "OPEN_FOR_PUBLIC_SUBSCRIPTION"
     LISTED = "LISTED"
     CLOSED = "CLOSED"
+
+
+class IPOCreate(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=20)
+    company_name: str = Field(..., min_length=1, max_length=255)
+    sector: str = Field(..., min_length=1, max_length=100)
+    status: IPOStatus = IPOStatus.UPCOMING
+    issue_size_shares: Optional[float] = None
+    issue_size_pkr: Optional[float] = None
+    floor_price: Optional[float] = None
+    strike_price: Optional[float] = None
+    listing_price: Optional[float] = None
+    current_price: Optional[float] = None
+    book_building_start: Optional[date] = None
+    book_building_end: Optional[date] = None
+    public_subscription_start: Optional[date] = None
+    public_subscription_end: Optional[date] = None
+    listing_date: Optional[date] = None
+    lead_manager: Optional[str] = None
+    is_shariah_compliant: bool = False
+    prospectus_url: Optional[str] = None
+    description: Optional[str] = None
+    subscription_multiplier: Optional[float] = None
+
+
+class IPOUpdate(BaseModel):
+    company_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    sector: Optional[str] = Field(None, min_length=1, max_length=100)
+    status: Optional[IPOStatus] = None
+    issue_size_shares: Optional[float] = None
+    issue_size_pkr: Optional[float] = None
+    floor_price: Optional[float] = None
+    strike_price: Optional[float] = None
+    listing_price: Optional[float] = None
+    current_price: Optional[float] = None
+    book_building_start: Optional[date] = None
+    book_building_end: Optional[date] = None
+    public_subscription_start: Optional[date] = None
+    public_subscription_end: Optional[date] = None
+    listing_date: Optional[date] = None
+    lead_manager: Optional[str] = None
+    is_shariah_compliant: Optional[bool] = None
+    prospectus_url: Optional[str] = None
+    description: Optional[str] = None
+    subscription_multiplier: Optional[float] = None
 
 
 class IPOResponse(BaseModel):

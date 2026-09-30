@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from sqlalchemy import select, func, delete, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import lazyload, selectinload
 
 from app.core.exceptions import (
     BadRequestError,
@@ -42,6 +42,18 @@ class CommunityService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @staticmethod
+    def _post_response_load_options():
+        # These models have mapper-level select-in relationships. Loading a
+        # post's author otherwise fans out into portfolios, alerts, tokens,
+        # watchlists, and every other User relationship for every feed page.
+        # Feed responses only need the author and stock records themselves.
+        return (
+            lazyload("*"),
+            selectinload(CommunityPost.author),
+            selectinload(CommunityPost.stock),
+        )
 
     # =========================================================================
     # Posts
@@ -106,8 +118,7 @@ class CommunityService:
         query = (
             select(CommunityPost)
             .options(
-                selectinload(CommunityPost.author),
-                selectinload(CommunityPost.stock),
+                *self._post_response_load_options(),
             )
             .where(CommunityPost.id == post_id)
         )
@@ -257,7 +268,7 @@ class CommunityService:
         if mine:
             query = (
                 select(CommunityPost)
-                .options(selectinload(CommunityPost.author), selectinload(CommunityPost.stock))
+                .options(*self._post_response_load_options())
                 .where(CommunityPost.author_id == current_user_id)
             )
         elif following:
@@ -266,13 +277,13 @@ class CommunityService:
             )
             query = (
                 select(CommunityPost)
-                .options(selectinload(CommunityPost.author), selectinload(CommunityPost.stock))
+                .options(*self._post_response_load_options())
                 .where(CommunityPost.author_id.in_(followed_subq))
             )
         else:
             query = (
                 select(CommunityPost)
-                .options(selectinload(CommunityPost.author), selectinload(CommunityPost.stock))
+                .options(*self._post_response_load_options())
                 .where(CommunityPost.status == PostStatus.PUBLISHED.value)
             )
 
@@ -357,7 +368,7 @@ class CommunityService:
         is_owner = current_user_id == user_id
         query = (
             select(CommunityPost)
-            .options(selectinload(CommunityPost.author), selectinload(CommunityPost.stock))
+            .options(*self._post_response_load_options())
             .where(CommunityPost.author_id == user_id)
         )
         if not is_owner:
@@ -456,6 +467,18 @@ class CommunityService:
             )
         )
         return result.scalars().first() is not None
+
+    async def get_liked_post_ids(self, post_ids: list[str], user_id: str) -> set[str]:
+        """Fetch this user's likes for a page in one query instead of N+1 queries."""
+        if not post_ids:
+            return set()
+        result = await self.db.execute(
+            select(CommunityPostLike.post_id).where(
+                CommunityPostLike.user_id == user_id,
+                CommunityPostLike.post_id.in_(post_ids),
+            )
+        )
+        return set(result.scalars().all())
 
     # =========================================================================
     # Comments

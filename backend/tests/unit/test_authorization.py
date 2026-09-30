@@ -64,11 +64,26 @@ class TestGetCurrentUser:
     async def test_active_user_returns_user(self):
         mock_user = MagicMock(spec=User)
         mock_user.is_active = True
+        mock_user.token_version = 0
         mock_db = AsyncMock()
         mock_db.get.return_value = mock_user
-        result = await get_current_user(payload={"sub": "u1", "type": "access"}, db=mock_db)
+        result = await get_current_user(
+            payload={"sub": "u1", "type": "access", "tv": 0},
+            db=mock_db,
+        )
         assert result == mock_user
 
+    async def test_revoked_token_version_raises_unauthorized(self):
+        mock_user = MagicMock(spec=User)
+        mock_user.is_active = True
+        mock_user.token_version = 2
+        mock_db = AsyncMock()
+        mock_db.get.return_value = mock_user
+        with pytest.raises(UnauthorizedError):
+            await get_current_user(
+                payload={"sub": "u1", "type": "access", "tv": 1},
+                db=mock_db,
+            )
 
 @pytest.mark.asyncio
 class TestGetCurrentAdmin:

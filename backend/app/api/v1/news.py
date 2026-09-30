@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -131,14 +131,12 @@ async def get_news(
 async def refresh_news(
     request: Request,
     force: bool = Query(False, description="Admin only: bypass cooldown"),
-    user: Optional[User] = Depends(get_optional_current_user),
+    user: User = Depends(get_current_user),
 ):
     """Trigger a manual news ingestion with cooldown protection.
 
-    - If last ingestion was within NEWS_REFRESH_COOLDOWN (5 min), returns cooldown status.
-    - Manual refresh IGNORES market hours (user-initiated, works any time).
-    - force=true (admin only) bypasses cooldown.
-    - Returns immediately with status; runs pipeline in background.
+    Requires authentication. Manual refresh ignores market hours.
+    force=true (admin only) bypasses cooldown.
     """
     settings = get_settings()
     last_run = ingestion_state.get_last_ingestion_time()
@@ -146,7 +144,7 @@ async def refresh_news(
     m_status = await market_status()
 
     # Check admin for force
-    is_admin = getattr(user, "is_admin", False) if user else False
+    is_admin = bool(getattr(user, "is_admin", False))
 
     # ── Check 1: Cooldown ────────────────────────────────────────────────
     if last_run and not (force and is_admin):
@@ -315,9 +313,9 @@ async def get_stock_news(
     """Stock page News tab with filtering and cursor pagination."""
     try:
         if source_type and source_type not in ("official", "news"):
-            raise HTTPException(status_code=400, detail="source_type must be 'official' or 'news'")
+            raise BadRequestError("source_type must be 'official' or 'news'")
         if sentiment and sentiment not in ("bullish", "bearish", "neutral"):
-            raise HTTPException(status_code=400, detail="sentiment must be 'bullish', 'bearish', or 'neutral'")
+            raise BadRequestError("sentiment must be 'bullish', 'bearish', or 'neutral'")
 
         svc = NewsService(db)
         articles, total, next_cursor = await svc.get_articles(
@@ -340,7 +338,7 @@ async def get_stock_news(
             empty_reason="no_results" if not items else None,
             total=total,
         )
-    except (AppError, HTTPException):
+    except AppError:
         raise
     except Exception as exc:
         import logging
