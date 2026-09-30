@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock
 
+import app.services.market_service as market_service_module
 from app.services.market_service import MarketService
 
 
@@ -86,3 +87,45 @@ async def test_top_losers_excludes_zero_volume_stale_quotes(monkeypatch):
     result = await service.get_top_losers()
 
     assert [row["symbol"] for row in result] == ["GOOD"]
+
+
+async def test_market_data_uses_saved_scraper_snapshot_when_redis_is_empty(monkeypatch):
+    rows = [{
+        "symbol": "HBL", "name": "HBL", "sector": "COMMERCIAL BANKS",
+        "ldcp": 300.0, "open": 301.0, "high": 305.0, "low": 299.0,
+        "current": 304.0, "change": 4.0, "change_pct": 1.33,
+        "volume": 1000, "market_cap_m": None,
+    }]
+    monkeypatch.setattr(market_service_module, "cache_get", AsyncMock(return_value=None))
+    monkeypatch.setattr(market_service_module, "cache_set", AsyncMock())
+    monkeypatch.setattr(market_service_module, "cache_set_sync", lambda *_args: None)
+    monkeypatch.setattr(
+        MarketService, "_saved_scraper_snapshot", staticmethod(lambda: (rows, "2026-09-18T00:00:00+00:00"))
+    )
+
+    result = await MarketService().get_market_data()
+
+    assert len(result) == 1
+    assert result[0]["symbol"] == "HBL"
+    assert result[0]["current"] == 304.0
+
+
+async def test_constituents_use_frozen_universe_and_saved_scraper_prices_on_empty_redis(monkeypatch):
+    rows = [{
+        "symbol": "HBL", "name": "HBL", "ldcp": 300.0, "current": 304.0,
+        "change": 4.0, "change_pct": 1.33, "weight_pct": None,
+        "index_points": None, "volume": 1000, "freefloat_m": None,
+        "market_cap_m": None,
+    }]
+    monkeypatch.setattr(market_service_module, "cache_get", AsyncMock(return_value=None))
+    monkeypatch.setattr(market_service_module, "cache_set", AsyncMock())
+    monkeypatch.setattr(
+        MarketService,
+        "_saved_index_constituents",
+        staticmethod(lambda code: (rows if code == "KSE100" else [], "2026-09-18T00:00:00+00:00")),
+    )
+
+    result = await MarketService().get_index_constituents("KSE100")
+
+    assert len(result) == 1
+    assert result[0]["current"] == 304.0

@@ -24,11 +24,11 @@ class ConstituentItem(BaseModel):
     current: float
     change: float
     change_pct: float
-    weight_pct: float
-    index_points: float
+    weight_pct: float | None = None
+    index_points: float | None = None
     volume: int
-    freefloat_m: float
-    market_cap_m: float
+    freefloat_m: float | None = None
+    market_cap_m: float | None = None
 
 
 class IndexConstituentsResponse(BaseModel):

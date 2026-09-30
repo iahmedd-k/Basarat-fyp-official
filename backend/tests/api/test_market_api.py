@@ -50,7 +50,21 @@ class TestMarketIndices:
         data = resp.json()
         assert data["index"] == "KSE-100"
         assert data["code"] == "KSE100"
+        assert data["shariah_compliant"] is False
         assert len(data["constituents"]) == 3
+
+    async def test_constituents_unavailable_is_not_reported_as_successful_empty_data(
+        self, client: AsyncClient, auth_headers, override_market, monkeypatch
+    ):
+        override_market.get_index_constituents.return_value = []
+        monkeypatch.setattr(
+            MarketService,
+            "_saved_index_constituents",
+            staticmethod(lambda _index_code: ([], None)),
+        )
+        resp = await client.get("/api/v1/market/indices/kse-100", headers=auth_headers)
+        assert resp.status_code == 503
+        assert "currently unavailable" in resp.json()["error"]["message"]
 
     async def test_get_kse30_constituents(self, client: AsyncClient, auth_headers, override_market):
         override_market.get_index_constituents.return_value = [

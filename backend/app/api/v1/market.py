@@ -133,6 +133,7 @@ async def get_market_indices(
 @router.get(
     "/market/indices/kse-100",
     response_model=IndexConstituentsResponse,
+    response_model_exclude_none=True,
     summary="Get KSE-100 index constituents",
 )
 @limiter.limit("60/minute")
@@ -142,12 +143,17 @@ async def get_kse_100_constituents(
 ):
     try:
         constituents = await service.get_index_constituents("KSE100")
+        if not constituents:
+            raise ServiceUnavailableError("KSE-100 constituent data is currently unavailable from the market feed")
         return {
             "index": "KSE-100",
             "code": "KSE100",
+            "shariah_compliant": False,
             "constituents": constituents,
             **service.constituents_freshness("KSE100"),
         }
+    except ServiceUnavailableError:
+        raise
     except Exception:
         raise ServiceUnavailableError("Failed to fetch KSE-100 constituents")
 
@@ -155,6 +161,7 @@ async def get_kse_100_constituents(
 @router.get(
     "/market/indices/kse-30",
     response_model=IndexConstituentsResponse,
+    response_model_exclude_none=True,
     summary="Get KSE-30 index constituents",
 )
 @limiter.limit("60/minute")
@@ -164,12 +171,17 @@ async def get_kse_30_constituents(
 ):
     try:
         constituents = await service.get_index_constituents("KSE30")
+        if not constituents:
+            raise ServiceUnavailableError("KSE-30 constituent data is currently unavailable from the market feed")
         return {
             "index": "KSE-30",
             "code": "KSE30",
+            "shariah_compliant": False,
             "constituents": constituents,
             **service.constituents_freshness("KSE30"),
         }
+    except ServiceUnavailableError:
+        raise
     except Exception:
         raise ServiceUnavailableError("Failed to fetch KSE-30 constituents")
 
@@ -177,6 +189,7 @@ async def get_kse_30_constituents(
 @router.get(
     "/market/indices/kmi-30",
     response_model=IndexConstituentsResponse,
+    response_model_exclude_none=True,
     summary="Get KMI-30 index constituents (Shariah compliant)",
 )
 @limiter.limit("60/minute")
@@ -186,6 +199,8 @@ async def get_kmi_30_constituents(
 ):
     try:
         constituents = await service.get_index_constituents("KMI30")
+        if not constituents:
+            raise ServiceUnavailableError("KMI-30 constituent data is currently unavailable from the market feed")
         return {
             "index": "KMI-30",
             "code": "KMI30",
@@ -193,6 +208,8 @@ async def get_kmi_30_constituents(
             "constituents": constituents,
             **service.constituents_freshness("KMI30"),
         }
+    except ServiceUnavailableError:
+        raise
     except Exception:
         raise ServiceUnavailableError("Failed to fetch KMI-30 constituents")
 

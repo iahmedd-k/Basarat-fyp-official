@@ -1,9 +1,11 @@
 import asyncio
+import json
 import logging
 import math
 import re
 from datetime import datetime, timezone
 from collections import defaultdict
+from pathlib import Path
 
 import httpx
 import pypsx_toolkit
@@ -33,6 +35,7 @@ QUOTES_TTL_SECONDS = 90
 INDICES_TTL_SECONDS = 28800  # 8 hours; refreshed with close/weekly jobs
 CONSTITUENTS_TTL_SECONDS = 86400  # 24 hours; Celery refreshes weekly
 FALLBACK_TTL_SECONDS = 86400 * 7  # 7 days persistent fallback
+SAVED_SNAPSHOT_TTL_SECONDS = 86400 * 30
 SECTOR_MAP_TTL_SECONDS = 86400  # PSX classifications rarely change; refresh daily
 PSX_SCREENER_URL = "https://dps.psx.com.pk/screener"
 
@@ -153,6 +156,106 @@ class MarketService:
         "KSE30": "KSE-30",
         "KMI30": "KMI-30",
     }
+
+    @staticmethod
+    def _saved_scraper_snapshot() -> tuple[list[dict], str | None]:
+        """Build a stale quote snapshot from the scraper's persisted OHLCV files.
+
+        These files survive Redis replacement through the production market-data
+        volume. They are historical closes, never represented as live quotes.
+        """
+        import pandas as pd
+
+        data_dirs = (Path("/app/data/raw/ohlcv"), Path("data/raw/ohlcv"))
+        data_dir = next((path for path in data_dirs if path.is_dir()), None)
+        if data_dir is None:
+            return [], None
+
+        rows: list[dict] = []
+        latest_date = None
+        for path in data_dir.glob("*.parquet"):
+            if path.name == "all_symbols.parquet":
+                continue
+            try:
+                frame = pd.read_parquet(path)
+                if not {"date", "close"}.issubset(frame.columns):
+                    continue
+                frame = frame.sort_values("date").dropna(subset=["close"])
+                if frame.empty:
+                    continue
+                last = frame.iloc[-1]
+                previous = frame.iloc[-2] if len(frame) > 1 else last
+                symbol = path.stem.upper()
+                current = MarketService._positive_or_none(last.get("close"))
+                ldcp = MarketService._positive_or_none(previous.get("close"))
+                if current is None:
+                    continue
+                change = round(current - ldcp, 4) if ldcp is not None else None
+                traded_on = pd.to_datetime(last.get("date"), errors="coerce")
+                if pd.isna(traded_on):
+                    continue
+                traded_date = traded_on.date()
+                latest_date = max(latest_date, traded_date) if latest_date else traded_date
+                rows.append({
+                    "symbol": symbol,
+                    "name": symbol,
+                    "sector": _STATIC_SECTOR_MAP.get(symbol, "Unclassified"),
+                    "ldcp": ldcp,
+                    "open": MarketService._positive_or_none(last.get("open")),
+                    "high": MarketService._positive_or_none(last.get("high")),
+                    "low": MarketService._positive_or_none(last.get("low")),
+                    "current": current,
+                    "change": change,
+                    "change_pct": round(change / ldcp * 100, 2) if change is not None and ldcp else None,
+                    "volume": MarketService._safe_int(last.get("volume")),
+                    "market_cap_m": None,
+                })
+            except Exception as exc:
+                log.debug("Could not read saved OHLCV snapshot %s: %s", path.name, exc)
+
+        as_of = f"{latest_date.isoformat()}T00:00:00+00:00" if latest_date else None
+        return rows, as_of
+
+    @staticmethod
+    def _saved_index_constituents(index_code: str) -> tuple[list[dict], str | None]:
+        """Join frozen scraper membership to persisted closes when Redis is cold."""
+        config_paths = (
+            Path("/app/data/config/symbol_universe.json"),
+            Path("data/config/symbol_universe.json"),
+        )
+        config_path = next((path for path in config_paths if path.is_file()), None)
+        if config_path is None:
+            return [], None
+        try:
+            universe = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            log.warning("Could not read frozen symbol universe for market fallback")
+            return [], None
+
+        quotes, as_of = MarketService._saved_scraper_snapshot()
+        quotes_by_symbol = {row["symbol"]: row for row in quotes}
+        members = []
+        for item in universe:
+            if index_code not in item.get("indices", []):
+                continue
+            symbol = str(item.get("symbol", "")).upper()
+            quote = quotes_by_symbol.get(symbol)
+            if not quote:
+                continue
+            members.append({
+                "symbol": symbol,
+                "name": quote.get("name") or symbol,
+                "ldcp": quote.get("ldcp") or quote["current"],
+                "current": quote["current"],
+                "change": quote.get("change") or 0.0,
+                "change_pct": quote.get("change_pct") or 0.0,
+                "weight_pct": None,
+                "index_points": None,
+                "volume": quote.get("volume") or 0,
+                "freefloat_m": None,
+                "market_cap_m": quote.get("market_cap_m"),
+            })
+        return members, as_of
 
     @staticmethod
     def _fetch_sector_map_sync() -> dict[str, str]:
@@ -454,6 +557,23 @@ class MarketService:
             if last_known:
                 log.info("Serving %d stale constituents for %s", len(last_known), index_code)
                 return last_known
+            saved_rows, saved_as_of = await asyncio.to_thread(
+                self._saved_index_constituents, index_code
+            )
+            if saved_rows:
+                await cache_set(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+                await cache_set(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+                if saved_as_of:
+                    await cache_set(
+                        f"market:constituents:{index_code}:fetched_at",
+                        saved_as_of,
+                        SAVED_SNAPSHOT_TTL_SECONDS,
+                    )
+                log.warning(
+                    "Serving %d saved OHLCV-backed constituents for %s as of %s",
+                    len(saved_rows), index_code, saved_as_of,
+                )
+                return saved_rows
             return []
 
         log.info("Fetching constituents for %s from external API", index_code)
@@ -505,6 +625,24 @@ class MarketService:
             log.info("Serving %d constituents for %s from persistent fallback cache", len(last_known), index_code)
             return last_known
 
+        saved_rows, saved_as_of = await asyncio.to_thread(
+            self._saved_index_constituents, index_code
+        )
+        if saved_rows:
+            await cache_set(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+            await cache_set(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+            if saved_as_of:
+                await cache_set(
+                    f"market:constituents:{index_code}:fetched_at",
+                    saved_as_of,
+                    SAVED_SNAPSHOT_TTL_SECONDS,
+                )
+            log.warning(
+                "Serving %d saved OHLCV-backed constituents for %s as of %s",
+                len(saved_rows), index_code, saved_as_of,
+            )
+            return saved_rows
+
         log.warning("No constituents data available for %s", index_code)
         return []
 
@@ -523,6 +661,13 @@ class MarketService:
             if last_known:
                 log.info("Serving %d market quotes from sync stale fallback", len(last_known))
                 return self._normalize_quotes(last_known)
+            saved_rows, saved_as_of = self._saved_scraper_snapshot()
+            if saved_rows:
+                cache_set_sync(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+                cache_set_sync(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+                if saved_as_of:
+                    cache_set_sync("market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS)
+                return self._normalize_quotes(saved_rows)
             return []
 
         log.info("Fetching market watch from external API (sync)")
@@ -577,6 +722,15 @@ class MarketService:
             log.info("Serving %d market quotes from sync fallback cache", len(last_known))
             return self._normalize_quotes(last_known)
 
+        saved_rows, saved_as_of = self._saved_scraper_snapshot()
+        if saved_rows:
+            cache_set_sync(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+            cache_set_sync(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+            if saved_as_of:
+                cache_set_sync("market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS)
+            log.warning("Serving %d persisted scraper quotes as of %s", len(saved_rows), saved_as_of)
+            return self._normalize_quotes(saved_rows)
+
         return []
 
     async def get_market_data(self, force_refresh: bool = False, read_only: bool = True) -> list[dict]:
@@ -593,6 +747,19 @@ class MarketService:
             if last_known:
                 log.info("Serving %d market quotes from stale fallback", len(last_known))
                 return self._normalize_quotes(last_known)
+            saved_rows, saved_as_of = await asyncio.to_thread(self._saved_scraper_snapshot)
+            if saved_rows:
+                await cache_set(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+                await cache_set(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+                if saved_as_of:
+                    await cache_set("market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS)
+                await asyncio.to_thread(cache_set_sync, cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+                await asyncio.to_thread(cache_set_sync, fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+                await asyncio.to_thread(
+                    cache_set_sync, "market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS
+                )
+                log.warning("Serving %d persisted scraper quotes as of %s", len(saved_rows), saved_as_of)
+                return self._normalize_quotes(saved_rows)
             return []
 
         log.info("Fetching market watch from external API")
@@ -670,6 +837,20 @@ class MarketService:
         if last_known and len(last_known) > 0:
             log.info("Serving %d market quotes from persistent fallback cache", len(last_known))
             return self._normalize_quotes(last_known)
+
+        saved_rows, saved_as_of = await asyncio.to_thread(self._saved_scraper_snapshot)
+        if saved_rows:
+            await cache_set(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+            await cache_set(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+            if saved_as_of:
+                await cache_set("market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS)
+            await asyncio.to_thread(cache_set_sync, cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+            await asyncio.to_thread(cache_set_sync, fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
+            await asyncio.to_thread(
+                cache_set_sync, "market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS
+            )
+            log.warning("Serving %d persisted scraper quotes as of %s", len(saved_rows), saved_as_of)
+            return self._normalize_quotes(saved_rows)
 
         return []
 
