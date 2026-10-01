@@ -35,16 +35,6 @@ except Exception:
     pass
 
 
-# ---------------------------------------------------------------------------
-# Async event-loop fixture (session-scoped so one loop for the whole suite)
-# ---------------------------------------------------------------------------
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest.fixture(autouse=True)
 def _mock_email_service(monkeypatch):
     """Mock EmailService so no real emails are sent during tests."""
