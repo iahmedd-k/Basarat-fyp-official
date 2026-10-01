@@ -6,6 +6,7 @@ services:
     command: alembic upgrade head
     env_file: .env
     environment:
+      ENVIRONMENT: production
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
     restart: "no"
@@ -16,6 +17,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
     env_file: .env
     environment:
+      ENVIRONMENT: production
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
     volumes:
@@ -35,6 +37,7 @@ services:
     command: celery -A app.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=1
     env_file: .env
     environment:
+      ENVIRONMENT: production
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
     volumes:
@@ -55,6 +58,7 @@ services:
       - beat-state:/var/lib/celery
     env_file: .env
     environment:
+      ENVIRONMENT: production
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
     depends_on:

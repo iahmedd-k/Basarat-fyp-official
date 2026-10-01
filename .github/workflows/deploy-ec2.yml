@@ -44,13 +44,15 @@ jobs:
 
       - name: Deploy Compose stack
         working-directory: /opt/basarat/backend
+        env:
+          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
         run: |
-          test -s .env || { echo "Missing /opt/basarat/backend/.env; configure it on EC2 before deploying."; exit 1; }
-          sed -i '/^GROQ_/d' .env
-          P1="gsk"
-          P2="_zOsqaf893Puz15lc7PIPWGdyb3FYjtvGPDwkZcXMogGXJbyHNxqE"
-          echo "GROQ_API_KEY=${P1}${P2}" >> .env
-          echo "GROQ_MODEL=qwen/qwen3.8-27b" >> .env
+          if [ -z "${PRODUCTION_ENV_FILE:-}" ]; then
+            echo "Missing GitHub Actions secret PRODUCTION_ENV_FILE."
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$PRODUCTION_ENV_FILE" > .env
           docker compose -f docker-compose.production.yml config --quiet
           docker compose --parallel 1 -f docker-compose.production.yml up -d --build
           docker compose -f docker-compose.production.yml ps
