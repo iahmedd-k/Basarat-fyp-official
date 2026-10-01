@@ -9,6 +9,8 @@ services:
       ENVIRONMENT: production
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
+    volumes:
+      - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
     restart: "no"
 
   app:
@@ -21,6 +23,7 @@ services:
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
     volumes:
+      - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
       - market-data:/app/data/raw/ohlcv
       - feature-data:/app/data/features
       - gru-candidates:/app/models/gru_candidate
@@ -41,6 +44,7 @@ services:
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
     volumes:
+      - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
       - market-data:/app/data/raw/ohlcv
       - feature-data:/app/data/features
       - gru-candidates:/app/models/gru_candidate
@@ -55,6 +59,7 @@ services:
     build: { context: ., dockerfile: Dockerfile }
     command: celery -A app.celery_app beat --loglevel=info --schedule=/var/lib/celery/celerybeat-schedule
     volumes:
+      - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
       - beat-state:/var/lib/celery
     env_file: .env
     environment:

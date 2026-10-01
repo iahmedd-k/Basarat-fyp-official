@@ -15,6 +15,8 @@ backend/.route-test-secrets
 
 # Secrets & Credentials
 backend/secrets/
+backend/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json
+backend/google-services.json
 secrets/
 *.pem
 *.key

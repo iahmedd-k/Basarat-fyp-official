@@ -8,6 +8,9 @@ __pycache__/
 venv/
 env/
 .env
+secrets/
+basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json
+google-services.json
 *.log
 .idea/
 .vscode/
