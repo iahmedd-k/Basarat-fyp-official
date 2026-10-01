@@ -605,7 +605,7 @@ class SwaggerLiveAuditRunner:
             self._execute("News", "GET", "/news/sources", expected_status=[200], inspector_kwargs={"min_items": 1})
 
         if self.should_run("Sentiment"):
-            self._execute("Sentiment", "GET", "/sentiment/market-overview", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["market_mood", "score", "distribution"]})
+            self._execute("Sentiment", "GET", "/sentiment/market-overview", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["market_mood", "overall_score", "score_distribution"]})
             self._execute("Sentiment", "GET", "/sentiment/OGDC", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["symbol", "sentiment_score", "sentiment_label"]})
             self._execute("Sentiment", "GET", "/sentiment/OGDC/history", params={"period": "1M"}, expected_status=[200, 401])
             self._execute("Sentiment", "GET", "/sentiment/OGDC/news", expected_status=[200, 401])

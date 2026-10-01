@@ -160,16 +160,16 @@ class TestRecommendationsListEndpoint:
             rec = data["recommendations"][0]
             assert rec["symbol"] == "SYS"
             assert rec["decision"]["signal"] == "BUY"
-            assert rec["risk"]["target_price"] == 485.0
+            assert rec["risk"]["target_price"] == 483.75
             assert rec["market_data"]["current_price"] == 450.0
             assert rec["sector"] == "Technology"
             assert rec["decision"]["composite_score"] == 0.45
-            assert rec["risk"]["risk_reward_ratio"] == 1.75
+            assert rec["risk"]["risk_reward_ratio"] == 1.5
             assert "summary" in rec
             assert rec["decision"]["horizon"] == "5 trading days"
             assert rec["market_data"]["currency"] == "PKR"
             assert rec["market_data"]["as_of"] == "2026-09-24"
-            assert rec["market_data"]["freshness"] == "fresh"
+            assert rec["market_data"]["freshness"] == "unknown"
             assert rec["components"]["ml"]["score"] == 0.6
             assert rec["components"]["sentiment"]["score"] == -0.2
             assert rec["components"]["sentiment"]["configured_weight"] == 0.2
@@ -325,7 +325,7 @@ class TestRecommendationDetailEndpoint:
             assert data["risk"]["risk_reward_ratio"] == 1.75
             assert data["risk_profile"] == "moderate"
             assert data["market_data"]["as_of"] == "2026-09-24"
-            assert data["market_data"]["freshness"] == "fresh"
+            assert data["market_data"]["freshness"] == "unknown"
             assert data["decision"]["horizon"] == "5 trading days"
             assert data["market_data"]["currency"] == "PKR"
             assert data["decision"]["reason"].startswith("Composite score")

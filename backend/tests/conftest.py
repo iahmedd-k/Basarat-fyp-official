@@ -73,13 +73,15 @@ TestSessionLocal = async_sessionmaker(
 def _dispose_engine_at_session_end():
     """Close the aiosqlite worker threads so the interpreter can exit on Windows."""
     yield
-    import asyncio
 
+    async def _dispose():
+        await engine.dispose()
+
+    loop = asyncio.new_event_loop()
     try:
-        asyncio.get_event_loop().run_until_complete(engine.dispose())
-    except RuntimeError:
-        asyncio.run(engine.dispose())
-        asyncio.run(asyncio.sleep(0))
+        loop.run_until_complete(_dispose())
+    finally:
+        loop.close()
 
 
 @pytest_asyncio.fixture(scope="function")

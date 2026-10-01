@@ -33,6 +33,16 @@ write_runtime_env() {
     docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$source_container" \
         | grep -Ev '^(HOSTNAME|PATH|HOME|container|PYTHON_VERSION|PYTHON_PIP_VERSION|PYTHON_SETUPTOOLS_VERSION|PYTHON_GET_PIP_URL|PYTHON_GET_PIP_SHA256|TRUSTED_PROXY_IPS)=' \
         > "$destination"
+    [[ -r "$BACKEND_ROOT/.env" ]] || die "Runtime environment file is missing or unreadable: $BACKEND_ROOT/.env"
+    # Add newly configured keys without overriding values already active in the current container.
+    while IFS= read -r entry || [[ -n "$entry" ]]; do
+        [[ "$entry" =~ ^[[:space:]]*(#|$) ]] && continue
+        key="${entry%%=*}"
+        [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        if ! grep -q "^${key}=" "$destination"; then
+            printf '%s\n' "$entry" >> "$destination"
+        fi
+    done < "$BACKEND_ROOT/.env"
     proxy_gateway="$(docker network inspect --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' "$DOCKER_NETWORK")"
     [[ -n "$proxy_gateway" ]] || die "Could not determine the Docker proxy gateway for $DOCKER_NETWORK"
     printf 'TRUSTED_PROXY_IPS=["127.0.0.1","%s"]\n' "$proxy_gateway" >> "$destination"

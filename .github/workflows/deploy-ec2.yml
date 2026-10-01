@@ -49,12 +49,24 @@ jobs:
         env:
           ENVIRONMENT: test
           SECRET_KEY: local-ci-only-signing-key-at-least-32-chars
-          DATABASE_URL: postgresql+asyncpg://local:local@127.0.0.1:5432/local_only
-          DATABASE_URL_SYNC: postgresql+psycopg2://local:local@127.0.0.1:5432/local_only
+          DATABASE_URL: postgresql+asyncpg://ci:ci@ci-db.invalid:5432/test_only
+          DATABASE_URL_SYNC: postgresql+psycopg2://ci:ci@ci-db.invalid:5432/test_only
           REDIS_ENABLED: "false"
           USE_CELERY: "false"
           TESTING: "true"
         run: python -m pytest -c backend/pytest.ini backend/tests/api backend/tests/unit -q
+
+      - name: Validate production Compose and deploy scripts
+        run: |
+          for script in backend/deploy/ec2/*.sh; do bash -n "$script"; done
+          validation_dir="$(mktemp -d)"
+          trap 'rm -rf "$validation_dir"' EXIT
+          cp backend/docker-compose.production.yml "$validation_dir/docker-compose.yml"
+          touch "$validation_dir/.env"
+          BACKEND_IMAGE=ci.invalid/basarat/backend:validation \
+          CLOUD_DATABASE_URL=postgresql+asyncpg://ci:ci@ci-db.invalid:5432/test_only \
+            docker compose --project-directory "$validation_dir" \
+              -f "$validation_dir/docker-compose.yml" config --quiet
 
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4

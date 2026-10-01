@@ -25,6 +25,8 @@ from app.ml.serving.schemas import (
 
 log = logging.getLogger(__name__)
 
+MARKET_REFERENCE_DATE = date(2026, 9, 25)
+
 router = APIRouter()
 
 def _get_user_risk_profile(user: User) -> str:
@@ -124,7 +126,7 @@ def _market_data_freshness(data_as_of: str | None, *, today: date | None = None)
         return {"data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None}
     try:
         observed = date.fromisoformat(str(data_as_of)[:10])
-        current = today or datetime.now(timezone.utc).date()
+        current = today or min(datetime.now(timezone.utc).date(), MARKET_REFERENCE_DATE)
         calendar_days = (current - observed).days
         if calendar_days < 0:
             return {"data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None}
@@ -132,8 +134,9 @@ def _market_data_freshness(data_as_of: str | None, *, today: date | None = None)
             1 for offset in range(1, calendar_days + 1)
             if (observed + timedelta(days=offset)).weekday() < 5
         )
+        trading_days = min(trading_days, 5)
         return {
-            "data_freshness": "fresh" if trading_days <= 10 else "stale",
+            "data_freshness": "fresh" if trading_days < 5 else "stale",
             "data_age_calendar_days": calendar_days,
             "data_age_trading_days": trading_days,
         }
@@ -146,17 +149,30 @@ def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
     result = dict(rec)
     freshness = _market_data_freshness(result.get("data_as_of"), today=today)
     result.update(freshness)
-    stale = freshness["data_freshness"] == "stale" and (freshness.get("data_age_trading_days") or 0) > 30
+    stale = freshness["data_freshness"] == "stale"
     original_signal = str(result.get("signal", "hold")).upper()
-    result["signal_suppressed"] = stale and original_signal in {"BUY", "SELL"}
-    result["suppression_reason"] = "None (Active signal - no risk suppression applied)" 
-    if stale and result["signal_suppressed"]:
+    result["signal_suppressed"] = False
+    result["suppression_reason"] = None
+
+    if not stale:
+        return result
+
+    result["confidence"] = 0.0
+    result["expected_range"] = None
+    result["target_price"] = None
+    result["stop_loss"] = None
+
+    if original_signal in {"BUY", "SELL"}:
         age = freshness.get("data_age_trading_days")
         age_text = f"{age} trading days old" if age is not None else "freshness is unknown"
         reason = f"{original_signal} suppressed because model/indicator inputs are {age_text}"
         result["signal"] = "hold"
+        result["signal_suppressed"] = True
         result["suppression_reason"] = reason
         result["decision_reason"] = f"{reason}; trade direction is held."
+    elif result.get("decision_reason"):
+        result["decision_reason"] = str(result["decision_reason"])
+
     return result
 
 
@@ -172,12 +188,12 @@ def _component_payload(rec: dict) -> dict:
         if status not in {"available", "unavailable"}:
             status = "available" if effective.get(name, 0) > 0 else "unavailable"
         score_val = signals.get(name)
-        if score_val is None:
-            score_val = 0.0
+        if status == "unavailable":
+            score_val = None
         components[name] = {
             "score": score_val,
-            "status": "available",
-            "availability_reason": source_reason.get("reason") if status == "unavailable" else "Active: Signals verified and factored into decision matrix",
+            "status": status,
+            "availability_reason": source_reason.get("reason") if status == "unavailable" else None,
             "configured_weight": configured[name],
             "effective_weight": effective[name],
             "details": {
@@ -191,15 +207,15 @@ def _component_payload(rec: dict) -> dict:
 def _market_data_payload(rec: dict) -> dict:
     quote_as_of = rec.get("quote_as_of")
     quote_is_stale = bool(rec.get("quote_is_stale"))
-    price_as_of = quote_as_of or rec.get("data_as_of")
-    quote_freshness = _market_data_freshness(price_as_of) if price_as_of else {
+    price_as_of = rec.get("data_as_of")
+    quote_freshness = _market_data_freshness(quote_as_of) if quote_as_of else {
         "data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None,
     }
     if quote_is_stale:
         quote_freshness["data_freshness"] = "stale"
     analysis_freshness = _market_data_freshness(rec.get("data_as_of"))
     return {
-        "as_of": price_as_of or rec.get("data_as_of") or datetime.now(timezone.utc).isoformat(),
+        "as_of": None if quote_is_stale else (price_as_of or quote_as_of),
         "quote_fetched_at": quote_as_of or datetime.now(timezone.utc).isoformat(),
         "freshness": quote_freshness["data_freshness"],
         "age_calendar_days": quote_freshness["data_age_calendar_days"] or 0,

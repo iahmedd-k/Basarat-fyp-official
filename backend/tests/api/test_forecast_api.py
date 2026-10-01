@@ -88,6 +88,39 @@ class TestForecastEndpoint:
             assert "gru" in data["models"]
             assert "xgb" in data["models"]
 
+    async def test_neutral_forecast_has_no_directional_target_or_stop(self, client: AsyncClient, auth_headers):
+        neutral_result = {
+            "symbol": "SYS",
+            "horizon": "1D",
+            "direction": "sideways",
+            "confidence": 0.5,
+            "top_class_probability": 50.0,
+            "bullish_pct": 33.0,
+            "bearish_pct": 33.0,
+            "sideways_pct": 34.0,
+            "as_of_date": "2026-09-18",
+            "predicted_for_date": "2026-09-19",
+            "model_version": "ensemble",
+            "gate_reason": "neutral_regime",
+        }
+
+        with patch("app.api.v1.forecast.artifacts") as mock_artifacts, \
+             patch("app.api.v1.forecast.get_forecast", return_value=neutral_result), \
+             patch("app.api.v1.forecast.log_prediction"), \
+             patch("app.ml.serving.inference.FEATURES_PATH") as features_path, \
+             patch("app.services.stock_service.StockService.get_quote") as get_quote:
+            mock_artifacts.model_ready = True
+            features_path.exists.return_value = False
+
+            resp = await client.get("/api/v1/forecast/SYS?horizon=1D", headers=auth_headers)
+
+            assert resp.status_code == 200
+            payload = resp.json()
+            assert payload["target_price"] is None
+            assert payload["stop_loss"] is None
+            assert payload["signal_rating"] == "Neutral / Hold"
+            get_quote.assert_not_called()
+
 
 @pytest.mark.api
 class TestForecastHistoryEndpoint:

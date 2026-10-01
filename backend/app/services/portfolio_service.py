@@ -523,13 +523,26 @@ class PortfolioService:
         if stock:
             return stock
 
-        # Check market quote and symbol universe
+        # Check market quote and symbol universe. Unknown symbols often return a
+        # synthetic zero-value placeholder quote, which must not be treated as a
+        # valid listed stock.
         quote = self.stock_service.get_quote(symbol)
         is_valid = False
         name = symbol
         sector = "Other"
 
-        if quote and quote.get("symbol"):
+        placeholder_quote = (
+            quote is not None
+            and str(quote.get("symbol", "")).upper() == symbol
+            and quote.get("current") in (None, 0, 0.0)
+            and quote.get("ldcp") in (None, 0, 0.0)
+            and quote.get("open") in (None, 0, 0.0)
+            and quote.get("high") in (None, 0, 0.0)
+            and quote.get("low") in (None, 0, 0.0)
+            and not quote.get("sector")
+        )
+
+        if quote and not placeholder_quote and quote.get("symbol"):
             is_valid = True
             name = quote.get("name") or symbol
             sector = quote.get("sector") or "Other"

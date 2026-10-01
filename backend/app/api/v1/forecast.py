@@ -139,7 +139,10 @@ async def get_stock_forecast(
         except Exception:
             log.warning("Target/stop computation failed for %s", result["symbol"], exc_info=True)
 
-        if not target_stop or target_stop.get("target_price") is None:
+        if (
+            (not target_stop or target_stop.get("target_price") is None)
+            and result.get("direction") in ("bullish", "bearish")
+        ):
             try:
                 from app.services.stock_service import StockService
 
@@ -245,7 +248,7 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
         downside_pct = target_stop.get("downside_pct")
         risk_reward_ratio = target_stop.get("risk_reward_ratio")
 
-    if current_price and (target_price is None or stop_loss is None):
+    if current_price and direction in ("bullish", "bearish") and (target_price is None or stop_loss is None):
         mult = 1.5 if horizon == "1D" else 2.5 if horizon == "1W" else 3.5
         atr = current_price * (0.015 if horizon == "1D" else 0.035 if horizon == "1W" else 0.075)
         tp = round(current_price + atr * mult, 2)
@@ -263,6 +266,8 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
         price_target_rationale = (
             f"Target price and stop-loss calculated via ATR volatility interval for {horizon} horizon."
         )
+    elif direction not in ("bullish", "bearish") and expected_range:
+        price_target_rationale = "Neutral forecasts have no directional target or stop; the expected range is an ATR volatility envelope."
     else:
         price_target_rationale = "Target and stop-loss calculations are pending current session price data."
 

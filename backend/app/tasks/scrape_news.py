@@ -21,25 +21,28 @@ log = logging.getLogger(__name__)
 
 
 def _run_async(coro):
-    """Run an async coroutine from a sync Celery task."""
+    """Run an async coroutine from a sync Celery task and await cleanup in the same loop."""
     loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        # Async connections cannot safely be reused by the next Celery task's
-        # fresh event loop. Dispose the worker-local pool before closing this loop.
-        from app.db.base import engine
+
+    async def _runner():
         try:
-            loop.run_until_complete(engine.dispose())
-        except Exception:
-            log.exception("Failed to dispose async database connections")
+            return await coro
         finally:
+            from app.db.base import engine
+            try:
+                await engine.dispose()
+            except Exception:
+                log.exception("Failed to dispose async database connections")
             try:
                 from app.core.redis import close_async_redis_client
-                loop.run_until_complete(close_async_redis_client())
+                await close_async_redis_client()
             except Exception:
                 log.exception("Failed to close worker-local async Redis pool")
-            loop.close()
+
+    try:
+        return loop.run_until_complete(_runner())
+    finally:
+        loop.close()
 
 
 @shared_task(

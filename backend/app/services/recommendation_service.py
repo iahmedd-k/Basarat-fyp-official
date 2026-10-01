@@ -602,16 +602,29 @@ class RecommendationEngine:
             upside_pct = round((target_price - current_price) / current_price * 100, 2)
             downside_pct = round((stop_loss - current_price) / current_price * 100, 2)
         else:  # sideways, hold or neutral
-            target_price = round(current_price + (atr * target_mult), 2)
-            stop_loss = round(current_price - (atr * stop_mult), 2)
             range_half = round(atr * target_mult, 2)
             expected_range = {
                 "low": round(current_price - range_half, 2),
                 "high": round(current_price + range_half, 2),
                 "method": "atr_range",
             }
-            upside_pct = round((target_price - current_price) / current_price * 100, 2)
-            downside_pct = round((stop_loss - current_price) / current_price * 100, 2)
+            return {
+                "symbol": symbol,
+                "current_price": round(current_price, 2),
+                "target_price": None,
+                "stop_loss": None,
+                "expected_range": expected_range,
+                "upside_pct": None,
+                "downside_pct": None,
+                "risk_reward_ratio": None,
+                "method": "atr_range",
+                "atr_14": round(atr, 4),
+                "target_multiplier": round(target_mult, 2),
+                "stop_multiplier": round(stop_mult, 2),
+                "risk_tolerance": risk_tolerance,
+                "horizon": horizon,
+                "ml_direction_used": direction,
+            }
 
         stop_risk = abs(current_price - stop_loss) if stop_loss else 0.01
         target_reward = abs(target_price - current_price) if target_price else 0.01

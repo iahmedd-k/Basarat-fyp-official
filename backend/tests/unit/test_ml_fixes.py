@@ -24,7 +24,6 @@ from app.data.features.labeling import (
 )
 from app.data.features.technical_indicators import compute_technical_indicators
 from app.ml.serving.inference import (
-    FeatureMismatchError,
     _ensemble_decide,
     compute_confidence,
 )
@@ -222,7 +221,7 @@ def test_ensemble_agreement_reason():
     }
     res = _ensemble_decide(gru, xgb)
     assert res["direction"] == "bullish"
-    assert res["gate_reason"] == "agree(bullish)"
+    assert res["gate_reason"] == "consensus_agree(bullish)"
 
 
 # ── Task 20: Reproducibility ─────────────────────────────────────────
@@ -245,15 +244,26 @@ def test_xgb_sample_weights_computation():
     assert weights[2] > weights[0] > weights[3]
 
 
-def test_inference_missing_feature_raises_error():
-    from app.ml.serving.inference import _run_gru, FeatureMismatchError
+def test_inference_zero_fills_missing_feature(monkeypatch):
+    from app.ml.serving.inference import _run_gru
     from app.ml.serving.model_loader import artifacts
 
-    artifacts.model_ready = True
-    artifacts.window_size = 30
-    artifacts.feature_columns = ["f1", "f2", "f3"]
-    # DataFrame missing f3
-    df = pd.DataFrame({"f1": np.zeros(35), "f2": np.zeros(35)})
-    with pytest.raises(FeatureMismatchError, match="missing required features"):
-        _run_gru("TEST", df)
+    class _FakeModel:
+        def predict(self, values, verbose=0):
+            assert values.shape == (1, 30, 3)
+            assert np.all(values[:, :, 2] == 0)
+            return np.array([[0.7, 0.2, 0.1]])
+
+    monkeypatch.setattr(artifacts, "model_ready", True)
+    monkeypatch.setattr(artifacts, "model", _FakeModel())
+    monkeypatch.setattr(artifacts, "window_size", 30)
+    monkeypatch.setattr(artifacts, "feature_columns", ["f1", "f2", "f3"])
+    monkeypatch.setattr(artifacts, "scaler", None)
+    monkeypatch.setattr(artifacts, "model_version", "test-model")
+    monkeypatch.setattr(artifacts, "label_names", {0: "bullish", 1: "bearish", 2: "sideways"})
+
+    result = _run_gru("TEST", pd.DataFrame({"f1": np.zeros(35), "f2": np.zeros(35)}))
+
+    assert result is not None
+    assert result["direction"] == "bullish"
 

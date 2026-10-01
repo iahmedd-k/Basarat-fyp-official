@@ -33,6 +33,8 @@ Set this GitHub repository secret:
 
 The OIDC trust policy must allow the repository's `refs/heads/main` subject for the build job and its `environment:production` subject for the deploy job. Restrict the GitHub `production` environment to the `main` branch. The deploy job assumes the same role before logging into ECR; no EC2 instance-profile AWS credentials are used. The existing EC2 GitHub runner must retain labels `self-hosted`, `linux`, `x64`, and `basarat-demo`, have Docker access, and have passwordless sudo for Nginx installation/reload. The workflow builds on GitHub-hosted Linux; the EC2 job only logs in, pulls, migrates, and deploys.
 
+Application secrets and runtime settings belong in `/opt/basarat/backend/.env` on EC2, not in GitHub Actions. The deploy job passes only AWS deployment configuration and the immutable image URI; the test job uses isolated dummy settings. During blue/green deploy, the candidate starts with the active container's environment; keys present in the EC2 `.env` but absent from that container are added to the candidate environment. Add a new key to the EC2 `.env` before deploying the image that consumes it. Existing keys continue using the active container's value, so changing or rotating an existing key requires an explicit runtime configuration update/recreation rather than only adding another line to `.env`.
+
 Do not set an ECR lifecycle rule that expires SHA-tagged releases needed for rollback. ECR tag immutability prevents a published commit tag from being overwritten. The deploy script keeps the active and immediate rollback images tagged locally and removes only the older local image after successful stabilization; ECR retains all SHA-tagged releases.
 
 ## Local checks

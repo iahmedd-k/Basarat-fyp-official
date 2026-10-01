@@ -1,6 +1,8 @@
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Literal
 
 from pydantic import Field
@@ -33,9 +35,11 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/basarat"
     DATABASE_URL_SYNC: str = ""
+    CLOUD_DATABASE_URL: str = ""
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+    CLOUD_REDIS_URL: str = ""
     REDIS_ENABLED: bool = True
     CACHE_TTL_SECONDS: int = 300
 
@@ -145,10 +149,72 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 10
     LOCAL_TEMP_DIR: str = "./tmp"
 
+    @staticmethod
+    def _is_local_host(value: str | None) -> bool:
+        if not value:
+            return False
+        parsed = urlparse(value)
+        host = (parsed.hostname or "").lower()
+        return host in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        runtime_database_url = os.environ.get("DATABASE_URL")
+        runtime_database_url_sync = os.environ.get("DATABASE_URL_SYNC")
+        runtime_redis_url = os.environ.get("REDIS_URL")
+        runtime_cloud_database_url = os.environ.get("CLOUD_DATABASE_URL")
+        runtime_cloud_redis_url = os.environ.get("CLOUD_REDIS_URL")
+
+        if runtime_database_url:
+            self.DATABASE_URL = runtime_database_url
+        if runtime_database_url_sync:
+            self.DATABASE_URL_SYNC = runtime_database_url_sync
+        if runtime_redis_url:
+            self.REDIS_URL = runtime_redis_url
+        if runtime_cloud_database_url:
+            self.CLOUD_DATABASE_URL = runtime_cloud_database_url
+        if runtime_cloud_redis_url:
+            self.CLOUD_REDIS_URL = runtime_cloud_redis_url
+
+        cloud_database_url = self.CLOUD_DATABASE_URL or ""
+        cloud_redis_url = self.CLOUD_REDIS_URL or ""
+
+        if self.ENVIRONMENT in {"staging", "production"}:
+            if not self.CORS_ORIGINS or any(self._is_local_host(origin) for origin in self.CORS_ORIGINS):
+                raise ValueError("CORS_ORIGINS must not include localhost in production/staging. Configure the deployed frontend origins explicitly.")
+
+            if runtime_cloud_database_url:
+                self.DATABASE_URL = runtime_cloud_database_url
+                if not runtime_database_url_sync:
+                    self.DATABASE_URL_SYNC = ""
+            elif runtime_database_url and self._is_local_host(self.DATABASE_URL):
+                raise ValueError("DATABASE_URL cannot point to localhost in production/staging. Set a cloud database URL instead.")
+
+            if self._is_local_host(self.DATABASE_URL):
+                if not cloud_database_url:
+                    raise ValueError("DATABASE_URL cannot point to localhost in production/staging. Set CLOUD_DATABASE_URL.")
+                self.DATABASE_URL = cloud_database_url
+                if not runtime_database_url_sync:
+                    self.DATABASE_URL_SYNC = ""
+
+            if runtime_cloud_redis_url:
+                self.REDIS_URL = runtime_cloud_redis_url
+            elif runtime_redis_url and self._is_local_host(self.REDIS_URL):
+                raise ValueError("REDIS_URL cannot point to localhost in production/staging. Set a cloud Redis URL instead.")
+
+            for setting_name in ("REDIS_URL", "CELERY_BROKER_URL", "CELERY_RESULT_BACKEND"):
+                value = getattr(self, setting_name)
+                if self._is_local_host(value):
+                    if not cloud_redis_url:
+                        raise ValueError(f"{setting_name} cannot point to localhost in production/staging. Set a cloud Redis URL.")
+                    setattr(self, setting_name, cloud_redis_url)
+
+            if any(self._is_local_host(url) for url in (self.DATABASE_URL, self.DATABASE_URL_SYNC)):
+                raise ValueError("Database URLs must not use localhost or 127.0.0.1 in production/staging.")
+
         if not self.DATABASE_URL_SYNC:
             self.DATABASE_URL_SYNC = sync_database_url(self.DATABASE_URL).render_as_string(hide_password=False)
+
         placeholder_values = {"change-me-in-production", "your-secret-key", "secret", "changeme", "dev-secret"}
         if self.SECRET_KEY.lower() in placeholder_values:
             raise ValueError(

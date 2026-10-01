@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -84,6 +84,10 @@ def test_cooldown_helper():
 
 def test_evaluate_alert_rules_price_above_and_watchlist(sync_db, monkeypatch):
     session, engine = sync_db
+    monkeypatch.setattr(
+        "app.services.news_pipeline.market_schedule.is_market_hours",
+        AsyncMock(return_value=True),
+    )
 
     # 1. Seed user, device, stock, alert rule, and watchlist
     user = User(
@@ -183,6 +187,10 @@ def test_evaluate_alert_rules_price_above_and_watchlist(sync_db, monkeypatch):
 
 def test_evaluate_alert_rules_cooldown_suppresses_duplicates(sync_db, monkeypatch):
     session, engine = sync_db
+    monkeypatch.setattr(
+        "app.services.news_pipeline.market_schedule.is_market_hours",
+        AsyncMock(return_value=True),
+    )
 
     user = User(
         id=uuid4().hex,
