@@ -120,6 +120,9 @@ class CompanyProfile(BaseModel):
     company_secretary: str | None = None
     website: str | None = None
     address: str | None = None
+    registrar: str | None = None
+    auditor: str | None = None
+    fiscal_year_end: str | None = None
     psx_url: str | None = None
 
 
@@ -203,6 +206,7 @@ class FundamentalsResponse(BaseModel):
     financials_quarterly: list[dict] | None = None
     financials_unit: str | None = None
     ratio_history: list[dict] | None = None
+    market_data: dict | None = None
     financial_reports: list[FinancialReportItem] | None = None
     financial_reports_count: int | None = None
     ratios: FinancialRatios | None = None

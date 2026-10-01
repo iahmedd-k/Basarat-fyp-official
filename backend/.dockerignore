@@ -15,5 +15,8 @@ env/
 tests/
 data/sequences/
 data/reports/
+# Runtime state must never be baked into the image; it is mounted as a volume.
+# Otherwise every deploy restores a stale snapshot (e.g. status="failed").
+data/news_state/
 # Keep models/, *.keras, *.npz, *.pkl, and data/raw/ohlcv parquet files in the image.
 *_tmp.*

@@ -24,6 +24,28 @@ from app.services.websocket_manager import PROTOCOL_VERSION
 log = logging.getLogger(__name__)
 router = APIRouter()
 
+# Shariah compliance is a property of the index itself, not of the response.
+# Only the KMI-30 is the Shariah-compliant benchmark; KSE-100/KSE-30 are not.
+SHARIAH_COMPLIANT_INDEXES = {"KMI30"}
+
+
+def _reject_if_stale(context: str) -> None:
+    """Surface a dead scraper as 503 instead of serving unusable data as live.
+
+    `is_stale` alone is advisory (it is expected outside trading hours). This
+    only rejects snapshots that are too old to be actionable.
+    """
+    acceptable, reason = MarketService.quotes_acceptable()
+    if not acceptable:
+        log.error("Rejecting %s: %s", context, reason)
+        raise ServiceUnavailableError(
+            f"Live market data is unavailable: {reason}. Please retry shortly."
+        )
+
+
+def _shariah_flag(index_code: str) -> bool | None:
+    return index_code in SHARIAH_COMPLIANT_INDEXES
+
 
 @router.get(
     "/market/live",
@@ -108,7 +130,10 @@ async def get_sector_performance(
     service: MarketService = Depends(MarketService),
 ):
     try:
+        _reject_if_stale("market/sectors/performance")
         return await service.get_sector_performance(order=order)
+    except ServiceUnavailableError:
+        raise
     except Exception:
         raise ServiceUnavailableError("Failed to fetch sector performance")
 
@@ -133,7 +158,6 @@ async def get_market_indices(
 @router.get(
     "/market/indices/kse-100",
     response_model=IndexConstituentsResponse,
-    response_model_exclude_none=True,
     summary="Get KSE-100 index constituents",
 )
 @limiter.limit("60/minute")
@@ -148,7 +172,7 @@ async def get_kse_100_constituents(
         return {
             "index": "KSE-100",
             "code": "KSE100",
-            "shariah_compliant": False,
+            "shariah_compliant": _shariah_flag("KSE100"),
             "constituents": constituents,
             **service.constituents_freshness("KSE100"),
         }
@@ -161,7 +185,6 @@ async def get_kse_100_constituents(
 @router.get(
     "/market/indices/kse-30",
     response_model=IndexConstituentsResponse,
-    response_model_exclude_none=True,
     summary="Get KSE-30 index constituents",
 )
 @limiter.limit("60/minute")
@@ -176,7 +199,7 @@ async def get_kse_30_constituents(
         return {
             "index": "KSE-30",
             "code": "KSE30",
-            "shariah_compliant": False,
+            "shariah_compliant": _shariah_flag("KSE30"),
             "constituents": constituents,
             **service.constituents_freshness("KSE30"),
         }
@@ -189,7 +212,6 @@ async def get_kse_30_constituents(
 @router.get(
     "/market/indices/kmi-30",
     response_model=IndexConstituentsResponse,
-    response_model_exclude_none=True,
     summary="Get KMI-30 index constituents (Shariah compliant)",
 )
 @limiter.limit("60/minute")
@@ -204,7 +226,7 @@ async def get_kmi_30_constituents(
         return {
             "index": "KMI-30",
             "code": "KMI30",
-            "shariah_compliant": True,
+            "shariah_compliant": _shariah_flag("KMI30"),
             "constituents": constituents,
             **service.constituents_freshness("KMI30"),
         }
@@ -226,8 +248,11 @@ async def get_top_gainers(
     service: MarketService = Depends(MarketService),
 ):
     try:
+        _reject_if_stale("market/gainers")
         gainers = await service.get_top_gainers(limit)
         return {"gainers": gainers, **service.quote_freshness()}
+    except ServiceUnavailableError:
+        raise
     except Exception:
         raise ServiceUnavailableError("Failed to fetch gainers")
 
@@ -244,8 +269,11 @@ async def get_top_losers(
     service: MarketService = Depends(MarketService),
 ):
     try:
+        _reject_if_stale("market/losers")
         losers = await service.get_top_losers(limit)
         return {"losers": losers, **service.quote_freshness()}
+    except ServiceUnavailableError:
+        raise
     except Exception:
         raise ServiceUnavailableError("Failed to fetch losers")
 
@@ -262,8 +290,11 @@ async def get_volume_spikes(
     service: MarketService = Depends(MarketService),
 ):
     try:
+        _reject_if_stale("market/volume-spikes")
         spikes = await service.get_volume_spikes(limit)
         return {"volume_spikes": spikes, **service.quote_freshness()}
+    except ServiceUnavailableError:
+        raise
     except Exception:
         raise ServiceUnavailableError("Failed to fetch volume spikes")
 
@@ -311,6 +342,7 @@ async def get_market_quotes(
     service: MarketService = Depends(MarketService),
 ):
     try:
+        _reject_if_stale("market/quotes")
         data = await service.get_market_data()
 
         filtered = False
@@ -355,6 +387,8 @@ async def get_market_quotes(
             transport_hint="websocket_preferred_rest_fallback",
             **MarketService.quote_freshness(),
         )
+    except ServiceUnavailableError:
+        raise
     except Exception:
         raise ServiceUnavailableError("Failed to fetch market quotes")
 
@@ -383,6 +417,7 @@ async def get_curated_stocks(
     - `fastest_growth`: High momentum & growth
     """
     try:
+        _reject_if_stale("market/curated")
         data = await service.get_curated_stocks(
             category=category,
             limit=limit,
@@ -390,6 +425,8 @@ async def get_curated_stocks(
             sector=sector,
         )
         return CuratedStocksResponse(**data)
+    except ServiceUnavailableError:
+        raise
     except Exception as exc:
         log.exception("Error in get_curated_stocks: %s", exc)
         raise ServiceUnavailableError(f"Failed to fetch curated stock leaderboards: {exc}")

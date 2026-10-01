@@ -9,7 +9,16 @@ settings = get_settings()
 
 
 class _LazyRedisProxy:
-    """Proxy object so legacy imports of redis_client work transparently."""
+    """Proxy object so legacy imports of redis_client work transparently.
+
+    NOTE: this wraps the **async** client. Every attribute access therefore
+    returns a coroutine, which is truthy and unawaited. Never call it from sync
+    code -- a bare `if redis_client:` check is always True and `.set()` silently
+    does nothing. Use `app.core.redis.get_sync_redis_client()` in sync code, or
+    `await` the result here. See `ingestion_lock` in market_schedule for the
+    pattern that was previously broken by this.
+    """
+
     def __getattr__(self, name: str) -> Any:
         client = core_redis.get_redis_client()
         if client is None:

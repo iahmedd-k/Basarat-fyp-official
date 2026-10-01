@@ -1,0 +1,36 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  test:
+    image: basarat-test:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    env_file: .env
+    environment:
+      DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
+      DATABASE_URL_SYNC: ""
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      USE_CELERY: "true"
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      - sh
+      - -lc
+      - >-
+        python -m pytest -q tests/unit/test_market_service.py tests/unit/test_stock_ohlcv.py
+        tests/unit/test_stock_search.py tests/unit/test_stock_data_pipeline.py
+        tests/unit/test_scraper_failure_handling.py
+        && python -c "import os, redis; r=redis.Redis.from_url(os.environ['REDIS_URL']); assert r.ping(); print('redis_ping=ok')"
+        && python -c "from sqlalchemy import select, func; from app.db.base import get_sync_session_factory; from app.models.stock import Stock, StockPrice, StockReferenceData, StockDailyAnalysis; s=get_sync_session_factory()(); print('cloud_db=ok stocks=%s prices=%s references=%s analyses=%s' % tuple(s.scalar(select(func.count()).select_from(m)) for m in (Stock, StockPrice, StockReferenceData, StockDailyAnalysis))); s.close()"

@@ -1,0 +1,21 @@
+{
+  "tested_at_local": "2026-10-01T06:07:18.924966+05:00",
+  "ok": true,
+  "count": 22,
+  "columns": [
+    "close",
+    "high",
+    "low",
+    "open",
+    "time",
+    "volume"
+  ],
+  "first": {
+    "time": "Sep 30, 2026",
+    "open": "302.80",
+    "high": "309.00",
+    "low": "302.80",
+    "close": "306.10",
+    "volume": "1,153,509"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "tested_at_local": "2026-10-01T06:10:35.595015+05:00",
+  "requested_date": "2026-09-30",
+  "ok": true,
+  "count": 617,
+  "columns": [
+    "change",
+    "close",
+    "high",
+    "ldcp",
+    "low",
+    "open",
+    "percentChange",
+    "symbol",
+    "volume"
+  ],
+  "first": {
+    "symbol": "786",
+    "ldcp": "21.14",
+    "open": "21.46",
+    "high": "21.46",
+    "low": "20.80",
+    "close": "21.05",
+    "change": "-0.09",
+    "percentChange": "-0.43%",
+    "volume": "32,434"
+  },
+  "HBL": {
+    "symbol": "HBL",
+    "ldcp": "302.15",
+    "open": "302.80",
+    "high": "309.00",
+    "low": "302.80",
+    "close": "306.10",
+    "change": "3.95",
+    "percentChange": "1.31%",
+    "volume": "1,153,509"
+  },
+  "last_symbol": "ZUMA"
+}

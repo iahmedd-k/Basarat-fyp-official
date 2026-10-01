@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+COPY requirements-test-docker.txt /tmp/requirements-test-docker.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-test-docker.txt
+
+COPY app /app/app
+COPY test_support/pypsx_toolkit.py /app/pypsx_toolkit.py
+COPY pytest.ini /app/pytest.ini
+COPY tests/unit/test_market_service.py tests/unit/test_stock_ohlcv.py tests/unit/test_stock_search.py tests/unit/test_stock_data_pipeline.py tests/unit/test_scraper_failure_handling.py /app/tests/unit/
+
+CMD ["python", "-m", "pytest", "-q", "tests/unit/test_market_service.py", "tests/unit/test_stock_ohlcv.py", "tests/unit/test_stock_search.py", "tests/unit/test_stock_data_pipeline.py", "tests/unit/test_scraper_failure_handling.py"]

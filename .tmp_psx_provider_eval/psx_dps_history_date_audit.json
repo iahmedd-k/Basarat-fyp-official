@@ -1,0 +1,24 @@
+{
+  "rows": 617,
+  "unique_symbols": 617,
+  "duplicate_symbol_rows": 0,
+  "missing_or_empty": {
+    "symbol": 0,
+    "open": 0,
+    "high": 0,
+    "low": 0,
+    "close": 0,
+    "volume": 0
+  },
+  "HBL": {
+    "symbol": "HBL",
+    "ldcp": "302.15",
+    "open": "302.80",
+    "high": "309.00",
+    "low": "302.80",
+    "close": "306.10",
+    "change": "3.95",
+    "percentChange": "1.31%",
+    "volume": "1,153,509"
+  }
+}

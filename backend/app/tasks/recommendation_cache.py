@@ -1,7 +1,7 @@
 """Publish the daily KSE-100 recommendation snapshot after sentiment runs."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, date
 
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -38,6 +38,40 @@ def refresh_recommendations_task(self):
         )
 
         save_recommendations_cache(recommendations)
+
+        # Persist the daily shared recommendation output; Redis remains only a
+        # rebuildable read cache. Keep valid fields and skip empty results.
+        from sqlalchemy import select
+        from app.db.base import get_sync_session_factory
+        from app.models.stock import Stock, StockDailyAnalysis
+        from app.tasks.stock_data_pipeline import _clean
+        session = get_sync_session_factory()()
+        try:
+            stocks = {
+                row.symbol: row.id
+                for row in session.execute(select(Stock)).scalars().all()
+            }
+            as_of = date.today()
+            for item in recommendations:
+                symbol = str(item.get("symbol", "")).upper()
+                stock_id = stocks.get(symbol)
+                payload = _clean(item)
+                if not stock_id or not payload:
+                    continue
+                row = session.execute(select(StockDailyAnalysis).where(
+                    StockDailyAnalysis.stock_id == stock_id,
+                    StockDailyAnalysis.as_of_date == as_of,
+                )).scalar_one_or_none()
+                if row is None:
+                    row = StockDailyAnalysis(stock_id=stock_id, as_of_date=as_of)
+                    session.add(row)
+                row.recommendation_json = payload
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
         # Summary stats
         buy_count = sum(1 for r in recommendations if r.get("signal") == "buy")

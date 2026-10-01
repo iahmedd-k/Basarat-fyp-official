@@ -834,11 +834,14 @@ class RecommendationEngine:
         if cached:
             return cached
 
-        from app.data.scraper.symbol_universe import get_active_symbols
         from app.services.stock_service import StockService
-
-        active = get_active_symbols()
-        symbols = [e["symbol"] for e in active]
+        from app.db.base import get_sync_session_factory
+        from app.tasks.stock_data_pipeline import _symbols
+        symbol_session = get_sync_session_factory()()
+        try:
+            symbols = _symbols(symbol_session)
+        finally:
+            symbol_session.close()
 
         # Load features once
         try:

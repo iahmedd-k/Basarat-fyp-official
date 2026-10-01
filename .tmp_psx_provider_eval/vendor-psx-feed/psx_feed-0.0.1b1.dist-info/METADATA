@@ -1,0 +1,372 @@
+Metadata-Version: 2.4
+Name: psx-feed
+Version: 0.0.1b1
+Summary: Pakistan Stock Exchange's Data Downloader
+Author-email: Abdur Rahman <khalil.ahmad1547@gmail.com>
+Maintainer-email: Abdur Rahman <khalil.ahmad1547@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/abdur1547/psx-data-reader
+Project-URL: Repository, https://github.com/abdur1547/psx-data-reader
+Project-URL: Issues, https://github.com/abdur1547/psx-data-reader/issues
+Project-URL: Changelog, https://github.com/abdur1547/psx-data-reader/releases
+Project-URL: Documentation, https://github.com/abdur1547/psx-data-reader#readme
+Keywords: psx,Pakistan stock exchange,stocks data downloader,Pakistan stock exchange data
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Office/Business :: Financial :: Investment
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pandas>=1.3.0
+Requires-Dist: tqdm>=4.60.0
+Requires-Dist: beautifulsoup4>=4.9.0
+Requires-Dist: requests>=2.25.0
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=2.10.0; extra == "dev"
+Requires-Dist: black>=21.0.0; extra == "dev"
+Requires-Dist: flake8>=3.9.0; extra == "dev"
+Requires-Dist: isort>=5.0.0; extra == "dev"
+Requires-Dist: mypy>=0.812; extra == "dev"
+Requires-Dist: wheel>=0.36.0; extra == "dev"
+Requires-Dist: twine>=3.4.0; extra == "dev"
+Requires-Dist: sphinx>=4.0.0; extra == "dev"
+Requires-Dist: sphinx-rtd-theme>=0.5.0; extra == "dev"
+Requires-Dist: jupyter>=1.0.0; extra == "dev"
+Requires-Dist: notebook>=6.0.0; extra == "dev"
+Provides-Extra: viz
+Requires-Dist: plotly>=5.0.0; extra == "viz"
+Requires-Dist: matplotlib>=3.3.0; extra == "viz"
+Requires-Dist: seaborn>=0.11.0; extra == "viz"
+Requires-Dist: kaleido>=0.2.0; extra == "viz"
+Provides-Extra: all
+Requires-Dist: pytest>=6.0.0; extra == "all"
+Requires-Dist: pytest-cov>=2.10.0; extra == "all"
+Requires-Dist: black>=21.0.0; extra == "all"
+Requires-Dist: flake8>=3.9.0; extra == "all"
+Requires-Dist: isort>=5.0.0; extra == "all"
+Requires-Dist: mypy>=0.812; extra == "all"
+Requires-Dist: wheel>=0.36.0; extra == "all"
+Requires-Dist: twine>=3.4.0; extra == "all"
+Requires-Dist: sphinx>=4.0.0; extra == "all"
+Requires-Dist: sphinx-rtd-theme>=0.5.0; extra == "all"
+Requires-Dist: jupyter>=1.0.0; extra == "all"
+Requires-Dist: notebook>=6.0.0; extra == "all"
+Requires-Dist: plotly>=5.0.0; extra == "all"
+Requires-Dist: matplotlib>=3.3.0; extra == "all"
+Requires-Dist: seaborn>=0.11.0; extra == "all"
+Requires-Dist: kaleido>=0.2.0; extra == "all"
+Dynamic: license-file
+
+
+[![forthebadge made-with-python](http://ForTheBadge.com/images/badges/made-with-python.svg)](https://www.python.org/) ![ForTheBadge built-with-love](http://ForTheBadge.com/images/badges/built-with-love.svg) 
+
+![GitHub](https://img.shields.io/github/license/MuhammadAmir5670/psx-data-reader?style=for-the-badge) ![RuboCop](https://img.shields.io/badge/code%20style-PEP8-green?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHRpdGxlPmZpbGVfdHlwZV9ydWJvY29wPC90aXRsZT48cGF0aCBkPSJNMjcuMDUsMTMuOVYxM2ExLjc5MywxLjc5MywwLDAsMC0xLjgtMS44SDYuNjVBMS43OTMsMS43OTMsMCwwLDAsNC44NSwxM3YuOWExLjUyNSwxLjUyNSwwLDAsMC0uNywxLjJ2Mi40YTEuMzg3LDEuMzg3LDAsMCwwLC43LDEuMnYuOWExLjc5MywxLjc5MywwLDAsMCwxLjgsMS44aDE4LjdhMS43OTMsMS43OTMsMCwwLDAsMS44LTEuOHYtLjlhMS41MjUsMS41MjUsMCwwLDAsLjctMS4yVjE1LjFBMS43NDIsMS43NDIsMCwwLDAsMjcuMDUsMTMuOVoiIHN0eWxlPSJmaWxsOiNjNWM1YzUiLz48cGF0aCBkPSJNMTUuOTUsMmE5LjkyNSw5LjkyNSwwLDAsMC05LjgsOC42aDE5LjZBOS45MjUsOS45MjUsMCwwLDAsMTUuOTUsMloiIHN0eWxlPSJmaWxsOiNjNWM1YzUiLz48cG9seWdvbiBwb2ludHM9IjEzLjA1IDI0IDE4Ljg1IDI0IDE5LjQ1IDI0LjcgMjAuMzUgMjQgMTkuNDUgMjIuOSAxMi40NSAyMi45IDExLjU1IDI0IDEyLjQ1IDI0LjcgMTMuMDUgMjQiIHN0eWxlPSJmaWxsOiNjNWM1YzUiLz48cGF0aCBkPSJNMjMuNTUsMTcuNkg4LjM1YTEuMywxLjMsMCwxLDEsMC0yLjZoMTUuM2ExLjMyNCwxLjMyNCwwLDAsMSwxLjMsMS4zQTEuNDkzLDEuNDkzLDAsMCwxLDIzLjU1LDE3LjZaIiBzdHlsZT0iZmlsbDojZWMxYzI0Ii8+PHBhdGggZD0iTTIzLjA1LDIydjMuOGExLjk2NywxLjk2NywwLDAsMS0xLjksMS45aC0xYS44NjQuODY0LDAsMCwxLS42LS4zbC0xLjItMS42YS42LjYsMCwwLDAtLjYtLjNoLTMuNmEuNzY0Ljc2NCwwLDAsMC0uNS4ybC0xLjMsMS42YS42LjYsMCwwLDEtLjYuM2gtMWExLjk2NywxLjk2NywwLDAsMS0xLjktMS45VjIySDYuNTV2My44YTQuMjI1LDQuMjI1LDAsMCwwLDQuMiw0LjJoMTAuNGE0LjIyNSw0LjIyNSwwLDAsMCw0LjItNC4yVjIyWiIgc3R5bGU9ImZpbGw6I2M1YzVjNSIvPjwvc3ZnPg==) ![RuboCop](https://img.shields.io/badge/Open%20Source-yes-green?style=for-the-badge&logo=github)
+
+#### This package is maintained version of [MuhammadAmir5670/psx-data-reader](https://github.com/MuhammadAmir5670/psx-data-reader)
+
+# psx-data-reader
+with psx-data-reader, you can scrape the data of Pakistan stock exchange. psx-data-reader is super easy to use and handles everything for you. Just specify which company's stock data you want and how much you want, and the rest is done for you.
+
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/MuhammadAmir5670/psx-data-reader/Upload%20Python%20Package?style=flat-square&color=green) ![PyPI - Implementation](https://img.shields.io/pypi/implementation/psx-data-reader?style=flat-square&color=green) ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/psx-data-reader?style=flat-square&color=informational)  ![PyPI](https://img.shields.io/pypi/v/psx-data-reader?style=flat-square&color=informational) ![GitHub release (latest by date)](https://img.shields.io/github/v/release/MuhammadAmir5670/psx-data-reader?style=flat-square)  ![PyPI - Status](https://img.shields.io/pypi/status/psx-data-reader?style=flat-square&color=blueviolet) ![PyPI - Downloads](https://img.shields.io/pypi/dm/psx-data-reader?style=flat-square&color=red) ![GitHub issues](https://img.shields.io/github/issues-raw/MuhammadAmir5670/psx-data-reader?style=flat-square)  ![GitHub closed issues](https://img.shields.io/github/issues-closed-raw/MuhammadAmir5670/psx-data-reader?style=flat-square)
+
+## Overview 
+The psx-data-reader was written with fast use in mind. It provides the following key features
+
+- can scrape all historical data till current date
+- can scrape data for of multiple companies in a single line of code
+- returns a `Pandas DataFrame` for the scraped data
+- for better download speed, It does not request the complete data in a single network request rather it makes chunks of data to be downloaded and uses threads to open requests for different chunks of data, hence results in better speed
+
+In the following paragraphs, I am going to describe how you can get and use Scrapeasy for your own projects.
+
+
+## Installation
+
+To get psx-data-reader, either fork this github repo or simply use Pypi via pip.
+
+```bash
+$ pip install psx-data-reader
+```
+
+## Local Development Setup
+
+If you want to contribute to the project or modify it for your own needs, follow these steps to set up a local development environment:
+
+### Prerequisites
+
+- Python 3.4 or higher
+- pip (Python package installer)
+- git (for cloning the repository)
+
+### Step 1: Clone the Repository
+
+```bash
+git clone git@github.com:abdur1547/psx-data-reader.git
+
+cd psx-data-reader
+```
+
+### Step 2: Create a Virtual Environment (Recommended)
+
+Create an isolated Python environment to avoid conflicts with other projects:
+
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# On Linux/macOS:
+source venv/bin/activate
+# On Windows:
+# venv\Scripts\activate
+```
+
+### Step 3: Install in Development Mode
+
+Install the package in development mode along with all dependencies:
+
+```bash
+# Basic installation (editable mode)
+pip install -e .
+
+# Install with development dependencies (recommended for contributors)
+pip install -e .[dev]
+
+# Install with visualization dependencies
+pip install -e .[viz]
+
+# Install everything (dev + visualization)
+pip install -e .[all]
+
+# Alternative: Install from requirements files
+pip install -e . && pip install -r requirements-dev.txt
+```
+
+This installs the package in "editable" mode, meaning any changes you make to the source code will be immediately available without reinstalling.
+
+### Step 4: Verify Installation
+
+Test that the installation works correctly:
+
+```python
+# Run this in Python interpreter or create a test script
+from psx import stocks, tickers
+import datetime
+
+# Get all available tickers
+all_tickers = tickers()
+print(f"Found {len(all_tickers)} tickers")
+
+# Test downloading sample data
+data = stocks("SILK", start=datetime.date(2023, 1, 1), end=datetime.date(2023, 1, 31))
+print(f"Downloaded {len(data)} rows of data for SILK")
+```
+
+### Step 5: Project Structure
+
+```
+psx-data-reader/
+├── src/
+│   └── psx/
+│       ├── __init__.py      # Package initialization and exports
+│       ├── web.py           # Main data scraping functionality
+│       └── example.py       # Example usage with plotly visualization
+├── demo/
+│   ├── example.py           # Plotly visualization example
+│   └── simple_example.py    # Basic example without visualization
+├── requirements-dev.txt     # Development dependencies
+├── requirements-viz.txt     # Visualization dependencies
+├── pyproject.toml          # Modern Python packaging configuration (recommended)
+├── setup.py                # Legacy packaging configuration (deprecated)
+├── README.md               # This file
+├── LICENSE                 # MIT license
+└── images/                 # Example graphs and visualizations
+```
+
+### Step 6: Making Changes
+
+1. **Edit the source code** in the `src/psx/` directory
+2. **Test your changes** by running the example or your own test scripts
+3. **Create visualizations** using the example in `src/psx/example.py`
+
+### Step 7: Dependency Management
+
+#### Core Dependencies (automatically installed)
+The package automatically installs these core dependencies:
+
+- **pandas** - Data manipulation and analysis
+- **tqdm** - Progress bars for downloads
+- **beautifulsoup4** - HTML parsing for web scraping
+- **requests** - HTTP library for making web requests
+
+#### Optional Dependencies
+
+**Visualization extras** (`[viz]`):
+```bash
+pip install psx-data-reader[viz]
+# Includes: plotly, matplotlib, seaborn
+```
+
+**Development extras** (`[dev]`):
+```bash
+pip install psx-data-reader[dev]
+# Includes: pytest, black, flake8, mypy, sphinx, jupyter, etc.
+```
+
+#### Requirements Files
+
+For development, you can also use the requirements files:
+
+- **`requirements-dev.txt`** - Development tools (testing, linting, docs)
+- **`requirements-viz.txt`** - Visualization libraries
+
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Install visualization dependencies
+pip install -r requirements-viz.txt
+```
+
+#### Modern Python Packaging
+
+This project now uses **`pyproject.toml`** (the modern standard) for package configuration instead of the legacy `setup.py`. The `pyproject.toml` file includes:
+
+- ✅ **Modern packaging standards** (PEP 518, PEP 621)
+- ✅ **Tool configurations** (black, isort, mypy, pytest)
+- ✅ **Better dependency management**
+- ✅ **Enhanced metadata** and project URLs
+- ✅ **Improved Python version support** (3.8+)
+
+The old `setup.py` is kept for compatibility but `pyproject.toml` is now the primary configuration.
+
+#### Why No requirements.txt?
+
+For **pip packages**, dependencies are properly managed through `setup.py`'s `install_requires` and `extras_require`. A `requirements.txt` file is typically used for applications, not libraries. This approach:
+
+- ✅ Allows users to install only what they need
+- ✅ Enables optional features through extras
+- ✅ Follows Python packaging best practices
+- ✅ Avoids dependency conflicts in user environments
+
+### Step 8: Contributing
+
+1. **Fork** the repository on GitHub
+2. **Create a feature branch** (`git checkout -b feature/new-feature`)
+3. **Make your changes** and test them thoroughly
+4. **Commit your changes** (`git commit -am 'Add new feature'`)
+5. **Push to the branch** (`git push origin feature/new-feature`)
+6. **Create a Pull Request** on GitHub
+
+### Troubleshooting
+
+- **Import errors**: Make sure you've activated your virtual environment and installed in development mode
+- **Network issues**: The package requires internet access to scrape PSX data
+- **Missing data**: Some historical data might not be available for certain stocks
+
+### Development Tips
+
+- Use `python -m psx.example` to run the example visualization
+- Modify `src/psx/web.py` to add new scraping functionality
+- Test with different stock symbols and date ranges
+- Consider adding error handling for network timeouts
+
+### Building and Publishing
+
+This project uses modern Python packaging with `pyproject.toml`:
+
+```bash
+# Build the package
+python -m build
+
+# Install build tools
+pip install build twine
+
+# Test the build
+./build_test.sh
+
+# Upload to PyPI (when ready)
+twine upload dist/*
+```
+
+### Package Testing
+
+```bash
+# Test basic functionality
+python demo/simple_example.py
+
+# Test with visualizations (requires [viz] extras)
+python demo/example.py
+```
+
+## Usage
+
+First, import stocks and tickers from psx
+
+```
+from psx import stocks, tickers
+```
+
+to get the information of all the companies in Pakistan stock Exchange....
+
+```
+tickers = tickers()
+```
+
+
+to scrape the data of **Silk Bank Limited** we have pass its ticker (symbol) to the `stocks` method with proper start and end date. and it will return a DataFrame with the scraped data
+
+```
+data = stocks("SILK", start=datetime.date(2020, 1, 1), end=datetime.date.today())
+```
+
+
+we can also download the data of multiple companies in a single call to `stocks` method by passing a list or tuple of symbols
+
+
+```
+data = stocks(["SILK", "PACE"], start=datetime.date(2020, 1, 1), end=datetime.date.today())
+```
+
+and now the returned DataFrame object will have a hierarchical index on rows.
+
+## Example Graph
+
+<img src ="images/newplot-2.png">
+<img src ="images/newplot-3.png">
+<img src ="images/newplot-4.png">
+<img src ="images/newplot-5.png">
+
+
+## Author Info
+<p align="left">
+<a href="mailto:muhammmadamir5670@gmail.com"><img src="https://img.icons8.com/fluent/40/000000/gmail-new.png"/></a>
+<a href = "https://www.linkedin.com/in/muhammad-amir-9826b71b5/"><img src="https://img.icons8.com/fluent/40/000000/linkedin.png"/></a>
+<a href = "https://twitter.com/Daniyal60990408/"><img src="https://img.icons8.com/fluent/40/000000/twitter.png"/></a>
+<a href="https://www.facebook.com/daniyal.abbasi.1610/">
+<img src="https://img.icons8.com/fluent/40/000000/facebook-new.png">
+</a>
+<a href = "https://www.instagram.com/the_infamous_abbasi/"><img src="https://img.icons8.com/fluent/40/000000/instagram-new.png"/></a>
+</p>
+
+
+
+<!-- Security scan triggered at 2025-09-02 02:41:43 -->
+
+<!-- Security scan triggered at 2025-09-07 01:38:06 -->
+
+<!-- Security scan triggered at 2025-09-09 05:18:41 -->
+
+<!-- Security scan triggered at 2025-09-28 15:21:44 -->
+
+<!-- Security scan triggered at 2025-10-08 08:55:17 -->

@@ -22,20 +22,36 @@ from app.core.redis import (
 log = logging.getLogger(__name__)
 
 
+class PSXAccessDeniedError(RuntimeError):
+    """PSX explicitly refused a request; do not immediately retry another route."""
+
+
+def _is_psx_access_denied(exc: Exception) -> bool:
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None) or getattr(exc, "status_code", None)
+    if status in (403, 429):
+        return True
+    message = str(exc).lower()
+    return any(marker in message for marker in ("403", "429", "forbidden", "too many requests", "rate limit"))
+
+
 def _quotes_ttl() -> int:
     """Redis TTL for live board quotes (session Celery refresh + buffer)."""
     try:
         return max(30, int(get_settings().MARKET_QUOTES_TTL_SECONDS))
     except Exception:
-        return 90
+        return 300
 
 
 # Kept as module attribute for importers; prefer _quotes_ttl() at write time.
-QUOTES_TTL_SECONDS = 90
+QUOTES_TTL_SECONDS = 300
 INDICES_TTL_SECONDS = 28800  # 8 hours; refreshed with close/weekly jobs
 CONSTITUENTS_TTL_SECONDS = 86400  # 24 hours; Celery refreshes weekly
 FALLBACK_TTL_SECONDS = 86400 * 7  # 7 days persistent fallback
-SAVED_SNAPSHOT_TTL_SECONDS = 86400 * 30
+# Historical closes are reference-only. They get their own namespace and a short
+# TTL; they are never written to the live `market:quotes*` keys.
+REFERENCE_SNAPSHOT_KEY = "market:reference:quotes"
+REFERENCE_FETCHED_AT_KEY = "market:reference:fetched_at"
 SECTOR_MAP_TTL_SECONDS = 86400  # PSX classifications rarely change; refresh daily
 PSX_SCREENER_URL = "https://dps.psx.com.pk/screener"
 
@@ -158,22 +174,49 @@ class MarketService:
     }
 
     @staticmethod
+    def _reference_snapshot_allowed(as_of: str | None) -> tuple[bool, str]:
+        """Decide whether persisted historical closes may be surfaced at all.
+
+        Reference data is opt-in and age-limited. It is stored under a separate
+        namespace with its own as_of, so it can never be mistaken for a live tick.
+        """
+        settings = get_settings()
+        if not getattr(settings, "MARKET_SERVE_STALE_REFERENCE_DATA", False):
+            return False, "reference data disabled (MARKET_SERVE_STALE_REFERENCE_DATA=false)"
+        if not as_of:
+            return False, "reference snapshot has no as_of timestamp"
+        try:
+            stamp = datetime.fromisoformat(as_of.replace("Z", "+00:00")).astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            return False, "reference snapshot as_of is unparseable"
+        age_days = (datetime.now(timezone.utc) - stamp).total_seconds() / 86400.0
+        max_age = float(getattr(settings, "MARKET_REFERENCE_MAX_AGE_DAYS", 5) or 0)
+        if age_days > max_age:
+            return False, f"reference snapshot is {age_days:.1f}d old (max {max_age}d)"
+        return True, "ok"
+
+    @staticmethod
+    def _reference_ttl() -> int:
+        try:
+            return max(60, int(get_settings().MARKET_REFERENCE_TTL_SECONDS))
+        except Exception:
+            return 900
+
+    @staticmethod
     def _saved_scraper_snapshot() -> tuple[list[dict], str | None]:
-        """Build a stale quote snapshot from the scraper's persisted OHLCV files.
+        """Build a *reference-only* snapshot from the scraper's persisted OHLCV files.
 
         These files survive Redis replacement through the production market-data
-        volume. They are historical closes, never represented as live quotes.
+        volume. They are historical daily closes, so callers must treat the result
+        as reference data and must never publish it to the live quote keys.
         """
         import pandas as pd
 
         data_dirs = (Path("/app/data/raw/ohlcv"), Path("data/raw/ohlcv"))
         data_dir = next((path for path in data_dirs if path.is_dir()), None)
-        if data_dir is None:
-            return [], None
-
         rows: list[dict] = []
         latest_date = None
-        for path in data_dir.glob("*.parquet"):
+        for path in (data_dir.glob("*.parquet") if data_dir is not None else []):
             if path.name == "all_symbols.parquet":
                 continue
             try:
@@ -213,12 +256,148 @@ class MarketService:
             except Exception as exc:
                 log.debug("Could not read saved OHLCV snapshot %s: %s", path.name, exc)
 
+        # PostgreSQL is the durable fallback when Redis and the parquet volume
+        # are cold or unavailable. These are labeled reference closes, never live ticks.
+        if not rows:
+            try:
+                from sqlalchemy import select, func
+                from app.db.base import get_sync_session_factory
+                from app.models.stock import Stock, StockPrice
+                session = get_sync_session_factory()()
+                try:
+                    latest_by_stock = (
+                        select(StockPrice.stock_id, func.max(StockPrice.date).label("latest_date"))
+                        .group_by(StockPrice.stock_id).subquery()
+                    )
+                    records = session.execute(
+                        select(Stock, StockPrice).join(StockPrice, StockPrice.stock_id == Stock.id)
+                        .join(latest_by_stock, (latest_by_stock.c.stock_id == StockPrice.stock_id)
+                              & (latest_by_stock.c.latest_date == StockPrice.date))
+                    ).all()
+                finally:
+                    session.close()
+                for stock, price in records:
+                    current = float(price.close) if price.close is not None else None
+                    if current is None or current <= 0:
+                        continue
+                    traded = price.date
+                    latest_date = max(latest_date, traded) if latest_date else traded
+                    rows.append({
+                        "symbol": stock.symbol,
+                        "name": stock.name or stock.symbol,
+                        "sector": stock.sector or _STATIC_SECTOR_MAP.get(stock.symbol, "Unclassified"),
+                        "ldcp": None,
+                        "open": float(price.open) if price.open is not None else None,
+                        "high": float(price.high) if price.high is not None else None,
+                        "low": float(price.low) if price.low is not None else None,
+                        "current": current,
+                        "change": None,
+                        "change_pct": None,
+                        "volume": int(price.volume or 0),
+                        "market_cap_m": None,
+                    })
+            except Exception as exc:
+                log.warning("Could not build reference snapshot from PostgreSQL: %s", exc)
+
         as_of = f"{latest_date.isoformat()}T00:00:00+00:00" if latest_date else None
         return rows, as_of
 
     @staticmethod
+    async def _reference_quotes() -> tuple[list[dict], str | None]:
+        """Return age-gated reference quotes, cached only in the reference namespace."""
+        rows, as_of = await asyncio.to_thread(MarketService._saved_scraper_snapshot)
+        if not rows:
+            return [], None
+        allowed, reason = MarketService._reference_snapshot_allowed(as_of)
+        if not allowed:
+            log.warning("Suppressing reference quote snapshot: %s", reason)
+            return [], as_of
+        ttl = MarketService._reference_ttl()
+        await cache_set(REFERENCE_SNAPSHOT_KEY, rows, ttl)
+        if as_of:
+            await cache_set(REFERENCE_FETCHED_AT_KEY, as_of, ttl)
+        return rows, as_of
+
+    @staticmethod
+    def _reference_quotes_sync() -> tuple[list[dict], str | None]:
+        """Sync twin of _reference_quotes(); reference namespace only."""
+        rows, as_of = MarketService._saved_scraper_snapshot()
+        if not rows:
+            return [], None
+        allowed, reason = MarketService._reference_snapshot_allowed(as_of)
+        if not allowed:
+            log.warning("Suppressing reference quote snapshot: %s", reason)
+            return [], as_of
+        ttl = MarketService._reference_ttl()
+        cache_set_sync(REFERENCE_SNAPSHOT_KEY, rows, ttl)
+        if as_of:
+            cache_set_sync(REFERENCE_FETCHED_AT_KEY, as_of, ttl)
+        return rows, as_of
+
+    @staticmethod
+    def persist_symbol_universe() -> int:
+        """Rewrite the on-disk symbol universe from freshly scraped membership.
+
+        The file used to be committed to the repository, so every image build
+        re-baked a frozen snapshot and the reference fallback drifted arbitrarily
+        far behind the live index. Rewriting it after each successful constituents
+        refresh keeps it within one refresh cycle of reality.
+
+        Returns the number of symbols written, or 0 when nothing was written.
+        """
+        universe: dict[str, list[str]] = {}
+        for code in ("KSE100", "KSE30", "KMI30"):
+            try:
+                members = MarketService.get_index_constituents_sync(code)
+            except Exception as exc:
+                log.warning("Could not read %s membership for universe persist: %s", code, exc)
+                continue
+            for member in members or []:
+                symbol = str(member.get("symbol", "")).upper().strip()
+                if not symbol:
+                    continue
+                indices = universe.setdefault(symbol, [])
+                if code not in indices:
+                    indices.append(code)
+
+        if not universe:
+            log.warning("Refusing to overwrite symbol universe: no membership was scraped")
+            return 0
+
+        frozen_date = datetime.now(timezone.utc).date().isoformat()
+        payload = [
+            {"symbol": symbol, "indices": sorted(indices), "frozen_date": frozen_date}
+            for symbol, indices in sorted(universe.items())
+        ]
+        # Tests override this to redirect writes at a tmp dir.
+        override = getattr(MarketService, "_UNIVERSE_PATH_OVERRIDE", None)
+        candidates = (override,) if override is not None else (
+            Path("/app/data/config/symbol_universe.json"),
+            Path("data/config/symbol_universe.json"),
+        )
+        for candidate in candidates:
+            try:
+                candidate.parent.mkdir(parents=True, exist_ok=True)
+                candidate.write_text(
+                    json.dumps(payload, indent=2), encoding="utf-8"
+                )
+                log.info("Persisted symbol universe with %d symbols to %s", len(payload), candidate)
+                return len(payload)
+            except OSError as exc:
+                log.debug("Could not write symbol universe to %s: %s", candidate, exc)
+        return 0
+
+    @staticmethod
+    def get_index_constituents_sync(index_code: str) -> list[dict]:
+        """Read cached index membership without hitting PSX."""
+        cached = cache_get_sync(f"market:constituents:{index_code}")
+        if isinstance(cached, list) and cached:
+            return cached
+        return cache_get_sync(f"market:constituents:last_known:{index_code}") or []
+
+    @staticmethod
     def _saved_index_constituents(index_code: str) -> tuple[list[dict], str | None]:
-        """Join frozen scraper membership to persisted closes when Redis is cold."""
+        """Join persisted index membership to persisted closes (reference only)."""
         config_paths = (
             Path("/app/data/config/symbol_universe.json"),
             Path("data/config/symbol_universe.json"),
@@ -229,14 +408,16 @@ class MarketService:
         try:
             universe = json.loads(config_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            log.warning("Could not read frozen symbol universe for market fallback")
+            log.warning("Could not read persisted symbol universe for market fallback")
+            return [], None
+        if not isinstance(universe, list):
             return [], None
 
         quotes, as_of = MarketService._saved_scraper_snapshot()
         quotes_by_symbol = {row["symbol"]: row for row in quotes}
         members = []
         for item in universe:
-            if index_code not in item.get("indices", []):
+            if not isinstance(item, dict) or index_code not in item.get("indices", []):
                 continue
             symbol = str(item.get("symbol", "")).upper()
             quote = quotes_by_symbol.get(symbol)
@@ -256,6 +437,18 @@ class MarketService:
                 "market_cap_m": quote.get("market_cap_m"),
             })
         return members, as_of
+
+    @staticmethod
+    async def _reference_constituents(index_code: str) -> tuple[list[dict], str | None]:
+        """Age-gated reference constituents; stored only under reference keys."""
+        rows, as_of = await asyncio.to_thread(MarketService._saved_index_constituents, index_code)
+        if not rows:
+            return [], as_of
+        allowed, reason = MarketService._reference_snapshot_allowed(as_of)
+        if not allowed:
+            log.warning("Suppressing reference constituents for %s: %s", index_code, reason)
+            return [], as_of
+        return rows, as_of
 
     @staticmethod
     def _fetch_sector_map_sync() -> dict[str, str]:
@@ -403,6 +596,38 @@ class MarketService:
         )
 
     @staticmethod
+    def quote_age_seconds() -> float | None:
+        """Seconds since the last successful live market-watch fetch, if known."""
+        fetched_at = cache_get_sync("market:quotes:fetched_at")
+        if not fetched_at:
+            return None
+        try:
+            stamp = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+            return max(0.0, (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds())
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def quotes_acceptable(cls) -> tuple[bool, str]:
+        """Whether the cached board is fresh enough to present as market data.
+
+        `is_stale` alone is advisory: it merely exceeds the quote TTL, which is
+        expected outside trading hours. This guard rejects only data that is too
+        old to be actionable, so a dead scraper surfaces as 503 instead of being
+        silently served as if it were live.
+        """
+        settings = get_settings()
+        max_stale = int(getattr(settings, "MARKET_MAX_STALE_SECONDS", 0) or 0)
+        if max_stale <= 0:
+            return True, "staleness guard disabled"
+        age = cls.quote_age_seconds()
+        if age is None:
+            return False, "no successful market scrape has been recorded"
+        if age > max_stale:
+            return False, f"market snapshot is {int(age)}s old (limit {max_stale}s)"
+        return True, "ok"
+
+    @staticmethod
     def _normalize_quotes(rows: list[dict]) -> list[dict]:
         """Normalize cached quotes without presenting missing OHLC as real zero prices."""
         normalized = []
@@ -471,6 +696,8 @@ class MarketService:
                 frame.columns = [str(column).strip().upper() for column in frame.columns]
                 return frame
         except Exception as exc:
+            if _is_psx_access_denied(exc):
+                raise PSXAccessDeniedError(str(exc)) from exc
             log.warning("PSX market watch failed; trying all-share quotes: %s", exc)
 
         try:
@@ -557,23 +784,13 @@ class MarketService:
             if last_known:
                 log.info("Serving %d stale constituents for %s", len(last_known), index_code)
                 return last_known
-            saved_rows, saved_as_of = await asyncio.to_thread(
-                self._saved_index_constituents, index_code
-            )
-            if saved_rows:
-                await cache_set(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-                await cache_set(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-                if saved_as_of:
-                    await cache_set(
-                        f"market:constituents:{index_code}:fetched_at",
-                        saved_as_of,
-                        SAVED_SNAPSHOT_TTL_SECONDS,
-                    )
+            ref_rows, ref_as_of = await self._reference_constituents(index_code)
+            if ref_rows:
                 log.warning(
-                    "Serving %d saved OHLCV-backed constituents for %s as of %s",
-                    len(saved_rows), index_code, saved_as_of,
+                    "Serving %d REFERENCE (not live) constituents for %s as of %s",
+                    len(ref_rows), index_code, ref_as_of,
                 )
-                return saved_rows
+                return ref_rows
             return []
 
         log.info("Fetching constituents for %s from external API", index_code)
@@ -625,23 +842,13 @@ class MarketService:
             log.info("Serving %d constituents for %s from persistent fallback cache", len(last_known), index_code)
             return last_known
 
-        saved_rows, saved_as_of = await asyncio.to_thread(
-            self._saved_index_constituents, index_code
-        )
-        if saved_rows:
-            await cache_set(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-            await cache_set(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-            if saved_as_of:
-                await cache_set(
-                    f"market:constituents:{index_code}:fetched_at",
-                    saved_as_of,
-                    SAVED_SNAPSHOT_TTL_SECONDS,
-                )
+        ref_rows, ref_as_of = await self._reference_constituents(index_code)
+        if ref_rows:
             log.warning(
-                "Serving %d saved OHLCV-backed constituents for %s as of %s",
-                len(saved_rows), index_code, saved_as_of,
+                "Serving %d REFERENCE (not live) constituents for %s as of %s",
+                len(ref_rows), index_code, ref_as_of,
             )
-            return saved_rows
+            return ref_rows
 
         log.warning("No constituents data available for %s", index_code)
         return []
@@ -661,13 +868,10 @@ class MarketService:
             if last_known:
                 log.info("Serving %d market quotes from sync stale fallback", len(last_known))
                 return self._normalize_quotes(last_known)
-            saved_rows, saved_as_of = self._saved_scraper_snapshot()
-            if saved_rows:
-                cache_set_sync(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-                cache_set_sync(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-                if saved_as_of:
-                    cache_set_sync("market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS)
-                return self._normalize_quotes(saved_rows)
+            ref_rows, ref_as_of = self._reference_quotes_sync()
+            if ref_rows:
+                log.warning("Serving %d REFERENCE (not live) quotes as of %s", len(ref_rows), ref_as_of)
+                return self._normalize_quotes(ref_rows)
             return []
 
         log.info("Fetching market watch from external API (sync)")
@@ -722,14 +926,10 @@ class MarketService:
             log.info("Serving %d market quotes from sync fallback cache", len(last_known))
             return self._normalize_quotes(last_known)
 
-        saved_rows, saved_as_of = self._saved_scraper_snapshot()
-        if saved_rows:
-            cache_set_sync(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-            cache_set_sync(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-            if saved_as_of:
-                cache_set_sync("market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS)
-            log.warning("Serving %d persisted scraper quotes as of %s", len(saved_rows), saved_as_of)
-            return self._normalize_quotes(saved_rows)
+        ref_rows, ref_as_of = self._reference_quotes_sync()
+        if ref_rows:
+            log.warning("Serving %d REFERENCE (not live) quotes as of %s", len(ref_rows), ref_as_of)
+            return self._normalize_quotes(ref_rows)
 
         return []
 
@@ -747,19 +947,10 @@ class MarketService:
             if last_known:
                 log.info("Serving %d market quotes from stale fallback", len(last_known))
                 return self._normalize_quotes(last_known)
-            saved_rows, saved_as_of = await asyncio.to_thread(self._saved_scraper_snapshot)
-            if saved_rows:
-                await cache_set(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-                await cache_set(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-                if saved_as_of:
-                    await cache_set("market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS)
-                await asyncio.to_thread(cache_set_sync, cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-                await asyncio.to_thread(cache_set_sync, fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-                await asyncio.to_thread(
-                    cache_set_sync, "market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS
-                )
-                log.warning("Serving %d persisted scraper quotes as of %s", len(saved_rows), saved_as_of)
-                return self._normalize_quotes(saved_rows)
+            ref_rows, ref_as_of = await self._reference_quotes()
+            if ref_rows:
+                log.warning("Serving %d REFERENCE (not live) quotes as of %s", len(ref_rows), ref_as_of)
+                return self._normalize_quotes(ref_rows)
             return []
 
         log.info("Fetching market watch from external API")
@@ -770,6 +961,8 @@ class MarketService:
                 timeout=20.0,
             )
         except Exception as e:
+            if isinstance(e, PSXAccessDeniedError):
+                raise
             log.warning("External fetch of market watch and ALLSHR fallback failed: %s", e)
 
         if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
@@ -838,19 +1031,10 @@ class MarketService:
             log.info("Serving %d market quotes from persistent fallback cache", len(last_known))
             return self._normalize_quotes(last_known)
 
-        saved_rows, saved_as_of = await asyncio.to_thread(self._saved_scraper_snapshot)
-        if saved_rows:
-            await cache_set(cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-            await cache_set(fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-            if saved_as_of:
-                await cache_set("market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS)
-            await asyncio.to_thread(cache_set_sync, cache_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-            await asyncio.to_thread(cache_set_sync, fallback_key, saved_rows, SAVED_SNAPSHOT_TTL_SECONDS)
-            await asyncio.to_thread(
-                cache_set_sync, "market:quotes:fetched_at", saved_as_of, SAVED_SNAPSHOT_TTL_SECONDS
-            )
-            log.warning("Serving %d persisted scraper quotes as of %s", len(saved_rows), saved_as_of)
-            return self._normalize_quotes(saved_rows)
+        ref_rows, ref_as_of = await self._reference_quotes()
+        if ref_rows:
+            log.warning("Serving %d REFERENCE (not live) quotes as of %s", len(ref_rows), ref_as_of)
+            return self._normalize_quotes(ref_rows)
 
         return []
 

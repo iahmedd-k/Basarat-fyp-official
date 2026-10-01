@@ -1,28 +1,18 @@
 """Celery tasks for PSX company announcements synchronization."""
 
-import asyncio
 import logging
 from celery import shared_task
 from sqlalchemy import select
+
+from app.core.async_bridge import run_sync
 
 log = logging.getLogger(__name__)
 
 
 def _run_async(coro):
-    """Run an async coroutine from a sync Celery task."""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        # Async connections cannot safely be reused by the next Celery task's
-        # fresh event loop. Dispose the worker-local pool before closing this loop.
-        from app.db.base import engine
-        try:
-            loop.run_until_complete(engine.dispose())
-        except Exception:
-            log.exception("Failed to dispose async database connections")
-        finally:
-            loop.close()
+    """Run an async coroutine from this sync Celery task on the shared loop."""
+    return run_sync(coro)
+
 
 
 @shared_task(

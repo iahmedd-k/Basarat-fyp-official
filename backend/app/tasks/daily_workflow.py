@@ -16,11 +16,13 @@ import logging
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from celery import chain, group
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.celery_app import celery
+from app.core.async_bridge import run_sync
 
 log = logging.getLogger(__name__)
 
@@ -29,13 +31,25 @@ class SourceRateLimited(RuntimeError):
     """Stop the daily chain after an explicit upstream rate-limit response."""
 
 
+class SourceUnavailable(RuntimeError):
+    """Stop the daily chain when PSX denies or no longer serves the endpoint."""
+
+
+def _is_exchange_holiday() -> bool:
+    """Check the PSX holiday calendar on the shared event loop.
+
+    `asyncio.run()` was used here and raised "Cannot run the event loop while
+    another loop is running", which aborted the OHLCV scrape and froze the
+    persisted parquet files that the rest of the system reads.
+    """
+    from app.services.news_pipeline.market_schedule import is_holiday
+
+    return bool(run_sync(is_holiday()))
+
+
 def _get_sync_session():
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from app.core.config import get_settings
-    settings = get_settings()
-    engine = create_engine(settings.DATABASE_URL_SYNC, pool_pre_ping=True)
-    return sessionmaker(bind=engine)()
+    from app.db.base import get_sync_session_factory
+    return get_sync_session_factory()()
 
 
 # ---------------------------------------------------------------------------
@@ -57,29 +71,57 @@ def update_market_data_task(self):
     """
     log.info("[DATA] Starting daily market data update")
 
+    # Defensive: the pipeline is gated before dispatch, but this task can also be
+    # invoked directly, so it re-checks the trading day itself.
+    from zoneinfo import ZoneInfo
+
+    if datetime.now(ZoneInfo("Asia/Karachi")).weekday() >= 5:
+        return {"status": "skipped", "reason": "weekend", "timestamp": datetime.utcnow().isoformat()}
+
     try:
-        import asyncio
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-        today_pkt = datetime.now(ZoneInfo("Asia/Karachi"))
-        if today_pkt.weekday() >= 5:
-            return {"status": "skipped", "reason": "weekend", "timestamp": datetime.utcnow().isoformat()}
-        from app.services.news_pipeline.market_schedule import is_holiday
-        if asyncio.run(is_holiday()):
+        if _is_exchange_holiday():
             log.info("[DATA] Exchange holiday; retaining prior session snapshots")
             return {"status": "skipped", "reason": "exchange_holiday", "timestamp": datetime.utcnow().isoformat()}
 
         from app.data.scraper.run_scrape import run_scrape
+        from app.core.config import get_settings
+        from app.tasks.stock_data_pipeline import _symbols, hydrate_ohlcv_files_from_database
+        universe_session = _get_sync_session()
+        try:
+            all_listed_symbols = _symbols(universe_session)
+        finally:
+            universe_session.close()
+
+        # The scraper uses local Parquet dates to select an incremental range.
+        # Seed missing/outdated local files from the durable hosted DB first;
+        # otherwise a fresh worker can re-download history starting in 2000.
+        hydrated = hydrate_ohlcv_files_from_database()
+        log.info("[DATA] Seeded local incremental history from PostgreSQL: %s", hydrated)
 
         scrape_result = run_scrape(
             mode="incremental",
-            delay=0.3,
+            # Slow, steady per-symbol requests protect the upstream source.
+            delay=max(2.0, float(get_settings().PSX_MIN_REQUEST_INTERVAL_SECONDS)),
+            symbols_override=all_listed_symbols or None,
         )
+        if not isinstance(scrape_result, dict):
+            raise RuntimeError("OHLCV scraper did not return a run summary")
+        if int(scrape_result.get("total_symbols", 0) or 0) and int(scrape_result.get("errors", 0) or 0) == int(scrape_result.get("total_symbols", 0) or 0):
+            raise RuntimeError("OHLCV refresh failed for every listed symbol; retained prior snapshots")
+        from app.tasks.stock_data_pipeline import persist_ohlcv_from_files
+        db_price_result = persist_ohlcv_from_files()
         if isinstance(scrape_result, dict):
             errors = int(scrape_result.get("errors", 0) or 0)
             total = int(scrape_result.get("total_symbols", 0) or 0)
             if scrape_result.get("rate_limited"):
                 raise SourceRateLimited("PSX returned HTTP 403/429; retained previous snapshots and stopped this daily chain")
+            if scrape_result.get("source_failure"):
+                raise SourceUnavailable(
+                    f"PSX historical source failed ({scrape_result['source_failure']}); "
+                    "retained existing snapshots and stopped this daily chain"
+                )
+            if total and not int(scrape_result.get("ok", 0) or 0) and int(scrape_result.get("no_data", 0) or 0) == total:
+                raise SourceUnavailable("PSX returned no usable OHLCV for any symbol; retained existing snapshots")
             if total and errors == total:
                 raise RuntimeError(f"OHLCV refresh failed for every symbol ({errors}/{total})")
             log.info(
@@ -88,13 +130,13 @@ def update_market_data_task(self):
             )
         else:
             log.info("[DATA] Market data update complete")
-        return {"status": "success", "timestamp": datetime.utcnow().isoformat()}
+        return {"status": "success", "db_prices": db_price_result, "timestamp": datetime.utcnow().isoformat()}
 
     except SoftTimeLimitExceeded:
         log.error("[DATA] Market data update timed out")
         raise self.retry(countdown=600)
-    except SourceRateLimited:
-        log.exception("[DATA] Source denied requests; stopping pipeline without retry")
+    except (SourceRateLimited, SourceUnavailable):
+        log.exception("[DATA] Source denied or failed requests; stopping pipeline without retry")
         raise
     except Exception as exc:
         log.exception("[DATA] Market data update failed")
@@ -156,7 +198,6 @@ def generate_predictions_task(self):
     try:
         import pandas as pd
 
-        from app.data.scraper.symbol_universe import get_active_symbols
         from app.ml.serving.inference import (
             _run_gru,
             _run_xgb,
@@ -180,8 +221,12 @@ def generate_predictions_task(self):
         df = pd.read_parquet(FEATURES_PATH)
         df["date"] = pd.to_datetime(df["date"])
 
-        active = get_active_symbols()
-        symbols = [e["symbol"] for e in active]
+        from app.tasks.stock_data_pipeline import _symbols
+        symbols_session = _get_sync_session()
+        try:
+            symbols = _symbols(symbols_session)
+        finally:
+            symbols_session.close()
         log.info("[PREDICTION] Running predictions for %d symbols", len(symbols))
 
         session = _get_sync_session()
@@ -205,6 +250,11 @@ def generate_predictions_task(self):
                     continue
 
                 as_of_date = sym_df["date"].iloc[-1].date()
+                today_pkt = datetime.now(ZoneInfo("Asia/Karachi")).date()
+                if as_of_date != today_pkt:
+                    log.warning("[PREDICTION] %s: latest price date %s is not today %s; retaining prior prediction", sym, as_of_date, today_pkt)
+                    failed += 1
+                    continue
                 as_of_dates.add(as_of_date.isoformat())
 
                 gru_result = _run_gru(sym, sym_df)
@@ -310,14 +360,13 @@ def run_daily_pipeline():
     # Gate before dispatching the chain. Returning "skipped" from the first
     # chained task would still allow Celery to continue with stale downstream
     # features, sentiment and recommendation publication.
-    import asyncio
     from zoneinfo import ZoneInfo
+
     now_pkt = datetime.now(ZoneInfo("Asia/Karachi"))
     if now_pkt.weekday() >= 5:
         return {"status": "skipped", "reason": "weekend"}
     try:
-        from app.services.news_pipeline.market_schedule import is_holiday
-        if asyncio.run(is_holiday()):
+        if _is_exchange_holiday():
             return {"status": "skipped", "reason": "exchange_holiday"}
     except Exception as exc:
         log.warning("Could not check holiday calendar; continuing daily pipeline: %s", exc)
@@ -327,10 +376,19 @@ def run_daily_pipeline():
     # positional argument into the next bound task (which accepts no such arg).
     from app.tasks.sentiment_tasks import aggregate_sentiment_task
     from app.tasks.recommendation_cache import refresh_recommendations_task
+    from app.tasks.stock_data_pipeline import (
+        refresh_company_reference_task,
+        refresh_dividends_task,
+        compute_daily_analysis_task,
+    )
 
     workflow = chain(
         update_market_data_task.si(),
+        # Cool down for four minutes between each full-universe source group.
+        refresh_company_reference_task.si().set(countdown=240),
+        refresh_dividends_task.si().set(countdown=240),
         generate_features_task.si(),
+        compute_daily_analysis_task.si(),
         generate_predictions_task.si(),
         evaluate_pending_predictions_task.si(),
         aggregate_sentiment_task.si(),

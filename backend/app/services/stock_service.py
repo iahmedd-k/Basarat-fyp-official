@@ -281,83 +281,74 @@ class StockService:
             _cache[cache_key] = shared
             _cache_ttl[cache_key] = now
             return shared
+        # Quote endpoints are cache-only. Celery owns the shared board scrape;
+        # a cache miss must never turn a stock detail request into a PSX hit.
+        frame = None
         try:
-            frame = pypsx_toolkit.get_quote(symbol, as_dict=True)
-        except TypeError:
-            try:
-                # Newer toolkit releases default to a DataFrame and no longer
-                # accept the legacy `format` keyword.
-                frame = pypsx_toolkit.get_quote(symbol)
-            except TypeError:
-                try:
-                    frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
-                except Exception as exc:
-                    log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
-                    frame = None
-            except Exception as exc:
-                log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
-                frame = None
+            board = self._get_market_frame()
+            if board is not None and not board.empty and symbol in board.index:
+                frame = board.loc[[symbol]].copy()
         except Exception as exc:
-            log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
-            frame = None
-        if _is_empty_frame(frame):
-            try:
-                frame = pypsx_toolkit.get_quote(symbol)
-            except Exception as exc:
-                log.debug("PSX quote fallback failed for %s: %s", symbol, exc)
+            log.debug("Could not read shared market snapshot for %s: %s", symbol, exc)
         _cache_source_frame(cache_key, frame, QUOTE_TTL_SECONDS)
         if isinstance(frame, dict):
             cache_set_sync(shared_key, frame, QUOTE_TTL_SECONDS)
         return frame
 
     def _get_fund_frame(self, symbol):
+        """Read the scheduled PostgreSQL snapshot (or shared cache), never the source."""
         symbol = str(symbol).upper()
-        now = _now()
         cache_key = f"fund:{symbol}"
-        # v2 bypasses legacy partial payloads cached before all source fields
-        # were exposed by the route.
         shared_key = f"stock:raw_fundamentals:v4:{symbol}"
-        cached_at = _cache_ttl.get(cache_key, 0.0)
-        if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
+        now = _now()
+        try:
+            from sqlalchemy import select
+            from app.db.base import get_sync_session_factory
+            from app.models.stock import Stock, StockReferenceData
+            session = get_sync_session_factory()()
+            try:
+                row = session.execute(
+                    select(StockReferenceData.profile_json, StockReferenceData.fundamentals_json)
+                    .join(Stock, Stock.id == StockReferenceData.stock_id)
+                    .where(Stock.symbol == symbol)
+                ).first()
+            finally:
+                session.close()
+            if row:
+                profile = row[0] or {}
+                raw = row[1] or {}
+                info = profile.get("profile") or {}
+                equity = profile.get("equity_profile") or {}
+                result = {
+                    "Profile": info.get("Profile") or {},
+                    "Governance": info.get("Governance") or {},
+                    "Equity Profile": {
+                        "Market Cap (000's)": equity.get("Market Cap (000's)") or profile.get("market_cap"),
+                        "Shares": equity.get("Shares") or profile.get("shares_outstanding"),
+                        "Free Float": equity.get("Free Float") or profile.get("free_float"),
+                    },
+                    "Financials Annual": raw.get("annual") or [],
+                    "Financials Quarterly": raw.get("quarterly") or [],
+                    "Ratios": raw.get("ratios") or [],
+                    **profile,
+                }
+                if profile or raw:
+                    _cache[cache_key] = result
+                    _cache_ttl[cache_key] = now
+                    return result
+        except Exception as exc:
+            log.warning("Could not read persisted fundamentals for %s: %s", symbol, exc)
+        # PostgreSQL is authoritative. Use Redis/local memory only if the database
+        # has no snapshot or is unavailable, so a successful daily refresh is
+        # visible immediately even when an older cache entry still exists.
+        if cache_key in _cache and now - _cache_ttl.get(cache_key, 0.0) <= FUND_TTL_SECONDS:
             return _cache[cache_key]
         shared = cache_get_sync(shared_key)
         if isinstance(shared, dict):
             _cache[cache_key] = shared
             _cache_ttl[cache_key] = now
             return shared
-        try:
-            frame = pypsx_toolkit.get_company_fundamentals(symbol, as_dict=True)
-        except TypeError:
-            try:
-                # Fall back to the toolkit's default DataFrame response first.
-                # `format` was removed from the public API in newer releases.
-                frame = pypsx_toolkit.get_company_fundamentals(symbol)
-            except TypeError:
-                try:
-                    frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
-                except Exception as exc:
-                    log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
-                    frame = None
-            except Exception as exc:
-                log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
-                frame = None
-        except Exception as exc:
-            log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
-            frame = None
-        if _is_empty_frame(frame):
-            try:
-                frame = pypsx_toolkit.get_company_fundamentals(symbol, format="json")
-            except Exception:
-                try:
-                    frame = pypsx_toolkit.get_company_fundamentals(symbol)
-                except Exception as exc:
-                    log.debug("PSX fundamentals fallback failed for %s: %s", symbol, exc)
-        _cache_source_frame(cache_key, frame, FUND_TTL_SECONDS)
-        if isinstance(frame, dict):
-            ttl = FUND_TTL_SECONDS if not _is_empty_frame(frame) else FAILED_SOURCE_TTL_SECONDS
-            cache_set_sync(shared_key, frame, ttl)
-        return frame
-
+        return None
     def _fund_metric(self, symbol, category, metric):
         frame = self._get_fund_frame(symbol)
         if frame is None:
@@ -417,23 +408,47 @@ class StockService:
         except Exception:
             return None
 
-    def _get_dividend_frame(self, symbol):
+    def _get_dividend_frame(self, symbol, *, allow_source: bool = False, force: bool = False):
         symbol = str(symbol).upper()
         now = _now()
         cache_key = f"div:{symbol}"
         shared_key = f"stock:dividends:{symbol}"
         cached_at = _cache_ttl.get(cache_key, 0.0)
-        if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
+        if not force and cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
             return _cache[cache_key]
         shared = cache_get_sync(shared_key)
-        if isinstance(shared, dict) and shared.get("__dataframe__"):
+        if not force and isinstance(shared, dict) and shared.get("__dataframe__"):
             frame = pd.DataFrame(shared.get("rows", []), columns=shared.get("columns"))
             _cache[cache_key] = frame
             _cache_ttl[cache_key] = now
             return frame
+        if not force:
+            try:
+                from sqlalchemy import select
+                from app.db.base import get_sync_session_factory
+                from app.models.stock import Stock, StockReferenceData
+                session = get_sync_session_factory()()
+                try:
+                    saved = session.execute(
+                        select(StockReferenceData.dividends_json)
+                        .join(Stock, Stock.id == StockReferenceData.stock_id)
+                        .where(Stock.symbol == symbol)
+                    ).scalar_one_or_none()
+                finally:
+                    session.close()
+                if saved:
+                    return pd.DataFrame(saved)
+            except Exception as exc:
+                log.warning("Could not read persisted dividends for %s: %s", symbol, exc)
+        if not allow_source:
+            return pd.DataFrame()
         try:
             frame = pypsx_toolkit.get_dividend_info(symbol, format="dataframe")
-        except Exception:
+        except Exception as exc:
+            response = getattr(exc, "response", None)
+            status_code = getattr(response, "status_code", None) or getattr(exc, "status_code", None)
+            if allow_source and status_code in (403, 429):
+                raise
             frame = None
         _cache_source_frame(cache_key, frame, FUND_TTL_SECONDS)
         if frame is not None and hasattr(frame, "to_dict"):
@@ -489,26 +504,33 @@ class StockService:
         df = self._get_ohlcv_from_file(symbol, start, end)
         if df is None or (hasattr(df, "empty") and df.empty):
             df = stale_shared
-        if df is not None and self._ohlcv_frame_is_stale(df):
-            latest = self._latest_ohlcv_date(df)
-            refresh_start = max(start, latest + timedelta(days=1)) if latest else start
+        if df is None or (hasattr(df, "empty") and df.empty):
             try:
-                refreshed = None
-                if refresh_start <= end:
-                    refreshed = pypsx_toolkit.get_historical(
-                        symbol, start_date=refresh_start.isoformat(), end_date=end.isoformat()
-                    )
-                df = self._merge_ohlcv_frames(df, refreshed, start, end)
+                from sqlalchemy import select
+                from app.db.base import get_sync_session_factory
+                from app.models.stock import Stock, StockPrice
+                session = get_sync_session_factory()()
+                try:
+                    rows = session.execute(
+                        select(StockPrice.date, StockPrice.open, StockPrice.high,
+                               StockPrice.low, StockPrice.close, StockPrice.volume)
+                        .join(Stock, Stock.id == StockPrice.stock_id)
+                        .where(Stock.symbol == symbol, StockPrice.date >= start, StockPrice.date <= end)
+                        .order_by(StockPrice.date)
+                    ).all()
+                finally:
+                    session.close()
+                if rows:
+                    df = pd.DataFrame([
+                        {"OPEN": row.open, "HIGH": row.high, "LOW": row.low,
+                         "CLOSE": row.close, "VOLUME": row.volume}
+                        for row in rows
+                    ], index=pd.to_datetime([row.date for row in rows]))
+                    df.index.name = "DATE"
             except Exception as exc:
-                log.warning("PSX history fetch failed for %s: %s", symbol, exc)
-        elif df is None:
-            try:
-                df = pypsx_toolkit.get_historical(
-                    symbol, start_date=start.isoformat(), end_date=end.isoformat()
-                )
-            except Exception as exc:
-                log.warning("PSX history fetch failed for %s: %s", symbol, exc)
-                df = None
+                log.warning("Could not load persisted OHLCV for %s: %s", symbol, exc)
+        # Price-history API reads are intentionally offline/cache-only. The
+        # scheduled daily ingestion job is the only owner of OHLCV source calls.
 
         _cache_source_frame(key, df, OHLCV_TTL_SECONDS)
         if df is not None:
@@ -571,21 +593,12 @@ class StockService:
 
         quote_freshness = self._market.quote_freshness()
         market_cap_m = self._market_cap_m(symbol)
-        if market_cap_m is None and curr_p > 0:
-            market_cap_m = round(curr_p * 100_000_000 / 1_000_000, 2)
         pe_ratio = self._quote_field(q, "P/E RATIO (TTM) **")
-        if pe_ratio is None:
-            pe_ratio = 12.5
         year_change_pct = self._quote_field(q, "1-YEAR CHANGE * ^")
         ytd_change_pct = self._quote_field(q, "YTD CHANGE * ^")
 
         if ytd_change_pct is None:
             ytd_change_pct = self._ytd_change_from_history(symbol)
-        if ytd_change_pct is None:
-            ytd_change_pct = q.get("change_pct") or 0.0
-        if year_change_pct is None:
-            year_change_pct = ytd_change_pct
-
         return {
             "symbol": symbol,
             "name": self._company_name(symbol),
@@ -608,24 +621,26 @@ class StockService:
 
     @staticmethod
     def _company_name(symbol: str) -> str:
-        """Return the provider company name when available, falling back to ticker."""
+        """Return a persisted company name, with ticker/alias fallback."""
+        try:
+            from sqlalchemy import select
+            from app.db.base import get_sync_session_factory
+            from app.models.stock import Stock
+            session = get_sync_session_factory()()
+            try:
+                name = session.execute(select(Stock.name).where(Stock.symbol == symbol)).scalar_one_or_none()
+            finally:
+                session.close()
+            if name and str(name).strip().upper() != symbol:
+                return str(name).strip()
+        except Exception as exc:
+            log.debug("Persisted company-name lookup failed for %s: %s", symbol, exc)
         info_key = f"stock:ticker_info:v4:{symbol}"
         info = cache_get_sync(info_key)
         if isinstance(info, dict):
             name = info.get("company_name") or info.get("name")
             if name and str(name).strip().upper() not in {symbol, f"{symbol} PAKISTAN"}:
                 return str(name)
-        try:
-            ticker = pypsx_toolkit.Ticker(symbol)
-            ticker_info = getattr(ticker, "info", None)
-            info = ticker_info if isinstance(ticker_info, dict) else {}
-            if info:
-                cache_set_sync(info_key, info, FUND_TTL_SECONDS)
-                name = info.get("company_name") or info.get("name")
-                if name and str(name).strip().upper() not in {symbol, f"{symbol} PAKISTAN"}:
-                    return str(name)
-        except Exception as exc:
-            log.debug("Company name lookup failed for %s: %s", symbol, exc)
         from app.services.news_pipeline.symbol_tagger import _STATIC_ALIASES
 
         aliases = _STATIC_ALIASES.get(symbol, [])
@@ -673,10 +688,10 @@ class StockService:
         "1D": ("1D", timedelta(days=10)),
         "1W": ("1W", timedelta(days=8)),
         "1M": ("1M", timedelta(days=32)),
-        "1Y": ("1Y", timedelta(days=366)),
+        "45D": ("45D", timedelta(days=45)),
     }
 
-    def get_price_history(self, symbol: str, range: str = "1M"):
+    def get_price_history(self, symbol: str, range: str = "45D"):
         symbol = str(symbol).upper()
         label, lookback = self.RANGE_MAP.get(range.upper(), self.RANGE_MAP["1M"])
         end = date.today()
@@ -713,13 +728,14 @@ class StockService:
         cache_key = f"tech:v2:{symbol}:{norm_indicators}:{period}:{limit}"
 
         # 1. Check Redis cache first
+        # Daily analysis explicitly clears its own key before recomputing.
         cached = cache_get_sync(cache_key)
         if cached is not None:
             return cached
 
         requested = [i.strip().upper() for i in indicators.split(",") if i.strip()]
         end = date.today()
-        df = self._get_ohlcv(symbol, end - timedelta(days=370), end)
+        df = self._get_ohlcv(symbol, end - timedelta(days=45), end)
         if df is None or df.empty:
             return {
                 "symbol": symbol,
@@ -997,503 +1013,40 @@ class StockService:
             return None
 
     def get_fundamentals(self, symbol: str):
+        """Return the latest durable fundamentals snapshot; never scrape in an API request."""
         symbol = str(symbol).upper()
-        # v13 forces refresh of all cached company profiles and loads full company tables
-        cache_key = f"fund:v20:{symbol}"
+        try:
+            from sqlalchemy import select
+            from app.db.base import get_sync_session_factory
+            from app.models.stock import Stock, StockReferenceData
 
-        cached = cache_get_sync(cache_key)
-        if cached is not None:
-            return cached
-
-        quote = self._get_quote_frame(symbol)
-        psx_table_data = get_psx_company_table_data(symbol)
-        div = self._get_dividend_frame(symbol)
-
-        info_key = f"stock:ticker_info:v5:{symbol}"
-        page_info = psx_table_data.get("source_info") or {}
-
-        def has_source_values(value):
-            if isinstance(value, dict):
-                return any(has_source_values(item) for item in value.values())
-            if isinstance(value, (list, tuple)):
-                return any(has_source_values(item) for item in value)
-            return value is not None and bool(str(value).strip())
-
-        # An HTTP 200 page can still be an empty/challenge response. Only
-        # trust the direct page parse if it contains actual company fields.
-        info_dict = page_info if isinstance(page_info, dict) and has_source_values({
-            key: value for key, value in page_info.items()
-            if key not in {"symbol", "name", "company_name"}
-        }) else {}
-        if info_dict:
-            info_dict["sector"] = self._sector_of(symbol) or info_dict.get("sector")
-            cache_set_sync(info_key, info_dict, FUND_TTL_SECONDS)
-            cache_set_sync(f"stock:raw_fundamentals:v4:{symbol}", info_dict, FUND_TTL_SECONDS)
-            _cache[f"fund:{symbol}"] = info_dict
-            _cache_ttl[f"fund:{symbol}"] = _now()
-        else:
-            cached_info = cache_get_sync(info_key)
-            if isinstance(cached_info, dict):
-                info_dict = cached_info
-            else:
-                try:
-                    t = pypsx_toolkit.Ticker(symbol)
-                    if hasattr(t, "info") and isinstance(t.info, dict):
-                        info_dict = t.info
-                        info_ttl = FUND_TTL_SECONDS if any(
-                            value not in (None, "", [], {})
-                            for key, value in info_dict.items()
-                            if key.lower() not in {"symbol", "name", "company_name", "sector"}
-                        ) else FAILED_SOURCE_TTL_SECONDS
-                        cache_set_sync(info_key, info_dict, info_ttl)
-                except Exception as exc:
-                    log.warning("PSX ticker info fetch failed for %s: %s", symbol, exc)
-
-            if isinstance(info_dict, dict) and info_dict:
-                # Reuse the existing toolkit scrape below instead of making a
-                # second request for the same company fundamentals.
-                cache_set_sync(f"stock:raw_fundamentals:v4:{symbol}", info_dict, FUND_TTL_SECONDS)
-                _cache[f"fund:{symbol}"] = info_dict
-                _cache_ttl[f"fund:{symbol}"] = _now()
-
-        # Populate _fund_metric from the same page payload instead of fetching
-        # that company page a second time through the toolkit.
-        fund_data = self._get_fund_frame(symbol)
-        flat_info = fund_data if isinstance(fund_data, dict) else info_dict
-
-        # 1. Company Profile & Governance
-        prof = info_dict.get("Profile", {}) if isinstance(info_dict.get("Profile"), dict) else {}
-        gov = info_dict.get("Governance", {}) if isinstance(info_dict.get("Governance"), dict) else {}
-
-        desc = (
-            prof.get("Business Description")
-            or flat_info.get("business_description")
-            or flat_info.get("description")
-            or info_dict.get("business_description")
-            or info_dict.get("description")
-        )
-        if not desc and not isinstance(fund_data, dict):
+            session = get_sync_session_factory()()
             try:
-                desc = pypsx_toolkit.get_business_description(symbol)
-            except Exception:
-                pass
-        if not desc:
-            desc = self._fund_raw_string(symbol, "Profile", "Business Description")
-
-        # Parse Governance dict where key is person name and value is title, or vice versa
-        ceo, chairperson, secretary = None, None, None
-        for k, v in gov.items():
-            k_str, v_str = str(k).upper(), str(v).upper()
-            if "CEO" in v_str or "CHIEF EXECUTIVE" in v_str: ceo = k
-            elif "CEO" in k_str or "CHIEF EXECUTIVE" in k_str: ceo = v
-            if "CHAIR" in v_str: chairperson = k
-            elif "CHAIR" in k_str: chairperson = v
-            if "SECRETARY" in v_str: secretary = k
-            elif "SECRETARY" in k_str: secretary = v
-
-        if not ceo: ceo = self._fund_raw_string(symbol, "Governance", "CEO")
-        if not chairperson: chairperson = self._fund_raw_string(symbol, "Governance", "Chairperson")
-        if not secretary: secretary = self._fund_raw_string(symbol, "Governance", "Company Secretary")
-        website = prof.get("Website") or flat_info.get("website") or info_dict.get("website") or self._fund_raw_string(symbol, "Profile", "Website")
-        address = prof.get("Address") or flat_info.get("address") or info_dict.get("address") or self._fund_raw_string(symbol, "Profile", "Address")
-        sector = self._sector_of(symbol) or info_dict.get("sector")
-
-        comp_name = info_dict.get("company_name") or info_dict.get("name") or symbol
-        if str(comp_name).strip().upper() in {symbol, f"{symbol} PAKISTAN"}:
-            comp_name = self._company_name(symbol)
-
-        if not desc:
-            desc = None
-        if not ceo:
-            ceo = None
-        if not chairperson:
-            chairperson = None
-        if not secretary:
-            secretary = None
-        if not website:
-            website = None
-        if not address:
-            address = None
-
-        company_profile = {
-            "name": comp_name,
-            "sector": sector,
-            "business_description": desc,
-            "ceo": ceo,
-            "chairperson": chairperson,
-            "company_secretary": secretary,
-            "website": website,
-            "address": address,
-            "psx_url": f"https://dps.psx.com.pk/company/{symbol}",
-        }
-
-        # Obtain reference quote for fallback calculation
-        batch = self.get_quote_batch([symbol])
-        curr_price = None
-        if batch and batch[0].get("current"):
-            try:
-                curr_price = float(batch[0]["current"] or batch[0].get("ldcp") or 0)
-                if curr_price <= 0:
-                    curr_price = None
-            except (TypeError, ValueError):
-                curr_price = None
-        if curr_price is None:
-            curr_price = 0.0
-
-        # 2. Equity Profile
-        eq = info_dict.get("Equity Profile", {}) if isinstance(info_dict.get("Equity Profile"), dict) else {}
-        market_cap_k = self._fund_metric(symbol, "Equity Profile", "Market Cap (000's)")
-        if not market_cap_k and eq.get("Market Cap (000's)"):
-            try: market_cap_k = float(str(eq["Market Cap (000's)"]).replace(",", "").strip())
-            except Exception: pass
-
-        if isinstance(fund_data, dict) or "market_cap" in info_dict:
-            fund_values = fund_data if isinstance(fund_data, dict) else {}
-            market_cap_pkr = self._num(fund_values.get("market_cap") or info_dict.get("market_cap"))
-            market_cap_m = round(market_cap_pkr / 1_000_000, 2) if market_cap_pkr else None
-        else:
-            market_cap_pkr = (market_cap_k * 1000.0) if market_cap_k else None
-            market_cap_m = round(market_cap_k / 1000.0, 2) if market_cap_k else None
-
-        total_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Shares"))
-        if not total_shares:
-            total_shares = self._safe_int(flat_info.get("shares_outstanding") or info_dict.get("shares_outstanding"))
-        if not total_shares and eq.get("Shares"):
-            try: total_shares = int(float(str(eq["Shares"]).replace(",", "").strip()))
-            except Exception: pass
-
-        if not total_shares or total_shares <= 0:
-            total_shares = 100_000_000
-
-        free_float_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Free Float"))
-        free_float_pct = self._fund_metric(symbol, "Equity Profile", "Free Float")
-        if not free_float_pct and eq.get("Free Float"):
-            ff_str = str(eq["Free Float"])
-            if "%" in ff_str:
-                try: free_float_pct = float(ff_str.replace("%", "").strip())
-                except Exception: pass
-
-        if free_float_pct and free_float_pct > 100:
-            free_float_pct = round((free_float_shares / total_shares * 100), 2) if total_shares else 25.0
-        elif free_float_pct and not free_float_shares and total_shares:
-            free_float_shares = int(total_shares * (free_float_pct / 100.0))
-
-        if not free_float_shares or free_float_shares <= 0:
-            free_float_shares = int(total_shares * 0.25)
-        if not free_float_pct or free_float_pct <= 0:
-            free_float_pct = 25.0
-
-        if not market_cap_pkr or market_cap_pkr <= 0:
-            market_cap_pkr = round(curr_price * total_shares, 2)
-        if not market_cap_m or market_cap_m <= 0:
-            market_cap_m = round(market_cap_pkr / 1_000_000, 2)
-
-        equity_profile = {
-            "market_cap_pkr": market_cap_pkr,
-            "market_cap_pkr_m": market_cap_m,
-            "total_shares": total_shares,
-            "free_float_shares": free_float_shares,
-            "free_float_pct": free_float_pct,
-        }
-
-        # 3. Ratios & Valuation
-        pe_ratio = self._quote_field(quote, "P/E RATIO (TTM) **")
-        if pe_ratio is None:
-            pe_ratio = self._num(flat_info.get("pe_ratio") or info_dict.get("pe_ratio"))
-        eps = self._fund_metric(symbol, "Financials Annual", "EPS")
-        if eps is None:
-            eps = self._num(flat_info.get("eps") or info_dict.get("eps"))
-
-        fin_ann = info_dict.get("Financials Annual", {}) if isinstance(info_dict.get("Financials Annual"), dict) else {}
-        if not eps and fin_ann.get("EPS"):
-            try:
-                eps_parts = str(fin_ann["EPS"]).split("|")
-                eps = float(eps_parts[0].strip())
-            except Exception: pass
-
-        div_yield = self._div_yield(div)
-        peg = self._fund_metric(symbol, "Ratios", "PEG")
-        eps_growth = self._fund_metric(symbol, "Ratios", "EPS Growth (%)")
-        net_margin = self._fund_metric(symbol, "Ratios", "Net Profit Margin (%)")
-        gross_margin = self._fund_metric(symbol, "Ratios", "Gross Profit Margin (%)")
-
-        ratio_history = psx_table_data.get("ratio_history") or []
-        latest_ratio_values = (ratio_history[0].get("values") or {}) if ratio_history else {}
-        if "peg_ratio" in latest_ratio_values:
-            peg = self._num(latest_ratio_values.get("peg_ratio"))
-        if "eps_growth_pct" in latest_ratio_values:
-            eps_growth = self._num(latest_ratio_values.get("eps_growth_pct"))
-        if "net_profit_margin_pct" in latest_ratio_values:
-            net_margin = self._num(latest_ratio_values.get("net_profit_margin_pct"))
-        if "gross_profit_margin_pct" in latest_ratio_values:
-            gross_margin = self._num(latest_ratio_values.get("gross_profit_margin_pct"))
-
-        # Fallbacks for empty valuation metrics
-        if pe_ratio is None or pe_ratio <= 0:
-            pe_ratio = 12.5
-        if eps is None or eps <= 0:
-            eps = round(curr_price / max(1.0, pe_ratio), 2)
-        if peg is None or peg <= 0:
-            peg = 1.15
-        if eps_growth is None:
-            eps_growth = 8.5
-        if net_margin is None:
-            net_margin = 12.0
-        if gross_margin is None:
-            gross_margin = 22.5
-        if div_yield is None:
-            div_yield = 4.5
-
-        ratios = {
-            "pe_ratio": pe_ratio,
-            "peg_ratio": peg,
-            "eps": eps,
-            "eps_growth_pct": eps_growth,
-            "net_profit_margin_pct": net_margin,
-            "gross_profit_margin_pct": gross_margin,
-            "dividend_yield_pct": div_yield,
-        }
-
-        financials_annual = (
-            info_dict.get("financials_annual")
-            or info_dict.get("Financials Annual")
-            or (fund_data.get("financials_annual") if isinstance(fund_data, dict) else None)
-        )
-        financials_quarterly = (
-            info_dict.get("financials_quarterly")
-            or info_dict.get("Financials Quarterly")
-            or (fund_data.get("financials_quarterly") if isinstance(fund_data, dict) else None)
-        )
-
-        def _financial_rows(value):
-            if isinstance(value, list):
-                return value
-            if isinstance(value, dict):
-                return [value]
-            if hasattr(value, "to_dict"):
-                try:
-                    rows = value.to_dict(orient="records")
-                    return rows if isinstance(rows, list) else None
-                except (TypeError, ValueError):
-                    return None
-            return None
-
-        financials_annual = psx_table_data.get("financials_annual") or _financial_rows(financials_annual)
-        financials_quarterly = psx_table_data.get("financials_quarterly") or _financial_rows(financials_quarterly)
-
-        curr_yr = date.today().year
-        if not financials_annual:
-            financials_annual = [
-                {
-                    "period": f"FY{curr_yr-1}",
-                    "revenue": round(market_cap_m * 1.8, 2),
-                    "gross_profit": round(market_cap_m * 0.45, 2),
-                    "operating_profit": round(market_cap_m * 0.28, 2),
-                    "net_profit": round(market_cap_m * 0.18, 2),
-                    "eps": eps,
-                },
-                {
-                    "period": f"FY{curr_yr-2}",
-                    "revenue": round(market_cap_m * 1.6, 2),
-                    "gross_profit": round(market_cap_m * 0.40, 2),
-                    "operating_profit": round(market_cap_m * 0.25, 2),
-                    "net_profit": round(market_cap_m * 0.16, 2),
-                    "eps": round(eps * 0.9, 2),
-                }
-            ]
-        if not financials_quarterly:
-            financials_quarterly = [
-                {
-                    "period": f"Q3 {curr_yr}",
-                    "revenue": round(market_cap_m * 0.48, 2),
-                    "gross_profit": round(market_cap_m * 0.12, 2),
-                    "operating_profit": round(market_cap_m * 0.075, 2),
-                    "net_profit": round(market_cap_m * 0.048, 2),
-                    "eps": round(eps * 0.28, 2),
-                },
-                {
-                    "period": f"Q2 {curr_yr}",
-                    "revenue": round(market_cap_m * 0.45, 2),
-                    "gross_profit": round(market_cap_m * 0.11, 2),
-                    "operating_profit": round(market_cap_m * 0.070, 2),
-                    "net_profit": round(market_cap_m * 0.044, 2),
-                    "eps": round(eps * 0.25, 2),
-                }
-            ]
-
-        # 4. Trading Limits & 52-Week Range (via snapshot)
-        year_high, year_low = None, None
-        cb_low, cb_up = None, None
-        year_change, ytd_change = None, None
-        try:
-            snapshot_key = f"stock:snapshot:v2:{symbol}"
-            snap = cache_get_sync(snapshot_key)
-            if not isinstance(snap, dict):
-                snap = pypsx_toolkit.get_snapshot(symbol)
-                if isinstance(snap, dict):
-                    ttl = FUND_TTL_SECONDS if snap else FAILED_SOURCE_TTL_SECONDS
-                    cache_set_sync(snapshot_key, snap, ttl)
-            if isinstance(snap, dict):
-                reg = snap.get("REG", {})
-                cb = reg.get("CIRCUIT BREAKER")
-                if cb and isinstance(cb, (tuple, list)) and len(cb) >= 2:
-                    cb_low, cb_up = self._num(cb[0]), self._num(cb[1])
-                range_52 = reg.get("52-WEEK RANGE ^")
-                if range_52 and isinstance(range_52, (tuple, list)) and len(range_52) >= 2:
-                    year_low, year_high = self._num(range_52[0]), self._num(range_52[1])
-                year_change = self._num(reg.get("1-Year Change * ^"))
-                ytd_change = self._num(reg.get("YTD Change * ^"))
-        except Exception:
-            pass
-
-        if year_change is None:
-            year_change = self._quote_field(quote, "1-YEAR CHANGE * ^")
-        if ytd_change is None:
-            ytd_change = self._quote_field(quote, "YTD CHANGE * ^")
-
-        if year_high is None or year_high <= 0:
-            year_high = round(curr_price * 1.35, 2)
-        if year_low is None or year_low <= 0:
-            year_low = round(curr_price * 0.75, 2)
-        if cb_low is None or cb_low <= 0:
-            cb_low = round(curr_price * 0.925, 2)
-        if cb_up is None or cb_up <= 0:
-            cb_up = round(curr_price * 1.075, 2)
-        if year_change is None:
-            year_change = 12.5
-        if ytd_change is None:
-            ytd_change = 8.0
-
-        trading_limits = {
-            "year_high": year_high,
-            "year_low": year_low,
-            "circuit_breaker_lower": cb_low,
-            "circuit_breaker_upper": cb_up,
-            "year_change_pct": year_change,
-            "ytd_change_pct": ytd_change,
-        }
-
-        # 5. Dividend History
-        dividend_history = []
-        try:
-            div_df = _get_shared_dataframe(
-                f"stock:dividend_history:v2:{symbol}",
-                lambda: pypsx_toolkit.get_dividend_history(symbol),
-            )
-            if div_df is not None and not div_df.empty:
-                for _, drow in div_df.head(5).iterrows():
-                    dividend_history.append({
-                        "ex_date": str(drow.get("EX-DIVIDEND DATE", "")),
-                        "cash_amount": str(drow.get("CASH AMOUNT", "")),
-                        "record_date": str(drow.get("RECORD DATE", "")),
-                        "pay_date": str(drow.get("PAY DATE", "")),
-                    })
-        except Exception:
-            pass
-
-        # 6. Official Announcements
-        announcements = []
-        try:
-            ann_df = _get_shared_dataframe(
-                f"stock:announcements:v3:{symbol}",
-                lambda: pypsx_toolkit.get_announcements(symbol),
-            )
-            if ann_df is not None and not ann_df.empty:
-                for idx, arow in ann_df.head(5).iterrows():
-                    ann_date = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else str(idx)
-                    announcements.append({
-                        "date": str(ann_date),
-                        "title": str(arow.get("TITLE", "")),
-                        "pdf_link": str(arow.get("PDF_LINK", "")),
-                    })
-        except Exception:
-            pass
-
-        # Legacy backward compatible metrics & extras
-        metrics = [
-            _metric("EPS", eps, "Earnings per share over the last twelve months."),
-            _metric("P/E Ratio", pe_ratio, "Price-to-earnings; lower values suggest cheaper valuation."),
-            _metric("ROE", 16.4, "Return on equity based on standard sector metrics."),
-            _metric("Debt-to-Equity", 0.65, "Debt-to-equity leverage ratio."),
-            _metric("Dividend Yield", div_yield, "Trailing dividend yield relative to the last traded price."),
-            _metric("Market Cap (PKR M)", market_cap_m, "Market capitalisation in millions of PKR."),
-        ]
-
-        extras = {
-            "year_change_pct": year_change,
-            "ytd_change_pct": ytd_change,
-            "gross_profit_margin_pct": gross_margin,
-            "net_profit_margin_pct": net_margin,
-            "eps_growth_pct": eps_growth,
-        }
-
-        sector_overview = None
-        try:
-            sector_overview = self.get_sector_overview(symbol)
+                saved = session.execute(
+                    select(StockReferenceData.fundamentals_response_json)
+                    .join(Stock, Stock.id == StockReferenceData.stock_id)
+                    .where(Stock.symbol == symbol)
+                ).scalar_one_or_none()
+                if isinstance(saved, dict) and saved.get("symbol"):
+                    return saved
+            finally:
+                session.close()
         except Exception as exc:
-            log.warning("Sector overview resolution failed for %s: %s", symbol, exc)
+            log.warning("Could not load persisted fundamentals for %s: %s", symbol, exc)
 
-        if not sector_overview:
-            sector_overview = {
-                "sector": sector or "General Market",
-                "companies_count": 25,
-                "avg_change_pct": 0.65,
-                "advancing": 15,
-                "declining": 8,
-                "unchanged": 2,
-                "stock": {
-                    "symbol": symbol,
-                    "name": comp_name,
-                    "current": curr_price,
-                    "ldcp": curr_price,
-                    "change_pct": 0.0,
-                    "volume": 50000,
-                },
-                "stock_rank": 5,
-                "top_gainers": [],
-                "top_losers": [],
-            }
-
-        data_status = "complete"
-        data_message = "Company fundamentals, governance, equity profile, and financial statements loaded successfully." 
-
-        reports_list = psx_table_data.get("financial_reports") or []
-        total_reports = psx_table_data.get("total_reports_count") or len(reports_list)
-
-        result = {
+        return {
             "symbol": symbol,
-            "data_status": data_status,
-            "data_message": data_message,
-            "psx_official_url": f"https://dps.psx.com.pk/company/{symbol}",
-            "company_profile": company_profile,
-            "equity_profile": equity_profile,
-            "financials_annual": financials_annual,
-            "financials_quarterly": financials_quarterly,
-            "financials_unit": "PKR thousands except EPS",
-            "ratio_history": ratio_history,
-            "financial_reports": reports_list[:6],
-            "financial_reports_count": total_reports,
-            "ratios": ratios,
-            "trading_limits": trading_limits,
-            "dividend_history": dividend_history,
-            "announcements": announcements,
-            "metrics": metrics,
-            "extras": extras,
-            "sector_overview": sector_overview,
+            "data_status": "unavailable",
+            "data_message": "No persisted company snapshot is available yet; the scheduled ingestion pipeline will retry.",
+            "company_profile": {},
+            "equity_profile": {},
+            "financials_annual": [],
+            "financials_quarterly": [],
+            "ratio_history": [],
+            "dividend_history": [],
+            "announcements": [],
+            "metrics": [],
         }
-
-        # Keep useful fundamentals for one session. Cache failures for one
-        # hour to avoid retrying an unavailable PSX endpoint per user request.
-        useful_fields = (
-            company_profile.get("business_description"), company_profile.get("ceo"),
-            company_profile.get("website"), company_profile.get("address"),
-            equity_profile.get("market_cap_pkr"), equity_profile.get("total_shares"),
-            eps, pe_ratio, peg, eps_growth, net_margin, gross_margin, year_high, year_low,
-        )
-        cache_ttl = FUND_TTL_SECONDS if any(value not in (None, [], "") for value in useful_fields) else FAILED_SOURCE_TTL_SECONDS
-        cache_set_sync(cache_key, result, cache_ttl)
-        return result
-
     def _div_yield(self, div):
         if div is None or div.empty or "DIVIDEND YIELD" not in div.columns:
             return None

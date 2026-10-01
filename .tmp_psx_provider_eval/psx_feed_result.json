@@ -1,0 +1,31 @@
+{
+  "tested_at_local": "2026-10-01T06:06:10.138320+05:00",
+  "calls": {
+    "tickers": {
+      "ok": false,
+      "error_type": "HTTPError",
+      "error": "HTTP Error 404: Not Found"
+    },
+    "stocks_HBL_September_2026": {
+      "ok": true,
+      "rows": 0,
+      "columns": [
+        "Date",
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume"
+      ],
+      "first": null,
+      "last": null
+    }
+  },
+  "exports": [
+    "data_reader",
+    "stocks",
+    "tickers",
+    "web"
+  ],
+  "has_live_quote": false
+}

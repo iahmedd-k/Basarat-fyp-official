@@ -1,0 +1,121 @@
+{
+  "tested_at_local": "2026-10-01T05:58:26.602542+05:00",
+  "calls": {
+    "market_watch": {
+      "ok": true,
+      "count": 495,
+      "keys": [
+        "change",
+        "close",
+        "high",
+        "ldcp",
+        "listed",
+        "low",
+        "open",
+        "percentChange",
+        "sector",
+        "symbol",
+        "volume"
+      ],
+      "first": {
+        "symbol": "PIBTL",
+        "sector": "0833",
+        "listed": "ALLSHR,KMIALLSHR,KSE100,KSE100PR",
+        "ldcp": "14.57",
+        "open": "14.64",
+        "high": "14.87",
+        "low": "14.5",
+        "close": "14.68",
+        "change": "0.11",
+        "percentChange": "0.755",
+        "volume": "73446994"
+      },
+      "last_date": null
+    },
+    "eod_HBL_since_2026-09-01": {
+      "ok": true,
+      "count": 22,
+      "keys": [
+        "close",
+        "date",
+        "open",
+        "volume"
+      ],
+      "first": {
+        "date": "2026-09-01",
+        "open": 319,
+        "close": 315.72,
+        "volume": 667279
+      },
+      "last_date": "2026-09-30"
+    },
+    "KSE100_constituents": {
+      "ok": true,
+      "count": 100,
+      "keys": [
+        "CHANGE",
+        "CHANGE (%)",
+        "CURRENT",
+        "FREEFLOAT (M)",
+        "IDX POINT",
+        "IDX WTG (%)",
+        "LDCP",
+        "MARKET CAP (M)",
+        "NAME",
+        "SYMBOL",
+        "VOLUME"
+      ],
+      "first": {
+        "SYMBOL": "ABL",
+        "NAME": "Allied Bank Limited",
+        "LDCP": "169.8",
+        "CURRENT": "169.66",
+        "CHANGE": "-0.14",
+        "CHANGE (%)": "-0.082",
+        "IDX WTG (%)": "0.41%",
+        "IDX POINT": "-0.5701",
+        "VOLUME": "7269",
+        "FREEFLOAT (M)": "114507383",
+        "MARKET CAP (M)": "19427322599.78"
+      },
+      "last_date": null
+    },
+    "intraday_HBL": {
+      "ok": true,
+      "count": 682,
+      "keys": [
+        "price",
+        "time",
+        "volume"
+      ],
+      "first": {
+        "time": "2026-09-30 04:32:09+05:00",
+        "price": 302.8,
+        "volume": 50
+      },
+      "last_date": "2026-09-30 10:47:20+05:00"
+    }
+  },
+  "client_features": [
+    "announcements",
+    "breadth",
+    "close",
+    "eod",
+    "health",
+    "history_by_date",
+    "history_by_month",
+    "index_constituents",
+    "indices",
+    "intraday",
+    "market_watch",
+    "quote",
+    "quotes",
+    "search",
+    "sector_summary",
+    "snapshot",
+    "symbols",
+    "top_sectors",
+    "top_symbols"
+  ],
+  "has_fundamentals_method": false
+}

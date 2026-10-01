@@ -1,0 +1,166 @@
+{
+  "tested_at_local": "2026-10-01T06:05:08.580159+05:00",
+  "calls": {
+    "quote_HBL": {
+      "ok": true,
+      "count": 1,
+      "columns": [
+        "symbol",
+        "sector",
+        "listed_in",
+        "market_cap",
+        "price",
+        "change_pct",
+        "change_1y_pct",
+        "pe_ratio",
+        "dividend_yield",
+        "free_float",
+        "volume_avg_30d"
+      ],
+      "samples": [
+        {
+          "symbol": "HBL",
+          "sector": 807.0,
+          "listed_in": "ALLSHR,BKTI,JSGBKTI,KSE100,KSE100PR,KSE30,NBPPGI,NITPGI,PSXDIV20,UPP9",
+          "market_cap": NaN,
+          "price": 306.1,
+          "change_pct": 1.31,
+          "change_1y_pct": 4.76,
+          "pe_ratio": 6.95,
+          "dividend_yield": 7.87,
+          "free_float": NaN,
+          "volume_avg_30d": 1303587.0
+        }
+      ],
+      "last": {
+        "symbol": "HBL",
+        "sector": 807.0,
+        "listed_in": "ALLSHR,BKTI,JSGBKTI,KSE100,KSE100PR,KSE30,NBPPGI,NITPGI,PSXDIV20,UPP9",
+        "market_cap": NaN,
+        "price": 306.1,
+        "change_pct": 1.31,
+        "change_1y_pct": 4.76,
+        "pe_ratio": 6.95,
+        "dividend_yield": 7.87,
+        "free_float": NaN,
+        "volume_avg_30d": 1303587.0
+      }
+    },
+    "stocks_HBL_since_2026-09-01": {
+      "ok": true,
+      "count": 22,
+      "columns": [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "is_anomaly"
+      ],
+      "samples": [
+        {
+          "date": "2026-09-30 00:00:00",
+          "open": 302.8,
+          "high": 309.0,
+          "low": 302.8,
+          "close": 306.1,
+          "volume": 1153509,
+          "is_anomaly": false
+        }
+      ],
+      "last": {
+        "date": "2026-09-01 00:00:00",
+        "open": 319.0,
+        "high": 320.0,
+        "low": 315.0,
+        "close": 315.72,
+        "volume": 667279,
+        "is_anomaly": false
+      }
+    },
+    "symbols": {
+      "ok": true,
+      "count": 1028,
+      "columns": [
+        "symbol",
+        "name",
+        "sector_name",
+        "is_etf",
+        "is_debt",
+        "is_gem"
+      ],
+      "samples": [
+        {
+          "symbol": "AKBLTFC6",
+          "name": "Askari Bank(TFC6)",
+          "sector_name": "BILLS AND BONDS",
+          "is_etf": false,
+          "is_debt": true,
+          "is_gem": false
+        }
+      ],
+      "last": {
+        "symbol": "ZUMA",
+        "name": "Zuma Resources Limited",
+        "sector_name": "TECHNOLOGY & COMMUNICATION",
+        "is_etf": false,
+        "is_debt": false,
+        "is_gem": false
+      }
+    },
+    "KSE100": {
+      "ok": true,
+      "count": 100,
+      "columns": [
+        "symbol",
+        "name",
+        "ldcp",
+        "current",
+        "change",
+        "change_pct",
+        "idx_weight",
+        "idx_point",
+        "volume",
+        "freefloat_m",
+        "market_cap_m"
+      ],
+      "samples": [
+        {
+          "symbol": "ABL",
+          "name": "Allied Bank Limited",
+          "ldcp": "169.80",
+          "current": "169.66",
+          "change": "-0.14",
+          "change_pct": "-0.08%",
+          "idx_weight": 0.41,
+          "idx_point": -0.57,
+          "volume": "7,269",
+          "freefloat_m": 115.0,
+          "market_cap_m": 19427.0
+        }
+      ],
+      "last": {
+        "symbol": "YOUW",
+        "name": "Yousaf Weaving Mills Limited",
+        "ldcp": "4.92",
+        "current": "5.30",
+        "change": "0.38",
+        "change_pct": "7.72%",
+        "idx_weight": 0.01,
+        "idx_point": 1.16,
+        "volume": "12,308,441",
+        "freefloat_m": 86.0,
+        "market_cap_m": 457.0
+      }
+    },
+    "fundamentals_HBL": {
+      "ok": true,
+      "count": 0,
+      "columns": [],
+      "samples": [],
+      "last": null
+    }
+  },
+  "has_dividends_method": false
+}

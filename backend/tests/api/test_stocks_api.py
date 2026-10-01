@@ -90,7 +90,7 @@ class TestStockPriceHistory:
         assert resp.status_code == 422
 
     async def test_price_history_valid_ranges(self, client: AsyncClient, auth_headers):
-        for r in ["1D", "1W", "1M", "1Y"]:
+        for r in ["1D", "1W", "1M", "45D"]:
             resp = await client.get(
                 f"/api/v1/stocks/HBL/price-history?range={r}",
                 headers=auth_headers,

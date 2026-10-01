@@ -109,11 +109,27 @@ class Settings(BaseSettings):
     POST_MARKET_CLOSE_MINUTE: int = 0
     # Live session quotes (scraper-backed shared snapshot; API stays read-only)
     MARKET_SESSION_REFRESH_ENABLED: bool = True
-    MARKET_SESSION_REFRESH_SECONDS: int = 60  # Celery Beat cadence during open hours
-    MARKET_QUOTES_TTL_SECONDS: int = 90  # Redis TTL ≈ refresh + buffer
+    # Celery Beat cadence during open hours. PSX throttles/blocks aggressive
+    # scrapers, so 180s (3 min) is the production default. Must stay >= 120s.
+    MARKET_SESSION_REFRESH_SECONDS: int = 180
+    MARKET_QUOTES_TTL_SECONDS: int = 300  # Redis TTL ≈ refresh cadence + buffer
     MARKET_LIVE_PUBSUB_CHANNEL: str = "market:quotes:live"
-    MARKET_CIRCUIT_BREAKER_SECONDS: int = 900  # pause scrapes after PSX 403/429
+    MARKET_CIRCUIT_BREAKER_SECONDS: int = 1800  # pause scrapes after PSX 403/429
     MARKET_REST_POLL_SECONDS: int = 15  # Android/web REST fallback interval (cache-only)
+    # Randomised jitter (seconds) added to each session refresh so repeated runs
+    # never form a fixed-interval fingerprint that PSX can rate-limit.
+    MARKET_SESSION_REFRESH_JITTER_SECONDS: int = 30
+    # Consecutive failed session refreshes before the scraper backs off entirely.
+    MARKET_SCRAPE_FAILURE_THRESHOLD: int = 3
+    # Historical OHLCV closes must never be presented as live quotes. When the
+    # live feed is unavailable the API returns 503 unless this is explicitly
+    # enabled AND the persisted data is newer than the max age below.
+    MARKET_SERVE_STALE_REFERENCE_DATA: bool = True
+    MARKET_REFERENCE_MAX_AGE_DAYS: int = 5
+    MARKET_REFERENCE_TTL_SECONDS: int = 900
+    # Reject cached quotes whose as_of is older than this (seconds) instead of
+    # serving them. 0 disables the guard.
+    MARKET_MAX_STALE_SECONDS: int = 900
     # Ingestion interval during active windows (seconds)
     NEWS_INGESTION_INTERVAL_MARKET: int = 1800      # 30 min during market
     NEWS_INGESTION_INTERVAL_POST_MARKET: int = 3600  # 60 min post-market

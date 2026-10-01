@@ -36,14 +36,14 @@ def process_post_report_threshold(self, post_id: str) -> dict:
 
 
 def _process_post_report_threshold_sync(post_id: str) -> dict:
-    import asyncio
+    from app.core.async_bridge import run_sync
 
     async def _run():
         async with async_session_factory() as session:
             return await _process_report_threshold(session, post_id)
 
     try:
-        return asyncio.run(_run())
+        return run_sync(_run())
     except Exception as e:
         log.exception("Failed to process report threshold for post %s: %s", post_id, e)
         raise
@@ -137,7 +137,7 @@ async def _process_report_threshold(session: AsyncSession, post_id: str) -> dict
     name="app.tasks.community_tasks.cleanup_orphaned_reports",
 )
 def cleanup_orphaned_reports(self) -> dict:
-    import asyncio
+    from app.core.async_bridge import run_sync
 
     async def _run():
         async with async_session_factory() as session:
@@ -187,7 +187,7 @@ def cleanup_orphaned_reports(self) -> dict:
             return {"deleted_reports": deleted_count}
 
     try:
-        return asyncio.run(_run())
+        return run_sync(_run())
     except Exception as e:
         log.exception("Failed to cleanup orphaned reports: %s", e)
         raise

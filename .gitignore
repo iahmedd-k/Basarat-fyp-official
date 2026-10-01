@@ -43,6 +43,15 @@ backend/data/scalers/*
 !backend/data/scalers/scaler.pkl
 backend/data/reports/
 
+# Runtime-mutable state. These files were previously committed, so every image
+# build re-baked a stale snapshot (e.g. a "failed" ingestion state) and silently
+# reset the live state on each deploy. They now live on a Docker volume.
+backend/data/news_state/
+# NOTE: backend/data/config/symbol_universe.json stays tracked on purpose. It is
+# the seed copied into the symbol-config volume on first creation; the weekly
+# constituents refresh then rewrites it on that volume, so runtime updates are
+# not clobbered by a rebuild.
+
 # Inference model artifacts under backend/models are intentionally tracked.
 backend/research/**/data/
 backend/research/**/*.parquet

@@ -45,14 +45,10 @@ def evaluate_alert_rules_task(self):
 
     # Only evaluate during PSX session — quotes are refreshed then; off-hours would re-fire on stale LTPs.
     try:
-        import asyncio
+        from app.core.async_bridge import run_sync
         from app.services.news_pipeline.market_schedule import is_market_hours
 
-        loop = asyncio.new_event_loop()
-        try:
-            open_now = loop.run_until_complete(is_market_hours())
-        finally:
-            loop.close()
+        open_now = run_sync(is_market_hours())
         if not open_now:
             log.info("Skipping alert evaluation; market is closed")
             return {"status": "skipped", "reason": "market_closed", "triggered": 0}

@@ -13,12 +13,15 @@ import random
 from uuid import uuid4
 
 from app.celery_app import celery
+from app.core.async_bridge import run_sync
 from app.core.config import get_settings
 
 log = logging.getLogger(__name__)
 
 LOCK_KEY = "jobs:market-cache:lock"
 CIRCUIT_KEY = "jobs:market-cache:circuit_open"
+FAILURE_KEY = "jobs:market-cache:consecutive_failures"
+USER_AGENT = "Mozilla/5.0 (compatible; BasaratMarketData/1.0; +market-data)"
 ACCESS_DENIED_MARKERS = (
     "403",
     "429",
@@ -26,15 +29,19 @@ ACCESS_DENIED_MARKERS = (
     "too many requests",
     "rate limit",
     "blocked",
+    "captcha",
+    "cloudflare",
 )
 
 
 def _run_async(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+    """Drive a coroutine from this sync task via the shared process loop.
+
+    Uses the single-loop bridge instead of `asyncio.run()` / `new_event_loop()`,
+    which raised "Cannot run the event loop while another loop is running" and
+    left async DB/Redis pools bound to a loop that was closed underneath them.
+    """
+    return run_sync(coro)
 
 
 def _acquire_lock(ttl_seconds: int) -> tuple[str, object | None, str | None]:
@@ -110,6 +117,45 @@ def _looks_like_access_denied(exc: BaseException) -> bool:
     return any(marker in text for marker in ACCESS_DENIED_MARKERS)
 
 
+def _failure_count() -> int:
+    """Consecutive failed session refreshes recorded in Redis."""
+    try:
+        from app.core.redis import get_sync_redis_client
+
+        client = get_sync_redis_client()
+        if not client:
+            return 0
+        return int(client.get(FAILURE_KEY) or 0)
+    except Exception:
+        return 0
+
+
+def _record_failure() -> None:
+    try:
+        from app.core.redis import get_sync_redis_client
+
+        client = get_sync_redis_client()
+        if not client:
+            return
+        count = int(client.incr(FAILURE_KEY) or 1)
+        # Expire on its own so a clean session eventually clears the counter.
+        client.expire(FAILURE_KEY, 86400)
+        log.warning("Recorded market scrape failure #%d", count)
+    except Exception as exc:
+        log.debug("Could not record scrape failure: %s", exc)
+
+
+def _clear_failures() -> None:
+    try:
+        from app.core.redis import get_sync_redis_client
+
+        client = get_sync_redis_client()
+        if client:
+            client.delete(FAILURE_KEY)
+    except Exception as exc:
+        log.debug("Could not clear scrape failure counter: %s", exc)
+
+
 async def _refresh_quotes_and_optional_reference(
     *,
     refresh_reference: bool,
@@ -118,46 +164,51 @@ async def _refresh_quotes_and_optional_reference(
     source: str,
 ) -> dict:
     from app.services.market_service import MarketService
-    from app.core.redis import close_async_redis_client
 
     service = MarketService()
     results: dict = {"quotes": 0, "indices": 0, "constituents": {}, "published": False}
-    try:
-        quotes = await service.get_market_data(force_refresh=True, read_only=False)
-        results["quotes"] = len(quotes)
+    quotes = await service.get_market_data(force_refresh=True, read_only=False)
+    results["quotes"] = len(quotes)
 
-        if refresh_reference:
-            indices = await service.get_indices(force_refresh=True, read_only=False)
-            results["indices"] = len(indices)
+    if refresh_reference:
+        indices = await service.get_indices(force_refresh=True, read_only=False)
+        results["indices"] = len(indices)
 
-        if refresh_constituents:
-            for code in ("KSE100", "KSE30", "KMI30"):
-                values = await service.get_index_constituents(
-                    code, force_refresh=True, read_only=False
-                )
-                results["constituents"][code] = len(values)
-            try:
-                from app.services.assistant_context_cache import warm_assistant_universe
-
-                universe = await warm_assistant_universe(force_refresh_constituents=False)
-                results["assistant_universe"] = universe.get("symbol_count", 0)
-            except Exception as exc:
-                log.warning("Assistant universe warm failed: %s", exc)
-                results["assistant_universe"] = 0
-
-        if publish_live and quotes:
-            freshness = await asyncio.to_thread(service.quote_freshness)
-            from app.services.market_live_bus import publish_board_update_sync
-
-            results["published"] = publish_board_update_sync(
-                quotes,
-                as_of=freshness.get("as_of"),
-                is_stale=bool(freshness.get("is_stale", False)),
-                source=source,
+    if refresh_constituents:
+        for code in ("KSE100", "KSE30", "KMI30"):
+            values = await service.get_index_constituents(
+                code, force_refresh=True, read_only=False
             )
-        return results
-    finally:
-        await close_async_redis_client()
+            results["constituents"][code] = len(values)
+        # Persist the membership we just scraped so the on-disk symbol universe
+        # tracks the live index instead of freezing at image build time.
+        try:
+            results["universe_symbols"] = await asyncio.to_thread(
+                MarketService.persist_symbol_universe
+            )
+        except Exception as exc:
+            log.warning("Could not persist symbol universe: %s", exc)
+            results["universe_symbols"] = 0
+        try:
+            from app.services.assistant_context_cache import warm_assistant_universe
+
+            universe = await warm_assistant_universe(force_refresh_constituents=False)
+            results["assistant_universe"] = universe.get("symbol_count", 0)
+        except Exception as exc:
+            log.warning("Assistant universe warm failed: %s", exc)
+            results["assistant_universe"] = 0
+
+    if publish_live and quotes:
+        freshness = await asyncio.to_thread(service.quote_freshness)
+        from app.services.market_live_bus import publish_board_update_sync
+
+        results["published"] = publish_board_update_sync(
+            quotes,
+            as_of=freshness.get("as_of"),
+            is_stale=bool(freshness.get("is_stale", False)),
+            source=source,
+        )
+    return results
 
 
 @celery.task(
@@ -188,6 +239,8 @@ def refresh_market_cache(self, refresh_reference: bool = False, refresh_constitu
             )
         )
         log.info("PSX market cache refresh completed: %s", result)
+        if result.get("quotes", 0) > 0:
+            _clear_failures()
         return {"status": "completed", **result}
     except Exception as exc:
         if _looks_like_access_denied(exc):
@@ -205,8 +258,8 @@ def refresh_market_cache(self, refresh_reference: bool = False, refresh_constitu
     max_retries=1,
     default_retry_delay=30,
     acks_late=True,
-    soft_time_limit=90,
-    time_limit=120,
+    soft_time_limit=180,
+    time_limit=240,
 )
 def refresh_market_session(self):
     """Intraday shared snapshot: scrape once, cache, publish to all WS clients via Redis bus."""
@@ -214,12 +267,17 @@ def refresh_market_session(self):
     if not settings.MARKET_SESSION_REFRESH_ENABLED:
         return {"status": "skipped", "reason": "disabled"}
 
-    # Small jitter so multiple beat/worker races never stampede PSX.
-    jitter = random.uniform(0.0, 2.5)
-    if jitter:
+    # Randomised jitter, applied BEFORE the lock is taken. Sleeping while holding
+    # the refresh lock would idle the single worker and stall every other task.
+    # A wide jitter also breaks the fixed-interval request fingerprint that PSX
+    # uses to detect and block scrapers.
+    jitter_span = max(0.0, float(getattr(settings, "MARKET_SESSION_REFRESH_JITTER_SECONDS", 0) or 0))
+    if jitter_span:
         import time as _time
 
-        _time.sleep(jitter)
+        delay = random.uniform(0.0, jitter_span)
+        log.debug("Session refresh jitter delay %.1fs", delay)
+        _time.sleep(delay)
 
     from app.services.news_pipeline.market_schedule import is_market_hours, market_status
 
@@ -233,6 +291,17 @@ def refresh_market_session(self):
 
     if _circuit_is_open(None):
         return {"status": "skipped", "reason": "circuit_open"}
+
+    # Back off entirely once the scraper has failed repeatedly. Continuing to
+    # hammer PSX while blocked only extends the block.
+    failures = _failure_count()
+    threshold = max(1, int(getattr(settings, "MARKET_SCRAPE_FAILURE_THRESHOLD", 3) or 3))
+    if failures >= threshold:
+        log.error(
+            "Skipping session refresh: %d consecutive failures (threshold %d); scraper is backed off",
+            failures, threshold,
+        )
+        return {"status": "skipped", "reason": "failure_backoff", "consecutive_failures": failures}
 
     lock_ttl = max(45, int(settings.MARKET_SESSION_REFRESH_SECONDS) + 15)
     lock_status, lock_client, lock_token = _acquire_lock(ttl_seconds=lock_ttl)
@@ -249,11 +318,14 @@ def refresh_market_session(self):
             )
         )
         if result.get("quotes", 0) == 0:
+            _record_failure()
             log.warning("Session refresh returned 0 quotes; keeping last_known cache")
             return {"status": "empty", **result, "market_status": status_info.get("status")}
+        _clear_failures()
         log.info("PSX session market refresh completed: %s", result)
         return {"status": "completed", **result, "market_status": status_info.get("status")}
     except Exception as exc:
+        _record_failure()
         if _looks_like_access_denied(exc):
             _open_circuit(lock_client, str(exc))
             return {"status": "circuit_open", "error": str(exc)}

@@ -501,7 +501,7 @@ class SwaggerLiveAuditRunner:
             self._execute("Stocks", "GET", f"/stocks/{sym}/overview", expected_status=[200], inspector_kwargs={"critical_keys": ["symbol", "name", "sector", "current_price"]})
             # Multi-timeframe Price History
             self._execute("Stocks", "GET", f"/stocks/{sym}/price-history", params={"range": "1M"}, expected_status=[200], inspector_kwargs={"critical_keys": ["symbol", "bars"], "min_items": 5})
-            self._execute("Stocks", "GET", f"/stocks/{sym}/price-history", params={"range": "1Y"}, expected_status=[200])
+            self._execute("Stocks", "GET", f"/stocks/{sym}/price-history", params={"range": "45D"}, expected_status=[200])
             # Technical Indicators
             self._execute("Stocks", "GET", f"/stocks/{sym}/technical-indicators", expected_status=[200], inspector_kwargs={"critical_keys": ["symbol", "indicators", "overall_signal"]})
             # Fundamental Ratios & Company Overview

@@ -1,0 +1,28 @@
+{
+  "tested_at_local": "2026-10-01T06:11:51.395696+05:00",
+  "requested_date": "2021-10-01",
+  "ok": true,
+  "count": 780,
+  "columns": [
+    "change",
+    "close",
+    "high",
+    "ldcp",
+    "low",
+    "open",
+    "percentChange",
+    "symbol",
+    "volume"
+  ],
+  "HBL": {
+    "symbol": "HBL",
+    "ldcp": "109.35",
+    "open": "109.95",
+    "high": "110.89",
+    "low": "108.60",
+    "close": "110.09",
+    "change": "0.74",
+    "percentChange": "0.68%",
+    "volume": "3,308,845"
+  }
+}

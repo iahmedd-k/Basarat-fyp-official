@@ -138,7 +138,7 @@ async def get_stock_overview(
 async def get_stock_price_history(
     request: Request,
     symbol: str = Path(..., description="PSX stock symbol (e.g. HBL, OGDC)"),
-    range: str = Query("1M", pattern="^(1D|1W|1M|1Y)$"),
+    range: str = Query("45D", pattern="^(1D|1W|1M|45D)$"),
     service: StockService = Depends(StockService),
 ):
     try:
@@ -169,7 +169,7 @@ async def get_stock_technical_indicators(
     symbol: str = Path(..., description="PSX stock symbol (e.g. HBL, OGDC)"),
     indicators: str = Query("RSI,MACD,BB,SMA,ADX", description="Comma-separated indicators (RSI, MACD, BB, SMA, ADX)"),
     period: int = Query(14, ge=1, le=200, description="Calculation window period"),
-    limit: int = Query(30, ge=1, le=365, description="Number of historical indicator data points to return (default: 30 bars / ~1 month)"),
+    limit: int = Query(30, ge=1, le=45, description="Number of recent indicator data points to return (maximum: 45 days)"),
     service: StockService = Depends(StockService),
 ):
     try:

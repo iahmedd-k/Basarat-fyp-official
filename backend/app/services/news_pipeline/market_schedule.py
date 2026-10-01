@@ -25,7 +25,6 @@ import sqlalchemy as sa
 from sqlalchemy import select, text as sa_text
 
 from app.core.config import get_settings
-from app.cache.redis_client import redis_client
 from app.db.session import async_session_factory
 from app.models.news import MarketHoursConfig
 
@@ -284,24 +283,27 @@ _LOCK_TTL = 900  # 15 minutes
 
 @asynccontextmanager
 async def ingestion_lock():
-    """Context manager for single-flight ingestion lock using Redis.
+    """Context manager providing single-flight ingestion locking.
 
-    Usage:
-        with ingestion_lock() as acquired:
-            if not acquired:
-                return  # Another run is active
-            run_pipeline()
+    Uses the **synchronous** Redis client. The async `redis_client` proxy cannot
+    be used here: calling `.set()` on it returns an un-awaited coroutine, which is
+    always truthy, so the lock reported success while never setting a key and
+    never actually providing mutual exclusion.
 
-    If Redis is unavailable, falls back to DB advisory lock.
+    Falls back to a Postgres transaction-scoped advisory lock when Redis is
+    unavailable. `acquired=False` means the caller must not run.
     """
     acquired = False
+    redis_locked = False
     try:
-        # Try Redis first
-        if redis_client:
-            acquired = redis_client.set(_LOCK_KEY, "1", nx=True, ex=_LOCK_TTL)
-        else:
-            acquired = False
-    except Exception:
+        from app.core.redis import get_sync_redis_client
+
+        client = get_sync_redis_client()
+        if client is not None:
+            acquired = bool(client.set(_LOCK_KEY, "1", nx=True, ex=_LOCK_TTL))
+            redis_locked = acquired
+    except Exception as exc:
+        log.debug("Redis ingestion lock unavailable (%s); using advisory lock", exc)
         acquired = False
 
     # Fallback to DB advisory lock
@@ -312,16 +314,22 @@ async def ingestion_lock():
                     sa.text("SELECT pg_try_advisory_xact_lock(:lock_id)"),
                     {"lock_id": 123456789}  # Fixed lock ID for news ingestion
                 )
-                acquired = result.scalar()
-        except Exception:
+                acquired = bool(result.scalar())
+        except Exception as exc:
+            log.warning("Advisory ingestion lock unavailable: %s", exc)
             acquired = False
 
     try:
         yield acquired
     finally:
-        if acquired:
+        # Release only a lock this coroutine actually took via Redis. The advisory
+        # lock is released automatically when its transaction scope exits.
+        if redis_locked:
             try:
-                if redis_client:
-                    redis_client.delete(_LOCK_KEY)
-            except Exception:
-                pass
+                from app.core.redis import get_sync_redis_client
+
+                client = get_sync_redis_client()
+                if client is not None:
+                    client.delete(_LOCK_KEY)
+            except Exception as exc:
+                log.debug("Could not release Redis ingestion lock: %s", exc)

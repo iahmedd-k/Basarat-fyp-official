@@ -10,36 +10,28 @@ After 17:00 PKT / weekends:             no ingestion
 Manual trigger via POST /news/refresh uses the SAME pipeline.
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
+
 from celery import shared_task
+
+from app.core.async_bridge import run_sync
 
 log = logging.getLogger(__name__)
 
 
 def _run_async(coro):
-    """Run an async coroutine from a sync Celery task."""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        # Async connections cannot safely be reused by the next Celery task's
-        # fresh event loop. Dispose the worker-local pool before closing this loop.
-        from app.db.base import engine
-        try:
-            loop.run_until_complete(engine.dispose())
-        except Exception:
-            log.exception("Failed to dispose async database connections")
-        finally:
-            try:
-                from app.core.redis import close_async_redis_client
-                loop.run_until_complete(close_async_redis_client())
-            except Exception:
-                log.exception("Failed to close worker-local async Redis pool")
-            loop.close()
+    """Run an async coroutine from this sync Celery task.
+
+    Uses the shared process-wide event loop. The previous implementation built a
+    fresh loop per call and tore it down again, which both raised "Cannot run the
+    event loop while another loop is running" and left the async SQLAlchemy and
+    Redis pools bound to a loop that had already been closed.
+    """
+    return run_sync(coro)
+
 
 
 @shared_task(

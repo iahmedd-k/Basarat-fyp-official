@@ -1,0 +1,16 @@
+**
+!Dockerfile.test
+!Dockerfile.test.dockerignore
+!requirements-test-docker.txt
+!pytest.ini
+!test_support
+!test_support/pypsx_toolkit.py
+!app
+!app/**
+!tests
+!tests/unit
+!tests/unit/test_market_service.py
+!tests/unit/test_stock_ohlcv.py
+!tests/unit/test_stock_search.py
+!tests/unit/test_stock_data_pipeline.py
+!tests/unit/test_scraper_failure_handling.py

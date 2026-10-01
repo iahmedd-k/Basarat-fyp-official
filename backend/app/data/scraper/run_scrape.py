@@ -4,7 +4,7 @@ PSX Historical OHLCV Scraper — CLI Entrypoint
 
 Usage::
 
-    # Full 5-year pull (default)
+    # Recent 45-day pull (default)
     python -m app.data.scraper.run_scrape --mode full
 
     # Incremental: append only new days since last fetch
@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from app.data.scraper.ohlcv import fetch_ohlcv, psx_access_denied, reset_psx_access_denied
+from app.data.scraper.ohlcv import fetch_ohlcv, psx_access_denied, psx_source_failure, reset_psx_access_denied
 from app.data.scraper.quality import check_data_quality
 from app.data.scraper.symbol_universe import (
     fetch_symbol_universe,
@@ -126,6 +126,14 @@ def _scrape_symbol(
         return {"symbol": symbol, "status": "error", "error": str(exc)}
 
     if df.empty:
+        reason = None
+        if psx_access_denied():
+            reason = "source_rate_limited"
+        elif psx_source_failure():
+            reason = f"source_{psx_source_failure()}"
+        if reason:
+            log.error("  %s: no data because PSX source failed (%s)", symbol, reason)
+            return {"symbol": symbol, "status": "error", "reason": reason}
         log.info("  %s: no data returned", symbol)
         return {"symbol": symbol, "status": "no_data"}
 
@@ -155,7 +163,6 @@ def _scrape_symbol(
     # Write per-symbol parquet
     write_symbol_parquet(df, symbol, output_dir)
 
-    time.sleep(delay)
     return quality
 
 
@@ -167,6 +174,7 @@ def run_scrape(
     delay: float = 0.5,
     freeze: bool = False,
     config_dir: Path | None = None,
+    symbols_override: list[str] | None = None,
 ) -> None:
     """Main scrape orchestrator."""
     out_dir = output_dir or _DEFAULT_OUTPUT_DIR
@@ -193,6 +201,8 @@ def run_scrape(
         sys.exit(1)
 
     symbols = [entry["symbol"] for entry in universe]
+    if symbols_override:
+        symbols = list(dict.fromkeys(str(symbol).strip().upper() for symbol in symbols_override if str(symbol).strip()))
     log.info("Universe: %d symbols", len(symbols))
 
     # Step 3: Determine date range
@@ -200,10 +210,11 @@ def run_scrape(
         end = date.today()
     if start is None:
         if mode == "incremental":
-            # For incremental, we'll figure out per-symbol start below
-            start = date(2000, 1, 1)  # fallback; overridden per symbol
+            # For incremental, figure out each saved symbol's next date below.
+            # A fresh worker only needs the recent indicator warm-up window.
+            start = end - timedelta(days=45)
         else:
-            start = end - timedelta(days=5 * 365)
+            start = end - timedelta(days=45)
 
     log.info("Mode: %s | Range: %s -> %s", mode, start, end)
 
@@ -214,20 +225,30 @@ def run_scrape(
 
     log.info("=== Starting OHLCV fetch for %d symbols ===", total)
     for i, symbol in enumerate(symbols, 1):
-        if psx_access_denied():
-            log.error("Stopping OHLCV run after PSX HTTP 403/429; preserving existing history")
-            results.extend({"symbol": pending, "status": "skipped", "reason": "source_rate_limited"} for pending in symbols[i - 1:])
+        source_failure = psx_source_failure()
+        if psx_access_denied() or source_failure:
+            reason = "source_rate_limited" if psx_access_denied() else f"source_{source_failure}"
+            log.error("Stopping OHLCV run after systemic PSX failure (%s); preserving existing history", reason)
+            results.extend({"symbol": pending, "status": "skipped", "reason": reason} for pending in symbols[i - 1:])
             break
         log.info("[%d/%d] %s", i, total, symbol)
+        # Pace all attempts, including errors and empty responses. Sleeping only
+        # after a successful scrape caused tight retry bursts during outages.
+        if i > 1:
+            time.sleep(max(0.0, delay))
         result = _scrape_symbol(
             symbol=symbol,
             start=start,
             end=end,
             output_dir=out_dir,
             incremental=(mode == "incremental"),
-            delay=delay,
+            delay=0.0,
         )
         results.append(result)
+
+        # A failure raised during the current symbol is checked at the start of
+        # the next iteration. This preserves the current symbol's result and
+        # avoids contacting PSX again for every remaining ticker.
 
         # Accumulate for combined file (only if we actually fetched data)
         if result.get("status") == "ok":
@@ -257,7 +278,8 @@ def run_scrape(
         "skipped": skip_count,
         "errors": err_count,
         "no_data": no_data_count,
-        "rate_limited": any(r.get("reason") == "source_rate_limited" for r in results),
+        "rate_limited": psx_access_denied() or any(r.get("reason") == "source_rate_limited" for r in results),
+        "source_failure": psx_source_failure(),
         "results": results,
     }
 

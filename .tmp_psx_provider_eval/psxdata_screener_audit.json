@@ -1,0 +1,57 @@
+{
+  "rows": 747,
+  "columns": [
+    "symbol",
+    "sector",
+    "listed_in",
+    "market_cap",
+    "price",
+    "change_pct",
+    "change_1y_pct",
+    "pe_ratio",
+    "dividend_yield",
+    "free_float",
+    "volume_avg_30d"
+  ],
+  "null_counts": {
+    "symbol": 0,
+    "sector": 53,
+    "listed_in": 0,
+    "market_cap": 671,
+    "price": 0,
+    "change_pct": 0,
+    "change_1y_pct": 0,
+    "pe_ratio": 0,
+    "dividend_yield": 0,
+    "free_float": 662,
+    "volume_avg_30d": 0
+  },
+  "null_percent": {
+    "symbol": 0.0,
+    "sector": 7.1,
+    "listed_in": 0.0,
+    "market_cap": 89.83,
+    "price": 0.0,
+    "change_pct": 0.0,
+    "change_1y_pct": 0.0,
+    "pe_ratio": 0.0,
+    "dividend_yield": 0.0,
+    "free_float": 88.62,
+    "volume_avg_30d": 0.0
+  },
+  "HBL": [
+    {
+      "symbol": "HBL",
+      "sector": 807.0,
+      "listed_in": "ALLSHR,BKTI,JSGBKTI,KSE100,KSE100PR,KSE30,NBPPGI,NITPGI,PSXDIV20,UPP9",
+      "market_cap": NaN,
+      "price": 306.1,
+      "change_pct": 1.31,
+      "change_1y_pct": 4.76,
+      "pe_ratio": 6.95,
+      "dividend_yield": 7.87,
+      "free_float": NaN,
+      "volume_avg_30d": 1303587.0
+    }
+  ]
+}
