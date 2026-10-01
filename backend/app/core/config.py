@@ -165,7 +165,9 @@ class Settings(BaseSettings):
                 not self.FIREBASE_CREDENTIALS_PATH
                 or not Path(self.FIREBASE_CREDENTIALS_PATH).is_file()
             ):
-                raise ValueError("FIREBASE_CREDENTIALS_PATH must point to a readable service-account file")
+                logging.getLogger(__name__).warning(
+                    "Firebase credentials are unavailable; push notifications will be disabled."
+                )
             if not all((self.SMTP_HOST, self.SMTP_FROM_EMAIL)):
                 logging.getLogger(__name__).warning("SMTP_HOST or SMTP_FROM_EMAIL not configured; transactional emails will be disabled.")
             if not self.PASSWORD_RESET_URL:
