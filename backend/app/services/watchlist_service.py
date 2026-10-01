@@ -6,6 +6,7 @@ from typing import Sequence
 from fastapi import Depends
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.stock import Stock
@@ -106,7 +107,20 @@ class WatchlistService:
             is_default=True,
         )
         db.add(new_wl)
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            result = await db.execute(
+                select(Watchlist).where(
+                    Watchlist.user_id == user_id,
+                    Watchlist.is_default == True,
+                )
+            )
+            winner = result.scalar_one_or_none()
+            if winner is None:
+                raise
+            return winner
         await db.refresh(new_wl)
         return new_wl
 

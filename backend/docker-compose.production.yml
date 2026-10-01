@@ -1,8 +1,13 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # Uses the managed Supabase and Upstash URLs provided by backend/.env.
   migrate:
-    image: basarat-backend:latest
-    build: { context: ., dockerfile: Dockerfile }
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
     command: alembic upgrade head
     env_file: .env
     environment:
@@ -12,11 +17,13 @@ services:
     volumes:
       - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
     restart: "no"
+    logging: *default-logging
 
   app:
-    image: basarat-backend:latest
-    build: { context: ., dockerfile: Dockerfile }
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
+    profiles: ["legacy-api"]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    user: "1000:1000"
     env_file: .env
     environment:
       ENVIRONMENT: production
@@ -29,15 +36,17 @@ services:
       - gru-candidates:/app/models/gru_candidate
       - xgb-candidates:/app/models/xgb_candidate
       - training-reports:/app/data/reports
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8090:8000"]
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
+    logging: *default-logging
 
   celery-worker:
-    image: basarat-backend:latest
-    build: { context: ., dockerfile: Dockerfile }
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
     command: celery -A app.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=1
+    user: "1000:1000"
+    stop_grace_period: 2h
     env_file: .env
     environment:
       ENVIRONMENT: production
@@ -53,11 +62,13 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
+    logging: *default-logging
 
   celery-beat:
-    image: basarat-backend:latest
-    build: { context: ., dockerfile: Dockerfile }
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
     command: celery -A app.celery_app beat --loglevel=info --schedule=/var/lib/celery/celerybeat-schedule
+    user: "1000:1000"
+    stop_grace_period: 30s
     volumes:
       - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
       - beat-state:/var/lib/celery
@@ -69,12 +80,46 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   market-data:
+    external: true
+    name: backend_market-data
   feature-data:
+    external: true
+    name: backend_feature-data
   gru-candidates:
+    external: true
+    name: backend_gru-candidates
   xgb-candidates:
+    external: true
+    name: backend_xgb-candidates
 
   beat-state:
+    external: true
+    name: backend_beat-state
   training-reports:
+    external: true
+    name: backend_training-reports
+  redis-data:
+    external: true
+    name: backend_redis-data
+
+networks:
+  default:
+    external: true
+    name: backend_default

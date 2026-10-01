@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
 
     # Ask the shared Celery worker to warm market snapshots. Never scrape
     # from every API container's startup hook.
-    if settings.USE_CELERY:
+    if settings.USE_CELERY and settings.RUN_STARTUP_MARKET_WARMUP:
         try:
             from app.tasks.refresh_market_cache import refresh_market_cache
             refresh_market_cache.delay(refresh_reference=True, refresh_constituents=True)

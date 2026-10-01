@@ -1,17 +1,24 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     container_name: basarat-api
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app
+    user: "0:0"
     ports:
       - "8000:8000"
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://ahmed:adminadmin@db:5432/basarat
-      - DATABASE_URL_SYNC=postgresql+psycopg2://ahmed:adminadmin@db:5432/basarat
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
+      - DATABASE_URL_SYNC=postgresql+psycopg2://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
@@ -23,18 +30,20 @@ services:
     volumes:
       - .:/app
     restart: unless-stopped
+    logging: *default-logging
 
   celery-worker:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     container_name: basarat-celery-worker
     command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    user: "0:0"
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://ahmed:adminadmin@db:5432/basarat
-      - DATABASE_URL_SYNC=postgresql+psycopg2://ahmed:adminadmin@db:5432/basarat
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
+      - DATABASE_URL_SYNC=postgresql+psycopg2://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
@@ -48,18 +57,20 @@ services:
       - ./models:/app/models
       - ./data:/app/data
     restart: unless-stopped
+    logging: *default-logging
 
   celery-beat:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     container_name: basarat-celery-beat
     command: celery -A app.celery_app beat --loglevel=info
+    user: "0:0"
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://ahmed:adminadmin@db:5432/basarat
-      - DATABASE_URL_SYNC=postgresql+psycopg2://ahmed:adminadmin@db:5432/basarat
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
+      - DATABASE_URL_SYNC=postgresql+psycopg2://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
@@ -71,6 +82,7 @@ services:
     volumes:
       - .:/app
     restart: unless-stopped
+    logging: *default-logging
 
   db:
     image: postgres:16-alpine
@@ -78,9 +90,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ahmed
-      POSTGRES_PASSWORD: adminadmin
-      POSTGRES_DB: basarat
+      POSTGRES_USER: ${POSTGRES_USER:-basarat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-basarat}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -89,6 +101,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
@@ -103,6 +116,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   postgres_data:

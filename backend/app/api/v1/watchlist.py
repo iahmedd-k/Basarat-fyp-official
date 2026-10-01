@@ -82,18 +82,23 @@ async def create_watchlist(
     Optionally populate with an initial list of stock symbols.
     """
     try:
+        symbols = list(dict.fromkeys(
+            _validate_symbol(symbol) for symbol in (data.symbols or [])
+        ))
+        data = data.model_copy(update={"symbols": symbols})
         wl = await service.create_watchlist(db, user.id, data)
-        item_count = len(data.symbols) if data.symbols else 0
         return WatchlistSummaryResponse(
             id=wl.id,
             user_id=wl.user_id,
             name=wl.name,
             description=wl.description,
             is_default=wl.is_default,
-            item_count=item_count,
+            item_count=len(symbols),
             created_at=wl.created_at.isoformat() if wl.created_at else "",
             updated_at=wl.updated_at.isoformat() if wl.updated_at else "",
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         log.exception("Error creating watchlist: %s", exc)
         raise ServiceUnavailableError(f"Failed to create watchlist: {exc}")

@@ -50,3 +50,18 @@ class TestHealthEndpoint:
             mock_health.return_value = {"status": "unhealthy", "components": {"database": "disconnected"}}
             resp = await client.get("/api/v1/health/ready")
             assert resp.status_code == 503
+
+    @pytest.mark.parametrize(("heartbeat", "expected"), [(None, "down"), ("1", "ready")])
+    def test_beat_readiness_uses_heartbeat(self, monkeypatch, heartbeat, expected):
+        from app.services import health_service
+        from app.services.health_service import HealthService
+
+        class RedisStub:
+            def get(self, key):
+                assert key == "health:celery_beat:last_seen"
+                return heartbeat
+
+        monkeypatch.setattr(health_service, "IS_TESTING", False)
+        monkeypatch.setattr(health_service.settings, "USE_CELERY", True)
+        monkeypatch.setattr("app.core.redis.get_sync_redis_client", lambda: RedisStub())
+        assert HealthService()._check_celery_beat() == expected

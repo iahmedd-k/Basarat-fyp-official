@@ -1,0 +1,2 @@
+CELERY_BEAT_HEARTBEAT_KEY = "health:celery_beat:last_seen"
+CELERY_BEAT_HEARTBEAT_TTL_SECONDS = 90

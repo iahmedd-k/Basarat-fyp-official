@@ -2,6 +2,7 @@
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
@@ -46,6 +47,33 @@ class TestWatchlistEndpoints:
         assert data["name"] == "Dividend Gems"
         assert data["item_count"] == 3
 
+    async def test_create_watchlist_normalizes_symbols_and_counts_unique_items(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        resp = await client.post(
+            "/api/v1/watchlists",
+            headers=auth_headers,
+            json={"name": "Normalized", "symbols": [" sys ", "SYS", "ogdc"]},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["item_count"] == 2
+
+        detail = await client.get(
+            f"/api/v1/watchlists/{data['id']}", headers=auth_headers
+        )
+        assert {item["symbol"] for item in detail.json()["items"]} == {"OGDC", "SYS"}
+
+    async def test_create_watchlist_rejects_invalid_bulk_symbol(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        resp = await client.post(
+            "/api/v1/watchlists",
+            headers=auth_headers,
+            json={"name": "Invalid", "symbols": ["SYS", "BAD$"]},
+        )
+        assert resp.status_code == 422
+
     async def test_get_default_watchlist_auto_create(self, client: AsyncClient, auth_headers: dict):
         resp = await client.get("/api/v1/watchlists/default", headers=auth_headers)
         assert resp.status_code == 200
@@ -53,6 +81,25 @@ class TestWatchlistEndpoints:
         assert data["is_default"] is True
         assert "items" in data
         assert isinstance(data["items"], list)
+
+    async def test_default_watchlist_is_unique_per_user(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        first = await client.get("/api/v1/watchlists/default", headers=auth_headers)
+        second = await client.get("/api/v1/watchlists/default", headers=auth_headers)
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["id"] == second.json()["id"]
+
+    async def test_database_rejects_multiple_default_watchlists(
+        self, db_session: AsyncSession, test_user: User
+    ):
+        db_session.add(Watchlist(user_id=test_user.id, name="First", is_default=True))
+        await db_session.flush()
+
+        db_session.add(Watchlist(user_id=test_user.id, name="Second", is_default=True))
+        with pytest.raises(IntegrityError):
+            await db_session.flush()
 
     async def test_add_and_enrich_watchlist_item(
         self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession

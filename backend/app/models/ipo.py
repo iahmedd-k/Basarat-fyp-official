@@ -12,7 +12,7 @@ class IPO(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: uuid4().hex)
     symbol: Mapped[str] = mapped_column(String(20), unique=True, index=True, nullable=False)
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    sector: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    sector: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(
         String(40), default="UPCOMING", nullable=False, index=True
     )  # UPCOMING, OPEN_FOR_BOOK_BUILDING, OPEN_FOR_PUBLIC_SUBSCRIPTION, LISTED, CLOSED

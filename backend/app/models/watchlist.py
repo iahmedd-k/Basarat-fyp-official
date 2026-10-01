@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -46,6 +46,13 @@ class Watchlist(Base):
 
     __table_args__ = (
         Index("ix_watchlists_user_id_is_default", "user_id", "is_default"),
+        Index(
+            "uq_watchlists_one_default_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("is_default = true"),
+            sqlite_where=text("is_default = 1"),
+        ),
     )
 
 

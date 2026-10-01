@@ -1,5 +1,7 @@
 # Production operations
 
+For the EC2 immutable-image and API-only blue/green process, see [EC2 API blue/green deployment](ec2-blue-green-deployment.md).
+
 ## Required environment
 
 Set `ENVIRONMENT=production`, `DEBUG=false`, a random 32+ character `SECRET_KEY`, explicit JSON `CORS_ORIGINS`, production PostgreSQL/Redis URLs (with authentication and TLS where supported), and `TRUSTED_PROXY_IPS` containing only the ingress proxy addresses.

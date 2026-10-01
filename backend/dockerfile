@@ -1,21 +1,40 @@
 # syntax=docker/dockerfile:1
-FROM python:3.11-slim
+FROM python:3.11.9-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_CACHE_DIR=/root/.cache/pip
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1000 app \
+    && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/app --shell /usr/sbin/nologin app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.lock /tmp/requirements.lock
+RUN python -m pip install --no-cache-dir --no-compile --require-hashes -r /tmp/requirements.lock \
+    && rm /tmp/requirements.lock
 
-COPY . .
+COPY --chown=1000:1000 app/ ./app/
+COPY --chown=1000:1000 alembic/ ./alembic/
+COPY --chown=1000:1000 alembic.ini ./alembic.ini
+COPY --chown=1000:1000 data/config/ ./data/config/
+COPY --chown=1000:1000 models/final/final_v3/gru_best_weights.weights.h5 ./models/final/final_v3/gru_best_weights.weights.h5
+COPY --chown=1000:1000 models/final/final_v3/gru_features.json ./models/final/final_v3/gru_features.json
+COPY --chown=1000:1000 models/final/final_v3/gru_scaler.joblib ./models/final/final_v3/gru_scaler.joblib
+COPY --chown=1000:1000 models/final/final_v3/xgb_model.ubj ./models/final/final_v3/xgb_model.ubj
+COPY --chown=1000:1000 models/final/final_v3/xgb_features.json ./models/final/final_v3/xgb_features.json
+
+RUN mkdir -p /app/tmp /app/data/raw/ohlcv /app/data/features \
+    && chown -R 1000:1000 /app/tmp /app/data
+
+USER 1000:1000
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=120s --retries=3 \
+    CMD ["python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

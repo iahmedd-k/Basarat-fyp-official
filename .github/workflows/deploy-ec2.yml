@@ -1,4 +1,4 @@
-name: Deploy to Basarat EC2
+name: Backend CI and EC2 API deploy
 
 on:
   push:
@@ -13,55 +13,132 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    runs-on: [self-hosted, linux, x64, basarat-demo]
-    timeout-minutes: 60
+  test-build-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+    outputs:
+      image_uri: ${{ steps.image.outputs.uri }}
     steps:
-      - name: Check out main
+      - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Copy app files to EC2 deployment directory
-        run: rsync -a --exclude='.git/' --exclude='.env' "$GITHUB_WORKSPACE/" /opt/basarat/
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.9"
+          cache: pip
+          cache-dependency-path: backend/requirements-test.lock
 
-      - name: Ensure Docker Compose is installed
-        run: |
-          if ! docker compose version >/dev/null 2>&1; then
-            mkdir -p "$HOME/.docker/cli-plugins"
-            curl -fsSL https://github.com/docker/compose/releases/download/v5.5.0/docker-compose-linux-x86_64 -o "$HOME/.docker/cli-plugins/docker-compose"
-            chmod +x "$HOME/.docker/cli-plugins/docker-compose"
-          fi
-          docker compose version
+      - name: Install locked test dependencies
+        run: python -m pip install --disable-pip-version-check --require-hashes --no-cache-dir -r backend/requirements-test.lock
 
-      - name: Ensure Buildx meets Compose requirements
-        run: |
-          if ! docker buildx version 2>/dev/null | grep -Eq 'v0\.(1[7-9]|[2-9][0-9])'; then
-            mkdir -p "$HOME/.docker/cli-plugins"
-            curl -fsSL https://github.com/docker/buildx/releases/download/v0.37.1/buildx-v0.37.1.linux-amd64 -o "$HOME/.docker/cli-plugins/docker-buildx"
-            echo "9447199cdb435f25880548343c128a4b6650e8891ee598905d8d29d39a8e359b  $HOME/.docker/cli-plugins/docker-buildx" | sha256sum -c -
-            chmod +x "$HOME/.docker/cli-plugins/docker-buildx"
-          fi
-          docker buildx version
+      - name: Compile backend modules
+        run: python -m compileall -q backend/app
 
-      - name: Deploy Compose stack
-        working-directory: /opt/basarat/backend
+      - name: Validate Alembic migration graph
+        working-directory: backend
+        run: test "$(python -m alembic heads | wc -l)" -eq 1
+
+      - name: Run backend API and unit tests
         env:
-          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+          ENVIRONMENT: test
+          SECRET_KEY: local-ci-only-signing-key-at-least-32-chars
+          DATABASE_URL: postgresql+asyncpg://local:local@127.0.0.1:5432/local_only
+          DATABASE_URL_SYNC: postgresql+psycopg2://local:local@127.0.0.1:5432/local_only
+          REDIS_ENABLED: "false"
+          USE_CELERY: "false"
+          TESTING: "true"
+        run: python -m pytest -c backend/pytest.ini backend/tests/api backend/tests/unit -q
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set immutable image URI
+        id: image
+        shell: bash
         run: |
-          if [ -z "${PRODUCTION_ENV_FILE:-}" ]; then
-            echo "Missing GitHub Actions secret PRODUCTION_ENV_FILE."
-            exit 1
-          fi
-          umask 077
-          printf '%s\n' "$PRODUCTION_ENV_FILE" > .env
-          docker compose -f docker-compose.production.yml config --quiet
-          docker compose --parallel 1 -f docker-compose.production.yml up -d --build
-          docker compose -f docker-compose.production.yml ps
-          if ! curl --fail --retry 12 --retry-delay 5 --retry-connrefused --retry-all-errors http://127.0.0.1:8000/health; then
-            echo "API health check failed; reporting container state for diagnosis."
-            docker compose -f docker-compose.production.yml ps --all
-            app_container=$(docker compose -f docker-compose.production.yml ps --all -q app | head -n 1)
-            if [ -n "$app_container" ]; then
-              docker inspect --format 'app status={{.State.Status}} exit_code={{.State.ExitCode}} oom_killed={{.State.OOMKilled}} restart_count={{.RestartCount}}' "$app_container"
-            fi
-            exit 1
-          fi
+          : "${ECR_REPOSITORY:?Set repository variable ECR_REPOSITORY}"
+          echo "uri=${{ steps.login-ecr.outputs.registry }}/${ECR_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push immutable image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.uri }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.repository }}
+          cache-from: type=gha,scope=basarat-backend
+          cache-to: type=gha,mode=max,scope=basarat-backend
+
+      - name: Upload deployment bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: basarat-deploy-bundle
+          path: |
+            backend/docker-compose.production.yml
+            backend/deploy/ec2/*.sh
+            backend/deploy/nginx/*.conf
+            backend/deploy/nginx/*.logrotate
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy-api:
+    needs: test-build-push
+    runs-on: [self-hosted, linux, x64, basarat-demo]
+    timeout-minutes: 180
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      IMAGE_URI: ${{ needs.test-build-push.outputs.image_uri }}
+    steps:
+      - name: Download deployment bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: basarat-deploy-bundle
+          path: deploy-bundle
+
+      - name: Install deployment scripts on EC2
+        run: |
+          install -d -m 0750 /opt/basarat/deploy/ec2 /opt/basarat/deploy/nginx
+          install -m 0640 deploy-bundle/docker-compose.production.yml /opt/basarat/backend/docker-compose.production.yml
+          install -m 0750 deploy-bundle/deploy/ec2/*.sh /opt/basarat/deploy/ec2/
+          install -m 0644 deploy-bundle/deploy/nginx/basarat-api.conf /opt/basarat/deploy/nginx/
+          install -m 0644 deploy-bundle/deploy/nginx/basarat-nginx.logrotate /opt/basarat/deploy/nginx/
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Pull and deploy API image
+        shell: bash
+        run: |
+          : "${AWS_REGION:?Set repository variable AWS_REGION}"
+          : "${IMAGE_URI:?Build job did not publish an image URI}"
+          registry="${IMAGE_URI%%/*}"
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$registry"
+          bash /opt/basarat/deploy/ec2/deploy-api.sh "$IMAGE_URI" "$GITHUB_SHA"

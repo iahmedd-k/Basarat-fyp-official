@@ -24,6 +24,7 @@ celery = Celery(
         "app.tasks.push_notifications",
         "app.tasks.alert_tasks",
         "app.tasks.email",
+        "app.tasks.health",
     ],
 )
 
@@ -43,6 +44,10 @@ celery.conf.update(
     task_soft_time_limit=3600,
     task_time_limit=7200,
     beat_schedule={
+        "celery-beat-heartbeat": {
+            "task": "app.tasks.health.beat_heartbeat",
+            "schedule": 30.0,
+        },
         # ── Daily: data update + features + predictions + evaluation ──
         # Mon–Fri 18:00 Asia/Karachi (task skips weekends/holidays):
         #   update_market_data → generate_features → generate_predictions (upsert)

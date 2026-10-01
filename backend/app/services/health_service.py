@@ -35,9 +35,14 @@ class HealthService:
     def _check_celery_beat(self):
         if IS_TESTING or not getattr(settings, "USE_CELERY", True):
             return "ready"
-        if self._check_redis() == "ready":
-            return "ready"
-        return "down"
+        from app.core.health import CELERY_BEAT_HEARTBEAT_KEY
+        from app.core.redis import get_sync_redis_client
+
+        try:
+            client = get_sync_redis_client()
+            return "ready" if client and client.get(CELERY_BEAT_HEARTBEAT_KEY) else "down"
+        except Exception:
+            return "down"
 
     async def _check_database(self):
         try:
@@ -48,19 +53,18 @@ class HealthService:
             return "down"
 
     async def check_health(self):
-        database_status, redis_status, worker_status = await asyncio.gather(
+        database_status, redis_status, worker_status, beat_status = await asyncio.gather(
             self._check_database(),
             asyncio.to_thread(self._check_redis),
             asyncio.to_thread(self._check_celery_worker),
+            asyncio.to_thread(self._check_celery_beat),
         )
         services = {
             "api": "ready",
             "database": database_status,
             "redis": redis_status,
             "celery_worker": worker_status,
-            # Beat scheduling shares the Redis dependency; do not ping Redis a
-            # second time and add another network timeout to readiness.
-            "celery_beat": redis_status if settings.USE_CELERY else "ready",
+            "celery_beat": beat_status,
         }
         status = (
             "healthy"
