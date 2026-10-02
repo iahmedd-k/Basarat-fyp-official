@@ -45,6 +45,12 @@ services:
   celery-worker:
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
     command: celery -A app.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=1
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.celery_app import celery; assert celery.control.ping(timeout=4)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     user: "1000:1000"
     stop_grace_period: 2h
     env_file: .env
@@ -67,6 +73,12 @@ services:
   celery-beat:
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
     command: celery -A app.celery_app beat --loglevel=info --schedule=/var/lib/celery/celerybeat-schedule
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.core.health import CELERY_BEAT_HEARTBEAT_KEY; from app.core.redis import get_sync_redis_client; client = get_sync_redis_client(); assert client and client.get(CELERY_BEAT_HEARTBEAT_KEY)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     user: "1000:1000"
     stop_grace_period: 30s
     volumes:
