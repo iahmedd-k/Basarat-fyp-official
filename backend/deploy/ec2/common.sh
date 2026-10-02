@@ -135,7 +135,7 @@ wait_for_health() {
     local delay="${3:-2}"
     local attempt
     for ((attempt = 1; attempt <= attempts; attempt++)); do
-        if curl --silent --show-error --fail --max-time 2 "$url" >/dev/null 2>&1; then
+        if curl --silent --show-error --fail --max-time 5 "$url" >/dev/null 2>&1; then
             log "Health check passed: $url"
             return 0
         fi
