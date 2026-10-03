@@ -461,7 +461,7 @@ class MarketService:
             if last_known:
                 log.info("Serving %d indices from stale fallback cache", len(last_known))
                 return last_known
-            return []
+            # When Redis is completely cold, continue down to fetch & populate cache
 
         log.info("Fetching indices from external API")
         raw = None
@@ -576,19 +576,19 @@ class MarketService:
             if last_known:
                 log.info("Serving %d stale constituents for %s", len(last_known), index_code)
                 return last_known
-            return []
+            # When Redis is completely cold, continue down to fetch & populate cache
 
         log.info("Fetching constituents for %s from external API", index_code)
         raw = None
-        try:
-            raw = await asyncio.wait_for(
-                asyncio.to_thread(pypsx_toolkit.index_constituents, index_code),
-                timeout=15.0,
-            )
-        except Exception as e:
-            log.warning("External fetch of constituents for %s failed: %s", index_code, e)
+        if pypsx_toolkit and hasattr(pypsx_toolkit, "index_constituents"):
+            try:
+                raw = await asyncio.wait_for(
+                    asyncio.to_thread(pypsx_toolkit.index_constituents, index_code),
+                    timeout=15.0,
+                )
+            except Exception as e:
+                log.warning("External fetch of constituents for %s failed: %s", index_code, e)
 
-        import pandas as pd
         if raw is not None and isinstance(raw, pd.DataFrame) and not raw.empty:
             results = []
             for symbol, row in raw.iterrows():
@@ -620,6 +620,80 @@ class MarketService:
                 )
                 log.info("Stored %d constituents for %s in centralized cache", len(results), index_code)
                 return results
+
+        # Fallback: direct HTTP scrape of PSX screener for index constituents
+        try:
+            r = await asyncio.to_thread(
+                httpx.get,
+                PSX_SCREENER_URL,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                timeout=15.0,
+                follow_redirects=True,
+            )
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                table = soup.find("table")
+                if table:
+                    headers = [th.get_text(strip=True).upper() for th in table.find_all("th")]
+                    sym_idx = headers.index("SYMBOL") if "SYMBOL" in headers else 0
+                    listed_idx = headers.index("LISTED IN") if "LISTED IN" in headers else -1
+                    price_idx = headers.index("PRICE") if "PRICE" in headers else -1
+                    ch_idx = headers.index("CHANGE (%)") if "CHANGE (%)" in headers else -1
+                    mcap_idx = headers.index("MARKET CAP.") if "MARKET CAP." in headers else -1
+                    vol_idx = headers.index("30D VOLUME AVG.") if "30D VOLUME AVG." in headers else -1
+
+                    target_code = index_code.upper().replace("-", "").strip()
+                    results = []
+                    for tr in table.find_all("tr")[1:]:
+                        tds = [td.get_text(strip=True) for td in tr.find_all(["th", "td"])]
+                        if len(tds) <= max(sym_idx, price_idx):
+                            continue
+                        sym = tds[sym_idx].upper().strip()
+                        if not sym or not sym.isalnum():
+                            continue
+                        listed = tds[listed_idx].upper() if listed_idx >= 0 else ""
+                        if target_code not in listed and target_code != "ALLSHR":
+                            continue
+                        try:
+                            curr = float(tds[price_idx].replace(",", "").replace("%", "")) if price_idx >= 0 else None
+                        except Exception:
+                            curr = None
+                        try:
+                            ch_pct = float(tds[ch_idx].replace(",", "").replace("%", "")) if ch_idx >= 0 else 0.0
+                        except Exception:
+                            ch_pct = 0.0
+                        try:
+                            vol = int(float(tds[vol_idx].replace(",", ""))) if vol_idx >= 0 else 0
+                        except Exception:
+                            vol = 0
+                        ldcp = round(curr / (1 + ch_pct / 100.0), 2) if (curr and ch_pct is not None and ch_pct != -100) else curr
+                        change = round(curr - ldcp, 2) if (curr and ldcp) else 0.0
+
+                        results.append({
+                            "symbol": sym,
+                            "name": sym,
+                            "ldcp": ldcp,
+                            "current": curr,
+                            "change": change,
+                            "change_pct": ch_pct,
+                            "weight_pct": 1.0,
+                            "index_points": 0.0,
+                            "volume": vol,
+                            "freefloat_m": 0.0,
+                            "market_cap_m": self._safe_float(tds[mcap_idx]) if mcap_idx >= 0 else None,
+                        })
+                    if results:
+                        await cache_set(cache_key, results, CONSTITUENTS_TTL_SECONDS)
+                        await cache_set(fallback_key, results, FALLBACK_TTL_SECONDS)
+                        await cache_set(
+                            f"market:constituents:{index_code}:fetched_at",
+                            datetime.now(timezone.utc).isoformat(),
+                            FALLBACK_TTL_SECONDS,
+                        )
+                        log.info("Stored %d constituents for %s from PSX screener fallback", len(results), index_code)
+                        return results
+        except Exception as exc:
+            log.warning("PSX screener constituents fallback failed for %s: %s", index_code, exc)
 
         # Fallback to persistent last-known snapshot if external PSX request timed out or was empty
         last_known = await cache_get(fallback_key)
