@@ -200,8 +200,8 @@ class Settings(BaseSettings):
                 or any(self._is_local_host(origin) for origin in self.CORS_ORIGINS)
             ):
                 raise ValueError(
-                    "CORS_ORIGINS must contain explicit deployed frontend origins "
-                    "outside development; wildcards and localhost are not allowed."
+                    "CORS_ORIGINS must contain explicit deployed origins without "
+                    "wildcards or localhost outside development."
                 )
 
             if runtime_cloud_database_url:

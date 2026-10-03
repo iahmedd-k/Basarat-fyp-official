@@ -92,3 +92,17 @@ def test_production_settings_reject_https_localhost_cors(monkeypatch):
 
     with pytest.raises(ValueError, match="CORS_ORIGINS.*localhost"):
         Settings()
+
+
+def test_production_settings_reject_wildcard_cors(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-12345678901234567890")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@db.example.com:5432/basarat")
+    monkeypatch.setenv("DATABASE_URL_SYNC", "")
+    monkeypatch.setenv("CORS_ORIGINS", '["*"]')
+    monkeypatch.setenv("REDIS_URL", "redis://redis.example.com:6379/0")
+    monkeypatch.setenv("CELERY_BROKER_URL", "redis://redis.example.com:6379/0")
+    monkeypatch.setenv("CELERY_RESULT_BACKEND", "redis://redis.example.com:6379/0")
+
+    with pytest.raises(ValueError, match="CORS_ORIGINS.*wildcards"):
+        Settings()

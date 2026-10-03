@@ -1,0 +1,166 @@
+name: Backend CI and Oracle ARM64 deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: basarat-oracle-production
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/iahmedd-k/basarat-backend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt pytest pytest-asyncio aiosqlite "xgboost>=2,<4"
+
+      - name: Compile backend modules
+        run: python -m compileall -q backend/app
+
+      - name: Validate Alembic migration graph
+        working-directory: backend
+        run: test "$(python -m alembic heads | wc -l)" -eq 1
+
+      - name: Run backend unit tests
+        working-directory: backend
+        env:
+          ENVIRONMENT: test
+          SECRET_KEY: local-ci-only-signing-key-at-least-32-chars
+          DATABASE_URL: postgresql+asyncpg://ci:ci@127.0.0.1:5432/ci
+          REDIS_ENABLED: "false"
+          USE_CELERY: "false"
+        run: python -m pytest -c pytest.ini tests/unit -q
+
+      - name: Validate Oracle Compose configuration
+        env:
+          BACKEND_IMAGE: ghcr.io/iahmedd-k/basarat-backend:validation
+          CLOUD_DATABASE_URL: postgresql+asyncpg://ci:ci@database.invalid:5432/ci
+          SECRET_KEY: local-ci-only-signing-key-at-least-32-chars
+          CORS_ORIGINS: '["https://app.example.com"]'
+          ALLOWED_HOSTS: '["193.123.84.223"]'
+        run: |
+          touch backend/.env
+          docker compose -f backend/docker-compose.oracle.yml config --quiet
+
+  publish:
+    needs: test
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set immutable image tag
+        id: image
+        run: echo "image=${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and publish ARM64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.image.outputs.image }}
+            ${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=basarat-backend-arm64
+          cache-to: type=gha,mode=max,scope=basarat-backend-arm64
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: oracle-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Oracle deployment secrets
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
+          ORACLE_SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_SSH_KNOWN_HOSTS }}
+          ORACLE_GHCR_TOKEN: ${{ secrets.ORACLE_GHCR_TOKEN }}
+        run: |
+          for name in ORACLE_HOST ORACLE_USER ORACLE_SSH_PRIVATE_KEY ORACLE_SSH_KNOWN_HOSTS ORACLE_GHCR_TOKEN; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Configure the $name secret in the oracle-production environment."
+              exit 1
+            fi
+          done
+
+      - name: Configure SSH
+        env:
+          ORACLE_SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
+          ORACLE_SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "$ORACLE_SSH_PRIVATE_KEY" > "$HOME/.ssh/oracle_deploy"
+          chmod 0600 "$HOME/.ssh/oracle_deploy"
+          printf '%s\n' "$ORACLE_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/known_hosts"
+
+      - name: Prepare Oracle deployment directory
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" \
+            'command -v docker >/dev/null && docker compose version >/dev/null && mkdir -p "$HOME/basarat/secrets" && chmod 0700 "$HOME/basarat/secrets" && test -f "$HOME/basarat/.env"'
+
+      - name: Upload Oracle Compose file
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          scp -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes \
+            backend/docker-compose.oracle.yml \
+            "$ORACLE_USER@$ORACLE_HOST:basarat/docker-compose.yml"
+
+      - name: Pull and deploy immutable image
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_GHCR_TOKEN: ${{ secrets.ORACLE_GHCR_TOKEN }}
+          IMAGE: ${{ needs.publish.outputs.image }}
+        run: |
+          printf '%s' "$ORACLE_GHCR_TOKEN" \
+            | ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" \
+                "docker login ghcr.io --username iahmedd-k --password-stdin"
+          ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" \
+            "cd \"\$HOME/basarat\" && BACKEND_IMAGE='$IMAGE' docker compose --env-file .env -f docker-compose.yml pull && BACKEND_IMAGE='$IMAGE' docker compose --env-file .env -f docker-compose.yml up -d --remove-orphans --wait --wait-timeout 300 && docker compose --env-file .env -f docker-compose.yml ps"

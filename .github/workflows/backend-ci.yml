@@ -31,7 +31,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt pytest pytest-asyncio "xgboost>=2.0,<4"
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt pytest pytest-asyncio aiosqlite "xgboost>=2.0,<4"
 
       - name: Compile Python sources
         run: python -m compileall -q app
@@ -48,5 +48,6 @@ jobs:
       - name: Validate Compose configuration
         working-directory: .
         run: |
+          touch backend/.env
           CLOUD_DATABASE_URL=postgresql+asyncpg://ci:ci@example.invalid:5432/basarat \
           docker compose -f backend/docker-compose.production.yml config --quiet

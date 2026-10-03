@@ -28,3 +28,8 @@
 **/.env*
 **/*.log
 **/*_tmp.*
+**/secrets/**
+**/*firebase*.json
+**/*service-account*.json
+**/*.pem
+**/*.key
