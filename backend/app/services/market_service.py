@@ -363,25 +363,89 @@ class MarketService:
 
     @staticmethod
     def _fetch_market_watch_frame():
-        """Fetch quotes, falling back to PSX all-share constituents if needed."""
-        try:
-            raw = pypsx_toolkit.market_watch()
-            if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
-                frame = raw.copy()
-                frame.columns = [str(column).strip().upper() for column in frame.columns]
-                return frame
-        except Exception as exc:
-            log.warning("PSX market watch failed; trying all-share quotes: %s", exc)
+        """Fetch quotes, falling back to PSX all-share constituents and direct screener if needed."""
+        if pypsx_toolkit and hasattr(pypsx_toolkit, "market_watch"):
+            try:
+                raw = pypsx_toolkit.market_watch()
+                if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
+                    frame = raw.copy()
+                    frame.columns = [str(column).strip().upper() for column in frame.columns]
+                    return frame
+            except Exception as exc:
+                log.warning("PSX market watch failed; trying all-share quotes: %s", exc)
+
+        if pypsx_toolkit and hasattr(pypsx_toolkit, "index_constituents"):
+            try:
+                raw = pypsx_toolkit.index_constituents("ALLSHR")
+                if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
+                    log.info("Loaded quote rows from PSX ALLSHR constituents fallback")
+                    frame = raw.copy()
+                    frame.columns = [str(column).strip().upper() for column in frame.columns]
+                    return frame
+            except Exception as exc:
+                log.warning("PSX all-share quote fallback failed: %s", exc)
 
         try:
-            raw = pypsx_toolkit.index_constituents("ALLSHR")
-            if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
-                log.info("Loaded quote rows from PSX ALLSHR constituents fallback")
-                frame = raw.copy()
-                frame.columns = [str(column).strip().upper() for column in frame.columns]
-                return frame
+            r = httpx.get(
+                PSX_SCREENER_URL,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                timeout=15.0,
+                follow_redirects=True,
+            )
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                table = soup.find("table")
+                if table:
+                    import pandas as pd
+                    headers = [th.get_text(strip=True).upper() for th in table.find_all("th")]
+                    sym_idx = headers.index("SYMBOL") if "SYMBOL" in headers else 0
+                    price_idx = headers.index("PRICE") if "PRICE" in headers else -1
+                    ch_idx = headers.index("CHANGE (%)") if "CHANGE (%)" in headers else -1
+                    sector_idx = headers.index("SECTOR") if "SECTOR" in headers else -1
+                    vol_idx = headers.index("30D VOLUME AVG.") if "30D VOLUME AVG." in headers else -1
+                    rows = []
+                    for tr in table.find_all("tr")[1:]:
+                        tds = [td.get_text(strip=True) for td in tr.find_all(["th", "td"])]
+                        if len(tds) <= max(sym_idx, price_idx):
+                            continue
+                        sym = tds[sym_idx].upper().strip()
+                        if not sym or not sym.isalnum():
+                            continue
+                        try:
+                            curr = float(tds[price_idx].replace(",", "").replace("%", "")) if price_idx >= 0 else None
+                        except Exception:
+                            curr = None
+                        try:
+                            ch_pct = float(tds[ch_idx].replace(",", "").replace("%", "")) if ch_idx >= 0 else 0.0
+                        except Exception:
+                            ch_pct = 0.0
+                        try:
+                            vol_str = tds[vol_idx].replace(",", "") if vol_idx >= 0 else "0"
+                            vol = int(float(vol_str))
+                        except Exception:
+                            vol = 0
+                        ldcp = round(curr / (1 + ch_pct / 100.0), 2) if (curr and ch_pct is not None and ch_pct != -100) else curr
+                        change = round(curr - ldcp, 2) if (curr and ldcp) else 0.0
+                        rows.append({
+                            "SYMBOL": sym,
+                            "NAME": sym,
+                            "CURRENT": curr,
+                            "LDCP": ldcp,
+                            "OPEN": curr,
+                            "HIGH": curr,
+                            "LOW": curr,
+                            "CHANGE": change,
+                            "CHANGE_PCT": ch_pct,
+                            "VOLUME": vol,
+                            "SECTOR": tds[sector_idx] if sector_idx >= 0 else None,
+                        })
+                    if rows:
+                        frame = pd.DataFrame(rows).set_index("SYMBOL")
+                        log.info("Loaded %d quote rows from PSX screener fallback", len(frame))
+                        return frame
         except Exception as exc:
-            log.warning("PSX all-share quote fallback failed: %s", exc)
+            log.warning("PSX screener quotes fallback failed: %s", exc)
+
         return None
 
     async def get_indices(self, force_refresh: bool = False, read_only: bool = True) -> list[dict]:
@@ -401,13 +465,14 @@ class MarketService:
 
         log.info("Fetching indices from external API")
         raw = None
-        try:
-            raw = await asyncio.wait_for(
-                asyncio.to_thread(pypsx_toolkit.get_indices),
-                timeout=12.0,
-            )
-        except Exception as e:
-            log.warning("External fetch of indices failed: %s", e)
+        if pypsx_toolkit and hasattr(pypsx_toolkit, "get_indices"):
+            try:
+                raw = await asyncio.wait_for(
+                    asyncio.to_thread(pypsx_toolkit.get_indices),
+                    timeout=12.0,
+                )
+            except Exception as e:
+                log.warning("External fetch of indices failed: %s", e)
 
         if raw is not None and hasattr(raw, "iterrows") and not raw.empty:
             results = []
@@ -423,7 +488,6 @@ class MarketService:
                     "low": self._safe_float(row.get("LOW")),
                 })
 
-            # Prioritize core benchmark indices first (KSE100, KSE30, KMI30, ALLSHR)
             priority_order = {"KSE100": 0, "KSE30": 1, "KMI30": 2, "ALLSHR": 3, "KMIALLSHR": 4, "BKTI": 5, "OGTI": 6, "PSXDIV20": 7}
             results.sort(key=lambda x: priority_order.get(x["code"], 99))
 
@@ -433,6 +497,61 @@ class MarketService:
                 await cache_set("market:indices:fetched_at", datetime.now(timezone.utc).isoformat(), FALLBACK_TTL_SECONDS)
                 log.info("Stored %d indices in centralized cache", len(results))
                 return results
+
+        # Fallback: direct HTTP scrape of PSX indices page
+        try:
+            r = await asyncio.to_thread(
+                httpx.get,
+                "https://dps.psx.com.pk/indices",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                timeout=12.0,
+                follow_redirects=True,
+            )
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                results = []
+                for table in soup.find_all("table"):
+                    headers = [th.get_text(strip=True).upper() for th in table.find_all("th")]
+                    if "INDEX" in headers and "CURRENT" in headers:
+                        idx_i = headers.index("INDEX")
+                        cur_i = headers.index("CURRENT")
+                        ch_i = headers.index("CHANGE") if "CHANGE" in headers else -1
+                        chp_i = headers.index("% CHANGE") if "% CHANGE" in headers else -1
+                        h_i = headers.index("HIGH") if "HIGH" in headers else -1
+                        l_i = headers.index("LOW") if "LOW" in headers else -1
+                        for tr in table.find_all("tr")[1:]:
+                            tds = [td.get_text(strip=True) for td in tr.find_all(["th", "td"])]
+                            if len(tds) <= max(idx_i, cur_i):
+                                continue
+                            code_str = tds[idx_i].strip().upper()
+                            if not code_str:
+                                continue
+                            def _clean_num(val_str):
+                                try:
+                                    return float(val_str.replace(",", "").replace("%", "").strip())
+                                except Exception:
+                                    return 0.0
+                            results.append({
+                                "index": self.MAIN_INDICES.get(code_str, code_str),
+                                "code": code_str,
+                                "current": _clean_num(tds[cur_i]),
+                                "change": _clean_num(tds[ch_i]) if ch_i >= 0 else 0.0,
+                                "change_pct": _clean_num(tds[chp_i]) if chp_i >= 0 else 0.0,
+                                "high": _clean_num(tds[h_i]) if h_i >= 0 else 0.0,
+                                "low": _clean_num(tds[l_i]) if l_i >= 0 else 0.0,
+                            })
+                        if results:
+                            break
+                if results:
+                    priority_order = {"KSE100": 0, "KSE30": 1, "KMI30": 2, "ALLSHR": 3, "KMIALLSHR": 4, "BKTI": 5, "OGTI": 6, "PSXDIV20": 7}
+                    results.sort(key=lambda x: priority_order.get(x["code"], 99))
+                    await cache_set(cache_key, results, INDICES_TTL_SECONDS)
+                    await cache_set(fallback_key, results, FALLBACK_TTL_SECONDS)
+                    await cache_set("market:indices:fetched_at", datetime.now(timezone.utc).isoformat(), FALLBACK_TTL_SECONDS)
+                    log.info("Stored %d indices from direct HTTP scrape", len(results))
+                    return results
+        except Exception as exc:
+            log.warning("Direct HTTP scrape of indices failed: %s", exc)
 
         # Fallback to last known indices if external call failed or timed out
         last_known = await cache_get(fallback_key)

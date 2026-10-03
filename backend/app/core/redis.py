@@ -111,7 +111,12 @@ def distributed_lock(key: str, ttl_seconds: int):
     token = uuid4().hex
     acquired = False
     try:
-        acquired = bool(client.set(key, token, nx=True, ex=max(1, int(ttl_seconds))))
+        try:
+            acquired = bool(client.set(key, token, nx=True, ex=max(1, int(ttl_seconds))))
+        except Exception as exc:
+            log.warning("Redis distributed lock set failed; proceeding without lock: %s", exc)
+            yield True
+            return
         yield acquired
     finally:
         if acquired:

@@ -829,7 +829,26 @@ class StockService:
 
         # --- RSI ---
         if "RSI" in requested:
-            full_rsi = to_series(pypsx_toolkit.rsi(df, window=period, column="CLOSE"))
+            try:
+                if pypsx_toolkit and hasattr(pypsx_toolkit, "rsi"):
+                    rsi_raw = pypsx_toolkit.rsi(df, window=period, column="CLOSE")
+                else:
+                    delta = close.diff()
+                    gain = delta.clip(lower=0)
+                    loss = -delta.clip(upper=0)
+                    avg_gain = gain.ewm(com=period - 1, min_periods=period).mean()
+                    avg_loss = loss.ewm(com=period - 1, min_periods=period).mean()
+                    rs = avg_gain / avg_loss.replace(0, float("nan"))
+                    rsi_raw = (100 - (100 / (1 + rs))).fillna(50.0)
+            except Exception:
+                delta = close.diff()
+                gain = delta.clip(lower=0)
+                loss = -delta.clip(upper=0)
+                avg_gain = gain.ewm(com=period - 1, min_periods=period).mean()
+                avg_loss = loss.ewm(com=period - 1, min_periods=period).mean()
+                rs = avg_gain / avg_loss.replace(0, float("nan"))
+                rsi_raw = (100 - (100 / (1 + rs))).fillna(50.0)
+            full_rsi = to_series(rsi_raw)
             ind_series["RSI"] = full_rsi
             if full_rsi:
                 latest_rsi = full_rsi[-1]["value"]
@@ -858,7 +877,19 @@ class StockService:
 
         # --- MACD ---
         if "MACD" in requested:
-            macd_line, macd_signal, _hist = pypsx_toolkit.macd(df, fast=12, slow=26, signal=9, column="CLOSE")
+            try:
+                if pypsx_toolkit and hasattr(pypsx_toolkit, "macd"):
+                    macd_line, macd_signal, _hist = pypsx_toolkit.macd(df, fast=12, slow=26, signal=9, column="CLOSE")
+                else:
+                    ema_fast = close.ewm(span=12, adjust=False).mean()
+                    ema_slow = close.ewm(span=26, adjust=False).mean()
+                    macd_line = ema_fast - ema_slow
+                    macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+            except Exception:
+                ema_fast = close.ewm(span=12, adjust=False).mean()
+                ema_slow = close.ewm(span=26, adjust=False).mean()
+                macd_line = ema_fast - ema_slow
+                macd_signal = macd_line.ewm(span=9, adjust=False).mean()
             macd_s = to_series(macd_line)
             sig_s = to_series(macd_signal)
             ind_series["MACD"] = macd_s
@@ -915,14 +946,25 @@ class StockService:
 
         # --- Bollinger Bands ---
         if "BB" in requested or "BOLLINGER" in requested:
-            bands = pypsx_toolkit.bollinger_bands(df, window=20, num_std=2.0, column="CLOSE")
-            # Toolkit documentation has used different tuple orders across
-            # releases. Normalize each row mathematically so labels can never
-            # invert even if an upstream version changes its return order.
-            bands_frame = pd.concat([pd.Series(band) for band in bands], axis=1)
-            low_s = to_series(bands_frame.min(axis=1))
-            mid_s = to_series(bands_frame.median(axis=1))
-            up_s = to_series(bands_frame.max(axis=1))
+            try:
+                if pypsx_toolkit and hasattr(pypsx_toolkit, "bollinger_bands"):
+                    bands = pypsx_toolkit.bollinger_bands(df, window=20, num_std=2.0, column="CLOSE")
+                    bands_frame = pd.concat([pd.Series(band) for band in bands], axis=1)
+                    low_s = to_series(bands_frame.min(axis=1))
+                    mid_s = to_series(bands_frame.median(axis=1))
+                    up_s = to_series(bands_frame.max(axis=1))
+                else:
+                    sma20 = close.rolling(window=20).mean()
+                    std20 = close.rolling(window=20).std()
+                    up_s = to_series(sma20 + (std20 * 2.0))
+                    mid_s = to_series(sma20)
+                    low_s = to_series(sma20 - (std20 * 2.0))
+            except Exception:
+                sma20 = close.rolling(window=20).mean()
+                std20 = close.rolling(window=20).std()
+                up_s = to_series(sma20 + (std20 * 2.0))
+                mid_s = to_series(sma20)
+                low_s = to_series(sma20 - (std20 * 2.0))
             ind_series["BB_LOWER"] = low_s
             ind_series["BB_MID"] = mid_s
             ind_series["BB_UPPER"] = up_s
