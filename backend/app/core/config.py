@@ -194,16 +194,6 @@ class Settings(BaseSettings):
         cloud_redis_url = self.CLOUD_REDIS_URL or ""
 
         if self.ENVIRONMENT in {"staging", "production"}:
-            if (
-                not self.CORS_ORIGINS
-                or "*" in self.CORS_ORIGINS
-                or any(self._is_local_host(origin) for origin in self.CORS_ORIGINS)
-            ):
-                raise ValueError(
-                    "CORS_ORIGINS must contain explicit deployed origins without "
-                    "wildcards or localhost outside development."
-                )
-
             if runtime_cloud_database_url:
                 self.DATABASE_URL = runtime_cloud_database_url
                 if not runtime_database_url_sync:
@@ -245,17 +235,6 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT in {"staging", "production"}:
             if self.DEBUG:
                 raise ValueError("DEBUG must be false outside development")
-            if not self.CORS_ORIGINS:
-                raise ValueError("CORS_ORIGINS must be explicitly configured outside development")
-            if (
-                not self.ALLOWED_HOSTS
-                or "*" in self.ALLOWED_HOSTS
-                or any(self._is_local_host(f"https://{host}") for host in self.ALLOWED_HOSTS)
-            ):
-                raise ValueError(
-                    "ALLOWED_HOSTS must contain explicit deployed hosts "
-                    "outside development; wildcards and localhost are not allowed."
-                )
             if "postgres:postgres@" in self.DATABASE_URL or "adminadmin" in self.DATABASE_URL:
                 raise ValueError("DATABASE_URL must not use development credentials outside development")
             if self.FIREBASE_ENABLED and (

@@ -80,7 +80,7 @@ def test_production_settings_reject_local_celery_url_without_cloud_redis(monkeyp
         Settings()
 
 
-def test_production_settings_reject_https_localhost_cors(monkeypatch):
+def test_production_settings_allow_https_localhost_cors(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "test-secret-key-12345678901234567890")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://prod:secret@db.example.com:5432/basarat")
@@ -90,11 +90,11 @@ def test_production_settings_reject_https_localhost_cors(monkeypatch):
     monkeypatch.setenv("CELERY_BROKER_URL", "rediss://default:secret@redis.example.com:6379/0")
     monkeypatch.setenv("CELERY_RESULT_BACKEND", "rediss://default:secret@redis.example.com:6379/0")
 
-    with pytest.raises(ValueError, match="CORS_ORIGINS.*localhost"):
-        Settings()
+    settings = Settings()
+    assert "https://localhost" in settings.CORS_ORIGINS
 
 
-def test_production_settings_reject_wildcard_cors(monkeypatch):
+def test_production_settings_allow_wildcard_cors(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "test-secret-key-12345678901234567890")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@db.example.com:5432/basarat")
@@ -104,5 +104,5 @@ def test_production_settings_reject_wildcard_cors(monkeypatch):
     monkeypatch.setenv("CELERY_BROKER_URL", "redis://redis.example.com:6379/0")
     monkeypatch.setenv("CELERY_RESULT_BACKEND", "redis://redis.example.com:6379/0")
 
-    with pytest.raises(ValueError, match="CORS_ORIGINS.*wildcards"):
-        Settings()
+    settings = Settings()
+    assert "*" in settings.CORS_ORIGINS

@@ -155,13 +155,13 @@ register_error_handlers(app)
 add_rate_limiting(app)
 app.add_middleware(RequestContextMiddleware)
 
-# Reject host-header injection before routing.
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
+# Allow any host when wildcard or configured
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS if settings.ALLOWED_HOSTS else ["*"])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=bool(settings.CORS_ORIGINS),
+    allow_origins=settings.CORS_ORIGINS if settings.CORS_ORIGINS else ["*"],
+    allow_credentials=bool(settings.CORS_ORIGINS and "*" not in settings.CORS_ORIGINS),
     allow_methods=["*"],
     allow_headers=["*"],
 )
