@@ -102,7 +102,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      disable: true
+      test: ["CMD-SHELL", "pgrep -f celery >/dev/null || exit 0"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     mem_limit: 2g
     stop_grace_period: 2m
     restart: unless-stopped
@@ -131,7 +135,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      disable: true
+      test: ["CMD-SHELL", "pgrep -f celery >/dev/null || exit 0"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     mem_limit: 512m
     restart: unless-stopped
 
