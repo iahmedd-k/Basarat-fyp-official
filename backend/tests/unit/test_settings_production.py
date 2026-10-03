@@ -5,6 +5,11 @@ import pytest
 from app.core.config import Settings
 
 
+@pytest.fixture(autouse=True)
+def _set_production_allowed_hosts(monkeypatch):
+    monkeypatch.setenv("ALLOWED_HOSTS", '["api.example.com"]')
+
+
 @pytest.mark.parametrize(
     "env_value",
     [

@@ -420,6 +420,8 @@ async def update_transaction(
             fee=data.fee,
             transaction_date=data.transaction_date,
         )
+        if txn is None:
+            raise NotFoundError("Transaction not found")
         
         return TransactionResponse(
             id=txn.id,

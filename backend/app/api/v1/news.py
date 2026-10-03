@@ -172,11 +172,31 @@ async def refresh_news(
             market_status=m_status,
         )
 
+    dispatch_client = None
+    dispatch_key = "news:ingestion:dispatch-lock"
     try:
+        from app.core.redis import get_sync_redis_client
+
+        dispatch_client = get_sync_redis_client()
+        if dispatch_client is not None and not dispatch_client.set(
+            dispatch_key, "1", nx=True, ex=settings.NEWS_REFRESH_COOLDOWN
+        ):
+            return NewsRefreshResponse(
+                status="already_running",
+                last_updated=last_run.isoformat() if last_run else None,
+                refresh_available=False,
+                market_status=m_status,
+            )
+
         from app.tasks.scrape_news import run as news_ingestion_task
         ingestion_state.mark_ingestion_queued()
         news_ingestion_task.apply_async(kwargs={"force": True, "limit_per_source": 50})
     except Exception as exc:
+        if dispatch_client is not None:
+            try:
+                dispatch_client.delete(dispatch_key)
+            except Exception:
+                pass
         ingestion_state.mark_ingestion_failed(str(exc))
         raise ServiceUnavailableError("Could not queue news refresh") from exc
 

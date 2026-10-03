@@ -1,8 +1,15 @@
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def _parse_decimal(value: object) -> Decimal:
+    try:
+        return value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("Input should be a valid decimal") from exc
 
 
 class TransactionCreate(BaseModel):
@@ -21,9 +28,7 @@ class TransactionCreate(BaseModel):
     @field_validator("quantity", "price", "fee", mode="before")
     @classmethod
     def _to_decimal(cls, v):
-        if isinstance(v, Decimal):
-            return v
-        return Decimal(str(v))
+        return _parse_decimal(v)
 
     @field_validator("transaction_type")
     @classmethod
@@ -51,9 +56,7 @@ class CompletedTradeCreate(BaseModel):
     def _to_decimal(cls, v):
         if v is None:
             return Decimal("0")
-        if isinstance(v, Decimal):
-            return v
-        return Decimal(str(v))
+        return _parse_decimal(v)
 
     @model_validator(mode="after")
     def _validate_dates(self):
@@ -73,9 +76,7 @@ class TransactionUpdate(BaseModel):
     def _to_decimal(cls, v):
         if v is None:
             return None
-        if isinstance(v, Decimal):
-            return v
-        return Decimal(str(v))
+        return _parse_decimal(v)
 
 
 class TransactionResponse(BaseModel):

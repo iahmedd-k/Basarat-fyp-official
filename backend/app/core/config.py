@@ -31,6 +31,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
     ]
     TRUSTED_PROXY_IPS: list[str] = []
+    ALLOWED_HOSTS: list[str] = ["localhost", "127.0.0.1", "testserver"]
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/basarat"
@@ -123,6 +124,19 @@ class Settings(BaseSettings):
     MARKET_LIVE_PUBSUB_CHANNEL: str = "market:quotes:live"
     MARKET_CIRCUIT_BREAKER_SECONDS: int = 900  # pause scrapes after PSX 403/429
     MARKET_REST_POLL_SECONDS: int = 15  # Android/web REST fallback interval (cache-only)
+    # Daily fundamentals refresh. The worker is deliberately single-threaded
+    # and paced because one symbol can require several upstream requests.
+    FUNDAMENTALS_REFRESH_ENABLED: bool = True
+    # Fundamentals are a low-frequency job; keep the shared source load
+    # conservative even when the worker is running in cloud infrastructure.
+    FUNDAMENTALS_REQUEST_DELAY_SECONDS: float = 30.0
+    FUNDAMENTALS_REQUEST_JITTER_SECONDS: float = 15.0
+    FUNDAMENTALS_REQUEST_TIMEOUT_SECONDS: float = 15.0
+    FUNDAMENTALS_SYMBOL_TIMEOUT_SECONDS: float = 180.0
+    FUNDAMENTALS_MAX_RETRIES: int = 2
+    FUNDAMENTALS_RETRY_BASE_SECONDS: int = 60
+    FUNDAMENTALS_REDIS_TTL_SECONDS: int = 172800
+    FUNDAMENTALS_STALE_AFTER_DAYS: int = 7
     # Ingestion interval during active windows (seconds)
     NEWS_INGESTION_INTERVAL_MARKET: int = 1800      # 30 min during market
     NEWS_INGESTION_INTERVAL_POST_MARKET: int = 3600  # 60 min post-market
@@ -180,8 +194,15 @@ class Settings(BaseSettings):
         cloud_redis_url = self.CLOUD_REDIS_URL or ""
 
         if self.ENVIRONMENT in {"staging", "production"}:
-            if not self.CORS_ORIGINS or any(self._is_local_host(origin) for origin in self.CORS_ORIGINS):
-                raise ValueError("CORS_ORIGINS must not include localhost in production/staging. Configure the deployed frontend origins explicitly.")
+            if (
+                not self.CORS_ORIGINS
+                or "*" in self.CORS_ORIGINS
+                or any(self._is_local_host(origin) for origin in self.CORS_ORIGINS)
+            ):
+                raise ValueError(
+                    "CORS_ORIGINS must contain explicit deployed frontend origins "
+                    "outside development; wildcards and localhost are not allowed."
+                )
 
             if runtime_cloud_database_url:
                 self.DATABASE_URL = runtime_cloud_database_url
@@ -226,6 +247,15 @@ class Settings(BaseSettings):
                 raise ValueError("DEBUG must be false outside development")
             if not self.CORS_ORIGINS:
                 raise ValueError("CORS_ORIGINS must be explicitly configured outside development")
+            if (
+                not self.ALLOWED_HOSTS
+                or "*" in self.ALLOWED_HOSTS
+                or any(self._is_local_host(f"https://{host}") for host in self.ALLOWED_HOSTS)
+            ):
+                raise ValueError(
+                    "ALLOWED_HOSTS must contain explicit deployed hosts "
+                    "outside development; wildcards and localhost are not allowed."
+                )
             if "postgres:postgres@" in self.DATABASE_URL or "adminadmin" in self.DATABASE_URL:
                 raise ValueError("DATABASE_URL must not use development credentials outside development")
             if self.FIREBASE_ENABLED and (

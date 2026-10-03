@@ -5,6 +5,20 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: basarat-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - basarat-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    logging: *default-logging
+
   app:
     build:
       context: .
@@ -17,16 +31,10 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
-      - DATABASE_URL_SYNC=postgresql+psycopg2://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      REDIS_URL: redis://redis:6379/0
+      CLOUD_REDIS_URL: ${CLOUD_REDIS_URL:-}
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:
       - .:/app
     restart: unless-stopped
@@ -42,20 +50,20 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
-      - DATABASE_URL_SYNC=postgresql+psycopg2://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      REDIS_URL: redis://redis:6379/0
+      CLOUD_REDIS_URL: ${CLOUD_REDIS_URL:-}
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:
       - .:/app
       - ./models:/app/models
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 30s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
     logging: *default-logging
 
@@ -69,55 +77,20 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
-      - DATABASE_URL_SYNC=postgresql+psycopg2://${POSTGRES_USER:-basarat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}@db:5432/${POSTGRES_DB:-basarat}
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      REDIS_URL: redis://redis:6379/0
+      CLOUD_REDIS_URL: ${CLOUD_REDIS_URL:-}
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:
       - .:/app
-    restart: unless-stopped
-    logging: *default-logging
-
-  db:
-    image: postgres:16-alpine
-    container_name: basarat-db
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-basarat}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
-      POSTGRES_DB: ${POSTGRES_DB:-basarat}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ahmed -d basarat"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    logging: *default-logging
-
-  redis:
-    image: redis:7-alpine
-    container_name: basarat-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 30s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
     logging: *default-logging
 
 volumes:
-  postgres_data:
-  redis_data:
+  basarat-redis-data:

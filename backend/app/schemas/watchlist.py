@@ -2,7 +2,12 @@ from pydantic import BaseModel, Field
 
 
 class WatchlistItemCreate(BaseModel):
-    symbol: str = Field(..., min_length=1, max_length=20, description="PSX stock symbol (e.g. SYS, OGDC)")
+    symbol: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Existing PSX stock symbol or exact company name (e.g. SYS or Systems Limited)",
+    )
     target_price: float | None = Field(None, ge=0, description="Optional target price alert threshold")
     notes: str | None = Field(None, max_length=500, description="Optional personal notes for this symbol")
 
@@ -15,6 +20,7 @@ class WatchlistItemUpdate(BaseModel):
 class WatchlistItemResponse(BaseModel):
     id: str
     watchlist_id: str
+    stock_id: str | None = None
     symbol: str
     name: str | None = None
     sector: str | None = None
@@ -35,7 +41,10 @@ class WatchlistCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Name of the watchlist")
     description: str | None = Field(None, max_length=255, description="Optional description of the watchlist")
     is_default: bool = Field(False, description="Set as user's default watchlist")
-    symbols: list[str] | None = Field(None, description="Optional initial list of stock symbols")
+    symbols: list[str] | None = Field(
+        None,
+        description="Optional initial list of existing PSX stock symbols or exact company names",
+    )
 
 
 class WatchlistUpdate(BaseModel):

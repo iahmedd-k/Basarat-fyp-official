@@ -20,8 +20,11 @@ Usage::
 import argparse
 import json
 import logging
+import os
+import shutil
 import sys
 import time
+from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -53,12 +56,21 @@ def _load_fetch_log(log_dir: Path) -> dict:
     return {"runs": []}
 
 
+def _write_json_atomically(path: Path, payload: dict) -> None:
+    temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    os.replace(temporary_path, path)
+
+
 def _save_fetch_log(log_dir: Path, entry: dict) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     path = log_dir / "fetch_log.json"
     existing = _load_fetch_log(log_dir)
     existing["runs"].append(entry)
-    path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+    _write_json_atomically(path, existing)
 
 
 def _append_symbol_error(log_dir: Path, symbol: str, error: str) -> None:
@@ -72,7 +84,31 @@ def _append_symbol_error(log_dir: Path, symbol: str, error: str) -> None:
         "error": error,
         "timestamp": date.today().isoformat(),
     })
-    path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+    _write_json_atomically(path, existing)
+
+
+@contextmanager
+def _scrape_run_lock(output_dir: Path):
+    """Allow one writer per output directory and recover stale locks."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = output_dir / ".scrape.lock"
+    try:
+        descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            if time.time() - lock_path.stat().st_mtime > 6 * 60 * 60:
+                lock_path.unlink()
+                descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            else:
+                raise RuntimeError(f"Another scrape is already writing {output_dir}")
+        except FileNotFoundError:
+            descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(f"pid={os.getpid()}\n")
+        yield
+    finally:
+        lock_path.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -112,8 +148,9 @@ def _scrape_symbol(
     if incremental:
         last_date = _load_existing_last_date(symbol, output_dir)
         if last_date is not None:
-            # Start from the day after the last available date
-            actual_start = last_date + timedelta(days=1)
+            # Re-fetch the latest session so an intraday/provisional bar can
+            # be replaced by the final close; older gaps remain incremental.
+            actual_start = last_date if last_date >= end else last_date + timedelta(days=1)
             if actual_start > end:
                 log.info("  %s: already up to date (last=%s), skipping", symbol, last_date)
                 return {"symbol": symbol, "status": "skipped", "reason": "up_to_date"}
@@ -159,7 +196,7 @@ def _scrape_symbol(
     return quality
 
 
-def run_scrape(
+def _run_scrape(
     mode: str = "full",
     start: date | None = None,
     end: date | None = None,
@@ -167,10 +204,15 @@ def run_scrape(
     delay: float = 0.5,
     freeze: bool = False,
     config_dir: Path | None = None,
-) -> None:
+) -> dict:
     """Main scrape orchestrator."""
     out_dir = output_dir or _DEFAULT_OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = out_dir / ".runs" / f"{os.getpid()}-{int(time.time())}"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    if mode == "incremental":
+        for existing_path in out_dir.glob("*.parquet"):
+            shutil.copy2(existing_path, run_dir / existing_path.name)
     reset_psx_access_denied()
 
     # Step 1: Optionally freeze universe
@@ -223,7 +265,7 @@ def run_scrape(
             symbol=symbol,
             start=start,
             end=end,
-            output_dir=out_dir,
+            output_dir=run_dir,
             incremental=(mode == "incremental"),
             delay=delay,
         )
@@ -232,7 +274,7 @@ def run_scrape(
         # Accumulate for combined file (only if we actually fetched data)
         if result.get("status") == "ok":
             try:
-                path = out_dir / f"{symbol}.parquet"
+                path = run_dir / f"{symbol}.parquet"
                 if path.exists():
                     all_frames[symbol] = pd.read_parquet(path)
             except Exception:
@@ -241,13 +283,28 @@ def run_scrape(
     # Step 5: Write combined parquet
     if all_frames:
         log.info("=== Writing combined parquet ===")
-        write_combined_parquet(all_frames, out_dir)
+        write_combined_parquet(all_frames, run_dir)
 
     # Step 6: Summary
     ok_count = sum(1 for r in results if r.get("status") == "ok")
     skip_count = sum(1 for r in results if r.get("status") == "skipped")
     err_count = sum(1 for r in results if r.get("status") == "error")
     no_data_count = sum(1 for r in results if r.get("status") == "no_data")
+    publishable = (
+        ok_count + skip_count == total
+        and err_count == 0
+        and no_data_count == 0
+        and not any(r.get("reason") == "source_rate_limited" for r in results)
+    )
+    if publishable:
+        for staged_path in run_dir.glob("*.parquet"):
+            os.replace(staged_path, out_dir / staged_path.name)
+        log.info("Published scrape generation from %s", run_dir.name)
+    else:
+        log.warning(
+            "Discarding incomplete scrape generation %s; preserving previous data",
+            run_dir.name,
+        )
 
     summary = {
         "mode": mode,
@@ -266,7 +323,31 @@ def run_scrape(
 
     # Save run log
     _save_fetch_log(out_dir, summary)
+    shutil.rmtree(run_dir, ignore_errors=True)
     return summary
+
+
+def run_scrape(
+    mode: str = "full",
+    start: date | None = None,
+    end: date | None = None,
+    output_dir: Path | None = None,
+    delay: float = 0.5,
+    freeze: bool = False,
+    config_dir: Path | None = None,
+) -> dict:
+    """Run a scrape while preventing concurrent writers."""
+    out_dir = output_dir or _DEFAULT_OUTPUT_DIR
+    with _scrape_run_lock(out_dir):
+        return _run_scrape(
+            mode=mode,
+            start=start,
+            end=end,
+            output_dir=out_dir,
+            delay=delay,
+            freeze=freeze,
+            config_dir=config_dir,
+        )
 
 
 # ---------------------------------------------------------------------------

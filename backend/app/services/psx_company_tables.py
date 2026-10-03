@@ -16,6 +16,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.core.redis import cache_get_sync, cache_set_sync
+from app.core.config import get_settings
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +33,11 @@ _HEADERS = {
 _local_cache: dict[str, tuple[object, float]] = {}
 _locks: dict[str, threading.Lock] = {}
 _guard = threading.Lock()
+
+
+def _http_timeout() -> httpx.Timeout:
+    seconds = max(1.0, float(get_settings().FUNDAMENTALS_REQUEST_TIMEOUT_SECONDS))
+    return httpx.Timeout(seconds, connect=min(5.0, seconds))
 
 _METRIC_KEYS = {
     "mark-up earned": "mark_up_earned",
@@ -52,18 +58,18 @@ def _get_lock(key: str) -> threading.Lock:
         return _locks.setdefault(key, threading.Lock())
 
 
-def _cached_fetch(key: str, loader):
+def _cached_fetch(key: str, loader, *, force: bool = False):
     now = time.monotonic()
     local = _local_cache.get(key)
-    if local and local[1] > now:
+    if not force and local and local[1] > now:
         return local[0]
 
     with _get_lock(key):
         now = time.monotonic()
         local = _local_cache.get(key)
-        if local and local[1] > now:
+        if not force and local and local[1] > now:
             return local[0]
-        shared = cache_get_sync(key)
+        shared = None if force else cache_get_sync(key)
         if isinstance(shared, dict):
             _local_cache[key] = (shared, now + _DAY_TTL)
             return shared
@@ -235,7 +241,7 @@ def _fetch_company_tables(symbol: str) -> dict:
         response = httpx.get(
             url,
             headers={**_HEADERS, "Referer": f"{_BASE}/"},
-            timeout=httpx.Timeout(12.0, connect=5.0),
+            timeout=_http_timeout(),
             follow_redirects=True,
         )
         if response.status_code == 200:
@@ -326,7 +332,7 @@ def _fetch_financial_reports(symbol: str) -> dict:
                 "Origin": "https://financials.psx.com.pk",
                 "X-Requested-With": "XMLHttpRequest",
             },
-            timeout=httpx.Timeout(12.0, connect=5.0),
+            timeout=_http_timeout(),
         )
         response.raise_for_status()
         rows = response.json()
@@ -369,9 +375,17 @@ def _fetch_financial_reports(symbol: str) -> dict:
         }
 
 
-def get_psx_company_table_data(symbol: str) -> dict:
+def get_psx_company_table_data(symbol: str, *, force_refresh: bool = False) -> dict:
     """Return normalized company-page statements, ratio history, and report links."""
     symbol = str(symbol).strip().upper()
-    tables = _cached_fetch(f"psx:company-tables:v5:{symbol}", lambda: _fetch_company_tables(symbol))
-    reports = _cached_fetch(f"psx:financial-report-index:v5:{symbol}", lambda: _fetch_financial_reports(symbol))
+    tables = _cached_fetch(
+        f"psx:company-tables:v5:{symbol}",
+        lambda: _fetch_company_tables(symbol),
+        force=force_refresh,
+    )
+    reports = _cached_fetch(
+        f"psx:financial-report-index:v5:{symbol}",
+        lambda: _fetch_financial_reports(symbol),
+        force=force_refresh,
+    )
     return {**tables, **reports}

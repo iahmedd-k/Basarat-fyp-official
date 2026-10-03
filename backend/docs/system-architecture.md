@@ -28,7 +28,7 @@ flowchart LR
     subgraph Backend["FastAPI Production Backend (Docker: api)"]
         API["REST Routers<br/>14 Modules (Auth, Market, Stocks, etc.)"]
         WS["WebSocket Hub<br/>/ws/market & /ws/alerts"]
-        CEL["Celery Worker + Beat<br/>Daily 16:00 Pipeline / ML / News"]
+        CEL["Celery Beat + Queue-isolated Workers<br/>Market / News / Fundamentals / ML"]
         ASS["AI Assistant Agent<br/>Groq / Llama-3 + SSE Stream"]
     end
 
@@ -96,7 +96,7 @@ sequenceDiagram
     alt cache hit
         RD-->>API: snapshot
     else cache miss
-        API->>PG: query OHLCV
+        API->>PG: query last-known snapshot
         PG-->>API: rows
         API->>RD: SETEX snapshot
     end
@@ -104,6 +104,17 @@ sequenceDiagram
 ```
 
 **Failure rule (NFR-9):** if WebSocket fails 3 consecutive times, clients fall back to REST polling; the dashboard remains functional, just not live.
+
+**Upstream ownership rule:** API requests do not scrape PSX. Celery workers own
+all upstream refreshes. Redis-backed single-flight locks protect cold-cache
+stock reads and distributed job locks protect scheduled refreshes.
+
+Historical OHLCV reads, including ETF history, are served from the maintained
+`data/raw/ohlcv/*.parquet` snapshots produced by the daily ingestion workflow.
+Recommendation detail and target/stop endpoints read the published
+recommendation snapshot; they do not recompute provider-dependent signals in
+the request path. Live market quotes remain the only intentionally
+real-time provider-facing product surface.
 
 ---
 
@@ -130,7 +141,10 @@ Redis is a **general response cache** covering every expensive-to-compute or exp
 - Derived from **user-mutable data** (portfolio holdings, alert rules) → invalidated **on write**, not just TTL.
 - Derived from **market/external data** (prices, news, forecasts) → relies on **TTL + scheduled overwrite**, never invalidated by user action.
 
-**Endpoint pattern:** thin handler → `cache.get(key)` → on hit return; on miss run real compute → write back to cache → return. Implement once, reuse across every module (note in §2).
+**Endpoint pattern:** thin handler → `cache.get(key)` → on hit return; on a
+miss read the last-known database/cache snapshot or enqueue a controlled
+refresh. API handlers must not directly scrape PSX. Per-symbol Redis
+single-flight locks protect any explicitly authorized refresh path.
 
 ---
 

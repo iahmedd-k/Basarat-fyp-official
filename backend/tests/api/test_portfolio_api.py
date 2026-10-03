@@ -238,6 +238,15 @@ class TestPortfolioTransactions:
         data = response.json()
         assert Decimal(str(data["quantity"])) == Decimal("150")
 
+    async def test_put_transaction_method_not_allowed(self, client: AsyncClient, portfolio_test_context):
+        headers, _ = portfolio_test_context
+        response = await client.put(
+            f"/api/v1/portfolio/transactions/{uuid4().hex}",
+            headers=headers,
+            json={"quantity": "150"},
+        )
+        assert response.status_code == 405
+
     async def test_delete_transaction(self, client: AsyncClient, portfolio_test_context):
         headers, _ = portfolio_test_context
         create_resp = await client.post(

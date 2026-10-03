@@ -88,12 +88,17 @@ def test_resolve_stock_none_provided():
     asyncio.run(_test())
 
 
-def test_quick_alert_rule_creation_both_directions():
+def test_quick_alert_rule_creation_both_directions(monkeypatch):
+    from app.api.v1 import alerts
     from app.api.v1.alerts import create_quick_alert_rule
     from app.models.user import User
     from app.schemas.auth import QuickAlertRuleCreate
 
     async def _test():
+        async def mock_current_price(_db, _stock):
+            return 250.0
+
+        monkeypatch.setattr(alerts, "_get_current_stock_price", mock_current_price)
         db = AsyncMock(spec=AsyncSession)
         mock_user = User(id="user-999")
         mock_stock = Stock(id="stock-pso", symbol="PSO", name="Pakistan State Oil")
@@ -161,4 +166,3 @@ def test_check_stock_alerts():
         assert res.rules[0].threshold == 257.50
 
     asyncio.run(_test())
-

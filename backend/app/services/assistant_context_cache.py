@@ -120,7 +120,7 @@ class AssistantContextCache:
                 if q.get("sector"):
                     existing["sector"] = q.get("sector")
                 # Lean fundamentals from Redis fund cache if present (no scrape)
-                fund = await cache_get(f"fund:v20:{sym}")
+                fund = await cache_get(f"fund:v21:{sym}")
                 if isinstance(fund, dict):
                     ratios = fund.get("ratios") or {}
                     existing["fundamentals"] = {
@@ -331,7 +331,7 @@ class AssistantContextCache:
     async def resolve_fundamentals(self, symbol: str) -> Optional[dict]:
         """Lean fundamentals: fund Redis → StockService (timeout-friendly caller)."""
         sym = symbol.upper().strip()
-        for key in (f"fund:v20:{sym}", f"stock:raw_fundamentals:v4:{sym}"):
+        for key in (f"fund:v21:{sym}", f"stock:raw_fundamentals:v4:{sym}"):
             cached = await cache_get(key)
             if isinstance(cached, dict) and cached:
                 ratios = cached.get("ratios") or cached

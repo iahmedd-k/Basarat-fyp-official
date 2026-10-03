@@ -1,6 +1,7 @@
 .git
 **
 !requirements.lock
+!requirements.txt
 !alembic.ini
 !alembic/
 !alembic/**

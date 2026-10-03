@@ -99,13 +99,16 @@ def register_error_handlers(app: FastAPI) -> None:
         if exc.field is not None:
             body["field"] = exc.field
         body.update(exc.extras)
-        return JSONResponse(
+        response = JSONResponse(
             status_code=exc.status_code,
             content=body,
         )
+        if request_id := getattr(request.state, "request_id", None):
+            response.headers["X-Request-ID"] = request_id
+        return response
     @app.exception_handler(AppError)
     async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
-        return JSONResponse(
+        response = JSONResponse(
             status_code=exc.status_code,
             content={
                 "success": False,
@@ -115,10 +118,13 @@ def register_error_handlers(app: FastAPI) -> None:
                 },
             },
         )
+        if request_id := getattr(request.state, "request_id", None):
+            response.headers["X-Request-ID"] = request_id
+        return response
 
     @app.exception_handler(Exception)
     async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(
+        response = JSONResponse(
             status_code=500,
             content={
                 "success": False,
@@ -128,3 +134,6 @@ def register_error_handlers(app: FastAPI) -> None:
                 },
             },
         )
+        if request_id := getattr(request.state, "request_id", None):
+            response.headers["X-Request-ID"] = request_id
+        return response

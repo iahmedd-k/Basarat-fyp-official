@@ -25,8 +25,6 @@ from app.ml.serving.schemas import (
 
 log = logging.getLogger(__name__)
 
-MARKET_REFERENCE_DATE = date(2026, 9, 25)
-
 router = APIRouter()
 
 def _get_user_risk_profile(user: User) -> str:
@@ -45,28 +43,6 @@ def _get_user_weights(user: User, defaults: dict) -> dict[str, float]:
         return {key: value / total for key, value in weights.items()}
     except (KeyError, TypeError, ValueError):
         return defaults.copy()
-
-
-async def _load_recommendation_sentiment(db: AsyncSession, symbol: str) -> dict | None:
-    """Reuse the sentiment API's cache/FinBERT aggregation service for detail routes."""
-    from app.services.sentiment_service import compute_stock_sentiment, get_cached_sentiment
-
-    cached = get_cached_sentiment(symbol)
-    if cached is not None:
-        updated_at = cached.get("updated_at")
-        try:
-            updated = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
-            if updated.tzinfo is None:
-                updated = updated.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) - updated.astimezone(timezone.utc) <= timedelta(days=7):
-                return cached
-        except (TypeError, ValueError):
-            pass
-    try:
-        return await compute_stock_sentiment(db, symbol, days=7)
-    except Exception as exc:
-        log.warning("FinBERT sentiment unavailable for recommendation %s: %s", symbol, exc)
-        return {"status": "unavailable", "reason": f"FinBERT/news sentiment service failed: {exc}"}
 
 
 def _summarize(r: dict) -> str:
@@ -126,7 +102,7 @@ def _market_data_freshness(data_as_of: str | None, *, today: date | None = None)
         return {"data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None}
     try:
         observed = date.fromisoformat(str(data_as_of)[:10])
-        current = today or min(datetime.now(timezone.utc).date(), MARKET_REFERENCE_DATE)
+        current = today or datetime.now(timezone.utc).date()
         calendar_days = (current - observed).days
         if calendar_days < 0:
             return {"data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None}
@@ -149,7 +125,7 @@ def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
     result = dict(rec)
     freshness = _market_data_freshness(result.get("data_as_of"), today=today)
     result.update(freshness)
-    stale = freshness["data_freshness"] == "stale"
+    stale = freshness["data_freshness"] in {"stale", "unknown"}
     original_signal = str(result.get("signal", "hold")).upper()
     result["signal_suppressed"] = False
     result["suppression_reason"] = None
@@ -216,15 +192,15 @@ def _market_data_payload(rec: dict) -> dict:
     analysis_freshness = _market_data_freshness(rec.get("data_as_of"))
     return {
         "as_of": None if quote_is_stale else (price_as_of or quote_as_of),
-        "quote_fetched_at": quote_as_of or datetime.now(timezone.utc).isoformat(),
+        "quote_fetched_at": quote_as_of,
         "freshness": quote_freshness["data_freshness"],
         "age_calendar_days": quote_freshness["data_age_calendar_days"] or 0,
         "age_trading_days": quote_freshness["data_age_trading_days"] or 0,
-        "analysis_as_of": rec.get("data_as_of") or datetime.now(timezone.utc).isoformat(),
+        "analysis_as_of": rec.get("data_as_of"),
         "analysis_freshness": analysis_freshness["data_freshness"],
         "analysis_age_calendar_days": analysis_freshness["data_age_calendar_days"] or 0,
         "analysis_age_trading_days": analysis_freshness["data_age_trading_days"] or 0,
-        "current_price": rec.get("current_price") or 100.0,
+        "current_price": rec.get("current_price"),
         "currency": "PKR",
     }
 
@@ -252,11 +228,11 @@ def _risk_payload(rec: dict) -> dict:
     return {
         "target_price": tp,
         "stop_loss": sl,
-        "expected_range": exp_range or {"low": 0.0, "high": 0.0, "method": "atr_band"},
-        "atr_14": rec.get("atr_14") or 2.5,
-        "upside_pct": rec.get("upside_pct") or 0.0,
-        "downside_pct": rec.get("downside_pct") or 0.0,
-        "risk_reward_ratio": rec.get("risk_reward_ratio") or 1.5,
+        "expected_range": exp_range,
+        "atr_14": rec.get("atr_14"),
+        "upside_pct": rec.get("upside_pct"),
+        "downside_pct": rec.get("downside_pct"),
+        "risk_reward_ratio": rec.get("risk_reward_ratio"),
         "method": rec.get("target_stop_method", "atr_band"),
         "explanation": _target_stop_reason(rec),
     }
@@ -447,24 +423,29 @@ async def set_engine_weights(
 async def get_recommendation_detail(
     symbol: str = PathParam(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.&-]+$"),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     try:
         symbol = symbol.upper()
 
-        from app.services.recommendation_service import RecommendationEngine, DEFAULT_WEIGHTS
+        from app.services.recommendation_service import (
+            RecommendationEngine,
+            DEFAULT_WEIGHTS,
+            get_cached_recommendations,
+        )
 
         user_weights = _get_user_weights(user, DEFAULT_WEIGHTS)
         risk_profile = _get_user_risk_profile(user)
         engine = RecommendationEngine(weights=user_weights)
-        sentiment_data = await _load_recommendation_sentiment(db, symbol)
-        rec = await run_in_threadpool(
-            engine.get_recommendation,
-            symbol,
-            risk_tolerance=risk_profile,
-            weights=engine.weights,
-            sentiment_data=sentiment_data,
-        )
+        snapshot = await run_in_threadpool(get_cached_recommendations)
+        source = next((item for item in (snapshot or []) if item.get("symbol") == symbol), None)
+        if source is None:
+            raise ServiceUnavailableError("Recommendation snapshot is not available")
+        rec = (await run_in_threadpool(
+            engine.personalize_snapshot,
+            [source],
+            risk_profile,
+            user_weights,
+        ))[0]
 
         rec = _apply_freshness_guard(rec)
 
@@ -494,24 +475,29 @@ async def get_recommendation_detail(
 async def get_target_stop(
     symbol: str = PathParam(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.&-]+$"),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     try:
         symbol = symbol.upper()
 
-        from app.services.recommendation_service import RecommendationEngine, DEFAULT_WEIGHTS
+        from app.services.recommendation_service import (
+            RecommendationEngine,
+            DEFAULT_WEIGHTS,
+            get_cached_recommendations,
+        )
 
         user_weights = _get_user_weights(user, DEFAULT_WEIGHTS)
         risk_profile = _get_user_risk_profile(user)
         engine = RecommendationEngine(weights=user_weights)
-        sentiment_data = await _load_recommendation_sentiment(db, symbol)
-        rec = await run_in_threadpool(
-            engine.get_recommendation,
-            symbol,
-            risk_tolerance=risk_profile,
-            weights=engine.weights,
-            sentiment_data=sentiment_data,
-        )
+        snapshot = await run_in_threadpool(get_cached_recommendations)
+        source = next((item for item in (snapshot or []) if item.get("symbol") == symbol), None)
+        if source is None:
+            raise ServiceUnavailableError("Recommendation snapshot is not available")
+        rec = (await run_in_threadpool(
+            engine.personalize_snapshot,
+            [source],
+            risk_profile,
+            user_weights,
+        ))[0]
         rec = _apply_freshness_guard(rec)
 
         return TargetStopResponse(

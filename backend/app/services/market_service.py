@@ -780,19 +780,8 @@ class MarketService:
     async def get_sector_performance(self, order: str = "desc") -> dict:
         """Aggregate daily price performance and breadth for each classified sector."""
         data = await self.get_market_data()
-        # Existing quote caches may predate sector enrichment. Fill them from
-        # the bulk PSX screener in one request instead of leaving every group
-        # empty until a scheduled quote refresh occurs.
-        if data and not any(
-            str(quote.get("sector") or "").strip().casefold() not in {"", "unclassified", "unknown"}
-            for quote in data
-        ):
-            sector_map = await asyncio.to_thread(self._load_sector_map_sync)
-            if sector_map:
-                for quote in data:
-                    quote["sector"] = sector_map.get(str(quote.get("symbol", "")).upper(), "Unclassified")
-                await cache_set("market:quotes", data, _quotes_ttl())
-                await cache_set("market:quotes:last_known", data, FALLBACK_TTL_SECONDS)
+        # Sector enrichment belongs to the scheduled market ingestion job.
+        # A read endpoint must not fall back to scraping the PSX screener.
 
         grouped = defaultdict(list)
         for quote in data:

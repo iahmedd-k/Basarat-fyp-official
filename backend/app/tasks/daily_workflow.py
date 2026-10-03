@@ -69,12 +69,9 @@ def update_market_data_task(self):
             log.info("[DATA] Exchange holiday; retaining prior session snapshots")
             return {"status": "skipped", "reason": "exchange_holiday", "timestamp": datetime.utcnow().isoformat()}
 
-        from app.data.scraper.run_scrape import run_scrape
+        from app.data.scraper.run_after_close import run_after_close_scrape
 
-        scrape_result = run_scrape(
-            mode="incremental",
-            delay=0.3,
-        )
+        scrape_result = run_after_close_scrape()
         if isinstance(scrape_result, dict):
             errors = int(scrape_result.get("errors", 0) or 0)
             total = int(scrape_result.get("total_symbols", 0) or 0)
@@ -82,6 +79,8 @@ def update_market_data_task(self):
                 raise SourceRateLimited("PSX returned HTTP 403/429; retained previous snapshots and stopped this daily chain")
             if total and errors == total:
                 raise RuntimeError(f"OHLCV refresh failed for every symbol ({errors}/{total})")
+            if total and not int(scrape_result.get("ok", 0) or 0):
+                raise RuntimeError("OHLCV refresh returned no updated symbols; refusing to continue with stale prices")
             log.info(
                 "[DATA] Market data update complete: updated=%s skipped=%s errors=%s no_data=%s",
                 scrape_result.get("ok"), scrape_result.get("skipped"), errors, scrape_result.get("no_data"),
@@ -174,8 +173,7 @@ def generate_predictions_task(self):
             load_artifacts()
 
         if not artifacts.model_ready:
-            log.warning("[PREDICTION] Model not ready — skipping")
-            return {"status": "skipped", "reason": "model_not_ready"}
+            raise RuntimeError("Prediction model is not ready; refusing to publish downstream recommendations")
 
         df = pd.read_parquet(FEATURES_PATH)
         df["date"] = pd.to_datetime(df["date"])
@@ -231,6 +229,8 @@ def generate_predictions_task(self):
                 failed += 1
 
         session.close()
+        if symbols and success == 0:
+            raise RuntimeError("Prediction generation produced no usable symbol results")
         log.info(
             "[PREDICTION] Complete: %d succeeded, %d failed out of %d (as_of=%s)",
             success,
@@ -305,6 +305,8 @@ def run_daily_pipeline():
 
     If any step fails, subsequent steps are skipped (Celery chain behavior).
     """
+    from app.core.redis import get_sync_redis_client
+
     log.info("[DAILY] Starting full daily pipeline")
 
     # Gate before dispatching the chain. Returning "skipped" from the first
@@ -319,8 +321,18 @@ def run_daily_pipeline():
         from app.services.news_pipeline.market_schedule import is_holiday
         if asyncio.run(is_holiday()):
             return {"status": "skipped", "reason": "exchange_holiday"}
-    except Exception as exc:
-        log.warning("Could not check holiday calendar; continuing daily pipeline: %s", exc)
+    except Exception:
+        log.exception("Could not check holiday calendar; refusing to start daily pipeline")
+        return {"status": "skipped", "reason": "holiday_check_unavailable"}
+
+    dispatch_key = "jobs:daily-workflow:dispatch-lock"
+    client = get_sync_redis_client()
+    if client is None:
+        log.error("[DAILY] Redis is unavailable; refusing to dispatch an uncoordinated pipeline")
+        return {"status": "blocked", "reason": "redis_unavailable"}
+    if not client.set(dispatch_key, "1", nx=True, ex=21600):
+        log.info("[DAILY] A daily pipeline is already dispatched; skipping duplicate")
+        return {"status": "skipped", "reason": "already_dispatched"}
 
     # These stages are independent tasks in a serial pipeline. Immutable
     # signatures prevent Celery from injecting each prior task's result as a
@@ -336,7 +348,14 @@ def run_daily_pipeline():
         aggregate_sentiment_task.si(),
         refresh_recommendations_task.si(),
     )
-    result = workflow.apply_async()
+    try:
+        result = workflow.apply_async()
+    except Exception:
+        try:
+            client.delete(dispatch_key)
+        except Exception:
+            log.exception("[DAILY] Could not clear dispatch lock after enqueue failure")
+        raise
 
     log.info("[DAILY] Pipeline dispatched — group_id=%s", result.id)
     return {"status": "dispatched", "group_id": result.id}

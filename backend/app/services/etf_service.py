@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, date, timedelta
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from sqlalchemy import select, update, delete, desc, or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,7 @@ from app.schemas.etf import (
 )
 
 log = logging.getLogger(__name__)
+OHLCV_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "raw" / "ohlcv"
 
 INITIAL_PSX_ETFS = [
     {
@@ -284,7 +286,11 @@ class ETFService:
         return await self._format_etf_response(etf)
 
     async def get_history(self, symbol: str, timeframe: str = "1M") -> ETFHistoryResponse:
-        """Fetch historical timeseries with cache."""
+        """Read historical timeseries from the maintained OHLCV data files.
+
+        Historical data is published by the daily ingestion pipeline. API
+        requests must not contact PSX directly when a cache is cold.
+        """
         sym = symbol.strip().upper()
         cache_key = f"etf:hist:v1:{sym}:{timeframe}"
         cached = await cache_get(cache_key)
@@ -293,12 +299,15 @@ class ETFService:
 
         history_items: List[ETFHistoryItem] = []
         try:
-            import pypsx_toolkit
-            import asyncio
-            df = await asyncio.wait_for(
-                asyncio.to_thread(pypsx_toolkit.get_historical, sym),
-                timeout=3.0,
-            )
+            path = OHLCV_DATA_DIR / f"{sym}.parquet"
+            df = pd.read_parquet(path) if path.is_file() else pd.DataFrame()
+            if "date" in df.columns:
+                df["date"] = pd.to_datetime(df["date"])
+                df = df.set_index("date")
+            if not df.empty:
+                df.index = pd.to_datetime(df.index)
+                df.columns = [str(column).upper() for column in df.columns]
+                df = df.sort_index(ascending=True)
             if hasattr(df, "iloc") and len(df) > 0:
                 df = df.sort_index(ascending=True)
                 for idx, row in df.tail(30 if timeframe == "1M" else 90 if timeframe == "3M" else 250).iterrows():
@@ -314,7 +323,7 @@ class ETFService:
                         )
                     )
         except Exception as exc:
-            log.debug("Historical fetch failed for ETF %s: %s", sym, exc)
+            log.warning("Persisted ETF history read failed for %s: %s", sym, exc)
 
         if not history_items:
             # Construct synthetic smooth history based on base price

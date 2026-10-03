@@ -100,8 +100,12 @@ def run(self, force: bool = False, limit_per_source: int = 50):
         if lock_client and not lock_client.set(lock_key, lock_token, nx=True, ex=1800):
             return {"status": "skipped", "reason": "already_running", "market_status": status}
     except Exception as exc:
-        log.warning("Redis ingestion lock unavailable; continuing without lock: %s", exc)
-        lock_client = None
+        log.error("Redis ingestion lock unavailable; refusing uncoordinated ingestion: %s", exc)
+        return {"status": "blocked", "reason": "redis_unavailable"}
+
+    if lock_client is None:
+        log.error("Redis ingestion lock unavailable; refusing uncoordinated ingestion")
+        return {"status": "blocked", "reason": "redis_unavailable"}
 
     # ── Run the pipeline ─────────────────────────────────────────────────
     from app.services.news_pipeline.pipeline import run_pipeline

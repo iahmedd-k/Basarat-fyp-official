@@ -1,15 +1,19 @@
 import logging
 import time
+from datetime import datetime, timezone
 from io import StringIO
 from datetime import date, timedelta
+from pathlib import Path
 
 import pandas as pd
 import pypsx_toolkit
 from fastapi import Depends
+from sqlalchemy import select
 
-from app.core.redis import cache_get_sync, cache_set_sync
+from app.core.redis import cache_get_sync, cache_set_sync, distributed_lock
 from app.services.market_service import MarketService
 from app.services.psx_company_tables import get_psx_company_table_data
+from app.models.fundamentals import StockFundamentals
 
 QUOTE_TTL_SECONDS = 300
 # Fundamental values are session-level data; damp failed calls for an hour so
@@ -17,6 +21,9 @@ QUOTE_TTL_SECONDS = 300
 FUND_TTL_SECONDS = 86400
 OHLCV_TTL_SECONDS = 86400
 FAILED_SOURCE_TTL_SECONDS = 3600
+SINGLE_FLIGHT_WAIT_SECONDS = 8.0
+SINGLE_FLIGHT_POLL_SECONDS = 0.25
+OHLCV_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "raw" / "ohlcv"
 log = logging.getLogger(__name__)
 
 # Unified in-process TTL cache: key -> (value, timestamp).
@@ -48,6 +55,17 @@ def _cache_source_frame(key, value, ttl_seconds):
     _cache_ttl[key] = _now() - max(0, ttl_seconds - FAILED_SOURCE_TTL_SECONDS) if _is_empty_frame(value) else _now()
 
 
+def _wait_for_shared_value(key: str, timeout: float = SINGLE_FLIGHT_WAIT_SECONDS):
+    """Wait briefly for another API process to populate a shared cache key."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        value = cache_get_sync(key)
+        if value is not None:
+            return value
+        time.sleep(SINGLE_FLIGHT_POLL_SECONDS)
+    return None
+
+
 def _get_shared_dataframe(key, loader, ttl_seconds=FUND_TTL_SECONDS):
     """Share toolkit DataFrame responses across API replicas through Redis."""
     cached = cache_get_sync(key)
@@ -56,11 +74,20 @@ def _get_shared_dataframe(key, loader, ttl_seconds=FUND_TTL_SECONDS):
             return pd.read_json(StringIO(cached), orient="split")
         except Exception:
             pass
-    try:
-        frame = loader()
-    except Exception as exc:
-        log.warning("External DataFrame fetch failed for %s: %s", key, exc)
-        return None
+    with distributed_lock(f"lock:{key}", ttl_seconds) as acquired:
+        if not acquired:
+            shared = _wait_for_shared_value(key)
+            if isinstance(shared, str):
+                try:
+                    return pd.read_json(StringIO(shared), orient="split")
+                except Exception:
+                    return None
+            return None
+        try:
+            frame = loader()
+        except Exception as exc:
+            log.warning("External DataFrame fetch failed for %s: %s", key, exc)
+            return None
     if frame is not None and hasattr(frame, "to_json"):
         ttl = ttl_seconds if not bool(getattr(frame, "empty", False)) else FAILED_SOURCE_TTL_SECONDS
         try:
@@ -281,36 +308,38 @@ class StockService:
             _cache[cache_key] = shared
             _cache_ttl[cache_key] = now
             return shared
-        try:
-            frame = pypsx_toolkit.get_quote(symbol, as_dict=True)
-        except TypeError:
+        with distributed_lock(f"lock:stock:quote:{symbol}", QUOTE_TTL_SECONDS) as acquired:
+            if not acquired:
+                shared = _wait_for_shared_value(shared_key)
+                return shared if isinstance(shared, dict) else None
             try:
-                # Newer toolkit releases default to a DataFrame and no longer
-                # accept the legacy `format` keyword.
-                frame = pypsx_toolkit.get_quote(symbol)
+                frame = pypsx_toolkit.get_quote(symbol, as_dict=True)
             except TypeError:
                 try:
-                    frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
+                    frame = pypsx_toolkit.get_quote(symbol)
+                except TypeError:
+                    try:
+                        frame = pypsx_toolkit.get_quote(symbol, format="dataframe")
+                    except Exception as exc:
+                        log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
+                        frame = None
                 except Exception as exc:
                     log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
                     frame = None
             except Exception as exc:
                 log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
                 frame = None
-        except Exception as exc:
-            log.warning("PSX quote fetch failed for %s: %s", symbol, exc)
-            frame = None
-        if _is_empty_frame(frame):
-            try:
-                frame = pypsx_toolkit.get_quote(symbol)
-            except Exception as exc:
-                log.debug("PSX quote fallback failed for %s: %s", symbol, exc)
+            if _is_empty_frame(frame):
+                try:
+                    frame = pypsx_toolkit.get_quote(symbol)
+                except Exception as exc:
+                    log.debug("PSX quote fallback failed for %s: %s", symbol, exc)
         _cache_source_frame(cache_key, frame, QUOTE_TTL_SECONDS)
         if isinstance(frame, dict):
             cache_set_sync(shared_key, frame, QUOTE_TTL_SECONDS)
         return frame
 
-    def _get_fund_frame(self, symbol):
+    def _get_fund_frame(self, symbol, *, allow_upstream: bool = False):
         symbol = str(symbol).upper()
         now = _now()
         cache_key = f"fund:{symbol}"
@@ -325,33 +354,37 @@ class StockService:
             _cache[cache_key] = shared
             _cache_ttl[cache_key] = now
             return shared
-        try:
-            frame = pypsx_toolkit.get_company_fundamentals(symbol, as_dict=True)
-        except TypeError:
+        if not allow_upstream:
+            return None
+        with distributed_lock(f"lock:stock:fundamentals:{symbol}", FUND_TTL_SECONDS) as acquired:
+            if not acquired:
+                shared = _wait_for_shared_value(shared_key)
+                return shared if isinstance(shared, dict) else None
             try:
-                # Fall back to the toolkit's default DataFrame response first.
-                # `format` was removed from the public API in newer releases.
-                frame = pypsx_toolkit.get_company_fundamentals(symbol)
+                frame = pypsx_toolkit.get_company_fundamentals(symbol, as_dict=True)
             except TypeError:
                 try:
-                    frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
+                    frame = pypsx_toolkit.get_company_fundamentals(symbol)
+                except TypeError:
+                    try:
+                        frame = pypsx_toolkit.get_company_fundamentals(symbol, format="dataframe")
+                    except Exception as exc:
+                        log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
+                        frame = None
                 except Exception as exc:
                     log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
                     frame = None
             except Exception as exc:
                 log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
                 frame = None
-        except Exception as exc:
-            log.warning("PSX fundamentals fetch failed for %s: %s", symbol, exc)
-            frame = None
-        if _is_empty_frame(frame):
-            try:
-                frame = pypsx_toolkit.get_company_fundamentals(symbol, format="json")
-            except Exception:
+            if _is_empty_frame(frame):
                 try:
-                    frame = pypsx_toolkit.get_company_fundamentals(symbol)
-                except Exception as exc:
-                    log.debug("PSX fundamentals fallback failed for %s: %s", symbol, exc)
+                    frame = pypsx_toolkit.get_company_fundamentals(symbol, format="json")
+                except Exception:
+                    try:
+                        frame = pypsx_toolkit.get_company_fundamentals(symbol)
+                    except Exception as exc:
+                        log.debug("PSX fundamentals fallback failed for %s: %s", symbol, exc)
         _cache_source_frame(cache_key, frame, FUND_TTL_SECONDS)
         if isinstance(frame, dict):
             ttl = FUND_TTL_SECONDS if not _is_empty_frame(frame) else FAILED_SOURCE_TTL_SECONDS
@@ -431,9 +464,14 @@ class StockService:
             _cache[cache_key] = frame
             _cache_ttl[cache_key] = now
             return frame
-        try:
-            frame = pypsx_toolkit.get_dividend_info(symbol, format="dataframe")
-        except Exception:
+        with distributed_lock(f"lock:stock:dividends:{symbol}", FUND_TTL_SECONDS) as acquired:
+            if not acquired:
+                shared = _wait_for_shared_value(shared_key)
+                if isinstance(shared, dict) and shared.get("__dataframe__"):
+                    return pd.DataFrame(shared.get("rows", []), columns=shared.get("columns"))
+                return None
+            # Dividend history is refreshed by the controlled fundamentals
+            # ingestion task. API requests only read the shared snapshot.
             frame = None
         _cache_source_frame(cache_key, frame, FUND_TTL_SECONDS)
         if frame is not None and hasattr(frame, "to_dict"):
@@ -443,25 +481,34 @@ class StockService:
             cache_set_sync(shared_key, {"__dataframe__": True, "columns": columns, "rows": rows}, ttl)
         return frame
 
-    def _get_ohlcv_from_file(self, symbol: str, start: date, end: date):
-        import pandas as pd
-        from pathlib import Path
-        for p in [Path(f"data/raw/ohlcv/{symbol}.parquet"), Path(f"/app/data/raw/ohlcv/{symbol}.parquet")]:
-            if p.exists():
-                try:
-                    df = pd.read_parquet(p)
-                    if "date" in df.columns:
-                        df["date"] = pd.to_datetime(df["date"])
-                        df = df.set_index("date")
-                    df.columns = [c.upper() for c in df.columns]
-                    start_ts = pd.to_datetime(start)
-                    end_ts = pd.to_datetime(end)
-                    filtered = df.loc[(df.index >= start_ts) & (df.index <= end_ts)]
-                    if not filtered.empty:
-                        return filtered
-                except Exception:
-                    pass
-        return None
+    def _get_ohlcv_from_file(
+        self,
+        symbol: str,
+        start: date | None = None,
+        end: date | None = None,
+    ):
+        path = OHLCV_DATA_DIR / f"{str(symbol).upper()}.parquet"
+        if not path.is_file():
+            return None
+
+        try:
+            df = pd.read_parquet(path)
+            if "date" in df.columns:
+                df["date"] = pd.to_datetime(df["date"])
+                df = df.set_index("date")
+            df.index = pd.to_datetime(df.index)
+            df.columns = [str(column).upper() for column in df.columns]
+            df = df.sort_index(kind="mergesort")
+            df = df.loc[~df.index.duplicated(keep="last")]
+
+            if start is not None:
+                df = df.loc[df.index >= pd.to_datetime(start)]
+            if end is not None:
+                df = df.loc[df.index <= pd.to_datetime(end)]
+            return df if not df.empty else None
+        except Exception as exc:
+            log.warning("Could not read local OHLCV file %s: %s", path, exc)
+            return None
 
     def _get_ohlcv(self, symbol, start: date, end: date):
         symbol = str(symbol).upper()
@@ -489,26 +536,21 @@ class StockService:
         df = self._get_ohlcv_from_file(symbol, start, end)
         if df is None or (hasattr(df, "empty") and df.empty):
             df = stale_shared
-        if df is not None and self._ohlcv_frame_is_stale(df):
-            latest = self._latest_ohlcv_date(df)
-            refresh_start = max(start, latest + timedelta(days=1)) if latest else start
-            try:
-                refreshed = None
-                if refresh_start <= end:
-                    refreshed = pypsx_toolkit.get_historical(
-                        symbol, start_date=refresh_start.isoformat(), end_date=end.isoformat()
-                    )
-                df = self._merge_ohlcv_frames(df, refreshed, start, end)
-            except Exception as exc:
-                log.warning("PSX history fetch failed for %s: %s", symbol, exc)
-        elif df is None:
-            try:
-                df = pypsx_toolkit.get_historical(
-                    symbol, start_date=start.isoformat(), end_date=end.isoformat()
-                )
-            except Exception as exc:
-                log.warning("PSX history fetch failed for %s: %s", symbol, exc)
-                df = None
+        if (df is not None and self._ohlcv_frame_is_stale(df)) or df is None:
+            with distributed_lock(f"lock:stock:history:{symbol}", OHLCV_TTL_SECONDS) as acquired:
+                if not acquired:
+                    shared = _wait_for_shared_value(shared_key)
+                    if isinstance(shared, str):
+                        try:
+                            df = pd.read_json(StringIO(shared), orient="split")
+                            df.index = pd.to_datetime(df.index)
+                        except Exception:
+                            pass
+                else:
+                    # Historical data is owned by the daily ingestion worker.
+                    # API requests serve the latest persisted/stale snapshot
+                    # rather than contacting PSX when a cache is cold.
+                    log.info("Serving persisted OHLCV snapshot for %s", symbol)
 
         _cache_source_frame(key, df, OHLCV_TTL_SECONDS)
         if df is not None:
@@ -615,17 +657,6 @@ class StockService:
             name = info.get("company_name") or info.get("name")
             if name and str(name).strip().upper() not in {symbol, f"{symbol} PAKISTAN"}:
                 return str(name)
-        try:
-            ticker = pypsx_toolkit.Ticker(symbol)
-            ticker_info = getattr(ticker, "info", None)
-            info = ticker_info if isinstance(ticker_info, dict) else {}
-            if info:
-                cache_set_sync(info_key, info, FUND_TTL_SECONDS)
-                name = info.get("company_name") or info.get("name")
-                if name and str(name).strip().upper() not in {symbol, f"{symbol} PAKISTAN"}:
-                    return str(name)
-        except Exception as exc:
-            log.debug("Company name lookup failed for %s: %s", symbol, exc)
         from app.services.news_pipeline.symbol_tagger import _STATIC_ALIASES
 
         aliases = _STATIC_ALIASES.get(symbol, [])
@@ -710,7 +741,7 @@ class StockService:
     ):
         symbol = str(symbol).upper()
         norm_indicators = ",".join(sorted([i.strip().upper() for i in indicators.split(",") if i.strip()]))
-        cache_key = f"tech:v2:{symbol}:{norm_indicators}:{period}:{limit}"
+        cache_key = f"tech:v3:{symbol}:{norm_indicators}:{period}:{limit}"
 
         # 1. Check Redis cache first
         cached = cache_get_sync(cache_key)
@@ -719,13 +750,53 @@ class StockService:
 
         requested = [i.strip().upper() for i in indicators.split(",") if i.strip()]
         end = date.today()
-        df = self._get_ohlcv(symbol, end - timedelta(days=370), end)
+        df = self._get_ohlcv_from_file(symbol, end=end)
         if df is None or df.empty:
             return {
                 "symbol": symbol,
                 "period": period,
                 "overall_signal": "NEUTRAL",
                 "summary_message": "No historical price data available to compute technical indicators.",
+                "as_of_date": None,
+                "data_age_days": None,
+                "is_stale": True,
+                "signals_breakdown": {"buy": 0, "neutral": 0, "sell": 0},
+                "summary": {},
+                "indicators": {},
+            }
+
+        if "CLOSE" not in df.columns:
+            log.warning("OHLCV history for %s is missing the CLOSE column", symbol)
+            return {
+                "symbol": symbol,
+                "period": period,
+                "overall_signal": "NEUTRAL",
+                "summary_message": "Historical price data is missing closing prices.",
+                "as_of_date": None,
+                "data_age_days": None,
+                "is_stale": True,
+                "signals_breakdown": {"buy": 0, "neutral": 0, "sell": 0},
+                "summary": {},
+                "indicators": {},
+            }
+
+        df = df.copy()
+        df["CLOSE"] = pd.to_numeric(df["CLOSE"], errors="coerce")
+        df = df.dropna(subset=["CLOSE"])
+        has_adx_prices = {"HIGH", "LOW"}.issubset(df.columns)
+        if has_adx_prices:
+            for column in ("HIGH", "LOW"):
+                df[column] = pd.to_numeric(df[column], errors="coerce")
+            adx_df = df.dropna(subset=["HIGH", "LOW"])
+        else:
+            adx_df = df.iloc[0:0]
+
+        if df.empty:
+            return {
+                "symbol": symbol,
+                "period": period,
+                "overall_signal": "NEUTRAL",
+                "summary_message": "No valid OHLC price history available to compute technical indicators.",
                 "as_of_date": None,
                 "data_age_days": None,
                 "is_stale": True,
@@ -789,14 +860,41 @@ class StockService:
             sig_s = to_series(macd_signal)
             ind_series["MACD"] = macd_s
             ind_series["MACD_SIGNAL"] = sig_s
-            if macd_s and sig_s:
-                latest_macd = macd_s[-1]["value"]
-                latest_sig = sig_s[-1]["value"]
+            paired_macd = pd.concat(
+                [macd_line.rename("macd"), macd_signal.rename("signal")], axis=1
+            ).dropna()
+            if not paired_macd.empty:
+                latest_macd = float(paired_macd["macd"].iloc[-1])
+                latest_sig = float(paired_macd["signal"].iloc[-1])
+                previous_macd = float(paired_macd["macd"].iloc[-2]) if len(paired_macd) > 1 else None
+                previous_sig = float(paired_macd["signal"].iloc[-2]) if len(paired_macd) > 1 else None
+                crossed_up = (
+                    previous_macd is not None
+                    and previous_sig is not None
+                    and previous_macd <= previous_sig
+                    and latest_macd > latest_sig
+                )
+                crossed_down = (
+                    previous_macd is not None
+                    and previous_sig is not None
+                    and previous_macd >= previous_sig
+                    and latest_macd < latest_sig
+                )
                 if latest_macd > latest_sig:
-                    sig, desc = "BUY", "Bullish MACD crossover; upward momentum is accelerating."
+                    sig = "BUY"
+                    desc = (
+                        "Bullish MACD crossover; upward momentum is accelerating."
+                        if crossed_up
+                        else "MACD is above its signal line, indicating bullish momentum."
+                    )
                     signals["buy"] += 1
                 elif latest_macd < latest_sig:
-                    sig, desc = "SELL", "Bearish MACD crossover; downward momentum detected."
+                    sig = "SELL"
+                    desc = (
+                        "Bearish MACD crossover; downward momentum detected."
+                        if crossed_down
+                        else "MACD is below its signal line, indicating bearish momentum."
+                    )
                     signals["sell"] += 1
                 else:
                     sig, desc = "NEUTRAL", "MACD line is converging with signal line."
@@ -877,7 +975,11 @@ class StockService:
 
         # --- ADX ---
         if "ADX" in requested:
-            adx_s = to_series(self._adx(df, period))
+            if adx_df.empty:
+                log.warning("OHLCV history for %s lacks valid HIGH/LOW values for ADX", symbol)
+                adx_s = []
+            else:
+                adx_s = to_series(self._adx(adx_df, period))
             ind_series["ADX"] = adx_s
             if adx_s:
                 latest_adx = adx_s[-1]["value"]
@@ -890,13 +992,14 @@ class StockService:
                 summary["adx"] = {
                     "value": latest_adx,
                     "signal_line": 25.0,
-                    "signal": "BUY" if latest_adx >= 25 else "NEUTRAL",
+                    "signal": "NEUTRAL",
                     "trend_strength": trend_str,
                     "description": desc,
                     "lower": 20.0,
                     "mid": 25.0,
                     "upper": 50.0,
                 }
+                signals["neutral"] += 1
 
         # --- Overall Signal & Message ---
         buy_c, neut_c, sell_c = signals["buy"], signals["neutral"], signals["sell"]
@@ -941,8 +1044,10 @@ class StockService:
         low = df["LOW"].astype(float)
         close = df["CLOSE"].astype(float)
 
-        plus_dm = high.diff().where(high.diff() > -low.diff(), 0.0).clip(lower=0.0)
-        minus_dm = (-low.diff()).where(-low.diff() > high.diff(), 0.0).clip(lower=0.0)
+        up_move = high.diff()
+        down_move = -low.diff()
+        plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+        minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
 
         tr = pd.concat(
             [
@@ -952,12 +1057,31 @@ class StockService:
             ],
             axis=1,
         ).max(axis=1)
-        atr = tr.ewm(alpha=1 / period, adjust=False).mean()
 
-        plus_di = 100 * plus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr
-        minus_di = 100 * minus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr
+        def wilder_smooth(series):
+            values = series.astype(float)
+            valid_positions = np.flatnonzero(values.notna().to_numpy())
+            if not len(valid_positions):
+                return pd.Series(float("nan"), index=values.index)
+            first_position = int(valid_positions[0])
+            seed_position = first_position + period - 1
+            if seed_position >= len(values):
+                return pd.Series(float("nan"), index=values.index)
+
+            seed_values = values.iloc[first_position:seed_position + 1]
+            if seed_values.isna().any():
+                return pd.Series(float("nan"), index=values.index)
+
+            smoothed = values.copy()
+            smoothed.iloc[:seed_position] = float("nan")
+            smoothed.iloc[seed_position] = seed_values.mean()
+            return smoothed.ewm(alpha=1 / period, adjust=False).mean()
+
+        atr = wilder_smooth(tr)
+        plus_di = 100 * wilder_smooth(plus_dm) / atr
+        minus_di = 100 * wilder_smooth(minus_dm) / atr
         dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
-        adx = dx.ewm(alpha=1 / period, adjust=False).mean()
+        adx = wilder_smooth(dx)
         return adx
 
     def _fund_raw_string(self, symbol, category, metric_name=None):
@@ -996,17 +1120,61 @@ class StockService:
         except Exception:
             return None
 
-    def get_fundamentals(self, symbol: str):
+    def get_fundamentals(self, symbol: str, *, refresh: bool = False):
+        """Return persisted fundamentals unless an explicit refresh is requested.
+
+        API callers must remain read-only with respect to PSX. The scheduled
+        fundamentals task passes ``refresh=True`` and is the only path allowed
+        to fetch upstream data.
+        """
+        symbol = str(symbol).upper()
+        cache_key = f"fund:v21:{symbol}"
+        cached = cache_get_sync(cache_key)
+        if cached is not None:
+            return cached
+        if not refresh:
+            persisted = self._get_persisted_fundamentals(symbol)
+            if persisted is not None:
+                cache_set_sync(cache_key, persisted, 172800)
+                return persisted
+            return {
+                "symbol": symbol,
+                "data_status": "unavailable",
+                "data_message": "Fundamentals have not been loaded by the scheduled refresh yet.",
+            }
+        return self._fetch_fundamentals_upstream(symbol, allow_synthetic=False)
+
+    @staticmethod
+    def _get_persisted_fundamentals(symbol: str):
+        try:
+            from app.db.base import get_sync_session_factory
+
+            with get_sync_session_factory()() as session:
+                row = session.execute(
+                    select(StockFundamentals).where(StockFundamentals.symbol == symbol)
+                ).scalar_one_or_none()
+                return row.payload if row else None
+        except Exception as exc:
+            log.warning("Persisted fundamentals lookup failed for %s: %s", symbol, exc)
+            return None
+
+    def _fetch_fundamentals_upstream(
+        self,
+        symbol: str,
+        *,
+        allow_synthetic: bool = False,
+        force_refresh: bool = False,
+    ):
         symbol = str(symbol).upper()
         # v13 forces refresh of all cached company profiles and loads full company tables
-        cache_key = f"fund:v20:{symbol}"
+        cache_key = f"fund:v21:{symbol}"
 
         cached = cache_get_sync(cache_key)
         if cached is not None:
             return cached
 
         quote = self._get_quote_frame(symbol)
-        psx_table_data = get_psx_company_table_data(symbol)
+        psx_table_data = get_psx_company_table_data(symbol, force_refresh=force_refresh)
         div = self._get_dividend_frame(symbol)
 
         info_key = f"stock:ticker_info:v5:{symbol}"
@@ -1058,7 +1226,7 @@ class StockService:
 
         # Populate _fund_metric from the same page payload instead of fetching
         # that company page a second time through the toolkit.
-        fund_data = self._get_fund_frame(symbol)
+        fund_data = self._get_fund_frame(symbol, allow_upstream=True)
         flat_info = fund_data if isinstance(fund_data, dict) else info_dict
 
         # 1. Company Profile & Governance
@@ -1102,17 +1270,17 @@ class StockService:
         if str(comp_name).strip().upper() in {symbol, f"{symbol} PAKISTAN"}:
             comp_name = self._company_name(symbol)
 
-        if not desc:
+        if not desc and allow_synthetic:
             desc = f"{comp_name} is an active public listed company traded on the Pakistan Stock Exchange under symbol {symbol}, categorized under the {sector or 'equity market'} sector."
-        if not ceo:
+        if not ceo and allow_synthetic:
             ceo = "Executive Management (Disclosed in Annual Financials)"
-        if not chairperson:
+        if not chairperson and allow_synthetic:
             chairperson = "Board of Directors (Disclosed in Annual Financials)"
-        if not secretary:
+        if not secretary and allow_synthetic:
             secretary = "Corporate Secretariat (Disclosed in Annual Financials)"
-        if not website:
+        if not website and allow_synthetic:
             website = f"https://dps.psx.com.pk/company/{symbol}"
-        if not address:
+        if not address and allow_synthetic:
             address = "Pakistan Stock Exchange Road, Karachi, Pakistan"
 
         company_profile = {
@@ -1129,7 +1297,7 @@ class StockService:
 
         # Obtain reference quote for fallback calculation
         batch = self.get_quote_batch([symbol])
-        curr_price = 100.0
+        curr_price = None
         if batch and batch[0].get("current"):
             curr_price = float(batch[0]["current"] or batch[0].get("ldcp") or 100.0)
 
@@ -1155,7 +1323,7 @@ class StockService:
             try: total_shares = int(float(str(eq["Shares"]).replace(",", "").strip()))
             except Exception: pass
 
-        if not total_shares or total_shares <= 0:
+        if allow_synthetic and (not total_shares or total_shares <= 0):
             total_shares = 100_000_000
 
         free_float_shares = self._safe_int(self._fund_metric(symbol, "Equity Profile", "Free Float"))
@@ -1171,14 +1339,14 @@ class StockService:
         elif free_float_pct and not free_float_shares and total_shares:
             free_float_shares = int(total_shares * (free_float_pct / 100.0))
 
-        if not free_float_shares or free_float_shares <= 0:
+        if allow_synthetic and (not free_float_shares or free_float_shares <= 0):
             free_float_shares = int(total_shares * 0.25)
-        if not free_float_pct or free_float_pct <= 0:
+        if allow_synthetic and (not free_float_pct or free_float_pct <= 0):
             free_float_pct = 25.0
 
-        if not market_cap_pkr or market_cap_pkr <= 0:
+        if (not market_cap_pkr or market_cap_pkr <= 0) and curr_price and total_shares:
             market_cap_pkr = round(curr_price * total_shares, 2)
-        if not market_cap_m or market_cap_m <= 0:
+        if (not market_cap_m or market_cap_m <= 0) and market_cap_pkr:
             market_cap_m = round(market_cap_pkr / 1_000_000, 2)
 
         equity_profile = {
@@ -1222,19 +1390,19 @@ class StockService:
             gross_margin = self._num(latest_ratio_values.get("gross_profit_margin_pct"))
 
         # Fallbacks for empty valuation metrics
-        if pe_ratio is None or pe_ratio <= 0:
+        if allow_synthetic and (pe_ratio is None or pe_ratio <= 0):
             pe_ratio = 12.5
-        if eps is None or eps <= 0:
+        if allow_synthetic and eps is None and curr_price and pe_ratio:
             eps = round(curr_price / max(1.0, pe_ratio), 2)
-        if peg is None or peg <= 0:
+        if allow_synthetic and (peg is None or peg <= 0):
             peg = 1.15
-        if eps_growth is None:
+        if allow_synthetic and eps_growth is None:
             eps_growth = 8.5
-        if net_margin is None:
+        if allow_synthetic and net_margin is None:
             net_margin = 12.0
-        if gross_margin is None:
+        if allow_synthetic and gross_margin is None:
             gross_margin = 22.5
-        if div_yield is None:
+        if allow_synthetic and div_yield is None:
             div_yield = 4.5
 
         ratios = {
@@ -1275,7 +1443,7 @@ class StockService:
         financials_quarterly = psx_table_data.get("financials_quarterly") or _financial_rows(financials_quarterly)
 
         curr_yr = date.today().year
-        if not financials_annual:
+        if allow_synthetic and not financials_annual and market_cap_m and eps:
             financials_annual = [
                 {
                     "period": f"FY{curr_yr-1}",
@@ -1294,7 +1462,7 @@ class StockService:
                     "eps": round(eps * 0.9, 2),
                 }
             ]
-        if not financials_quarterly:
+        if allow_synthetic and not financials_quarterly and market_cap_m and eps:
             financials_quarterly = [
                 {
                     "period": f"Q3 {curr_yr}",
@@ -1344,17 +1512,17 @@ class StockService:
         if ytd_change is None:
             ytd_change = self._quote_field(quote, "YTD CHANGE * ^")
 
-        if year_high is None or year_high <= 0:
+        if allow_synthetic and year_high is None and curr_price:
             year_high = round(curr_price * 1.35, 2)
-        if year_low is None or year_low <= 0:
+        if allow_synthetic and year_low is None and curr_price:
             year_low = round(curr_price * 0.75, 2)
-        if cb_low is None or cb_low <= 0:
+        if allow_synthetic and cb_low is None and curr_price:
             cb_low = round(curr_price * 0.925, 2)
-        if cb_up is None or cb_up <= 0:
+        if allow_synthetic and cb_up is None and curr_price:
             cb_up = round(curr_price * 1.075, 2)
-        if year_change is None:
+        if allow_synthetic and year_change is None:
             year_change = 12.5
-        if ytd_change is None:
+        if allow_synthetic and ytd_change is None:
             ytd_change = 8.0
 
         trading_limits = {
@@ -1429,26 +1597,26 @@ class StockService:
         if not sector_overview:
             sector_overview = {
                 "sector": sector or "General Market",
-                "companies_count": 25,
-                "avg_change_pct": 0.65,
-                "advancing": 15,
-                "declining": 8,
-                "unchanged": 2,
+                "companies_count": None,
+                "avg_change_pct": None,
+                "advancing": None,
+                "declining": None,
+                "unchanged": None,
                 "stock": {
                     "symbol": symbol,
                     "name": comp_name,
                     "current": curr_price,
-                    "ldcp": curr_price,
-                    "change_pct": 0.0,
-                    "volume": 50000,
+                    "ldcp": None,
+                    "change_pct": None,
+                    "volume": None,
                 },
-                "stock_rank": 5,
+                "stock_rank": None,
                 "top_gainers": [],
                 "top_losers": [],
             }
 
-        data_status = "complete"
-        data_message = "Company fundamentals, governance, equity profile, and financial statements loaded successfully." 
+        data_status = "complete" if info_dict or financials_annual or financials_quarterly else "partial"
+        data_message = "Company fundamentals loaded from the configured PSX sources." if data_status == "complete" else "Some PSX fundamentals were unavailable during refresh."
 
         reports_list = psx_table_data.get("financial_reports") or []
         total_reports = psx_table_data.get("total_reports_count") or len(reports_list)

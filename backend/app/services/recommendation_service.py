@@ -107,8 +107,6 @@ class RecommendationEngine:
             if (atr is None or float(atr) <= 0) and price and float(price) > 0:
                 if item.get("norm_atr14"):
                     atr = float(item["norm_atr14"]) * float(price)
-                else:
-                    atr = float(price) * 0.025
             item["atr_14"] = round(float(atr), 4) if atr else None
             if atr and price and item.get("signal") in {"buy", "sell"}:
                 multipliers = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])
@@ -131,6 +129,13 @@ class RecommendationEngine:
                 }
                 item["target_price"] = None
                 item["stop_loss"] = None
+                item["upside_pct"] = None
+                item["downside_pct"] = None
+                item["risk_reward_ratio"] = None
+            else:
+                item["target_price"] = None
+                item["stop_loss"] = None
+                item["expected_range"] = None
                 item["upside_pct"] = None
                 item["downside_pct"] = None
                 item["risk_reward_ratio"] = None
@@ -269,7 +274,7 @@ class RecommendationEngine:
                 trend_mult = 0.8
 
         vol_zscore = latest.get("volume_zscore_20", 0)
-        vol_mult = 1.1 if (pd.notna(vol_zscore) and abs(float(vol_zscore)) > 1.2) else 1.0
+        vol_mult = 1.1 if (pd.notna(vol_zscore) and float(vol_zscore) > 1.2) else 1.0
 
         if not signals:
             return 0.0, {"status": "unavailable", "reason": "no technical indicators available"}

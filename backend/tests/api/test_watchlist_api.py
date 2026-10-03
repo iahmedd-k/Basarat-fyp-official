@@ -39,13 +39,13 @@ class TestWatchlistEndpoints:
             "name": "Dividend Gems",
             "description": "High dividend yield stocks",
             "is_default": True,
-            "symbols": ["OGDC", "PPL", "ENGRO"],
+            "symbols": ["OGDC", "HBL", "OGDC"],
         }
         resp = await client.post("/api/v1/watchlists", headers=auth_headers, json=payload)
         assert resp.status_code == 201
         data = resp.json()
         assert data["name"] == "Dividend Gems"
-        assert data["item_count"] == 3
+        assert data["item_count"] == 2
 
     async def test_create_watchlist_normalizes_symbols_and_counts_unique_items(
         self, client: AsyncClient, auth_headers: dict
@@ -53,7 +53,7 @@ class TestWatchlistEndpoints:
         resp = await client.post(
             "/api/v1/watchlists",
             headers=auth_headers,
-            json={"name": "Normalized", "symbols": [" sys ", "SYS", "ogdc"]},
+            json={"name": "Normalized", "symbols": [" ogdc ", "OGDC", "Habib Bank Limited"]},
         )
         assert resp.status_code == 201
         data = resp.json()
@@ -62,7 +62,18 @@ class TestWatchlistEndpoints:
         detail = await client.get(
             f"/api/v1/watchlists/{data['id']}", headers=auth_headers
         )
-        assert {item["symbol"] for item in detail.json()["items"]} == {"OGDC", "SYS"}
+        assert {item["symbol"] for item in detail.json()["items"]} == {"OGDC", "HBL"}
+
+    async def test_create_watchlist_rejects_unknown_stock_reference(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        response = await client.post(
+            "/api/v1/watchlists",
+            headers=auth_headers,
+            json={"name": "Unknown", "symbols": ["NOTASTOCK"]},
+        )
+
+        assert response.status_code == 404
 
     async def test_create_watchlist_rejects_invalid_bulk_symbol(
         self, client: AsyncClient, auth_headers: dict
@@ -127,6 +138,7 @@ class TestWatchlistEndpoints:
         assert item_resp.status_code == 201
         item_data = item_resp.json()
         assert item_data["symbol"] == "SYS"
+        assert item_data["stock_id"] == stock.id
         assert item_data["name"] == "Systems Limited"
         assert item_data["sector"] == "Technology"
         assert item_data["target_price"] == 450.0
@@ -139,7 +151,53 @@ class TestWatchlistEndpoints:
         assert len(detail_data["items"]) == 1
         assert detail_data["items"][0]["symbol"] == "SYS"
 
-    async def test_add_duplicate_symbol_fails(self, client: AsyncClient, auth_headers: dict):
+    async def test_add_watchlist_item_by_company_name(
+        self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+    ):
+        db_session.add(
+            Stock(symbol="SYS", name="Systems Limited", sector="Technology")
+        )
+        await db_session.flush()
+        create_resp = await client.post(
+            "/api/v1/watchlists",
+            headers=auth_headers,
+            json={"name": "Company name lookup"},
+        )
+        watchlist_id = create_resp.json()["id"]
+
+        response = await client.post(
+            f"/api/v1/watchlists/{watchlist_id}/items",
+            headers=auth_headers,
+            json={"symbol": "systems limited"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["symbol"] == "SYS"
+        assert response.json()["stock_id"] is not None
+        assert response.json()["name"] == "Systems Limited"
+
+    async def test_add_watchlist_item_rejects_unknown_stock(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        create_resp = await client.post(
+            "/api/v1/watchlists",
+            headers=auth_headers,
+            json={"name": "Unknown stock"},
+        )
+
+        response = await client.post(
+            f"/api/v1/watchlists/{create_resp.json()['id']}/items",
+            headers=auth_headers,
+            json={"symbol": "UNKNOWN"},
+        )
+
+        assert response.status_code == 404
+
+    async def test_add_duplicate_symbol_fails(
+        self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+    ):
+        db_session.add(Stock(symbol="HUBC", name="The Hub Power Company"))
+        await db_session.flush()
         create_resp = await client.post(
             "/api/v1/watchlists",
             headers=auth_headers,
@@ -200,11 +258,11 @@ class TestWatchlistEndpoints:
         await client.post(
             f"/api/v1/watchlists/{wl_id}/items",
             headers=auth_headers,
-            json={"symbol": "MEBL"},
+            json={"symbol": "HBL"},
         )
 
         del_resp = await client.delete(
-            f"/api/v1/watchlists/{wl_id}/items/MEBL",
+            f"/api/v1/watchlists/{wl_id}/items/HBL",
             headers=auth_headers,
         )
         assert del_resp.status_code == 204

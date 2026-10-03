@@ -8,6 +8,8 @@ Output layout::
 """
 
 import logging
+import os
+import uuid
 from pathlib import Path
 
 import pandas as pd
@@ -26,7 +28,12 @@ def write_symbol_parquet(
     out_dir = output_dir or _DEFAULT_OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{symbol}.parquet"
-    df.to_parquet(path, index=False, engine="pyarrow")
+    temporary_path = out_dir / f".{symbol}.{uuid.uuid4().hex}.tmp.parquet"
+    try:
+        df.to_parquet(temporary_path, index=False, engine="pyarrow")
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
     log.info("Wrote %d rows -> %s", len(df), path)
     return path
 
@@ -53,6 +60,11 @@ def write_combined_parquet(
 
     combined = pd.concat(parts, ignore_index=True)
     path = out_dir / "all_symbols.parquet"
-    combined.to_parquet(path, index=False, engine="pyarrow")
+    temporary_path = out_dir / f".all_symbols.{uuid.uuid4().hex}.tmp.parquet"
+    try:
+        combined.to_parquet(temporary_path, index=False, engine="pyarrow")
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
     log.info("Wrote %d rows (%d symbols) -> %s", len(combined), len(parts), path)
     return path

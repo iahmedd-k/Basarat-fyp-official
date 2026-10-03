@@ -29,6 +29,33 @@ class WatchlistService:
     def __init__(self, stock_service: StockService = Depends(StockService)):
         self.stock_service = stock_service
 
+    @staticmethod
+    async def _resolve_stock_reference(db: AsyncSession, value: str) -> Stock:
+        """Resolve an existing ticker or exact company name to its Stock row."""
+        reference = value.strip()
+        if not reference:
+            raise NotFoundError("A stock symbol or company name is required.")
+
+        result = await db.execute(
+            select(Stock).where(func.upper(Stock.symbol) == reference.upper())
+        )
+        stock = result.scalars().first()
+        if stock is not None:
+            return stock
+
+        result = await db.execute(
+            select(Stock).where(
+                Stock.is_active == True,
+                func.lower(func.trim(Stock.name)) == reference.casefold(),
+            )
+        )
+        stock = result.scalars().first()
+        if stock is None:
+            raise NotFoundError(
+                f"No active stock matches symbol or company name '{reference}'."
+            )
+        return stock
+
     async def get_user_watchlists(
         self, db: AsyncSession, user_id: str
     ) -> list[WatchlistSummaryResponse]:
@@ -155,15 +182,21 @@ class WatchlistService:
 
         if data.symbols:
             seen_symbols = set()
-            for sym in data.symbols:
-                normalized = sym.strip().upper()
-                if normalized and normalized not in seen_symbols:
-                    seen_symbols.add(normalized)
-                    item = WatchlistItem(
-                        watchlist_id=watchlist.id,
-                        symbol=normalized,
-                    )
-                    db.add(item)
+            try:
+                for reference in data.symbols:
+                    stock = await self._resolve_stock_reference(db, reference)
+                    if stock.symbol not in seen_symbols:
+                        seen_symbols.add(stock.symbol)
+                        db.add(
+                            WatchlistItem(
+                                watchlist_id=watchlist.id,
+                                stock_id=stock.id,
+                                symbol=stock.symbol,
+                            )
+                        )
+            except Exception:
+                await db.rollback()
+                raise
 
         await db.commit()
         await db.refresh(watchlist)
@@ -220,9 +253,8 @@ class WatchlistService:
         data: WatchlistItemCreate,
     ) -> WatchlistItem:
         """Add a stock symbol to a watchlist."""
-        symbol = data.symbol.strip().upper()
-        if not symbol:
-            raise ValueError("Symbol cannot be empty")
+        stock = await self._resolve_stock_reference(db, data.symbol)
+        symbol = stock.symbol
 
         # Check for existing symbol in this watchlist
         existing_stmt = select(WatchlistItem).where(
@@ -235,6 +267,7 @@ class WatchlistService:
 
         item = WatchlistItem(
             watchlist_id=watchlist.id,
+            stock_id=stock.id,
             symbol=symbol,
             target_price=Decimal(str(data.target_price)) if data.target_price is not None else None,
             notes=data.notes.strip() if data.notes else None,
@@ -344,6 +377,7 @@ class WatchlistService:
                 WatchlistItemResponse(
                     id=item.id,
                     watchlist_id=item.watchlist_id,
+                    stock_id=item.stock_id,
                     symbol=item.symbol,
                     name=company_name,
                     sector=sector,

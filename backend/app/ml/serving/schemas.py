@@ -267,16 +267,6 @@ class ForecastHistoryResponse(BaseModel):
     history: list[ForecastHistoryItem]
 
 
-class ForecastPipelineResponse(BaseModel):
-    """When Celery predicts and evaluates (Asia/Karachi)."""
-
-    timezone: str
-    current_date_pkt: str
-    daily_pipeline: dict
-    outcome_timing: dict
-    api_paths: dict
-
-
 class ErrorResponse(BaseModel):
     detail: str
 

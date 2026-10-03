@@ -32,11 +32,9 @@ def dispatch_task(task_obj: Any, *args: Any, **kwargs: Any) -> Any:
     settings = get_settings()
 
     if getattr(settings, "USE_CELERY", True):
-        try:
-            if hasattr(task_obj, "delay"):
-                return task_obj.delay(*args, **kwargs)
-        except Exception as exc:
-            log.warning("Celery dispatch failed (%s). Falling back to in-process execution.", exc)
+        if not hasattr(task_obj, "delay"):
+            raise TypeError("Celery mode requires a Celery task with a delay method")
+        return task_obj.delay(*args, **kwargs)
 
     # In-process background execution
     job_id = uuid4().hex

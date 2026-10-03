@@ -53,6 +53,13 @@ async def _load_market_config() -> dict:
     if _config_cache and (now - _config_cache_time) < _CONFIG_CACHE_TTL:
         return _config_cache
 
+    # Weekend status is deterministic and must remain responsive even when
+    # the optional market-hours database is unavailable.
+    if _now_pkt().weekday() >= 5:
+        _config_cache = _default_config()
+        _config_cache_time = now
+        return _config_cache
+
     try:
         async with async_session_factory() as db:
             result = await db.execute(
@@ -82,7 +89,12 @@ async def _load_market_config() -> dict:
         return config
     except Exception as exc:
         log.warning("Failed to load market config, using defaults: %s", exc)
-        return _default_config()
+        # Cache the safe default briefly so status/readiness endpoints do not
+        # repeat a slow database connection attempt for every schedule check.
+        fallback = _default_config()
+        _config_cache = fallback
+        _config_cache_time = now
+        return fallback
 
 
 def _default_config() -> dict:

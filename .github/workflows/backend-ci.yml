@@ -1,0 +1,52 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  test-and-compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt pytest pytest-asyncio "xgboost>=2.0,<4"
+
+      - name: Compile Python sources
+        run: python -m compileall -q app
+
+      - name: Run focused tests
+        run: python -m pytest tests/unit -q
+        env:
+          SECRET_KEY: ci-only-secret-key-with-more-than-32-characters
+          ENVIRONMENT: test
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+          REDIS_ENABLED: "false"
+          USE_CELERY: "false"
+
+      - name: Validate Compose configuration
+        working-directory: .
+        run: |
+          CLOUD_DATABASE_URL=postgresql+asyncpg://ci:ci@example.invalid:5432/basarat \
+          docker compose -f backend/docker-compose.production.yml config --quiet

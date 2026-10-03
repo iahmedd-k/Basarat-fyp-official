@@ -25,8 +25,10 @@ def get_user_id_or_ip(request: Request) -> str:
             payload = decode_token(token)
             if payload and payload.get("type") == "access":
                 return f"user:{payload.get('sub', 'unknown')}"
-        except Exception:
-            pass
+        except (ValueError, KeyError, TypeError):
+            # Invalid credentials must not become an unbounded identity key.
+            # The request is still authenticated by the endpoint dependency.
+            return _get_client_ip(request)
     return _get_client_ip(request)
 
 

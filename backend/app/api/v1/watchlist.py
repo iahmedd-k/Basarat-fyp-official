@@ -29,15 +29,39 @@ router = APIRouter()
 _SYMBOL_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9]{1,9}$")
 
 
-def _validate_symbol(symbol: str) -> str:
-    """Normalize and validate a stock symbol."""
-    symbol = symbol.strip().upper()
-    if not _SYMBOL_PATTERN.match(symbol):
+def _validate_stock_reference(value: str) -> str:
+    """Validate a ticker symbol or company-name lookup value."""
+    value = value.strip()
+    valid_name = (
+        bool(value)
+        and any(char.isalpha() for char in value)
+        and all(
+            char.isalnum() or char.isspace() or char in "&.,'()/-"
+            for char in value
+        )
+    )
+    if (
+        not value
+        or len(value) > 100
+        or any(ord(char) < 32 for char in value)
+        or not (_SYMBOL_PATTERN.fullmatch(value) or valid_name)
+    ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid stock symbol '{symbol}'. Symbols must be 2-10 alphanumeric characters starting with a letter.",
+            detail="Enter a stock symbol or company name up to 100 characters.",
         )
-    return symbol
+    return value
+
+
+def _validate_symbol(symbol: str) -> str:
+    """Normalize and validate a ticker symbol used in symbol-only routes."""
+    value = symbol.strip().upper()
+    if not _SYMBOL_PATTERN.fullmatch(value):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid stock symbol '{value}'. Symbols must be 2-10 alphanumeric characters starting with a letter.",
+        )
+    return value
 
 
 # ── Watchlist Collection Endpoints ──────────────────────────────────────────
@@ -82,22 +106,29 @@ async def create_watchlist(
     Optionally populate with an initial list of stock symbols.
     """
     try:
-        symbols = list(dict.fromkeys(
-            _validate_symbol(symbol) for symbol in (data.symbols or [])
+        stock_references = list(dict.fromkeys(
+            _validate_stock_reference(value) for value in (data.symbols or [])
         ))
-        data = data.model_copy(update={"symbols": symbols})
+        data = data.model_copy(update={"symbols": stock_references})
         wl = await service.create_watchlist(db, user.id, data)
+        item_count = await db.scalar(
+            select(func.count(WatchlistItem.id)).where(
+                WatchlistItem.watchlist_id == wl.id
+            )
+        )
         return WatchlistSummaryResponse(
             id=wl.id,
             user_id=wl.user_id,
             name=wl.name,
             description=wl.description,
             is_default=wl.is_default,
-            item_count=len(symbols),
+            item_count=item_count or 0,
             created_at=wl.created_at.isoformat() if wl.created_at else "",
             updated_at=wl.updated_at.isoformat() if wl.updated_at else "",
         )
     except HTTPException:
+        raise
+    except NotFoundError:
         raise
     except Exception as exc:
         log.exception("Error creating watchlist: %s", exc)
@@ -274,13 +305,15 @@ async def add_watchlist_item(
     if not wl:
         raise NotFoundError(f"Watchlist with ID '{watchlist_id}' not found")
 
-    _validate_symbol(data.symbol)
+    data = data.model_copy(update={"symbol": _validate_stock_reference(data.symbol)})
 
     try:
         item = await service.add_item(db, wl, data)
         enriched_list = await service.enrich_items(db, [item])
         return enriched_list[0]
     except ConflictError:
+        raise
+    except NotFoundError:
         raise
     except Exception as exc:
         log.exception("Error adding stock to watchlist: %s", exc)

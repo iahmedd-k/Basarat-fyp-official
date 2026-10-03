@@ -3,7 +3,6 @@
 Core flow:
   GET /forecast/{symbol}           → predict + upsert into predictions
   GET /forecast/{symbol}/history   → read saved predictions + real outcomes only
-  GET /forecast/pipeline           → when Celery background jobs run (PKT)
 
 Outcomes are written only by Celery evaluate_pending (after target close is in features).
 History never invents sideways/actual labels.
@@ -13,6 +12,7 @@ import logging
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,7 @@ from app.ml.serving.inference import (
 )
 from app.ml.serving.model_loader import artifacts
 from app.ml.serving.prediction_logger import log_prediction
-from app.ml.serving.prediction_store import pkt_today, pipeline_schedule_info
+from app.ml.serving.prediction_store import pkt_today
 from app.models.prediction import Prediction
 from app.models.user import User
 from app.services.recommendation_service import RecommendationEngine
@@ -35,39 +35,12 @@ from app.ml.serving.schemas import (
     ErrorResponse,
     ForecastHistoryItem,
     ForecastHistoryResponse,
-    ForecastPipelineResponse,
     ForecastResponse,
 )
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-@router.get(
-    "/forecast/pipeline",
-    response_model=ForecastPipelineResponse,
-    summary="Forecast background job schedule (when predict + evaluate run)",
-)
-async def get_forecast_pipeline(user: User = Depends(get_current_user)):
-    """
-    Documents the Celery Beat daily pipeline for Android / ops.
-
-    **Mon–Fri 18:00 Asia/Karachi** (skips weekends & exchange holidays):
-    1. Scrape OHLCV → 2. Features → 3. Upsert predictions → 4. Evaluate outcomes
-    → 5. Sentiment → 6. Recommendations
-
-    A prediction made for `target_date = next trading day` is normally scored on
-    the **following** 18:00 run, once that day's close exists in features.
-    """
-    info = pipeline_schedule_info()
-    return ForecastPipelineResponse(
-        timezone=info["timezone"],
-        current_date_pkt=pkt_today().isoformat(),
-        daily_pipeline=info["daily_pipeline"],
-        outcome_timing=info["outcome_timing"],
-        api_paths=info["api_paths"],
-    )
 
 
 @router.get(
@@ -96,7 +69,7 @@ async def get_stock_forecast(
         if not artifacts.model_ready:
             raise ServiceUnavailableError("ML model is not loaded yet")
 
-        result = get_forecast(symbol, horizon=horizon)
+        result = await run_in_threadpool(get_forecast, symbol, horizon=horizon)
 
         await log_prediction(
             db,
@@ -149,20 +122,21 @@ async def get_stock_forecast(
                 stock_svc = StockService()
                 quote = stock_svc.get_quote(result["symbol"])
                 curr_p = (
-                    float(quote.get("current") or quote.get("ldcp") or 100.0) if quote else 100.0
+                    float(quote.get("current") or quote.get("ldcp")) if quote and (quote.get("current") or quote.get("ldcp")) else 0.0
                 )
-                atr = curr_p * (0.015 if horizon == "1D" else 0.035 if horizon == "1W" else 0.075)
+                if curr_p <= 0:
+                    raise ValueError("No current price is available for target/stop calculation")
+                atr = 0.0
                 mult = 2.0 if horizon == "1D" else 3.0 if horizon == "1W" else 4.0
                 dir_str = str(result.get("direction", "sideways")).lower()
-                if dir_str in ("bullish", "buy", "up"):
+                if dir_str in ("bullish", "buy", "up") and atr > 0:
                     tp = round(curr_p + (atr * mult), 2)
                     sl = round(curr_p - (atr * mult * 0.75), 2)
-                elif dir_str in ("bearish", "sell", "down"):
+                elif dir_str in ("bearish", "sell", "down") and atr > 0:
                     tp = round(curr_p - (atr * mult), 2)
                     sl = round(curr_p + (atr * mult * 0.75), 2)
                 else:
-                    tp = round(curr_p + (atr * mult), 2)
-                    sl = round(curr_p - (atr * mult), 2)
+                    raise ValueError("ATR is unavailable for target/stop calculation")
                 up_pct = round((tp - curr_p) / curr_p * 100, 2)
                 down_pct = round((sl - curr_p) / curr_p * 100, 2)
                 rr = round(abs(tp - curr_p) / max(0.01, abs(curr_p - sl)), 2)
@@ -249,19 +223,7 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
         risk_reward_ratio = target_stop.get("risk_reward_ratio")
 
     if current_price and direction in ("bullish", "bearish") and (target_price is None or stop_loss is None):
-        mult = 1.5 if horizon == "1D" else 2.5 if horizon == "1W" else 3.5
-        atr = current_price * (0.015 if horizon == "1D" else 0.035 if horizon == "1W" else 0.075)
-        tp = round(current_price + atr * mult, 2)
-        sl = round(current_price - atr * mult, 2)
-        target_price = tp
-        stop_loss = sl
-        expected_range = {"low": sl, "high": tp, "method": "atr_band"}
-        upside_pct = round((tp - current_price) / current_price * 100, 2)
-        downside_pct = round((sl - current_price) / current_price * 100, 2)
-        risk_reward_ratio = 1.0
-        price_target_rationale = (
-            f"Neutral trading channel [{sl} - {tp}] calculated via ATR volatility band for {horizon} horizon."
-        )
+        price_target_rationale = "Target and stop-loss are unavailable because a verified ATR value is missing."
     elif target_price is not None and stop_loss is not None:
         price_target_rationale = (
             f"Target price and stop-loss calculated via ATR volatility interval for {horizon} horizon."

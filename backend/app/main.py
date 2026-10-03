@@ -1,8 +1,11 @@
 import logging
+from uuid import uuid4
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.v1.health import router as health_router
 from app.core.config import get_settings
@@ -51,6 +54,15 @@ settings = get_settings()
 log = logging.getLogger(__name__)
 
 
+class RequestContextMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        request_id = request.headers.get("X-Request-ID") or uuid4().hex
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
@@ -71,8 +83,22 @@ async def lifespan(app: FastAPI):
     # from every API container's startup hook.
     if settings.USE_CELERY and settings.RUN_STARTUP_MARKET_WARMUP:
         try:
-            from app.tasks.refresh_market_cache import refresh_market_cache
-            refresh_market_cache.delay(refresh_reference=True, refresh_constituents=True)
+            from app.core.redis import get_sync_redis_client
+
+            client = get_sync_redis_client()
+            warmup_key = "jobs:market-cache:startup-warmup"
+            should_enqueue = client is None or bool(
+                client.set(warmup_key, "1", nx=True, ex=900)
+            )
+            if should_enqueue:
+                from app.tasks.refresh_market_cache import refresh_market_cache
+
+                refresh_market_cache.delay(
+                    refresh_reference=True,
+                    refresh_constituents=True,
+                )
+            else:
+                log.info("Startup market warmup already queued by another API replica")
         except Exception as exc:
             log.warning("Could not enqueue initial market cache refresh: %s", exc)
 
@@ -96,7 +122,7 @@ TAGS_METADATA = [
     {"name": "Market", "description": "PSX market summary, indices, gainers/losers, live discovery (GET /market/live), and cache-backed quotes for REST fallback."},
     {"name": "Stocks", "description": "Individual PSX stock quotes, company profiles, fundamentals, and technical indicators."},
     {"name": "Watchlist", "description": "User stock watchlists, price alerts targets, and custom tracked stock portfolios."},
-    {"name": "Forecast", "description": "ML directional forecasts (bullish/bearish/sideways): predict+save, history with real outcomes, pipeline schedule at GET /forecast/pipeline (daily 18:00 PKT)."},
+    {"name": "Forecast", "description": "ML directional forecasts (bullish/bearish/sideways): predict+save and history with real outcomes."},
     {"name": "Recommendations", "description": "Automated quantitative stock buy/hold/sell rankings and investment signals."},
     {"name": "Portfolio", "description": "Portfolio valuation, holdings, P&L, stock/sector allocations, and transaction ledger."},
     {"name": "Risk", "description": "Portfolio risk analytics, Value-at-Risk (VaR), CVaR, Monte Carlo simulations, and stress tests."},
@@ -127,12 +153,15 @@ app = FastAPI(
 
 register_error_handlers(app)
 add_rate_limiting(app)
+app.add_middleware(RequestContextMiddleware)
 
-# CORS configuration - allow all origins (*), methods, and headers
+# Reject host-header injection before routing.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=bool(settings.CORS_ORIGINS),
     allow_methods=["*"],
     allow_headers=["*"],
 )

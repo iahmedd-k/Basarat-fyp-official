@@ -4,10 +4,13 @@ from celery.schedules import crontab
 from app.core.config import get_settings
 
 settings = get_settings()
+broker_urls = [settings.CELERY_BROKER_URL]
+if settings.CLOUD_REDIS_URL and settings.CLOUD_REDIS_URL not in broker_urls:
+    broker_urls.append(settings.CLOUD_REDIS_URL)
 
 celery = Celery(
     "basarat",
-    broker=settings.CELERY_BROKER_URL,
+    broker=broker_urls,
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "app.tasks.scrape_news",
@@ -15,6 +18,7 @@ celery = Celery(
         "app.tasks.news_tasks",
         "app.tasks.run_forecast_inference",
         "app.tasks.daily_workflow",
+        "app.tasks.refresh_fundamentals",
         "app.tasks.weekly_retraining",
         "app.tasks.model_monitoring",
         "app.tasks.recommendation_cache",
@@ -38,8 +42,19 @@ celery.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
+    task_default_queue="default",
+    task_routes={
+        "app.tasks.refresh_market_cache.refresh_market_session": {"queue": "market-live"},
+        "app.tasks.refresh_market_cache.refresh_market_cache": {"queue": "market-live"},
+        "app.tasks.scrape_news.run": {"queue": "news"},
+        "app.tasks.news_tasks.*": {"queue": "news"},
+        "app.tasks.refresh_fundamentals.*": {"queue": "fundamentals"},
+        "app.tasks.weekly_retraining.*": {"queue": "ml-training"},
+        "app.tasks.daily_workflow.*": {"queue": "data-pipeline"},
+    },
     result_expires=86400,
     broker_connection_retry_on_startup=True,
+    broker_failover_strategy="round-robin",
     # Time limits for long-running tasks
     task_soft_time_limit=3600,
     task_time_limit=7200,
@@ -49,26 +64,41 @@ celery.conf.update(
             "schedule": 30.0,
         },
         # ── Daily: data update + features + predictions + evaluation ──
-        # Mon–Fri 18:00 Asia/Karachi (task skips weekends/holidays):
+        # Mon–Thu 15:35 and Fri 16:35 Asia/Karachi, five minutes after the
+        # configured PSX close (the pipeline skips weekends and holidays):
         #   update_market_data → generate_features → generate_predictions (upsert)
         #   → evaluate_pending (set actual_direction from closes) → sentiment → recs
         "daily-workflow": {
             "task": "app.tasks.daily_workflow.run_daily_pipeline",
-            "schedule": crontab(hour=18, minute=0, day_of_week="1-5"),  # after close, Mon-Fri PKT
+            "schedule": crontab(hour=15, minute=35, day_of_week="1-4"),
+        },
+        "daily-workflow-friday": {
+            "task": "app.tasks.daily_workflow.run_daily_pipeline",
+            "schedule": crontab(hour=16, minute=35, day_of_week="5"),
+        },
+        # Fundamentals are refreshed separately so a slow/rate-limited source
+        # cannot block the OHLCV/features/predictions chain.
+        "daily-fundamentals": {
+            "task": "app.tasks.refresh_fundamentals.refresh_fundamentals",
+            "schedule": crontab(hour=17, minute=30, day_of_week="1-4"),
+        },
+        "daily-fundamentals-friday": {
+            "task": "app.tasks.refresh_fundamentals.refresh_fundamentals",
+            "schedule": crontab(hour=18, minute=0, day_of_week="5"),
         },
         # ── Weekly: retraining pipeline ──
         "weekly-retraining": {
             "task": "app.tasks.weekly_retraining.run_weekly_pipeline",
-            "schedule": crontab(day_of_week=0, hour=4, minute=0),  # Sunday 04:00 PKT
+            "schedule": crontab(day_of_week=1, hour=4, minute=0),  # Monday 04:00 PKT
         },
         # ── Monitoring: daily ──
         "daily-performance-monitoring": {
             "task": "app.tasks.model_monitoring.monitor_performance",
-            "schedule": crontab(hour=6, minute=0),
+            "schedule": crontab(hour=6, minute=0, day_of_week="1-5"),
         },
         "daily-drift-detection": {
             "task": "app.tasks.model_monitoring.detect_drift",
-            "schedule": crontab(hour=7, minute=0),
+            "schedule": crontab(hour=7, minute=0, day_of_week="1-5"),
         },
         # ── Save the previous session's final quote snapshot once after close ──
         # API handlers serve this shared Redis snapshot; they do not scrape PSX.
@@ -77,15 +107,16 @@ celery.conf.update(
             "kwargs": {"refresh_reference": True},
             "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
         },
-        # ── Intraday shared snapshot during PSX open hours (task self-gates) ──
+        # ── Intraday shared snapshot during weekdays (task self-gates hours) ──
+        # A weekday crontab prevents even enqueueing this task on weekends.
         "refresh-market-session": {
             "task": "app.tasks.refresh_market_cache.refresh_market_session",
-            "schedule": float(max(30, int(getattr(settings, "MARKET_SESSION_REFRESH_SECONDS", 60)))),
+            "schedule": crontab(minute="*", day_of_week="1-5"),
         },
         # ── Evaluate Alert Rules & Watchlist Targets every 5 minutes (task gates hours) ──
         "evaluate-alert-rules": {
             "task": "app.tasks.alert_tasks.evaluate_alert_rules",
-            "schedule": crontab(minute="*/5"),
+            "schedule": crontab(minute="*/5", day_of_week="1-5"),
         },
         # ── Daily Portfolio Risk Breach Monitoring ──
         "daily-risk-threshold-monitoring": {
@@ -97,18 +128,18 @@ celery.conf.update(
         # ── News ingestion: every 30 min on the clock, task gates on market hours ──
         "news-ingestion-market-aware": {
             "task": "app.tasks.scrape_news.run",
-            "schedule": crontab(minute="*/30"),  # Every 30 min on the clock
+            "schedule": crontab(minute="*/30", day_of_week="1-5"),
         },
         # Index membership changes rarely; refresh it weekly, not on every API day.
         "refresh-market-constituents": {
             "task": "app.tasks.refresh_market_cache.refresh_market_cache",
             "kwargs": {"refresh_reference": True, "refresh_constituents": True},
-            "schedule": crontab(day_of_week=0, minute=15, hour=4),
+            "schedule": crontab(day_of_week=5, minute=15, hour=4),
         },
         # ── Rescore failed sentiment: hourly ──
         "rescore-failed-sentiment": {
             "task": "app.tasks.sentiment_tasks.rescore_failed_sentiment",
-            "schedule": crontab(minute=0),  # Hourly
+            "schedule": crontab(minute=0, day_of_week="1-5"),  # Hourly on trading weekdays
         },
     },
 )

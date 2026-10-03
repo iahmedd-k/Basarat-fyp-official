@@ -1,102 +1,107 @@
-x-logging: &default-logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "3"
-
 services:
-  # Uses the managed Supabase and Upstash URLs provided by backend/.env.
   migrate:
-    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
+    build:
+      context: .
+      dockerfile: dockerfile
     command: alembic upgrade head
-    env_file: .env
+    env_file:
+      - .env
     environment:
       ENVIRONMENT: production
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
-    volumes:
-      - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: "no"
-    logging: *default-logging
 
   app:
-    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
-    profiles: ["legacy-api"]
+    build:
+      context: .
+      dockerfile: dockerfile
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
-    user: "1000:1000"
-    env_file: .env
+    env_file:
+      - .env
     environment:
       ENVIRONMENT: production
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    ports:
+      - "8000:8000"
     volumes:
-      - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
       - market-data:/app/data/raw/ohlcv
       - feature-data:/app/data/features
-      - gru-candidates:/app/models/gru_candidate
-      - xgb-candidates:/app/models/xgb_candidate
       - training-reports:/app/data/reports
-    ports: ["127.0.0.1:8090:8000"]
     depends_on:
-      migrate: { condition: service_completed_successfully }
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
-    logging: *default-logging
 
   celery-worker:
-    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=1
-    healthcheck:
-      test: ["CMD", "python", "-c", "from app.celery_app import celery; assert celery.control.ping(timeout=4)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 90s
-    user: "1000:1000"
-    stop_grace_period: 2h
-    env_file: .env
+    build:
+      context: .
+      dockerfile: dockerfile
+    command: celery -A app.celery_app worker --loglevel=info --queues=default,market-live,news,fundamentals,ml-training,data-pipeline --concurrency=2 --max-tasks-per-child=20
+    env_file:
+      - .env
     environment:
       ENVIRONMENT: production
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:
-      - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
       - market-data:/app/data/raw/ohlcv
       - feature-data:/app/data/features
-      - gru-candidates:/app/models/gru_candidate
-      - xgb-candidates:/app/models/xgb_candidate
       - training-reports:/app/data/reports
     depends_on:
-      migrate: { condition: service_completed_successfully }
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     restart: unless-stopped
-    logging: *default-logging
 
   celery-beat:
-    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable ECR image URI}
+    build:
+      context: .
+      dockerfile: dockerfile
     command: celery -A app.celery_app beat --loglevel=info --schedule=/var/lib/celery/celerybeat-schedule
-    healthcheck:
-      test: ["CMD", "python", "-c", "from app.core.health import CELERY_BEAT_HEARTBEAT_KEY; from app.core.redis import get_sync_redis_client; client = get_sync_redis_client(); assert client and client.get(CELERY_BEAT_HEARTBEAT_KEY)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    user: "1000:1000"
-    stop_grace_period: 30s
-    volumes:
-      - ./secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:/app/secrets/basarat-4c25b-firebase-adminsdk-fbsvc-afef7aa7e3.json:ro
-      - beat-state:/var/lib/celery
-    env_file: .env
+    env_file:
+      - .env
     environment:
       ENVIRONMENT: production
       DATABASE_URL: ${CLOUD_DATABASE_URL:?Set CLOUD_DATABASE_URL in backend/.env}
       DATABASE_URL_SYNC: ""
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - beat-state:/var/lib/celery
     depends_on:
-      migrate: { condition: service_completed_successfully }
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     restart: unless-stopped
-    logging: *default-logging
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+    command: redis-server --appendonly yes
     volumes:
       - redis-data:/data
     healthcheck:
@@ -105,33 +110,10 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    logging: *default-logging
 
 volumes:
   market-data:
-    external: true
-    name: backend_market-data
   feature-data:
-    external: true
-    name: backend_feature-data
-  gru-candidates:
-    external: true
-    name: backend_gru-candidates
-  xgb-candidates:
-    external: true
-    name: backend_xgb-candidates
-
-  beat-state:
-    external: true
-    name: backend_beat-state
   training-reports:
-    external: true
-    name: backend_training-reports
+  beat-state:
   redis-data:
-    external: true
-    name: backend_redis-data
-
-networks:
-  default:
-    external: true
-    name: backend_default

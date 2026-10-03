@@ -12,6 +12,16 @@ IS_TESTING = os.environ.get("PYTEST_CURRENT_TEST") is not None or os.environ.get
 
 
 class HealthService:
+    def _check_model(self):
+        if IS_TESTING:
+            return "ready"
+        try:
+            from app.ml.serving.model_loader import artifacts
+
+            return "ready" if artifacts.model_ready else "down"
+        except Exception:
+            return "down"
+
     def _check_redis(self):
         if IS_TESTING or not getattr(settings, "REDIS_ENABLED", True):
             return "ready"
@@ -53,11 +63,12 @@ class HealthService:
             return "down"
 
     async def check_health(self):
-        database_status, redis_status, worker_status, beat_status = await asyncio.gather(
+        database_status, redis_status, worker_status, beat_status, model_status = await asyncio.gather(
             self._check_database(),
             asyncio.to_thread(self._check_redis),
             asyncio.to_thread(self._check_celery_worker),
             asyncio.to_thread(self._check_celery_beat),
+            asyncio.to_thread(self._check_model),
         )
         services = {
             "api": "ready",
@@ -65,6 +76,7 @@ class HealthService:
             "redis": redis_status,
             "celery_worker": worker_status,
             "celery_beat": beat_status,
+            "ml_model": model_status,
         }
         status = (
             "healthy"

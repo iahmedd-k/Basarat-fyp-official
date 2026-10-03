@@ -49,7 +49,7 @@ def sync_portfolio_announcements(self):
             synced_counts = {}
             for sym in symbols:
                 try:
-                    items = await psx_svc.get_stock_announcements(sym, limit=20)
+                    items = await psx_svc.refresh_stock_announcements(sym, limit=20)
                     synced_counts[sym] = len(items)
                 except Exception as exc:
                     log.warning("Failed to sync announcements for %s: %s", sym, exc)

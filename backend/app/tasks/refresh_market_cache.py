@@ -170,6 +170,8 @@ async def _refresh_quotes_and_optional_reference(
 def refresh_market_cache(self, refresh_reference: bool = False, refresh_constituents: bool = False):
     """Full/reference refresh (startup, close snapshot, weekly constituents)."""
     status, lock_client, lock_token = _acquire_lock(ttl_seconds=900)
+    if status == "no_redis":
+        return {"status": "blocked", "reason": "redis_unavailable"}
     if status == "held":
         log.info("Skipping market refresh; another worker holds the refresh lock")
         return {"status": "skipped", "reason": "already_running"}
@@ -234,8 +236,12 @@ def refresh_market_session(self):
     if _circuit_is_open(None):
         return {"status": "skipped", "reason": "circuit_open"}
 
-    lock_ttl = max(45, int(settings.MARKET_SESSION_REFRESH_SECONDS) + 15)
+    # Keep the lock beyond the hard task timeout so a slow upstream response
+    # cannot overlap the next beat tick and create a scraper stampede.
+    lock_ttl = max(180, int(settings.MARKET_SESSION_REFRESH_SECONDS) + 150)
     lock_status, lock_client, lock_token = _acquire_lock(ttl_seconds=lock_ttl)
+    if lock_status == "no_redis":
+        return {"status": "blocked", "reason": "redis_unavailable"}
     if lock_status == "held":
         return {"status": "skipped", "reason": "already_running"}
 

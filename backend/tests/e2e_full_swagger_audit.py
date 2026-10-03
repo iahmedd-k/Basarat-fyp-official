@@ -386,10 +386,19 @@ class SwaggerLiveAuditRunner:
     def ensure_authenticated(self):
         if self.auth_token:
             return
+        admin_email = os.getenv("E2E_ADMIN_EMAIL")
+        admin_password = os.getenv("E2E_ADMIN_PASSWORD")
+        if not admin_email or not admin_password:
+            raise RuntimeError(
+                "Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD to run authenticated route checks."
+            )
         login_url = f"{self.api_url}/auth/login"
         for _ in range(6):
             try:
-                resp = self.client.post(login_url, json={"email": "admin@basarat.pk", "password": "TestPassword12345!"})
+                resp = self.client.post(
+                    login_url,
+                    json={"email": admin_email, "password": admin_password},
+                )
                 if resp.status_code == 200:
                     data = resp.json()
                     if isinstance(data, dict) and "access_token" in data:
@@ -438,24 +447,29 @@ class SwaggerLiveAuditRunner:
                 self.auth_headers = {"Authorization": f"Bearer {self.auth_token}"}
             else:
                 # Fallback to Admin Login
-                admin_login = self._execute(
-                    "Auth",
-                    "POST",
-                    "/auth/login",
-                    expected_status=[200, 401],
-                    json_data={"email": "admin@basarat.pk", "password": "TestPassword12345!"},
-                    use_auth=False,
-                )
-                if isinstance(admin_login, dict) and "access_token" in admin_login:
-                    self.auth_token = admin_login["access_token"]
-                    self.auth_headers = {"Authorization": f"Bearer {self.auth_token}"}
+                admin_email = os.getenv("E2E_ADMIN_EMAIL")
+                admin_password = os.getenv("E2E_ADMIN_PASSWORD")
+                if admin_email and admin_password:
+                    admin_login = self._execute(
+                        "Auth",
+                        "POST",
+                        "/auth/login",
+                        expected_status=[200, 401],
+                        json_data={"email": admin_email, "password": admin_password},
+                        use_auth=False,
+                    )
+                    if isinstance(admin_login, dict) and "access_token" in admin_login:
+                        self.auth_token = admin_login["access_token"]
+                        self.auth_headers = {"Authorization": f"Bearer {self.auth_token}"}
 
             # Auth Me
             self._execute("Auth", "GET", "/auth/me", expected_status=[200], inspector_kwargs={"critical_keys": ["id", "email"]})
 
             # 3-step Password Reset Probe
-            self._execute("Auth", "POST", "/auth/forgot-password", expected_status=[200, 404], json_data={"email": "admin@basarat.pk"}, use_auth=False)
-            self._execute("Auth", "POST", "/auth/verify-reset-code", expected_status=[400, 422], json_data={"email": "admin@basarat.pk", "code": "000000"}, use_auth=False)
+            admin_email = os.getenv("E2E_ADMIN_EMAIL")
+            if admin_email:
+                self._execute("Auth", "POST", "/auth/forgot-password", expected_status=[200, 404], json_data={"email": admin_email}, use_auth=False)
+                self._execute("Auth", "POST", "/auth/verify-reset-code", expected_status=[400, 422], json_data={"email": admin_email, "code": "000000"}, use_auth=False)
 
             # OAuth Endpoints Probe (Validation Guard)
             self._execute("Auth", "POST", "/auth/google", expected_status=[400, 401, 422], json_data={"id_token": "mock_google_id_token_for_validation_audit"}, use_auth=False)
@@ -562,17 +576,17 @@ class SwaggerLiveAuditRunner:
             "/portfolio/transactions/completed-trade",
             expected_status=[201, 200, 401],
             json_data={"symbol": "SYS", "quantity": 50, "buy_price": 410.0, "buy_date": "2026-09-01", "buy_fee": 10.0, "sell_price": 460.0, "sell_date": "2026-09-15", "sell_fee": 10.0},
-            inspector_kwargs={"critical_keys": ["realized_pnl", "return_pct"]},
+            inspector_kwargs={"critical_keys": ["realized_pnl", "realized_pnl_percent"]},
         )
 
         # Overview & Holdings
         self._execute("Portfolio", "GET", "/portfolio", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["summary", "holdings"]})
         self._execute("Portfolio", "GET", "/portfolio/holdings", expected_status=[200, 401])
         self._execute("Portfolio", "GET", "/portfolio/holdings/OGDC", expected_status=[200, 401, 404])
-        self._execute("Portfolio", "GET", "/portfolio/pnl", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["total_realized_pnl", "total_unrealized_pnl"]})
-        self._execute("Portfolio", "GET", "/portfolio/allocation", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["by_sector", "by_asset"]})
+        self._execute("Portfolio", "GET", "/portfolio/pnl", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["realized_pnl", "unrealized_pnl", "total_pnl"]})
+        self._execute("Portfolio", "GET", "/portfolio/allocation", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["by_stock", "by_sector"]})
         self._execute("Portfolio", "GET", "/portfolio/performance", params={"period": "1M"}, expected_status=[200, 401])
-        self._execute("Portfolio", "GET", "/portfolio/transactions", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["transactions", "total"]})
+        self._execute("Portfolio", "GET", "/portfolio/transactions", expected_status=[200, 401], inspector_kwargs={"critical_keys": ["items", "total"]})
 
     # ── 8. Risk Analytics & Monte Carlo Simulation ──────────────────────────
     def audit_risk_analytics(self):

@@ -66,6 +66,12 @@ class WatchlistItem(Base):
         index=True,
         nullable=False,
     )
+    stock_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("stocks.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     symbol: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
     target_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
