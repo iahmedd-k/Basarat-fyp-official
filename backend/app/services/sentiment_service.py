@@ -37,7 +37,14 @@ from app.repository.sentiment_repository import SentimentRepository
 log = logging.getLogger(__name__)
 
 SENTIMENT_DIR = Path("data/reports/sentiment")
-SENTIMENT_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    SENTIMENT_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    SENTIMENT_DIR = Path("/tmp/reports/sentiment")
+    try:
+        SENTIMENT_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 # ═══════════════════════════════════════════════════════════════════════
 # FinBERT via HuggingFace Inference API & Local Inference

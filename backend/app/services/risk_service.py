@@ -17,7 +17,14 @@ import pandas as pd
 log = logging.getLogger(__name__)
 DATA_DIR = Path("data")
 MC_RESULTS_DIR = DATA_DIR / "reports" / "monte_carlo"
-MC_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    MC_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    MC_RESULTS_DIR = Path("/tmp/reports/monte_carlo")
+    try:
+        MC_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 STRESS_SCENARIOS = {
     "2008_crash": {"name": "Illustrative broad market crash", "description": "Illustrative one-step sector shocks; not a reconstruction of 2008.", "market_shock": -.45, "worst_case_shock": -.60, "volatility_multiplier": 2.5, "recovery_days": 540, "sector_shocks": {"bank": -.55, "oil_gas": -.40, "cement": -.50, "fertilizer": -.35, "tech": -.60, "pharma": -.30, "textile": -.55, "power": -.25}},

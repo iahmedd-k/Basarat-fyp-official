@@ -27,8 +27,9 @@ COPY --chown=1000:1000 models/final/final_v3/gru_scaler.joblib ./models/final/fi
 COPY --chown=1000:1000 models/final/final_v3/xgb_model.ubj ./models/final/final_v3/xgb_model.ubj
 COPY --chown=1000:1000 models/final/final_v3/xgb_features.json ./models/final/final_v3/xgb_features.json
 
-RUN mkdir -p /app/tmp /app/data/raw/ohlcv /app/data/features \
-    && chown -R 1000:1000 /app/tmp /app/data
+RUN mkdir -p /app/tmp /app/data/raw/ohlcv /app/data/features /app/data/reports /app/data/reports/sentiment /app/data/reports/monte_carlo /app/data/news_state /var/lib/celery /home/app \
+    && chown -R 1000:1000 /app /var/lib/celery /home/app \
+    && chmod -R 777 /app/tmp /app/data /var/lib/celery /home/app
 
 USER 1000:1000
 

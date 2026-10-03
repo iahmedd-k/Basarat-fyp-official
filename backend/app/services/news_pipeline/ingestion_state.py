@@ -18,7 +18,10 @@ _STATE_TTL_SECONDS = 30 * 24 * 60 * 60
 
 
 def _ensure_dir():
-    _STATE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        _STATE_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 
 def get_last_ingestion_time() -> datetime | None:

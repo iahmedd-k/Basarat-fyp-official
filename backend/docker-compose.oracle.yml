@@ -101,13 +101,15 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      disable: true
     mem_limit: 2g
     stop_grace_period: 2m
     restart: unless-stopped
 
   celery-beat:
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to the published ARM64 image}
-    command: celery -A app.celery_app beat --loglevel=info --schedule=/var/lib/celery/celerybeat-schedule
+    command: celery -A app.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     env_file:
       - .env
     environment:
@@ -123,13 +125,13 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       REDIS_ENABLED: "true"
       USE_CELERY: "true"
-    volumes:
-      - beat-state:/var/lib/celery
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      disable: true
     mem_limit: 512m
     restart: unless-stopped
 
