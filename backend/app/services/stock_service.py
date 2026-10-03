@@ -6,7 +6,10 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
-import pypsx_toolkit
+try:
+    import pypsx_toolkit
+except Exception:
+    pypsx_toolkit = None
 from fastapi import Depends
 from sqlalchemy import select
 

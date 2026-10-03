@@ -6,7 +6,10 @@ from datetime import datetime, timezone
 from collections import defaultdict
 
 import httpx
-import pypsx_toolkit
+try:
+    import pypsx_toolkit
+except Exception:
+    pypsx_toolkit = None
 from bs4 import BeautifulSoup
 
 from app.core.config import get_settings

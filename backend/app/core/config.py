@@ -237,10 +237,13 @@ class Settings(BaseSettings):
                 raise ValueError("DEBUG must be false outside development")
             if "postgres:postgres@" in self.DATABASE_URL or "adminadmin" in self.DATABASE_URL:
                 raise ValueError("DATABASE_URL must not use development credentials outside development")
-            if self.FIREBASE_ENABLED and (
-                not self.FIREBASE_CREDENTIALS_PATH
-                or not Path(self.FIREBASE_CREDENTIALS_PATH).is_file()
-            ):
+            firebase_available = False
+            if self.FIREBASE_ENABLED and self.FIREBASE_CREDENTIALS_PATH:
+                try:
+                    firebase_available = Path(self.FIREBASE_CREDENTIALS_PATH).is_file()
+                except Exception:
+                    firebase_available = False
+            if self.FIREBASE_ENABLED and not firebase_available:
                 logging.getLogger(__name__).warning(
                     "Firebase credentials are unavailable; push notifications will be disabled."
                 )

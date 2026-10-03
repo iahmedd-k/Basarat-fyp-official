@@ -141,7 +141,7 @@ jobs:
           ORACLE_USER: ${{ secrets.ORACLE_USER }}
         run: |
           ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" \
-            'command -v docker >/dev/null && docker compose version >/dev/null && mkdir -p "$HOME/basarat/secrets" && chmod 0700 "$HOME/basarat/secrets" && test -f "$HOME/basarat/.env"'
+            'command -v docker >/dev/null && docker compose version >/dev/null && mkdir -p "$HOME/basarat/secrets" && chmod 0755 "$HOME/basarat/secrets" && (test ! -f "$HOME/basarat/secrets/firebase-admin.json" || chmod 0644 "$HOME/basarat/secrets/firebase-admin.json") && test -f "$HOME/basarat/.env"'
 
       - name: Upload Oracle Compose file
         env:
