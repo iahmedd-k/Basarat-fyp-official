@@ -284,50 +284,50 @@ class RecommendationDecision(BaseModel):
     horizon: str = "5 trading days"
     reason: str = ""
     suppressed: bool = False
-    suppression_reason: str = "None (Active signal - no risk suppression applied)"
+    suppression_reason: Optional[str] = "None (Active signal - no risk suppression applied)"
 
 
 class RecommendationComponent(BaseModel):
-    score: float = Field(default=0.0, ge=-1, le=1, description="Directional component score in [-1, 1]")
+    score: Optional[float] = Field(default=0.0, ge=-1, le=1, description="Directional component score in [-1, 1]")
     status: str = "available"
-    availability_reason: str = Field(default="Active: Signal verified and factored into decision matrix", description="Availability state and verification details.")
+    availability_reason: Optional[str] = Field(default="Active: Signal verified and factored into decision matrix", description="Availability state and verification details.")
     configured_weight: float = Field(default=0.0, ge=0, le=1)
     effective_weight: float = Field(default=0.0, ge=0, le=1)
     details: dict = Field(default_factory=dict, description="Source probabilities, observation date, and component-specific evidence.")
 
 
 class RecommendationMarketData(BaseModel):
-    as_of: str = ""
-    quote_fetched_at: str = ""
+    as_of: Optional[str] = ""
+    quote_fetched_at: Optional[str] = ""
     freshness: str = "fresh"
-    age_calendar_days: int = 0
-    age_trading_days: int = 0
-    analysis_as_of: str = ""
+    age_calendar_days: Optional[int] = 0
+    age_trading_days: Optional[int] = 0
+    analysis_as_of: Optional[str] = ""
     analysis_freshness: str = "fresh"
-    analysis_age_calendar_days: int = 0
-    analysis_age_trading_days: int = 0
-    current_price: float = 0.0
+    analysis_age_calendar_days: Optional[int] = 0
+    analysis_age_trading_days: Optional[int] = 0
+    current_price: Optional[float] = 0.0
     currency: str = "PKR"
 
 
 class RecommendationRiskLevels(BaseModel):
-    target_price: float = 0.0
-    stop_loss: float = 0.0
-    expected_range: ExpectedPriceRange | None = None
-    atr_14: float = 0.0
-    upside_pct: float = 0.0
-    downside_pct: float = 0.0
-    risk_reward_ratio: float = 0.0
-    method: str = "atr_band"
-    explanation: str = "Standard ATR risk boundaries calculated"
+    target_price: Optional[float] = 0.0
+    stop_loss: Optional[float] = 0.0
+    expected_range: Optional[ExpectedPriceRange] = None
+    atr_14: Optional[float] = 0.0
+    upside_pct: Optional[float] = 0.0
+    downside_pct: Optional[float] = 0.0
+    risk_reward_ratio: Optional[float] = 0.0
+    method: Optional[str] = "atr_band"
+    explanation: Optional[str] = "Standard ATR risk boundaries calculated"
 
 
 class RecommendationItem(BaseModel):
     """Compact recommendation card with grouped decision, components, data, and risk."""
 
     symbol: str
-    name: str = ""
-    sector: str = ""
+    name: Optional[str] = ""
+    sector: Optional[str] = ""
     decision: RecommendationDecision
     components: dict[str, RecommendationComponent]
     market_data: RecommendationMarketData
@@ -374,8 +374,8 @@ class RecommendationDetailResponse(BaseModel):
     """Structured recommendation detail for a single symbol."""
 
     symbol: str
-    name: str = ""
-    sector: str = ""
+    name: Optional[str] = ""
+    sector: Optional[str] = ""
     generated_at: datetime
     decision: RecommendationDecision
     components: dict[str, RecommendationComponent]
