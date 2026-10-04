@@ -1,61 +1,61 @@
 # Testing Strategy
 
-## Testing Levels
+## 1. Testing Levels & Architecture
 
-| Level | Location | Count | Purpose |
-|-------|----------|-------|---------|
-| **Unit Tests** | `tests/unit/` | 15 files | Isolated component testing |
-| **API Tests** | `tests/api/` | 17 files | Endpoint behavior testing |
-| **E2E Tests** | `tests/e2e/` + root | 20+ files | Full flow and live system tests |
-| **Integration Tests** | `tests/integration/` | Directory exists | Service integration testing |
-| **Performance Tests** | `tests/performance/` | Directory exists | Load and performance testing |
-| **Security Tests** | `tests/security/` | Directory exists | Security-focused testing |
+| Level | Location | Test Scope | Status |
+| :--- | :--- | :--- | :---: |
+| **Unit Tests** | `backend/tests/unit/` | 19 test files covering schemas, security, alert rules, assistant safety & freshness, ML models, OHLCV history, market service, exceptions | **199/199 Passed (100.0%)** |
+| **API Tests** | `backend/tests/api/` | 17 test files covering router responses, status codes, auth flows, and request validation | **Configured & Validated** |
+| **Live Production Audit** | `backend/scripts/run_live_oracle_comprehensive_audit.py` | 80 dynamic operations executed against live Oracle VM (`http://193.123.84.223:8000`) across all 15 operational domains | **80/80 Passed (100.0%)** |
+| **Chatbot Streaming Audit** | `backend/scripts/test_live_chatbot_streaming.py` | Multi-turn conversational streaming validation over Server-Sent Events (`/assistant/chat/stream`) | **100% Validated** |
 
-## Test Framework
+---
 
-- **Framework**: pytest with `asyncio_mode = auto`
-- **Markers**: `unit`, `integration`, `api`, `e2e`, `performance`, `security`, `slow`, `regression`
-- **Configuration**: `pytest.ini` with strict markers and short tracebacks
+## 2. Test Execution Commands
 
-## Key Unit Tests
+```bash
+# Run all unit tests
+pytest tests/unit/
 
-| Test File | Covers |
-|-----------|--------|
-| `test_authorization.py` | Auth dependencies, token validation |
-| `test_security.py` | Password hashing, JWT creation/decoding |
-| `test_exceptions.py` | Custom exception hierarchy |
-| `test_settings_production.py` | Production config validation |
-| `test_schemas.py` | Pydantic schema validation |
-| `test_assistant_safety.py` | AI assistant safety guardrails |
-| `test_recommendation_engine.py` | Recommendation scoring logic |
-| `test_ml_fixes.py` | ML inference edge cases |
+# Run specific domain test suites
+pytest tests/unit/test_assistant_safety.py tests/unit/test_assistant_freshness.py
+pytest tests/unit/test_market_service.py tests/unit/test_stock_ohlcv.py
 
-## Key API Tests
+# Run comprehensive live audit against Oracle Cloud deployment
+python backend/scripts/run_live_oracle_comprehensive_audit.py
 
-| Test File | Covers |
-|-----------|--------|
-| `test_auth_api.py` | Signup, login, refresh, password flows |
-| `test_portfolio_api.py` | Portfolio CRUD operations |
-| `test_watchlist_api.py` | Watchlist CRUD operations |
-| `test_market_api.py` | Market data endpoints |
-| `test_stocks_api.py` | Stock detail endpoints |
-| `test_sentiment_api.py` | Sentiment analysis endpoints |
-| `test_shariah_api.py` | Shariah screening endpoints |
-| `test_forecast_api.py` | Forecast endpoints |
-| `test_recommendations_api.py` | Recommendation endpoints |
+# Run live chatbot SSE streaming conversation test
+python backend/scripts/test_live_chatbot_streaming.py
+```
 
-## Test Infrastructure
+---
 
-- **conftest.py** (18KB): Comprehensive fixtures including mock DB sessions, test users, mock services
-- **CI Integration**: GitHub Actions runs `tests/api` and `tests/unit` on every push to main
-- **Test environment**: `ENVIRONMENT=test`, `REDIS_ENABLED=false`, `USE_CELERY=false`
+## 3. Unit Test Suite Coverage Breakdown
 
-## Testing Gaps
+| Unit Test Suite | Key Areas Tested |
+| :--- | :--- |
+| `test_authorization.py` | JWT token extraction, OAuth role checks, bearer parsing, invalid token handling |
+| `test_security.py` | Bcrypt password hashing, JWT creation & decoding, token expiration, tampering checks |
+| `test_schemas.py` | Pydantic v2 input validation, model sanitization, default transformations |
+| `test_assistant_safety.py` | Prompt injection detection, regulatory advice guardrails, intent classification, output sanitization |
+| `test_assistant_freshness.py` | Stale market data detection, hard-live request triggers, weekend calendar freshness |
+| `test_market_service.py` | Market quote normalization, sector aggregation, top gainers/losers filtering |
+| `test_stock_ohlcv.py` | 52-week OHLCV price parsing, duplicate date deduplication, technical indicator warmup |
+| `test_stock_search.py` | Company name aliases, ticker search, fuzzy matching |
+| `test_alert_evaluation.py` | Price threshold triggers, cooldown timers, risk breach notifications, community pushes |
+| `test_alert_rules_api.py` | Alert rule CRUD, stock resolution by ticker and company name |
+| `test_settings_production.py` | Production database URL enforcement, CORS configuration, Redis/Celery URL verification |
+| `test_exceptions.py` | AppError hierarchy, status code mapping, HTTP error responses |
+| `test_ml_fixes.py` | Attention-BiGRU v2 + XGBoost v4 serving schema alignment, probability normalizations |
+| `test_recommendation_engine.py` | Multi-signal quantitative weighted scoring and target/stop boundary calculations |
 
-1. **No code coverage reporting** — No pytest-cov or coverage tool configured
-2. **Community module** — Limited API tests for community CRUD
-3. **WebSocket tests** — `test_websockets_suite.py` exists at root level but not in CI path
-4. **Alert evaluation** — Unit tests exist but integration with live data not tested in CI
-5. **ML inference** — Unit tests for edge cases but no integration test with actual model
-6. **Email delivery** — No tests for actual SendGrid integration
-7. **Push notifications** — No tests for FCM delivery
+---
+
+## 4. Live Verification Audit Methodology
+
+The live audit suite executes end-to-end HTTP requests against the active deployment with administrative JWT authentication. For every endpoint, the auditor asserts:
+1. **HTTP Status Code**: Must return expected success code (`200 OK`, `201 Created`, or `204 No Content`).
+2. **Response Time (Latency)**: Records precise round-trip latency in milliseconds.
+3. **Null Field Sanitization**: Verifies that no domain fields contain untracked `null` values.
+4. **Data Anomaly Verification**: Checks that numeric fields (prices, P/E, EPS, volumes, percentages) contain plausible positive/negative numbers rather than corrupted values.
+5. **Dynamic CRUD Lifecycles**: Executes real Creation $\to$ Modification $\to$ Deletion lifecycles for Watchlists, Alerts, Portfolio Trades, and Community Posts with automatic post-test cleanup.

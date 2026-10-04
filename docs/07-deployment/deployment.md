@@ -1,57 +1,60 @@
 # Deployment
 
 ## Target Environment
-AWS EC2 instance running Docker containers.
+Oracle Cloud Infrastructure (OCI) Ubuntu Virtual Machine (`193.123.84.223`) running Docker Compose containers.
+
+---
 
 ## Deployment Architecture
 
 ```
-GitHub Push (main) -> GitHub Actions CI/CD
-  -> Test (pytest) -> Build Docker Image -> Push to AWS ECR
-  -> Self-hosted Runner on EC2 -> Blue-Green Deploy
-    -> Pull Image -> Run Migrations -> Start New Container
-    -> Health Check -> Switch Nginx Proxy -> Stabilize
-    -> Update Worker/Beat -> Ready Verification
+GitHub Push (main) ──► GitHub Actions CI/CD Pipeline
+  │
+  ├── 1. Automated Test Execution (pytest unit test suite)
+  ├── 2. Build Multi-Platform Docker Image
+  ├── 3. Publish to GitHub Container Registry (ghcr.io/iahmedd-k/basarat-backend:<sha>)
+  └── 4. SSH Remote Trigger to Oracle VM
+        ├── Pull Latest Docker Image
+        ├── Execute Database Migrations (alembic upgrade head)
+        ├── Launch / Restart API (basarat-app-1)
+        ├── Restart Background Workers (basarat-celery-worker-1, basarat-celery-beat-1)
+        └── Verify System Health Probes (/health & /api/v1/health/ready)
 ```
 
-## Backend Deployment
+---
 
-### Production Stack
-- **API**: Uvicorn with 1 worker (`uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1`)
-- **Worker**: Celery worker (`celery -A app.celery_app worker --concurrency=1 --max-tasks-per-child=1`)
-- **Beat**: Celery Beat scheduler
-- **Proxy**: Nginx reverse proxy (port 8000)
-- **Database**: Supabase PostgreSQL (managed)
-- **Redis**: Upstash Redis (managed) + local Redis (for Celery broker/pub-sub)
+## Production Stack & Container Services
 
-### Deployment Process
-1. Push to `main` branch triggers GitHub Actions
-2. CI runs tests (`tests/api` + `tests/unit`)
-3. Docker image built and pushed to ECR (tagged with Git SHA)
-4. Self-hosted runner downloads deployment bundle
-5. `deploy-api.sh` executes blue-green deployment:
-   - Runs `alembic upgrade head` via migrate container
-   - Starts new API container on inactive slot
-   - Verifies `/health` endpoint
-   - Switches Nginx upstream
-   - Verifies `/health` through proxy
-   - Waits 60s stabilization
-   - Updates worker and beat containers
-   - Verifies `/health/ready`
-   - Removes old API container
+| Container Name | Base Image / Command | Exposed Ports | Health Status |
+| :--- | :--- | :---: | :---: |
+| `basarat-app-1` | `ghcr.io/iahmedd-k/basarat-backend:<sha>` (`uvicorn app.main:app --host 0.0.0.0 --port 8000`) | `8000:8000` | Healthy (Polls `/health`) |
+| `basarat-celery-worker-1` | `ghcr.io/iahmedd-k/basarat-backend:<sha>` (`celery -A app.celery_app worker`) | Internal | Healthy |
+| `basarat-celery-beat-1` | `ghcr.io/iahmedd-k/basarat-backend:<sha>` (`celery -A app.celery_app beat`) | Internal | Healthy |
+| `basarat-migrate-1` | `ghcr.io/iahmedd-k/basarat-backend:<sha>` (`alembic upgrade head`) | N/A | Exited `0` (One-off migration) |
+| `basarat-redis-1` | `redis:7-alpine` | `6379:6379` | Healthy |
 
-### Rollback
+---
+
+## Remote Access & Management
+
 ```bash
-bash /opt/basarat/deploy/ec2/deploy-api.sh --rollback
+# SSH into production Oracle VM
+ssh -i "d:\FYP\OrcaleSecrets\ssh-key-2026-10-03.key" ubuntu@193.123.84.223
+
+# Check container status
+docker ps
+
+# Inspect API logs in real-time
+docker logs -f basarat-app-1
+
+# Inspect Celery worker & periodic task logs
+docker logs -f basarat-celery-worker-1
+docker logs -f basarat-celery-beat-1
 ```
-Restores the previous API container and Nginx routing.
 
-## Database Migrations
-- Executed as a separate Docker container before API deployment
-- Command: `alembic upgrade head`
-- Uses `CLOUD_DATABASE_URL` for production
+---
 
-## Health Checks
-- **Liveness**: `GET /health` -> `{"status": "ok"}`
-- **Readiness**: `GET /health/ready` -> Checks DB, Redis, Celery Worker, Celery Beat
-- Docker HEALTHCHECK: Polls `/health` every 30s
+## Health & Readiness Endpoints
+
+- **Liveness Probe**: `GET http://193.123.84.223:8000/health` $\to$ `{"status": "ok"}`
+- **Readiness Probe**: `GET http://193.123.84.223:8000/api/v1/health/ready` $\to$ Checks DB connection, Redis ping, Celery worker heartbeat, Celery beat scheduler, and ML model loaded states.
