@@ -807,18 +807,22 @@ async def get_sentiment_news(
         label = (sr.label if sr else a.sentiment_label) or "NEUTRAL"
         score = float(sr.score) if (sr and sr.score is not None) else (float(a.sentiment_score) if a.sentiment_score is not None else 0.0)
         model = (sr.model_name if sr else a.sentiment_method) or "keyword_heuristic"
+        pos_score = float(sr.positive_score) if (sr and sr.positive_score is not None) else (1.0 if label.upper() == "POSITIVE" else 0.0)
+        neu_score = float(sr.neutral_score) if (sr and sr.neutral_score is not None) else (1.0 if label.upper() == "NEUTRAL" else 0.0)
+        neg_score = float(sr.negative_score) if (sr and sr.negative_score is not None) else (1.0 if label.upper() == "NEGATIVE" else 0.0)
+
         news_items.append({
             "id": a.id,
             "title": a.title,
             "source": a.source or "Market News",
-            "published_at": a.published_at.isoformat() if a.published_at else (a.created_at.isoformat() if a.created_at else None),
-            "url": a.external_url or a.url,
+            "published_at": a.published_at.isoformat() if a.published_at else (a.created_at.isoformat() if a.created_at else ""),
+            "url": a.external_url or a.url or "",
             "sentiment": label.lower(),
             "sentiment_score": score,
             "sentiment_model": model,
-            "positive_score": float(sr.positive_score) if (sr and sr.positive_score is not None) else None,
-            "neutral_score": float(sr.neutral_score) if (sr and sr.neutral_score is not None) else None,
-            "negative_score": float(sr.negative_score) if (sr and sr.negative_score is not None) else None,
+            "positive_score": pos_score,
+            "neutral_score": neu_score,
+            "negative_score": neg_score,
         })
 
     if sentiment:

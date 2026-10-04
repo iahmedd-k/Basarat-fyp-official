@@ -206,12 +206,12 @@ class NewsService:
 
         # Build symbol items
         symbol_list = [
-            {"symbol": sym, "name": name}
+            {"symbol": sym, "name": name or ""}
             for sym, name in zip(symbols, company_names)
         ]
         if not symbol_list and symbols:
             for s in symbols:
-                symbol_list.append({"symbol": s, "name": None})
+                symbol_list.append({"symbol": s, "name": ""})
 
         return {
             "id": article.id,
@@ -227,12 +227,12 @@ class NewsService:
             "summary": summary_text,
             "symbols": symbol_list,
             "event_type": article.event_type or "market_update",
-            "sentiment": None if article.sentiment_label is None else {
-                "label": article.sentiment_label,
+            "sentiment": {
+                "label": article.sentiment_label or "neutral",
                 "score": float(article.sentiment_score) if article.sentiment_score is not None else 0.0,
-                "method": article.sentiment_method,
+                "method": article.sentiment_method or "finbert",
             },
             "impact_score": article.impact_score or 50,
-            "published_at": article.published_at.isoformat() if article.published_at else (article.created_at.isoformat() if article.created_at else None),
+            "published_at": article.published_at.isoformat() if article.published_at else (article.created_at.isoformat() if article.created_at else ""),
             "created_at": article.created_at.isoformat() if article.created_at else "",
         }
