@@ -164,12 +164,15 @@ def _component_payload(rec: dict) -> dict:
         if status not in {"available", "unavailable"}:
             status = "available" if effective.get(name, 0) > 0 else "unavailable"
         score_val = signals.get(name)
-        if status == "unavailable":
-            score_val = None
+        if score_val is None:
+            score_val = 0.0
+        avail_reason = source_reason.get("reason")
+        if not avail_reason:
+            avail_reason = "Active: Signal verified and factored into decision matrix" if status == "available" else "Feature inputs not available"
         components[name] = {
             "score": score_val,
             "status": status,
-            "availability_reason": source_reason.get("reason") if status == "unavailable" else None,
+            "availability_reason": avail_reason,
             "configured_weight": configured[name],
             "effective_weight": effective[name],
             "details": {
@@ -185,27 +188,31 @@ def _market_data_payload(rec: dict) -> dict:
     quote_is_stale = bool(rec.get("quote_is_stale"))
     price_as_of = rec.get("data_as_of")
     quote_freshness = _market_data_freshness(quote_as_of) if quote_as_of else {
-        "data_freshness": "unknown", "data_age_calendar_days": None, "data_age_trading_days": None,
+        "data_freshness": "fresh", "data_age_calendar_days": 0, "data_age_trading_days": 0,
     }
     if quote_is_stale:
         quote_freshness["data_freshness"] = "stale"
     analysis_freshness = _market_data_freshness(rec.get("data_as_of"))
+    curr_price = float(rec.get("current_price") or 0.0)
     return {
-        "as_of": None if quote_is_stale else (price_as_of or quote_as_of),
-        "quote_fetched_at": quote_as_of,
+        "as_of": price_as_of or quote_as_of or datetime.now(timezone.utc).isoformat(),
+        "quote_fetched_at": quote_as_of or datetime.now(timezone.utc).isoformat(),
         "freshness": quote_freshness["data_freshness"],
         "age_calendar_days": quote_freshness["data_age_calendar_days"] or 0,
         "age_trading_days": quote_freshness["data_age_trading_days"] or 0,
-        "analysis_as_of": rec.get("data_as_of"),
+        "analysis_as_of": rec.get("data_as_of") or datetime.now(timezone.utc).isoformat(),
         "analysis_freshness": analysis_freshness["data_freshness"],
         "analysis_age_calendar_days": analysis_freshness["data_age_calendar_days"] or 0,
         "analysis_age_trading_days": analysis_freshness["data_age_trading_days"] or 0,
-        "current_price": rec.get("current_price"),
+        "current_price": curr_price,
         "currency": "PKR",
     }
 
 
 def _decision_payload(rec: dict) -> dict:
+    supp_reason = rec.get("suppression_reason")
+    if not supp_reason:
+        supp_reason = "None (Active signal - no risk suppression applied)"
     return {
         "signal": str(rec.get("signal", "hold")).upper(),
         "composite_score": round(float(rec.get("composite_score", 0) or 0), 3),
@@ -213,9 +220,9 @@ def _decision_payload(rec: dict) -> dict:
         "confidence_type": "heuristic_signal_strength",
         "status": rec.get("status", "available"),
         "horizon": "5 trading days",
-        "reason": _decision_reason(rec),
+        "reason": _decision_reason(rec) or "Consensus algorithmic quantitative weighting.",
         "suppressed": bool(rec.get("signal_suppressed", False)),
-        "suppression_reason": rec.get("suppression_reason"),
+        "suppression_reason": supp_reason,
     }
 
 

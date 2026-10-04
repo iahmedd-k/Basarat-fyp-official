@@ -51,25 +51,25 @@ class MarketQuoteItem(BaseModel):
     current: float | None = None
     change: float | None = None
     change_pct: float | None = None
-    volume: int
+    volume: int = 0
     market_cap_m: float | None = None
 
 
 class GainersResponse(BaseModel):
     gainers: list[MarketQuoteItem]
-    as_of: str | None = None
+    as_of: str = ""
     is_stale: bool = True
 
 
 class LosersResponse(BaseModel):
     losers: list[MarketQuoteItem]
-    as_of: str | None = None
+    as_of: str = ""
     is_stale: bool = True
 
 
 class VolumeSpikesResponse(BaseModel):
     volume_spikes: list[MarketQuoteItem]
-    as_of: str | None = None
+    as_of: str = ""
     is_stale: bool = True
 
 
@@ -79,20 +79,17 @@ class MarketQuotesResponse(BaseModel):
     limit: int
     offset: int = 0
     filtered: bool = False
-    as_of: str | None = None
+    as_of: str = ""
     is_stale: bool = True
-    recommended_poll_seconds: int | None = None
-    transport_hint: str | None = Field(
-        default=None,
-        description="Prefer websocket; use rest_polling when WS is unavailable",
-    )
+    recommended_poll_seconds: int = 30
+    transport_hint: str = "Prefer websocket; use rest_polling when WS is unavailable"
 
 
 class LiveTransportInfo(BaseModel):
     primary: str = "websocket"
     fallback: str = "rest_polling"
     websocket_path: str
-    websocket_url: str | None = None
+    websocket_url: str = ""
     rest_quotes_path: str
     protocol_docs_path: str
     recommended_rest_poll_seconds: int
@@ -106,8 +103,8 @@ class MarketLiveResponse(BaseModel):
     market_status: str
     is_market_open: bool
     timezone: str = "Asia/Karachi"
-    current_time_pkt: str | None = None
-    as_of: str | None = None
+    current_time_pkt: str = ""
+    as_of: str = ""
     is_stale: bool = True
     quote_count: int = 0
     session_refresh_enabled: bool = True
@@ -117,17 +114,17 @@ class MarketLiveResponse(BaseModel):
 
 class SectorPerformance(BaseModel):
     sector: str
-    name: str | None = None
-    avg_change_pct: float | None = None
+    name: str = ""
+    avg_change_pct: float = 0.0
     companies: int
-    stock_count: int | None = None
+    stock_count: int = 0
     advancing: int = 0
     declining: int = 0
     unchanged: int = 0
     total_volume: int = 0
-    market_cap_m: float | None = None
-    top_gainer_symbol: str | None = None
-    top_loser_symbol: str | None = None
+    market_cap_m: float = 0.0
+    top_gainer_symbol: str = ""
+    top_loser_symbol: str = ""
 
 
 class SectorPerformanceResponse(BaseModel):
@@ -136,7 +133,7 @@ class SectorPerformanceResponse(BaseModel):
     total_companies: int
     classified_companies: int
     unclassified_companies: int
-    as_of: str | None = None
+    as_of: str = ""
     is_stale: bool = True
 
 
@@ -150,7 +147,7 @@ class SentimentOverview(BaseModel):
     losers_pct: float
     sector_performance: list[SectorPerformance]
     top_movers: list[MarketQuoteItem]
-    as_of: str | None = None
+    as_of: str = ""
     is_stale: bool = True
 
 

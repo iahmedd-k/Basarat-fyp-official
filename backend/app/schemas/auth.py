@@ -360,9 +360,9 @@ class AlertStockCheckResponse(BaseModel):
 class AlertResponse(BaseModel):
     id: str
     user_id: str
-    rule_id: str | None = None
+    rule_id: str = ""
     title: str
-    message: str | None = None
+    message: str = ""
     is_read: bool
     created_at: str
 
