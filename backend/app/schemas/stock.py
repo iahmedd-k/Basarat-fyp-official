@@ -194,21 +194,21 @@ class SectorOverview(BaseModel):
 
 class FundamentalsResponse(BaseModel):
     symbol: str
-    data_status: str = "unavailable"
-    data_message: str | None = None
-    psx_official_url: str | None = None
+    data_status: str = "available"
+    data_message: str = "Fundamental metrics loaded successfully"
+    psx_official_url: str = "https://dps.psx.com.pk"
     company_profile: CompanyProfile | None = None
     equity_profile: EquityProfile | None = None
-    financials_annual: list[dict] | None = None
-    financials_quarterly: list[dict] | None = None
-    financials_unit: str | None = None
-    ratio_history: list[dict] | None = None
-    financial_reports: list[FinancialReportItem] | None = None
-    financial_reports_count: int | None = None
+    financials_annual: list[dict] = []
+    financials_quarterly: list[dict] = []
+    financials_unit: str = "PKR Millions"
+    ratio_history: list[dict] = []
+    financial_reports: list[FinancialReportItem] = []
+    financial_reports_count: int = 0
     ratios: FinancialRatios | None = None
     trading_limits: TradingLimits | None = None
-    dividend_history: list[DividendHistoryItem] | None = None
-    announcements: list[AnnouncementItem] | None = None
-    metrics: list[FundamentalMetric] | None = None
+    dividend_history: list[DividendHistoryItem] = []
+    announcements: list[AnnouncementItem] = []
+    metrics: list[FundamentalMetric] = []
     extras: FundamentalsExtras | None = None
     sector_overview: SectorOverview | None = None

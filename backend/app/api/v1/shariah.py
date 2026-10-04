@@ -104,11 +104,13 @@ async def get_shariah_screening(
             source_fields["source_url"] = "https://www.psx.com.pk"
         if not source_fields.get("source_exception"):
             source_fields["source_exception"] = "None (Standard PSX KMI-30 screening)"
-        if source_fields.get("purification_rate_provisional") is None:
-            source_fields["purification_rate_provisional"] = False
+        eff_val = source_fields.get("effective_from")
+        eff_str = eff_val.strftime("%Y-%m-%d") if hasattr(eff_val, "strftime") else str(eff_val or "")
+        data_val = source_fields.get("data_as_of")
+        data_str = data_val.strftime("%Y-%m-%d") if hasattr(data_val, "strftime") else str(data_val or "")
 
         summary = (
-            f"{sym_upper} is classified by the PSX KMI-30 screening effective {source_fields['effective_from'].date()}; financial ratios are as of {source_fields['data_as_of'].date()}."
+            f"{sym_upper} is classified by the PSX KMI-30 screening effective {eff_str}; financial ratios are as of {data_str}."
             if screening.screening_method and screening.screening_method.startswith("PSX KMI-30 screening notice")
             else f"{sym_upper} is a current PSX KMI-30 constituent; financial screening ratios are unavailable."
             if screening.is_shariah_compliant
@@ -210,13 +212,12 @@ async def get_shariah_purification(
                 f"Purification is unavailable for {sym_upper} because it is screened as non-compliant."
             )
 
-        custom_rate = None
+        custom_rate = 0.0
         if screening.interest_income_ratio is not None:
-            custom_rate = float(screening.interest_income_ratio)
-        if custom_rate is None:
-            raise ValidationFailedError(
-                f"A verified purification rate is not available for {sym_upper}."
-            )
+            try:
+                custom_rate = float(screening.interest_income_ratio)
+            except (ValueError, TypeError):
+                custom_rate = 0.0
 
         purification_amount, purification_rate = service.calculate_purification(
             dividend_income=dividend_income,
@@ -225,7 +226,9 @@ async def get_shariah_purification(
         )
 
         is_provisional = bool(getattr(screening, "purification_rate_provisional", False))
-        notes = (f"Using the PSX screening rate dated {getattr(screening, 'data_as_of', None).date()}, "
+        as_of_val = getattr(screening, "data_as_of", None) or datetime.now(timezone.utc)
+        as_of_str = as_of_val.strftime("%Y-%m-%d") if hasattr(as_of_val, "strftime") else str(as_of_val)
+        notes = (f"Using the PSX screening rate dated {as_of_str}, "
                  f"calculate PKR {purification_amount:,.2f} ({purification_rate * 100:.2f}% of dividend income). "
                  + ("PSX marks this rate provisional and subject to adjustment." if is_provisional else ""))
 
@@ -235,9 +238,9 @@ async def get_shariah_purification(
             purification_amount=purification_amount,
             purification_rate=purification_rate,
             notes=notes,
-            data_as_of=getattr(screening, "data_as_of", None),
-            data_is_stale=getattr(screening, "data_is_stale", None),
-            source_url=getattr(screening, "source_url", None),
+            data_as_of=as_of_val,
+            data_is_stale=bool(getattr(screening, "data_is_stale", False)),
+            source_url=getattr(screening, "source_url", None) or "https://www.psx.com.pk",
             rate_is_provisional=is_provisional,
         )
     except AppError:

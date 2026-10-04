@@ -227,21 +227,21 @@ def _decision_payload(rec: dict) -> dict:
 
 
 def _risk_payload(rec: dict) -> dict:
-    tp = rec.get("target_price")
-    sl = rec.get("stop_loss")
+    tp = float(rec.get("target_price") or 0.0)
+    sl = float(rec.get("stop_loss") or 0.0)
     exp_range = rec.get("expected_range")
-    if not exp_range and tp is not None and sl is not None:
+    if not exp_range and tp > 0 and sl > 0:
         exp_range = {"low": min(sl, tp), "high": max(sl, tp), "method": "atr_band"}
     return {
         "target_price": tp,
         "stop_loss": sl,
         "expected_range": exp_range,
-        "atr_14": rec.get("atr_14"),
-        "upside_pct": rec.get("upside_pct"),
-        "downside_pct": rec.get("downside_pct"),
-        "risk_reward_ratio": rec.get("risk_reward_ratio"),
-        "method": rec.get("target_stop_method", "atr_band"),
-        "explanation": _target_stop_reason(rec),
+        "atr_14": float(rec.get("atr_14") or 0.0),
+        "upside_pct": float(rec.get("upside_pct") or 0.0),
+        "downside_pct": float(rec.get("downside_pct") or 0.0),
+        "risk_reward_ratio": float(rec.get("risk_reward_ratio") or 0.0),
+        "method": rec.get("target_stop_method") or "atr_band",
+        "explanation": _target_stop_reason(rec) or "Standard ATR risk boundaries calculated",
     }
 
 
@@ -342,8 +342,8 @@ async def get_recommendations(
         items = [
             RecommendationItem(
                 symbol=r["symbol"],
-                name=r.get("name"),
-                sector=r.get("sector"),
+                name=r.get("name") or "",
+                sector=r.get("sector") or "",
                 decision=_decision_payload(r),
                 components=_component_payload(r),
                 market_data=_market_data_payload(r),
@@ -458,8 +458,8 @@ async def get_recommendation_detail(
 
         return RecommendationDetailResponse(
             symbol=symbol,
-            name=rec.get("name"),
-            sector=rec.get("sector"),
+            name=rec.get("name") or "",
+            sector=rec.get("sector") or "",
             generated_at=datetime.now(timezone.utc),
             decision=_decision_payload(rec),
             components=_component_payload(rec),
