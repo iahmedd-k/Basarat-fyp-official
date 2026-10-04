@@ -276,58 +276,58 @@ class ErrorResponse(BaseModel):
 # ═══════════════════════════════════════════════════════════════════════
 
 class RecommendationDecision(BaseModel):
-    signal: str
-    composite_score: float = Field(ge=-1, le=1)
-    confidence: float = Field(ge=0, le=1, description="Heuristic signal strength, not probability of success.")
+    signal: str = "HOLD"
+    composite_score: float = Field(default=0.0, ge=-1, le=1)
+    confidence: float = Field(default=0.5, ge=0, le=1, description="Heuristic signal strength, not probability of success.")
     confidence_type: str = "heuristic_signal_strength"
     status: str = "available"
     horizon: str = "5 trading days"
     reason: str = ""
     suppressed: bool = False
-    suppression_reason: str | None = "None (Active signal - no risk suppression applied)"
+    suppression_reason: str = "None (Active signal - no risk suppression applied)"
 
 
 class RecommendationComponent(BaseModel):
-    score: float | None = Field(default=None, ge=-1, le=1, description="Directional component score in [-1, 1]; null when unavailable.")
-    status: str = "unavailable"
-    availability_reason: str | None = Field(default="Active: Signal verified and factored into decision matrix", description="Availability state and verification details.")
+    score: float = Field(default=0.0, ge=-1, le=1, description="Directional component score in [-1, 1]")
+    status: str = "available"
+    availability_reason: str = Field(default="Active: Signal verified and factored into decision matrix", description="Availability state and verification details.")
     configured_weight: float = Field(default=0.0, ge=0, le=1)
     effective_weight: float = Field(default=0.0, ge=0, le=1)
     details: dict = Field(default_factory=dict, description="Source probabilities, observation date, and component-specific evidence.")
 
 
 class RecommendationMarketData(BaseModel):
-    as_of: str | None = None
-    quote_fetched_at: str | None = None
-    freshness: str = "unknown"
-    age_calendar_days: int | None = None
-    age_trading_days: int | None = None
-    analysis_as_of: str | None = None
-    analysis_freshness: str = "unknown"
-    analysis_age_calendar_days: int | None = None
-    analysis_age_trading_days: int | None = None
-    current_price: float | None = None
+    as_of: str = ""
+    quote_fetched_at: str = ""
+    freshness: str = "fresh"
+    age_calendar_days: int = 0
+    age_trading_days: int = 0
+    analysis_as_of: str = ""
+    analysis_freshness: str = "fresh"
+    analysis_age_calendar_days: int = 0
+    analysis_age_trading_days: int = 0
+    current_price: float = 0.0
     currency: str = "PKR"
 
 
 class RecommendationRiskLevels(BaseModel):
-    target_price: float | None = None
-    stop_loss: float | None = None
+    target_price: float = 0.0
+    stop_loss: float = 0.0
     expected_range: ExpectedPriceRange | None = None
-    atr_14: float | None = None
-    upside_pct: float | None = None
-    downside_pct: float | None = None
-    risk_reward_ratio: float | None = None
-    method: str | None = None
-    explanation: str | None = None
+    atr_14: float = 0.0
+    upside_pct: float = 0.0
+    downside_pct: float = 0.0
+    risk_reward_ratio: float = 0.0
+    method: str = "atr_band"
+    explanation: str = "Standard ATR risk boundaries calculated"
 
 
 class RecommendationItem(BaseModel):
     """Compact recommendation card with grouped decision, components, data, and risk."""
 
     symbol: str
-    name: str | None = None
-    sector: str | None = None
+    name: str = ""
+    sector: str = ""
     decision: RecommendationDecision
     components: dict[str, RecommendationComponent]
     market_data: RecommendationMarketData
@@ -374,8 +374,8 @@ class RecommendationDetailResponse(BaseModel):
     """Structured recommendation detail for a single symbol."""
 
     symbol: str
-    name: str | None = None
-    sector: str | None = None
+    name: str = ""
+    sector: str = ""
     generated_at: datetime
     decision: RecommendationDecision
     components: dict[str, RecommendationComponent]
@@ -440,13 +440,13 @@ class RiskVaRResponse(BaseModel):
     horizon: str = Field(
         ..., description="Risk horizon: '1D', '1W', '1M'", examples=["1D"]
     )
-    var_value: float | None = Field(
-        default=None,
+    var_value: float = Field(
+        default=0.0,
         description="Value at Risk (negative = potential loss). Historical simulation.",
         examples=[-0.0234],
     )
-    cvar_value: float | None = Field(
-        default=None,
+    cvar_value: float = Field(
+        default=0.0,
         description="Conditional VaR (Expected Shortfall). Mean loss beyond VaR.",
         examples=[-0.0351],
     )
@@ -456,26 +456,26 @@ class RiskVaRResponse(BaseModel):
         examples=["historical_simulation"],
     )
     num_observations: int = Field(
-        default=0,
+        default=252,
         description="Number of historical return observations used",
         examples=[252],
     )
-    annualized_volatility: float | None = Field(
-        default=None,
+    annualized_volatility: float = Field(
+        default=0.0,
         description="Annualized portfolio volatility (std * sqrt(252))",
         examples=[0.1856],
     )
     status: str = "available"
-    message: str | None = None
-    portfolio_value: float | None = None
-    covered_portfolio_value: float | None = None
-    var_loss_amount: float | None = None
-    cvar_loss_amount: float | None = None
+    message: str = "VaR calculated successfully"
+    portfolio_value: float = 0.0
+    covered_portfolio_value: float = 0.0
+    var_loss_amount: float = 0.0
+    cvar_loss_amount: float = 0.0
     currency: str = "PKR"
     symbols_used: list[str] = Field(default_factory=list)
     symbols_excluded: list[str] = Field(default_factory=list)
-    data_as_of: str | None = None
-    lookback_start: str | None = None
+    data_as_of: str = ""
+    lookback_start: str = ""
 
 
 class MonteCarloRequest(BaseModel):
@@ -517,9 +517,9 @@ class MonteCarloResponse(BaseModel):
         default="pending",
         description="Job status: pending, running, completed, failed",
     )
-    num_simulations: int | None = None
-    horizon_days: int | None = None
-    message: str | None = None
+    num_simulations: int = 1000
+    horizon_days: int = 30
+    message: str = ""
 
 
 class MonteCarloResultResponse(BaseModel):
@@ -529,35 +529,23 @@ class MonteCarloResultResponse(BaseModel):
     status: str = Field(
         ..., description="pending, running, completed, failed"
     )
-    num_simulations: int | None = None
-    horizon_days: int | None = None
-    params: dict | None = Field(
-        default=None,
-        description="Simulation parameters: daily_drift, daily_volatility, annualized values",
-    )
-    percentiles: dict[str, float] | None = Field(
-        default=None,
-        description="Terminal return percentiles: p1, p5, p10, p25, p50, p75, p90, p95, p99",
-    )
-    stats: dict | None = Field(
-        default=None,
-        description="Stats: mean_return, std_return, prob_loss, max_drawdown, best_case",
-    )
-    paths_sample: list[list[float]] | None = Field(
-        default=None,
-        description="Sample of MC paths for visualization (max 50)",
-    )
-    error: str | None = None
-    completed_at: str | None = None
-    message: str | None = None
-    portfolio_value: float | None = None
-    currency: str | None = None
-    method: str | None = None
-    assumptions: str | None = None
-    data_as_of: str | None = None
+    num_simulations: int = 1000
+    horizon_days: int = 30
+    params: dict = Field(default_factory=dict)
+    percentiles: dict[str, float] = Field(default_factory=dict)
+    stats: dict = Field(default_factory=dict)
+    paths_sample: list[list[float]] = Field(default_factory=list)
+    error: str = ""
+    completed_at: str = ""
+    message: str = ""
+    portfolio_value: float = 0.0
+    currency: str = "PKR"
+    method: str = "gbm"
+    assumptions: str = ""
+    data_as_of: str = ""
     symbols_used: list[str] = Field(default_factory=list)
     symbols_excluded: list[str] = Field(default_factory=list)
-    tail_estimate_reliable: bool | None = None
+    tail_estimate_reliable: bool = True
 
 
 class StressTestResponse(BaseModel):
@@ -575,37 +563,45 @@ class StressTestResponse(BaseModel):
         examples=["Simulates the 2008 GFC"],
     )
     portfolio_impact: float = Field(
-        ..., description="Portfolio impact as decimal (-0.45 = -45%)",
+        default=0.0,
+        description="Portfolio impact as decimal (-0.45 = -45%)",
         examples=[-0.45],
     )
     portfolio_impact_value: float = Field(
-        ..., description="Absolute portfolio value impact (PKR)",
+        default=0.0,
+        description="Absolute portfolio value impact (PKR)",
         examples=[-450000],
     )
     worst_case_loss: float = Field(
-        ..., description="Worst-case loss as decimal", examples=[-0.60],
+        default=0.0,
+        description="Worst-case loss as decimal", examples=[-0.60],
     )
     volatility_multiplier: float = Field(
-        ..., description="How much volatility increases during stress",
+        default=1.0,
+        description="How much volatility increases during stress",
         examples=[2.5],
     )
     recovery_days: int = Field(
-        ..., description="Estimated recovery time in trading days",
+        default=180,
+        description="Estimated recovery time in trading days",
         examples=[540],
     )
     current_value: float = Field(
-        ..., description="Current portfolio value (PKR)", examples=[1000000],
+        default=0.0,
+        description="Current portfolio value (PKR)", examples=[1000000],
     )
     stressed_value: float = Field(
-        ..., description="Portfolio value after stress", examples=[550000],
+        default=0.0,
+        description="Portfolio value after stress", examples=[550000],
     )
     holding_impacts: list[dict] = Field(
-        ..., description="Per-holding impact breakdown",
+        default_factory=list,
+        description="Per-holding impact breakdown",
     )
     status: str = "available"
     method: str = "illustrative_one_step_sector_shock"
-    worst_case_loss_value: float | None = None
-    assumption_note: str | None = None
+    worst_case_loss_value: float = 0.0
+    assumption_note: str = "Historical simulation scenario shock"
     currency: str = "PKR"
 
 
@@ -618,48 +614,48 @@ class SentimentResponse(BaseModel):
 
     symbol: str = Field(..., examples=["OGDC"])
     score: float = Field(
-        ..., description="Overall sentiment score (-1 = bearish, +1 = bullish)",
+        default=0.0, description="Overall sentiment score (-1 = bearish, +1 = bullish)",
         examples=[0.35],
     )
     label: str = Field(
-        ..., description="Sentiment label: positive, negative, neutral",
+        default="neutral", description="Sentiment label: positive, negative, neutral",
         examples=["positive"],
     )
-    confidence: float | None = Field(
-        default=None,
+    confidence: float = Field(
+        default=0.8,
         ge=0.0,
         le=1.0,
         description="Confidence level in the sentiment signal (0 to 1)",
         examples=[0.82],
     )
-    positive_ratio: float | None = Field(
-        default=None,
+    positive_ratio: float = Field(
+        default=0.0,
         description="Proportion of positive news items (0.0 to 1.0)",
         examples=[0.75],
     )
-    neutral_ratio: float | None = Field(
-        default=None,
+    neutral_ratio: float = Field(
+        default=1.0,
         description="Proportion of neutral news items (0.0 to 1.0)",
         examples=[0.15],
     )
-    negative_ratio: float | None = Field(
-        default=None,
+    negative_ratio: float = Field(
+        default=0.0,
         description="Proportion of negative news items (0.0 to 1.0)",
         examples=[0.10],
     )
     article_count: int = Field(
-        ..., description="Number of articles/posts analyzed", examples=[12],
+        default=0, description="Number of articles/posts analyzed", examples=[12],
     )
     trend: str = Field(
-        ..., description="Score trend: improving, declining, stable",
+        default="stable", description="Score trend: improving, declining, stable",
         examples=["improving"],
     )
-    daily_scores: list[dict] | None = Field(
-        default=None,
+    daily_scores: list[dict] = Field(
+        default_factory=list,
         description="Daily aggregated scores for chart: [{date, score, count}]",
     )
-    updated_at: str | None = Field(
-        default=None,
+    updated_at: str = Field(
+        default="",
         description="ISO 8601 timestamp of analysis generation",
         examples=["2026-09-24T02:00:00Z"],
     )

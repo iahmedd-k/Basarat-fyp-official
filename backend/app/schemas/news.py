@@ -42,8 +42,8 @@ class NewsListResponse(BaseModel):
     next_cursor: Optional[str] = None
     has_more: bool = False
     row: str = "news"  # "news" | "portfolio"
-    last_updated_at: str = ""
-    empty_reason: str = ""  # "", "no_holdings", "no_results"
+    last_updated_at: Optional[str] = ""
+    empty_reason: Optional[str] = ""  # "", "no_holdings", "no_results"
     total: int = 0
 
 

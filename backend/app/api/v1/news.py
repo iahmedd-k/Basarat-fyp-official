@@ -110,8 +110,8 @@ async def get_news(
             next_cursor=next_cursor,
             has_more=next_cursor is not None,
             row=row,
-            last_updated_at=last_updated.isoformat() if last_updated else None,
-            empty_reason=empty_reason,
+            last_updated_at=last_updated.isoformat() if last_updated else "",
+            empty_reason=empty_reason or "",
             total=total if row == "news" else len(items),
         )
     except AppError:
@@ -356,8 +356,8 @@ async def get_stock_news(
             next_cursor=next_cursor,
             has_more=next_cursor is not None,
             row="news",
-            last_updated_at=ingestion_state.get_last_ingestion_time().isoformat() if ingestion_state.get_last_ingestion_time() else None,
-            empty_reason="no_results" if not items else None,
+            last_updated_at=ingestion_state.get_last_ingestion_time().isoformat() if ingestion_state.get_last_ingestion_time() else "",
+            empty_reason="no_results" if not items else "",
             total=total,
         )
     except (AppError, HTTPException):
