@@ -1,8 +1,10 @@
 import logging
+from pathlib import Path
 from uuid import uuid4
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -244,3 +246,10 @@ async def root():
         "status": "online",
         "openapi_url": f"{settings.API_V1_PREFIX}/openapi.json",
     }
+
+
+@app.get("/architecture", include_in_schema=False)
+async def backend_architecture():
+    """Serve the interactive backend architecture diagram."""
+    diagram_path = Path(__file__).parent / "static" / "backend-architecture.html"
+    return FileResponse(diagram_path, media_type="text/html")

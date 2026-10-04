@@ -31,6 +31,12 @@ class TestSystemEndpoints:
         data = resp.json()
         assert "message" in data
 
+    async def test_backend_architecture_is_served_as_html(self, client: AsyncClient):
+        resp = await client.get("/architecture")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/html")
+        assert "Basarat Backend Runtime Architecture" in resp.text
+
 
 @pytest.mark.api
 class TestHealthEndpoint:
