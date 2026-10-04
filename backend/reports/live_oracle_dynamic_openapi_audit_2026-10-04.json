@@ -1,0 +1,4163 @@
+{
+  "metadata": {
+    "title": "Live Oracle PSX Backend Dynamic OpenAPI Complete Audit",
+    "target_host": "193.123.84.223",
+    "base_url": "http://193.123.84.223:8000",
+    "audited_at": "2026-10-04T02:07:53.862252+00:00",
+    "admin_user": "admin@basarat.pk",
+    "total_operations_audited": 135,
+    "passed_operations": 84,
+    "failed_operations": 51,
+    "overall_success_rate_pct": 62.22,
+    "average_latency_ms": 5256.27,
+    "endpoints_with_null_fields": 58,
+    "endpoints_with_anomalies": 1
+  },
+  "category_summary": {
+    "Admin Community": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "avg_latency_ms": 5853.95
+    },
+    "Alerts": {
+      "total": 9,
+      "passed": 5,
+      "failed": 4,
+      "pass_rate_pct": 55.6,
+      "avg_latency_ms": 5864.67
+    },
+    "Assistant": {
+      "total": 9,
+      "passed": 2,
+      "failed": 7,
+      "pass_rate_pct": 22.2,
+      "avg_latency_ms": 6239.99
+    },
+    "Auth": {
+      "total": 10,
+      "passed": 0,
+      "failed": 10,
+      "pass_rate_pct": 0.0,
+      "avg_latency_ms": 616.19
+    },
+    "Community": {
+      "total": 18,
+      "passed": 10,
+      "failed": 8,
+      "pass_rate_pct": 55.6,
+      "avg_latency_ms": 12265.81
+    },
+    "Devices": {
+      "total": 2,
+      "passed": 0,
+      "failed": 2,
+      "pass_rate_pct": 0.0,
+      "avg_latency_ms": 5857.12
+    },
+    "ETFs": {
+      "total": 4,
+      "passed": 2,
+      "failed": 2,
+      "pass_rate_pct": 50.0,
+      "avg_latency_ms": 1502.09
+    },
+    "Events": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "avg_latency_ms": 5823.51
+    },
+    "Forecast": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "avg_latency_ms": 5855.65
+    },
+    "Health": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "avg_latency_ms": 1134.2
+    },
+    "IPOs": {
+      "total": 4,
+      "passed": 3,
+      "failed": 1,
+      "pass_rate_pct": 75.0,
+      "avg_latency_ms": 2167.1
+    },
+    "Market": {
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "avg_latency_ms": 94.08
+    },
+    "News": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "avg_latency_ms": 2647.58
+    },
+    "Notifications": {
+      "total": 3,
+      "passed": 2,
+      "failed": 1,
+      "pass_rate_pct": 66.7,
+      "avg_latency_ms": 5938.94
+    },
+    "Portfolio": {
+      "total": 9,
+      "passed": 6,
+      "failed": 3,
+      "pass_rate_pct": 66.7,
+      "avg_latency_ms": 9673.73
+    },
+    "Recommendations": {
+      "total": 5,
+      "passed": 4,
+      "failed": 1,
+      "pass_rate_pct": 80.0,
+      "avg_latency_ms": 5466.84
+    },
+    "Risk": {
+      "total": 4,
+      "passed": 3,
+      "failed": 1,
+      "pass_rate_pct": 75.0,
+      "avg_latency_ms": 7826.43
+    },
+    "Sentiment": {
+      "total": 4,
+      "passed": 3,
+      "failed": 1,
+      "pass_rate_pct": 75.0,
+      "avg_latency_ms": 6101.55
+    },
+    "Shariah": {
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "avg_latency_ms": 1073.07
+    },
+    "Stocks": {
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "avg_latency_ms": 322.55
+    },
+    "Users": {
+      "total": 5,
+      "passed": 4,
+      "failed": 1,
+      "pass_rate_pct": 80.0,
+      "avg_latency_ms": 6606.34
+    },
+    "Watchlist": {
+      "total": 10,
+      "passed": 3,
+      "failed": 7,
+      "pass_rate_pct": 30.0,
+      "avg_latency_ms": 7159.48
+    },
+    "WebSockets": {
+      "total": 3,
+      "passed": 2,
+      "failed": 1,
+      "pass_rate_pct": 66.7,
+      "avg_latency_ms": 59.13
+    },
+    "Webhooks": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "pass_rate_pct": 0.0,
+      "avg_latency_ms": 61.26
+    }
+  },
+  "detailed_operations": [
+    {
+      "op_id": 2,
+      "category": "Auth",
+      "summary": "Verify email OTP & login (Returns JWT tokens)",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/verify-email",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 56.32,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 3,
+      "category": "Auth",
+      "summary": "Resend email verification OTP code",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/resend-verification",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 61.89,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 5,
+      "category": "Auth",
+      "summary": "Continue with Google OAuth (Mobile / Web)",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/google",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 54.99,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 6,
+      "category": "Auth",
+      "summary": "Continue with Apple OAuth (iOS / macOS / Web)",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/apple",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 55.94,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 7,
+      "category": "Auth",
+      "summary": "Refresh access token (With automatic token rotation)",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/refresh",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 54.47,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 8,
+      "category": "Auth",
+      "summary": "Logout single session (Revoke refresh token)",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/logout",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 61.34,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 9,
+      "category": "Auth",
+      "summary": "Step 1 of 3: Request 6-digit password reset OTP",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/forgot-password",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 64.43,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 10,
+      "category": "Auth",
+      "summary": "Step 2 of 3: Verify 6-digit OTP (Returns reset_token grant)",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/verify-reset-code",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 53.49,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 11,
+      "category": "Auth",
+      "summary": "Step 3 of 3: Set new password using reset_token grant",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/reset-password",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 54.56,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 12,
+      "category": "Auth",
+      "summary": "Change password while logged in (Authenticated)",
+      "method": "POST",
+      "endpoint": "/api/v1/auth/change-password",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5644.44,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 13,
+      "category": "Users",
+      "summary": "Get current user profile & investment preferences",
+      "method": "GET",
+      "endpoint": "/api/v1/users/me",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5429.52,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'id': '12989aba24fa41d4aaa6cf41777a70ab', 'email': 'admin@basarat.pk', 'username': 'admin_master', 'full_name': 'Antigravity Live Tester', 'avatar_url': 'https://example.com/route-test', 'is_active':..."
+    },
+    {
+      "op_id": 14,
+      "category": "Users",
+      "summary": "Set current user profile and investment preferences",
+      "method": "POST",
+      "endpoint": "/api/v1/users/me",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5565.61,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 15,
+      "category": "Users",
+      "summary": "Update current user profile and investment preferences",
+      "method": "PATCH",
+      "endpoint": "/api/v1/users/me",
+      "query_params": {},
+      "request_body": {
+        "full_name": "Antigravity Dynamic Auditor",
+        "phone_number": "+923001234567"
+      },
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 12067.61,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'id': '12989aba24fa41d4aaa6cf41777a70ab', 'email': 'admin@basarat.pk', 'username': 'admin_master', 'full_name': 'Antigravity Dynamic Auditor', 'avatar_url': 'https://example.com/route-test', 'is_acti..."
+    },
+    {
+      "op_id": 16,
+      "category": "Users",
+      "summary": "Update notification preferences",
+      "method": "PATCH",
+      "endpoint": "/api/v1/users/me/notification-preferences",
+      "query_params": {},
+      "request_body": {
+        "full_name": "Antigravity Dynamic Auditor",
+        "phone_number": "+923001234567"
+      },
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 9909.52,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "message": "Notification preferences updated",
+        "channels": [],
+        "categories": []
+      }
+    },
+    {
+      "op_id": 17,
+      "category": "Users",
+      "summary": "Get valid options for risk tolerance, investment horizon, and sector preferences",
+      "method": "GET",
+      "endpoint": "/api/v1/users/investment-profile/options",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 59.44,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'risk_tolerances': ['conservative', 'moderate', 'aggressive'], 'investment_horizons': ['short_term', 'medium_term', 'long_term'], 'sectors': ['All Sectors', 'Commercial Banks', 'Oil & Gas', 'Cement',..."
+    },
+    {
+      "op_id": 18,
+      "category": "Devices",
+      "summary": "Register a device for push notifications",
+      "method": "POST",
+      "endpoint": "/api/v1/devices/register",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5582.18,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 19,
+      "category": "Devices",
+      "summary": "Deactivate a push notification device",
+      "method": "DELETE",
+      "endpoint": "/api/v1/devices/{device_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 6132.07,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Device not found"
+        }
+      }
+    },
+    {
+      "op_id": 20,
+      "category": "Webhooks",
+      "summary": "Clerk Authentication Webhook",
+      "method": "POST",
+      "endpoint": "/api/v1/webhooks/clerk",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 400,
+      "is_success": false,
+      "latency_ms": 61.26,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": "Malformed JSON payload: Expecting value: line 1 column 1 (char 0)"
+      }
+    },
+    {
+      "op_id": 21,
+      "category": "Market",
+      "summary": "Live market transport discovery (WebSocket primary + REST fallback)",
+      "method": "GET",
+      "endpoint": "/api/v1/market/live",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 66.3,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'market_status': 'closed', 'is_market_open': False, 'timezone': 'Asia/Karachi', 'current_time_pkt': '2026-10-04T06:56:56.559138+05:00', 'as_of': '2026-10-04T01:48:21.602824+00:00', 'is_stale': True, ..."
+    },
+    {
+      "op_id": 22,
+      "category": "Market",
+      "summary": "Get overall PSX sector performance",
+      "method": "GET",
+      "endpoint": "/api/v1/market/sectors/performance",
+      "query_params": {
+        "order": "desc"
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 65.31,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'sectors': [{'sector': 'TOBACCO', 'name': 'TOBACCO', 'avg_change_pct': 3.17, 'companies': 3, 'stock_count': 3, 'advancing': 3, 'declining': 0, 'unchanged': 0, 'total_volume': 22452, 'market_cap_m': 0..."
+    },
+    {
+      "op_id": 23,
+      "category": "Market",
+      "summary": "Get main market indices",
+      "method": "GET",
+      "endpoint": "/api/v1/market/indices",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 60.92,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'indices': [{'index': 'KSE-100', 'code': 'KSE100', 'current': 168155.49, 'change': -481.36, 'change_pct': -0.29, 'high': 168854.46, 'low': 167685.42}, {'index': 'KSE-30', 'code': 'KSE30', 'current': ..."
+    },
+    {
+      "op_id": 24,
+      "category": "Market",
+      "summary": "Get KSE-100 index constituents",
+      "method": "GET",
+      "endpoint": "/api/v1/market/indices/kse-100",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 459.85,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "shariah_compliant",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'index': 'KSE-100', 'code': 'KSE100', 'shariah_compliant': None, 'constituents': [{'symbol': 'ABL', 'name': 'ABL', 'ldcp': 170.04, 'current': 169.73, 'change': -0.31, 'change_pct': -0.18, 'weight_pct..."
+    },
+    {
+      "op_id": 25,
+      "category": "Market",
+      "summary": "Get KSE-30 index constituents",
+      "method": "GET",
+      "endpoint": "/api/v1/market/indices/kse-30",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 57.96,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "shariah_compliant",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'index': 'KSE-30', 'code': 'KSE30', 'shariah_compliant': None, 'constituents': [{'symbol': 'ATRL', 'name': 'ATRL', 'ldcp': 1187.53, 'current': 1189.43, 'change': 1.9, 'change_pct': 0.16, 'weight_pct'..."
+    },
+    {
+      "op_id": 26,
+      "category": "Market",
+      "summary": "Get KMI-30 index constituents (Shariah compliant)",
+      "method": "GET",
+      "endpoint": "/api/v1/market/indices/kmi-30",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 56.83,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'index': 'KMI-30', 'code': 'KMI30', 'shariah_compliant': True, 'constituents': [{'symbol': 'AIRLINK', 'name': 'AIRLINK', 'ldcp': 120.94, 'current': 120.3, 'change': -0.64, 'change_pct': -0.53, 'weigh..."
+    },
+    {
+      "op_id": 27,
+      "category": "Market",
+      "summary": "Get top gaining stocks",
+      "method": "GET",
+      "endpoint": "/api/v1/market/gainers",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 63.65,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 6,
+      "null_analysis": [
+        {
+          "field": "gainers[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[1].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[2].sector",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[2].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[3].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[4].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'gainers': [{'symbol': 'WASLR', 'sector': 'MODARABAS', 'name': 'WASLR', 'ldcp': 0.64, 'open': 0.79, 'high': 0.79, 'low': 0.79, 'current': 0.79, 'change': 0.15, 'change_pct': 23.44, 'volume': 3062492,..."
+    },
+    {
+      "op_id": 28,
+      "category": "Market",
+      "summary": "Get top losing stocks",
+      "method": "GET",
+      "endpoint": "/api/v1/market/losers",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 62.46,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 7,
+      "null_analysis": [
+        {
+          "field": "losers[0].sector",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[1].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[2].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[3].sector",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[3].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[4].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'losers': [{'symbol': 'GTECHBR', 'sector': None, 'name': 'GTECHBR', 'ldcp': 0.31, 'open': 0.02, 'high': 0.02, 'low': 0.02, 'current': 0.02, 'change': -0.29, 'change_pct': -93.55, 'volume': 3997103, '..."
+    },
+    {
+      "op_id": 29,
+      "category": "Market",
+      "summary": "Get stocks with highest volume",
+      "method": "GET",
+      "endpoint": "/api/v1/market/volume-spikes",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 62.45,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 5,
+      "null_analysis": [
+        {
+          "field": "volume_spikes[0].market_cap_m",
+          "reason": "Market Data: Illiquid stock or off-market hours with no trades executed in current session"
+        },
+        {
+          "field": "volume_spikes[1].market_cap_m",
+          "reason": "Market Data: Illiquid stock or off-market hours with no trades executed in current session"
+        },
+        {
+          "field": "volume_spikes[2].market_cap_m",
+          "reason": "Market Data: Illiquid stock or off-market hours with no trades executed in current session"
+        },
+        {
+          "field": "volume_spikes[3].market_cap_m",
+          "reason": "Market Data: Illiquid stock or off-market hours with no trades executed in current session"
+        },
+        {
+          "field": "volume_spikes[4].market_cap_m",
+          "reason": "Market Data: Illiquid stock or off-market hours with no trades executed in current session"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'volume_spikes': [{'symbol': 'CNERGY', 'sector': 'REFINERY', 'name': 'CNERGY', 'ldcp': 12.98, 'open': 12.72, 'high': 12.72, 'low': 12.72, 'current': 12.72, 'change': -0.26, 'change_pct': -2.0, 'volum..."
+    },
+    {
+      "op_id": 30,
+      "category": "Market",
+      "summary": "Get market sentiment overview",
+      "method": "GET",
+      "endpoint": "/api/v1/market/sentiment-overview",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 71.39,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 37,
+      "null_analysis": [
+        {
+          "field": "sector_performance[0].name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[0].stock_count",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[1].name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[1].stock_count",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[1].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[2].name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[2].stock_count",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'market_mood': 'strongly_bearish', 'advancing': 173, 'declining': 362, 'unchanged': 63, 'advance_decline_ratio': 0.48, 'gainers_pct': 28.9, 'losers_pct': 60.5, 'sector_performance': [{'sector': 'TOBA..."
+    },
+    {
+      "op_id": 31,
+      "category": "Market",
+      "summary": "Get all PSX listed stocks (~500 stocks) - alias (public)",
+      "method": "GET",
+      "endpoint": "/api/v1/market/all-stocks",
+      "query_params": {
+        "limit": 5,
+        "offset": 0,
+        "symbols": "OGDC,PPL,HBL",
+        "sector": "COMMERCIAL BANKS",
+        "sort_by": "volume",
+        "order": "desc"
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 75.54,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "stocks[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'stocks': [{'symbol': 'HBL', 'sector': 'COMMERCIAL BANKS', 'name': 'HBL', 'ldcp': 303.78, 'open': 302.29, 'high': 302.29, 'low': 302.29, 'current': 302.29, 'change': -1.49, 'change_pct': -0.49, 'volu..."
+    },
+    {
+      "op_id": 32,
+      "category": "Market",
+      "summary": "Get all PSX listed stocks (~500 stocks) with manual count limit, search, and sector filters (public)",
+      "method": "GET",
+      "endpoint": "/api/v1/market/quotes",
+      "query_params": {
+        "limit": 5,
+        "offset": 0,
+        "symbols": "OGDC,PPL,HBL",
+        "sector": "COMMERCIAL BANKS",
+        "sort_by": "volume",
+        "order": "desc"
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 64.74,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "stocks[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'stocks': [{'symbol': 'HBL', 'sector': 'COMMERCIAL BANKS', 'name': 'HBL', 'ldcp': 303.78, 'open': 302.29, 'high': 302.29, 'low': 302.29, 'current': 302.29, 'change': -1.49, 'change_pct': -0.49, 'volu..."
+    },
+    {
+      "op_id": 33,
+      "category": "Market",
+      "summary": "Get curated stock leaderboards (High Dividend Yield, Best Returning, Value, Liquid)",
+      "method": "GET",
+      "endpoint": "/api/v1/market/curated",
+      "query_params": {
+        "category": "high_dividend_yield",
+        "limit": 5,
+        "sector": "COMMERCIAL BANKS"
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 55.63,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'category': 'high_dividend_yield', 'title': 'Highest Dividend Yielding Stocks', 'description': 'Top PSX companies delivering superior dividend yields to shareholders.', 'total_count': 16, 'items': [{..."
+    },
+    {
+      "op_id": 34,
+      "category": "Stocks",
+      "summary": "Autocomplete stock search",
+      "method": "GET",
+      "endpoint": "/api/v1/stocks/search",
+      "query_params": {
+        "q": "OGDC",
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1314.14,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "results": [
+          {
+            "symbol": "OGDC",
+            "name": "Oil & Gas Development Company",
+            "sector": "OIL & GAS EXPLORATION COMPANIES"
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 35,
+      "category": "Stocks",
+      "summary": "Stock overview snapshot",
+      "method": "GET",
+      "endpoint": "/api/v1/stocks/OGDC/overview",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 68.69,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'name': 'Ogdcl', 'sector': 'OIL & GAS EXPLORATION COMPANIES', 'current_price': 314.62, 'ltp': 314.62, 'ldcp': 313.4, 'change': 1.22, 'change_pct': 0.39, 'day_range': {'low': 314.62,..."
+    },
+    {
+      "op_id": 36,
+      "category": "Stocks",
+      "summary": "Daily OHLCV price history",
+      "method": "GET",
+      "endpoint": "/api/v1/stocks/OGDC/price-history",
+      "query_params": {
+        "range": "1M"
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 57.78,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'range': '1M', 'bars': [{'date': '2026-09-02', 'open': 330.5, 'high': 330.55, 'low': 327.7, 'close': 328.44, 'volume': 2363824}, {'date': '2026-09-03', 'open': 331.7, 'high': 331.7,..."
+    },
+    {
+      "op_id": 37,
+      "category": "Stocks",
+      "summary": "Technical indicator series with overall signal summary",
+      "method": "GET",
+      "endpoint": "/api/v1/stocks/OGDC/technical-indicators",
+      "query_params": {
+        "period": 14,
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 115.46,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'period': 14, 'as_of_date': '2026-10-01', 'data_age_days': 3, 'is_stale': False, 'overall_signal': 'BEARISH', 'summary_message': 'Technical outlook is Bearish with 2 sell, 3 neutral..."
+    },
+    {
+      "op_id": 38,
+      "category": "Stocks",
+      "summary": "Company fundamentals",
+      "method": "GET",
+      "endpoint": "/api/v1/stocks/OGDC/fundamentals",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 56.69,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 2,
+      "null_analysis": [
+        {
+          "field": "ratios.dividend_yield_pct",
+          "reason": "Fundamentals: Negative/zero earnings or no cash dividend declared by company"
+        },
+        {
+          "field": "metrics[4].value",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'data_status': 'complete', 'data_message': 'Company fundamentals loaded from the configured PSX sources.', 'psx_official_url': 'https://dps.psx.com.pk/company/OGDC', 'company_profil..."
+    },
+    {
+      "op_id": 39,
+      "category": "Watchlist",
+      "summary": "List all user watchlists",
+      "method": "GET",
+      "endpoint": "/api/v1/watchlists",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 9880.45,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "[{'id': '5928df9c415f4baabc664ad767e7a2ea', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'name': 'My Watchlist', 'description': 'Default stock watchlist', 'is_default': True, 'item_count': 6, 'creat..."
+    },
+    {
+      "op_id": 40,
+      "category": "Watchlist",
+      "summary": "Create a new watchlist",
+      "method": "POST",
+      "endpoint": "/api/v1/watchlists",
+      "query_params": {},
+      "request_body": {
+        "symbol": "OGDC",
+        "notes": "Automated dynamic test item"
+      },
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5733.48,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body",
+              "name"
+            ],
+            "msg": "Field required",
+            "input": {
+              "symbol": "OGDC",
+              "notes": "Automated dynamic test item"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 41,
+      "category": "Watchlist",
+      "summary": "Get user's default watchlist",
+      "method": "GET",
+      "endpoint": "/api/v1/watchlists/default",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 14714.87,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 18,
+      "null_analysis": [
+        {
+          "field": "items[0].stock_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[0].target_price",
+          "reason": "ML Recommendations: Hold/Sideways recommendations do not set directional target prices"
+        },
+        {
+          "field": "items[0].notes",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[1].stock_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[1].target_price",
+          "reason": "ML Recommendations: Hold/Sideways recommendations do not set directional target prices"
+        },
+        {
+          "field": "items[1].notes",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[2].stock_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[2].target_price",
+          "reason": "ML Recommendations: Hold/Sideways recommendations do not set directional target prices"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'id': '5928df9c415f4baabc664ad767e7a2ea', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'name': 'My Watchlist', 'description': 'Default stock watchlist', 'is_default': True, 'items': [{'id': '88d7d0..."
+    },
+    {
+      "op_id": 42,
+      "category": "Watchlist",
+      "summary": "Check if a stock symbol is in user's watchlists",
+      "method": "GET",
+      "endpoint": "/api/v1/watchlists/check/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5854.06,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "symbol": "OGDC",
+        "is_in_watchlist": true,
+        "watchlist_ids": [
+          "5928df9c415f4baabc664ad767e7a2ea"
+        ]
+      }
+    },
+    {
+      "op_id": 43,
+      "category": "Watchlist",
+      "summary": "Get watchlist details with live stock quotes",
+      "method": "GET",
+      "endpoint": "/api/v1/watchlists/{watchlist_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 6052.57,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Watchlist with ID '{watchlist_id}' not found"
+        }
+      }
+    },
+    {
+      "op_id": 44,
+      "category": "Watchlist",
+      "summary": "Update watchlist metadata",
+      "method": "PATCH",
+      "endpoint": "/api/v1/watchlists/{watchlist_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5640.61,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 45,
+      "category": "Watchlist",
+      "summary": "Delete a watchlist",
+      "method": "DELETE",
+      "endpoint": "/api/v1/watchlists/{watchlist_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 6120.58,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Watchlist with ID '{watchlist_id}' not found"
+        }
+      }
+    },
+    {
+      "op_id": 46,
+      "category": "Watchlist",
+      "summary": "Add a stock symbol to watchlist",
+      "method": "POST",
+      "endpoint": "/api/v1/watchlists/{watchlist_id}/items",
+      "query_params": {},
+      "request_body": {
+        "symbol": "OGDC",
+        "notes": "Automated dynamic test item"
+      },
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 6057.73,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Watchlist with ID '{watchlist_id}' not found"
+        }
+      }
+    },
+    {
+      "op_id": 47,
+      "category": "Watchlist",
+      "summary": "Update watchlist item target price or notes",
+      "method": "PATCH",
+      "endpoint": "/api/v1/watchlists/{watchlist_id}/items/{symbol_or_item_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5648.56,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 48,
+      "category": "Watchlist",
+      "summary": "Remove a stock symbol from watchlist",
+      "method": "DELETE",
+      "endpoint": "/api/v1/watchlists/{watchlist_id}/items/{symbol_or_item_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 5891.91,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Watchlist with ID '{watchlist_id}' not found"
+        }
+      }
+    },
+    {
+      "op_id": 49,
+      "category": "Forecast",
+      "summary": "Predict bullish/bearish/sideways and save to history",
+      "method": "GET",
+      "endpoint": "/api/v1/forecast/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 6125.95,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'horizon': '1D', 'direction': 'bullish', 'confidence': 0.574, 'probabilities': {'bullish': 57.4, 'bearish': 42.6, 'sideways': 0.0}, 'as_of_date': '2026-09-30', 'target_date': '2026-..."
+    },
+    {
+      "op_id": 50,
+      "category": "Forecast",
+      "summary": "Get saved forecast history and real accuracy",
+      "method": "GET",
+      "endpoint": "/api/v1/forecast/OGDC/history",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5585.34,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 2,
+      "null_analysis": [
+        {
+          "field": "history[0].actual.was_correct",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "history[2].actual.was_correct",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'horizon': '1D', 'count': 3, 'accuracy': 0.0, 'accuracy_summary': 'Directional accuracy: 0.0% across 2 decisive bullish/bearish signals (0 neutral; 1 pending).', 'pending_count': 1,..."
+    },
+    {
+      "op_id": 51,
+      "category": "Recommendations",
+      "summary": "Get stock recommendations",
+      "method": "GET",
+      "endpoint": "/api/v1/recommendations",
+      "query_params": {
+        "sector": "COMMERCIAL BANKS",
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5419.87,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "count": 0,
+        "total_count": 0,
+        "generated_at": "2026-10-04T01:58:28.058075Z",
+        "risk_profile": "aggressive",
+        "recommendations": []
+      }
+    },
+    {
+      "op_id": 52,
+      "category": "Recommendations",
+      "summary": "Get current or default engine weights",
+      "method": "GET",
+      "endpoint": "/api/v1/recommendations/engine-weights",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5371.79,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "weights": {
+          "ml": 0.3,
+          "technical": 0.25,
+          "fundamental": 0.25,
+          "sentiment": 0.2
+        }
+      }
+    },
+    {
+      "op_id": 53,
+      "category": "Recommendations",
+      "summary": "Set custom engine weights",
+      "method": "POST",
+      "endpoint": "/api/v1/recommendations/engine-weights",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5686.39,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 54,
+      "category": "Recommendations",
+      "summary": "Get detailed recommendation for a stock",
+      "method": "GET",
+      "endpoint": "/api/v1/recommendations/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5472.25,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 11,
+      "null_analysis": [
+        {
+          "field": "decision.suppression_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "components.ml.availability_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "components.technical.availability_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "components.fundamental.availability_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "components.sentiment.availability_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "market_data.as_of",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "risk.target_price",
+          "reason": "ML Recommendations: Hold/Sideways recommendations do not set directional target prices"
+        },
+        {
+          "field": "risk.stop_loss",
+          "reason": "ML Recommendations: Hold/Sideways recommendations do not set directional target prices"
+        }
+      ],
+      "anomalies_or_wrong_values": [
+        "Sector '0820' returned as numeric code instead of sector title"
+      ],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'name': 'OGDC', 'sector': '0820', 'generated_at': '2026-10-04T01:58:44.627891Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.138, 'confidence': 0.276, 'confidence_type': 'he..."
+    },
+    {
+      "op_id": 55,
+      "category": "Recommendations",
+      "summary": "Get target price and stop loss",
+      "method": "GET",
+      "endpoint": "/api/v1/recommendations/OGDC/target-stop",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5383.92,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 7,
+      "null_analysis": [
+        {
+          "field": "decision.suppression_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "market_data.as_of",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "risk.target_price",
+          "reason": "ML Recommendations: Hold/Sideways recommendations do not set directional target prices"
+        },
+        {
+          "field": "risk.stop_loss",
+          "reason": "ML Recommendations: Hold/Sideways recommendations do not set directional target prices"
+        },
+        {
+          "field": "risk.upside_pct",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "risk.downside_pct",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "risk.risk_reward_ratio",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'generated_at': '2026-10-04T01:58:50.008634Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.138, 'confidence': 0.276, 'confidence_type': 'heuristic_signal_strength', 'status'..."
+    },
+    {
+      "op_id": 56,
+      "category": "Portfolio",
+      "summary": "Get complete portfolio overview with summary and holdings",
+      "method": "GET",
+      "endpoint": "/api/v1/portfolio",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10538.4,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'summary': {'total_invested': '601110.0000', 'current_value': '1305671.0000', 'total_pnl': '704561.0000', 'total_pnl_percent': 117.21, 'today_pnl': '0.0000'}, 'holdings': [{'symbol': 'OGDC', 'company..."
+    },
+    {
+      "op_id": 57,
+      "category": "Portfolio",
+      "summary": "Get all active holdings",
+      "method": "GET",
+      "endpoint": "/api/v1/portfolio/holdings",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 9900.72,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "[{'symbol': 'OGDC', 'company_name': 'Oil & Gas Development Company', 'sector': 'OIL & GAS EXPLORATION COMPANIES', 'quantity': '2300.0000', 'average_cost': '130.9087', 'current_price': '314.62', 'marke..."
+    },
+    {
+      "op_id": 58,
+      "category": "Portfolio",
+      "summary": "Get detailed view of a single holding",
+      "method": "GET",
+      "endpoint": "/api/v1/portfolio/holdings/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 14992.01,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'company_name': 'Oil & Gas Development Company', 'sector': 'OIL & GAS EXPLORATION COMPANIES', 'quantity': '2300.0000', 'average_cost': '130.9087', 'current_price': '314.62', 'invest..."
+    },
+    {
+      "op_id": 59,
+      "category": "Portfolio",
+      "summary": "Get portfolio profit/loss breakdown",
+      "method": "GET",
+      "endpoint": "/api/v1/portfolio/pnl",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 14372.82,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "realized_pnl": "12935.0000",
+        "unrealized_pnl": "691626.0000",
+        "total_pnl": "704561.0000",
+        "total_pnl_percent": 117.21,
+        "today_pnl": "0.0000"
+      }
+    },
+    {
+      "op_id": 60,
+      "category": "Portfolio",
+      "summary": "Get portfolio allocation by stock and sector",
+      "method": "GET",
+      "endpoint": "/api/v1/portfolio/allocation",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10098.56,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'by_stock': [{'symbol': 'OGDC', 'market_value': '723626.0000', 'percentage': 55.42}, {'symbol': 'MCB', 'market_value': '582045.0000', 'percentage': 44.58}], 'by_sector': [{'sector': 'OIL & GAS EXPLOR..."
+    },
+    {
+      "op_id": 61,
+      "category": "Portfolio",
+      "summary": "Get portfolio performance over time",
+      "method": "GET",
+      "endpoint": "/api/v1/portfolio/performance",
+      "query_params": {
+        "period": 14
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5725.33,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'detail': [{'type': 'literal_error', 'loc': ['query', 'period'], 'msg': \"Input should be '1D', '1W', '1M', '3M', '6M', '1Y' or 'ALL'\", 'input': '14', 'ctx': {'expected': \"'1D', '1W', '1M', '3M', '6M'..."
+    },
+    {
+      "op_id": 62,
+      "category": "Portfolio",
+      "summary": "Get paginated transaction history with optional filters",
+      "method": "GET",
+      "endpoint": "/api/v1/portfolio/transactions",
+      "query_params": {
+        "limit": 5,
+        "symbol": "OGDC"
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10201.08,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'items': [{'id': 'a626de0ed15c473981b42fdef2a6e0b9', 'symbol': 'OGDC', 'transaction_type': 'BUY', 'quantity': '100.0000', 'price': '230.0000', 'fee': '15.0000', 'transaction_date': '2026-10-03', 'cre..."
+    },
+    {
+      "op_id": 63,
+      "category": "Portfolio",
+      "summary": "Create a new BUY or SELL transaction",
+      "method": "POST",
+      "endpoint": "/api/v1/portfolio/transactions",
+      "query_params": {},
+      "request_body": {
+        "symbol": "OGDC",
+        "transaction_type": "BUY",
+        "quantity": 50,
+        "price": 314.5,
+        "transaction_date": "2026-10-04T02:00:04.439599+00:00",
+        "notes": "Dynamic test buy"
+      },
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5583.15,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'detail': [{'type': 'date_from_datetime_inexact', 'loc': ['body', 'transaction_date'], 'msg': 'Datetimes provided to dates should have zero time - e.g. be exact dates', 'input': '2026-10-04T02:00:04...."
+    },
+    {
+      "op_id": 67,
+      "category": "Portfolio",
+      "summary": "Record a past completed trade (both BUY and SELL) in one atomic operation",
+      "method": "POST",
+      "endpoint": "/api/v1/portfolio/transactions/completed-trade",
+      "query_params": {},
+      "request_body": {
+        "symbol": "OGDC",
+        "transaction_type": "BUY",
+        "quantity": 50,
+        "price": 314.5,
+        "transaction_date": "2026-10-04T02:00:10.023316+00:00",
+        "notes": "Dynamic test buy"
+      },
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5651.5,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'detail': [{'type': 'missing', 'loc': ['body', 'buy_price'], 'msg': 'Field required', 'input': {'symbol': 'OGDC', 'transaction_type': 'BUY', 'quantity': 50, 'price': 314.5, 'transaction_date': '2026-..."
+    },
+    {
+      "op_id": 68,
+      "category": "Risk",
+      "summary": "Calculate portfolio Value at Risk and CVaR (Historical Simulation)",
+      "method": "GET",
+      "endpoint": "/api/v1/risk/var",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10126.93,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'confidence': 95, 'horizon': '1D', 'var_value': -0.022118, 'cvar_value': -0.03295, 'method': 'historical_simulation_compounded_overlapping', 'num_observations': 1602, 'annualized_volatility': 0.25365..."
+    },
+    {
+      "op_id": 69,
+      "category": "Risk",
+      "summary": "Start async Monte Carlo simulation (GBM)",
+      "method": "POST",
+      "endpoint": "/api/v1/risk/monte-carlo",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5569.03,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 70,
+      "category": "Risk",
+      "summary": "Poll Monte Carlo simulation result",
+      "method": "GET",
+      "endpoint": "/api/v1/risk/monte-carlo/{task_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5566.3,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 15,
+      "null_analysis": [
+        {
+          "field": "num_simulations",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "horizon_days",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "params",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "percentiles",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stats",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "paths_sample",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "error",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "completed_at",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'job_id': '{task_id}', 'status': 'pending', 'num_simulations': None, 'horizon_days': None, 'params': None, 'percentiles': None, 'stats': None, 'paths_sample': None, 'error': None, 'completed_at': Non..."
+    },
+    {
+      "op_id": 71,
+      "category": "Risk",
+      "summary": "Run stress test scenario on portfolio",
+      "method": "GET",
+      "endpoint": "/api/v1/risk/stress-test",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10043.47,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'scenario': '2008_crash', 'name': 'Illustrative broad market crash', 'description': 'Illustrative one-step sector shocks; not a reconstruction of 2008.', 'portfolio_impact': -0.466867, 'portfolio_imp..."
+    },
+    {
+      "op_id": 72,
+      "category": "Sentiment",
+      "summary": "Get overall market sentiment",
+      "method": "GET",
+      "endpoint": "/api/v1/sentiment/market-overview",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5366.64,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'market_mood': 'neutral', 'overall_score': 0.0, 'article_count': 0, 'advancing': 0, 'declining': 0, 'unchanged': 0, 'advance_decline_ratio': 0.0, 'news_sentiment_avg': 0.0, 'score_distribution': {'po..."
+    },
+    {
+      "op_id": 73,
+      "category": "Sentiment",
+      "summary": "Get historical sentiment time series for a stock",
+      "method": "GET",
+      "endpoint": "/api/v1/sentiment/OGDC/history",
+      "query_params": {
+        "period": 14,
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5588.65,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "string_pattern_mismatch",
+            "loc": [
+              "query",
+              "period"
+            ],
+            "msg": "String should match pattern '^(1D|1W|1M|3M|6M|1Y)$'",
+            "input": "14",
+            "ctx": {
+              "pattern": "^(1D|1W|1M|3M|6M|1Y)$"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 74,
+      "category": "Sentiment",
+      "summary": "Get paginated news articles with sentiment for a stock",
+      "method": "GET",
+      "endpoint": "/api/v1/sentiment/OGDC/news",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 7982.56,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 9,
+      "null_analysis": [
+        {
+          "field": "items[2].positive_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[2].neutral_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[2].negative_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[3].positive_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[3].neutral_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[3].negative_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[4].positive_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[4].neutral_score",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'items': [{'id': '0255ba0314554836a4480fcaee7ab125', 'title': 'OGDC faces minor cost pressure in exploration unit', 'source': 'Business Recorder', 'published_at': '2026-09-23T21:18:..."
+    },
+    {
+      "op_id": 75,
+      "category": "Sentiment",
+      "summary": "Get sentiment analysis for a stock",
+      "method": "GET",
+      "endpoint": "/api/v1/sentiment/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5468.36,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 4,
+      "null_analysis": [
+        {
+          "field": "confidence",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "positive_ratio",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "neutral_ratio",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "negative_ratio",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'score': 0.1053, 'label': 'neutral', 'confidence': None, 'positive_ratio': None, 'neutral_ratio': None, 'negative_ratio': None, 'article_count': 19, 'trend': 'stable', 'daily_scores..."
+    },
+    {
+      "op_id": 76,
+      "category": "News",
+      "summary": "Get paginated news feed with cursor pagination",
+      "method": "GET",
+      "endpoint": "/api/v1/news",
+      "query_params": {
+        "symbol": "OGDC",
+        "q": "OGDC",
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 7054.31,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "empty_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'items': [{'id': '895f77519f8848c1906f933777abc154', 'title': 'PINSTECH, OGDCL sign contract', 'url': 'https://www.brecorder.com/news/40441868/pinstech-ogdcl-sign-contract', 'external_url': 'https://..."
+    },
+    {
+      "op_id": 77,
+      "category": "News",
+      "summary": "Manually refresh news feed (async, cooldown-protected)",
+      "method": "POST",
+      "endpoint": "/api/v1/news/refresh",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5395.0,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 2,
+      "null_analysis": [
+        {
+          "field": "next_refresh_at",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "retry_after_seconds",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'status': 'started', 'last_updated': '2026-10-04T02:01:25.236908+00:00', 'refresh_available': True, 'next_refresh_at': None, 'articles_inserted': 0, 'market_status': {'timezone': 'Asia/Karachi', 'cur..."
+    },
+    {
+      "op_id": 78,
+      "category": "News",
+      "summary": "Get refresh job status for polling",
+      "method": "GET",
+      "endpoint": "/api/v1/news/refresh/status",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 60.54,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "state": "queued",
+        "last_success_at": "2026-10-03T18:08:39.134843+00:00",
+        "new_articles": 30
+      }
+    },
+    {
+      "op_id": 79,
+      "category": "News",
+      "summary": "Get current market schedule and ingestion status",
+      "method": "GET",
+      "endpoint": "/api/v1/news/market-status",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 56.73,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'timezone': 'Asia/Karachi', 'current_time_pkt': '2026-10-04T07:01:25.369998+05:00', 'status': 'closed', 'is_weekend': True, 'is_holiday': False, 'ingestion_allowed': False, 'gating_enabled': True, 'w..."
+    },
+    {
+      "op_id": 80,
+      "category": "News",
+      "summary": "Get per-source health status (admin/ops)",
+      "method": "GET",
+      "endpoint": "/api/v1/news/sources",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1606.72,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 8,
+      "null_analysis": [
+        {
+          "field": "sources[0].last_error",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sources[1].last_error",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sources[2].last_error",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sources[3].last_error",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sources[4].last_error",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sources[5].last_error",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sources[6].last_error",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sources[7].last_error",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'sources': [{'key': 'psx', 'name': 'PSX Official Announcements', 'type': 'official', 'last_success_at': '2026-10-03T18:08:39.141289+00:00', 'last_error': None, 'consecutive_failures': 0, 'healthy': T..."
+    },
+    {
+      "op_id": 82,
+      "category": "News",
+      "summary": "Get news for a specific stock (stock page News tab)",
+      "method": "GET",
+      "endpoint": "/api/v1/stocks/OGDC/news",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1712.17,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "empty_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'items': [{'id': '886bd32c9aab4c5f99f34f8cf7e4ff0a', 'title': 'Federal Minister for Finance and Revenue, Senator Muhammad Aurangzeb, reaffirmed the Government\u2019s commitment to sustainable economic gro..."
+    },
+    {
+      "op_id": 83,
+      "category": "Events",
+      "summary": "Get events calendar (earnings, dividends, SBP)",
+      "method": "GET",
+      "endpoint": "/api/v1/events/calendar",
+      "query_params": {
+        "symbol": "OGDC"
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5823.51,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'items': [{'id': '68565ccb65564fcd948ad289ff59cbd0', 'event_type': 'earnings', 'symbol': 'OGDC', 'company_name': 'OGDC', 'event_date': '2026-04-29', 'title': 'FINANCIAL RESULTS FOR THE PERIOD ENDED M..."
+    },
+    {
+      "op_id": 84,
+      "category": "Alerts",
+      "summary": "1-Click automatic price alert for a stock",
+      "method": "POST",
+      "endpoint": "/api/v1/alerts/quick-rule",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5591.97,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 85,
+      "category": "Alerts",
+      "summary": "Check active alert rules for a specific stock",
+      "method": "GET",
+      "endpoint": "/api/v1/alerts/rules/check/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5925.71,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "symbol": "OGDC",
+        "has_active_alert": false,
+        "rules": []
+      }
+    },
+    {
+      "op_id": 86,
+      "category": "Alerts",
+      "summary": "Delete / disable all alert rules for a stock",
+      "method": "DELETE",
+      "endpoint": "/api/v1/alerts/rules/stock/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 204,
+      "is_success": true,
+      "latency_ms": 6656.08,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": null
+    },
+    {
+      "op_id": 87,
+      "category": "Alerts",
+      "summary": "Get user's alert rules",
+      "method": "GET",
+      "endpoint": "/api/v1/alerts/rules",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5836.74,
+      "is_empty": true,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": null
+    },
+    {
+      "op_id": 88,
+      "category": "Alerts",
+      "summary": "Create a new alert rule",
+      "method": "POST",
+      "endpoint": "/api/v1/alerts/rules",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5582.37,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 89,
+      "category": "Alerts",
+      "summary": "Update an alert rule",
+      "method": "PATCH",
+      "endpoint": "/api/v1/alerts/rules/{rule_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5686.88,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 90,
+      "category": "Alerts",
+      "summary": "Delete an alert rule",
+      "method": "DELETE",
+      "endpoint": "/api/v1/alerts/rules/{rule_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 6137.43,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Alert rule '{rule_id}' not found."
+        }
+      }
+    },
+    {
+      "op_id": 91,
+      "category": "Alerts",
+      "summary": "Get user's alerts",
+      "method": "GET",
+      "endpoint": "/api/v1/alerts",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5582.07,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 5,
+      "null_analysis": [
+        {
+          "field": "[0].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "[1].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "[2].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "[3].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "[4].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "[{'id': '95062818ff444f07be7963ee99e1ca54', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'rule_id': None, 'title': '[MEDIUM] Concentration Breach', 'message': 'MCB weight = 41.4% exceeds 30% limit',..."
+    },
+    {
+      "op_id": 92,
+      "category": "Alerts",
+      "summary": "Mark all alerts as read",
+      "method": "PATCH",
+      "endpoint": "/api/v1/alerts/read-all",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 204,
+      "is_success": true,
+      "latency_ms": 5782.81,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": null
+    },
+    {
+      "op_id": 94,
+      "category": "Notifications",
+      "summary": "Get user notifications",
+      "method": "GET",
+      "endpoint": "/api/v1/notifications",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5850.39,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 5,
+      "null_analysis": [
+        {
+          "field": "notifications[0].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "notifications[1].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "notifications[2].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "notifications[3].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "notifications[4].rule_id",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'notifications': [{'id': '95062818ff444f07be7963ee99e1ca54', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'rule_id': None, 'title': '[MEDIUM] Concentration Breach', 'message': 'MCB weight = 41.4% e..."
+    },
+    {
+      "op_id": 95,
+      "category": "Notifications",
+      "summary": "Mark all notifications as read",
+      "method": "PATCH",
+      "endpoint": "/api/v1/notifications/read-all",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 204,
+      "is_success": true,
+      "latency_ms": 5921.74,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": null
+    },
+    {
+      "op_id": 96,
+      "category": "Notifications",
+      "summary": "Mark a notification as read",
+      "method": "PATCH",
+      "endpoint": "/api/v1/notifications/{notification_id}/read",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 6044.69,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Notification '{notification_id}' not found."
+        }
+      }
+    },
+    {
+      "op_id": 97,
+      "category": "Shariah",
+      "summary": "Get KMI-30 Shariah compliant constituents",
+      "method": "GET",
+      "endpoint": "/api/v1/shariah/kmi30",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 59.45,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'index': 'KMI-30', 'total_constituents': 30, 'as_of': '2025-12-31T00:00:00Z', 'is_stale': True, 'effective_from': '2026-05-25T00:00:00Z', 'source_url': 'https://dps.psx.com.pk/download/attachment/277..."
+    },
+    {
+      "op_id": 98,
+      "category": "Shariah",
+      "summary": "Get Shariah compliance screening for a stock",
+      "method": "GET",
+      "endpoint": "/api/v1/shariah/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1306.82,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 3,
+      "null_analysis": [
+        {
+          "field": "overall_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "criteria[3].passed",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'screening_available': True, 'is_shariah_compliant': True, 'overall_score': None, 'screening_method': 'PSX KMI-30 screening notice PSX/N-610 (2026-05-15)', 'screened_at': '2025-12-3..."
+    },
+    {
+      "op_id": 99,
+      "category": "Shariah",
+      "summary": "Get detailed Shariah screening criteria",
+      "method": "GET",
+      "endpoint": "/api/v1/shariah/OGDC/criteria",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1594.97,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "criteria[3].passed",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'screening_available': True, 'is_shariah_compliant': True, 'criteria': [{'name': 'Core Business Permissibility', 'threshold': 1.0, 'value': 1.0, 'passed': True, 'description': 'Core..."
+    },
+    {
+      "op_id": 100,
+      "category": "Shariah",
+      "summary": "Calculate purification amount from dividend income",
+      "method": "GET",
+      "endpoint": "/api/v1/shariah/OGDC/purification",
+      "query_params": {
+        "dividend_income": "1"
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1331.04,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'dividend_income': 1.0, 'purification_amount': 0.07, 'purification_rate': 0.0662, 'notes': 'Using the PSX screening rate dated 2025-12-31, calculate PKR 0.07 (6.62% of dividend inco..."
+    },
+    {
+      "op_id": 101,
+      "category": "Community",
+      "summary": "Create a new community post",
+      "method": "POST",
+      "endpoint": "/api/v1/community/posts",
+      "query_params": {},
+      "request_body": {
+        "post_type": "stock_analysis",
+        "stock_symbol": "OGDC",
+        "content": "Live Dynamic Audit: Comprehensive post test."
+      },
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5631.31,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 2,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "detail[1].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body",
+              "content"
+            ],
+            "msg": "Field required",
+            "input": null
+          },
+          {
+            "type": "missing",
+            "loc": [
+              "body",
+              "post_type"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 102,
+      "category": "Community",
+      "summary": "Get community feed with optional keyword search and stock/market filtering",
+      "method": "GET",
+      "endpoint": "/api/v1/community/feed",
+      "query_params": {
+        "q": "OGDC",
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": null,
+      "is_success": false,
+      "latency_ms": 25019.08,
+      "is_empty": true,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "root",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": "",
+      "response_sample": null
+    },
+    {
+      "op_id": 103,
+      "category": "Community",
+      "summary": "Search community posts with multi-factor filters",
+      "method": "GET",
+      "endpoint": "/api/v1/community/posts/search",
+      "query_params": {
+        "q": "OGDC",
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": null,
+      "is_success": false,
+      "latency_ms": 25076.23,
+      "is_empty": true,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "root",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": "",
+      "response_sample": null
+    },
+    {
+      "op_id": 104,
+      "category": "Community",
+      "summary": "Get general market community posts",
+      "method": "GET",
+      "endpoint": "/api/v1/community/posts/market",
+      "query_params": {
+        "q": "OGDC",
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5917.66,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "cursor",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "posts": [],
+        "cursor": null,
+        "has_more": false
+      }
+    },
+    {
+      "op_id": 105,
+      "category": "Community",
+      "summary": "Get all posts related to a specific stock symbol",
+      "method": "GET",
+      "endpoint": "/api/v1/community/posts/stock/OGDC",
+      "query_params": {
+        "q": "OGDC",
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": null,
+      "is_success": false,
+      "latency_ms": 25009.24,
+      "is_empty": true,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "root",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": "",
+      "response_sample": null
+    },
+    {
+      "op_id": 116,
+      "category": "Community",
+      "summary": "Follow a user",
+      "method": "POST",
+      "endpoint": "/api/v1/community/users/12989aba24fa41d4aaa6cf41777a70ab/follow",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5687.56,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "VALIDATION_FAILED",
+          "message": "Cannot follow yourself"
+        }
+      }
+    },
+    {
+      "op_id": 117,
+      "category": "Community",
+      "summary": "Unfollow a user",
+      "method": "DELETE",
+      "endpoint": "/api/v1/community/users/12989aba24fa41d4aaa6cf41777a70ab/follow",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 204,
+      "is_success": true,
+      "latency_ms": 6368.15,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": null
+    },
+    {
+      "op_id": 118,
+      "category": "Community",
+      "summary": "Get follow status",
+      "method": "GET",
+      "endpoint": "/api/v1/community/users/12989aba24fa41d4aaa6cf41777a70ab/follow-status",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 6720.19,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "is_following": false,
+        "followers_count": 0,
+        "following_count": 0
+      }
+    },
+    {
+      "op_id": 119,
+      "category": "Community",
+      "summary": "Get user's followers",
+      "method": "GET",
+      "endpoint": "/api/v1/community/users/12989aba24fa41d4aaa6cf41777a70ab/followers",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5874.75,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "cursor",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "users": [],
+        "cursor": null,
+        "has_more": false
+      }
+    },
+    {
+      "op_id": 120,
+      "category": "Community",
+      "summary": "Get users that user is following",
+      "method": "GET",
+      "endpoint": "/api/v1/community/users/12989aba24fa41d4aaa6cf41777a70ab/following",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5802.95,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "cursor",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "users": [],
+        "cursor": null,
+        "has_more": false
+      }
+    },
+    {
+      "op_id": 121,
+      "category": "Community",
+      "summary": "Get current user's community profile",
+      "method": "GET",
+      "endpoint": "/api/v1/community/me",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 6714.93,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'id': '12989aba24fa41d4aaa6cf41777a70ab', 'username': 'admin_master', 'full_name': 'Antigravity Live Tester', 'avatar_url': 'https://example.com/route-test', 'followers_count': 0, 'following_count': ..."
+    },
+    {
+      "op_id": 122,
+      "category": "Community",
+      "summary": "Get current user's posts",
+      "method": "GET",
+      "endpoint": "/api/v1/community/me/posts",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": null,
+      "is_success": false,
+      "latency_ms": 25005.68,
+      "is_empty": true,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "root",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": "",
+      "response_sample": null
+    },
+    {
+      "op_id": 123,
+      "category": "Community",
+      "summary": "Get another user's public community profile",
+      "method": "GET",
+      "endpoint": "/api/v1/community/users/12989aba24fa41d4aaa6cf41777a70ab",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 6099.47,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'id': '12989aba24fa41d4aaa6cf41777a70ab', 'username': 'admin_master', 'full_name': 'Antigravity Live Tester', 'avatar_url': 'https://example.com/route-test', 'followers_count': 0, 'following_count': ..."
+    },
+    {
+      "op_id": 124,
+      "category": "Community",
+      "summary": "Get another user's public posts",
+      "method": "GET",
+      "endpoint": "/api/v1/community/users/12989aba24fa41d4aaa6cf41777a70ab/posts",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 23146.29,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 9,
+      "null_analysis": [
+        {
+          "field": "posts[0].stock_symbol",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[0].stock_name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[0].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[1].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[2].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[3].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[3].removed_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[4].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'posts': [{'id': '36152f723ec4456d9aa9d2408e8d8b5a', 'author_id': '12989aba24fa41d4aaa6cf41777a70ab', 'author_username': 'admin_master', 'author_full_name': 'Antigravity Live Tester', 'author_avatar_..."
+    },
+    {
+      "op_id": 125,
+      "category": "Community",
+      "summary": "Get community notifications",
+      "method": "GET",
+      "endpoint": "/api/v1/community/notifications",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": null,
+      "is_success": false,
+      "latency_ms": 25004.75,
+      "is_empty": true,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "root",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": "",
+      "response_sample": null
+    },
+    {
+      "op_id": 126,
+      "category": "Community",
+      "summary": "Get unread notification count",
+      "method": "GET",
+      "endpoint": "/api/v1/community/notifications/unread-count",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5932.83,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "unread_count": 1
+      }
+    },
+    {
+      "op_id": 127,
+      "category": "Community",
+      "summary": "Mark notification as read",
+      "method": "POST",
+      "endpoint": "/api/v1/community/notifications/{notification_id}/read",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 5975.2,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Notification not found"
+        }
+      }
+    },
+    {
+      "op_id": 128,
+      "category": "Community",
+      "summary": "Mark all notifications as read",
+      "method": "POST",
+      "endpoint": "/api/v1/community/notifications/read-all",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 204,
+      "is_success": true,
+      "latency_ms": 5798.38,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": null
+    },
+    {
+      "op_id": 129,
+      "category": "Assistant",
+      "summary": "Send a message to the AI assistant (Standard REST)",
+      "method": "POST",
+      "endpoint": "/api/v1/assistant/chat",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5644.12,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 130,
+      "category": "Assistant",
+      "summary": "Suggested starter prompts for the assistant",
+      "method": "GET",
+      "endpoint": "/api/v1/assistant/quick-prompts",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5499.12,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'prompts': [{'id': 'market_today', 'label': 'How is the PSX market today?', 'message': 'How is the PSX market today?'}, {'id': 'my_portfolio', 'label': 'Summarize my portfolio', 'message': 'Summarize..."
+    },
+    {
+      "op_id": 131,
+      "category": "Assistant",
+      "summary": "Stream assistant response (Server-Sent Events)",
+      "method": "POST",
+      "endpoint": "/api/v1/assistant/chat/stream",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5663.21,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 132,
+      "category": "Assistant",
+      "summary": "List user's conversations",
+      "method": "GET",
+      "endpoint": "/api/v1/assistant/conversations",
+      "query_params": {
+        "limit": 5,
+        "offset": 0
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 9904.67,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'conversations': [{'id': 'a36fe37e4cb544569fb14934a0ec1695', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'title': 'What is the current technical outlook for OGDC on ...', 'created_at': '2026-10-03..."
+    },
+    {
+      "op_id": 133,
+      "category": "Assistant",
+      "summary": "Create a new conversation",
+      "method": "POST",
+      "endpoint": "/api/v1/assistant/conversations",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5635.34,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 134,
+      "category": "Assistant",
+      "summary": "Get a conversation with messages",
+      "method": "GET",
+      "endpoint": "/api/v1/assistant/conversations/{conversation_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 6203.6,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Conversation not found"
+        }
+      }
+    },
+    {
+      "op_id": 135,
+      "category": "Assistant",
+      "summary": "Update conversation title",
+      "method": "PATCH",
+      "endpoint": "/api/v1/assistant/conversations/{conversation_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 5566.45,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 136,
+      "category": "Assistant",
+      "summary": "Delete a conversation",
+      "method": "DELETE",
+      "endpoint": "/api/v1/assistant/conversations/{conversation_id}",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 5988.29,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Conversation not found"
+        }
+      }
+    },
+    {
+      "op_id": 137,
+      "category": "Assistant",
+      "summary": "Regenerate the last assistant response",
+      "method": "POST",
+      "endpoint": "/api/v1/assistant/conversations/{conversation_id}/regenerate",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 6055.08,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Conversation not found"
+        }
+      }
+    },
+    {
+      "op_id": 138,
+      "category": "WebSockets",
+      "summary": "WebSocket + REST fallback protocol (Android / Swagger)",
+      "method": "GET",
+      "endpoint": "/api/v1/ws/protocol",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 72.86,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'protocol_version': '1.0', 'primary_transport': 'websocket', 'fallback_transport': 'rest_polling', 'websocket_path': '/api/v1/ws/market', 'websocket_url_template': '{scheme}://{host}/api/v1/ws/market..."
+    },
+    {
+      "op_id": 139,
+      "category": "WebSockets",
+      "summary": "Get real-time WebSocket connection and subscription metrics",
+      "method": "GET",
+      "endpoint": "/api/v1/ws/stats",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 51.03,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "total_connections": 0,
+        "subscribed_symbols_count": 0,
+        "authenticated_users_count": 0,
+        "subscribed_symbols": [],
+        "protocol_version": "1.0",
+        "timestamp": "2026-10-04T02:07:26.503864Z"
+      }
+    },
+    {
+      "op_id": 140,
+      "category": "WebSockets",
+      "summary": "Publish a single quote tick to WS subscribers (debug/internal)",
+      "method": "POST",
+      "endpoint": "/api/v1/ws/broadcast",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 422,
+      "is_success": false,
+      "latency_ms": 53.49,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "detail[0].input",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": [
+              "body"
+            ],
+            "msg": "Field required",
+            "input": null
+          }
+        ]
+      }
+    },
+    {
+      "op_id": 141,
+      "category": "ETFs",
+      "summary": "List all active PSX ETFs (Public)",
+      "method": "GET",
+      "endpoint": "/api/v1/etfs",
+      "query_params": {
+        "category": "high_dividend_yield",
+        "q": "OGDC"
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1922.55,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "total": 0,
+        "shariah_count": 0,
+        "conventional_count": 0,
+        "etfs": []
+      }
+    },
+    {
+      "op_id": 142,
+      "category": "ETFs",
+      "summary": "Get single ETF overview & live quote (Public)",
+      "method": "GET",
+      "endpoint": "/api/v1/etfs/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 1893.99,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "ETF 'OGDC' not found."
+        }
+      }
+    },
+    {
+      "op_id": 143,
+      "category": "ETFs",
+      "summary": "Get ETF historical OHLCV prices (Public)",
+      "method": "GET",
+      "endpoint": "/api/v1/etfs/OGDC/history",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 78.29,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'timeframe': '1M', 'count': 30, 'history': [{'date': '2026-08-20', 'open': 315.1, 'high': 323.5, 'low': 315.1, 'close': 319.46, 'volume': 8218835}, {'date': '2026-08-21', 'open': 32..."
+    },
+    {
+      "op_id": 144,
+      "category": "ETFs",
+      "summary": "Get ETF performance vs benchmark (Public)",
+      "method": "GET",
+      "endpoint": "/api/v1/etfs/OGDC/performance",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 2113.53,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "ETF 'OGDC' not found."
+        }
+      }
+    },
+    {
+      "op_id": 145,
+      "category": "IPOs",
+      "summary": "List PSX IPOs (Public)",
+      "method": "GET",
+      "endpoint": "/api/v1/ipos",
+      "query_params": {
+        "sector": "COMMERCIAL BANKS",
+        "q": "OGDC",
+        "limit": 5,
+        "offset": 0
+      },
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 3164.93,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "total": 5,
+        "upcoming_count": 1,
+        "active_count": 1,
+        "listed_count": 3,
+        "ipos": []
+      }
+    },
+    {
+      "op_id": 146,
+      "category": "IPOs",
+      "summary": "Get PSX IPO calendar milestones (Public)",
+      "method": "GET",
+      "endpoint": "/api/v1/ipos/calendar",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1928.93,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'total_events': 10, 'upcoming_milestones': [{'ipo_id': '012770bfaffb495d8f60d3054ea2f9c0', 'symbol': 'GTECH', 'company_name': 'Green Technology Solutions Ltd', 'event_type': 'BOOK_BUILDING_START', 'e..."
+    },
+    {
+      "op_id": 147,
+      "category": "IPOs",
+      "summary": "Get IPO listing performance & returns (Public)",
+      "method": "GET",
+      "endpoint": "/api/v1/ipos/performance",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1685.04,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'total_listed': 3, 'average_listing_day_gain_pct': 0.0, 'top_performers': [{'symbol': 'FAST', 'company_name': 'Fast Cables Limited', 'sector': 'Engineering', 'listing_date': '2024-06-12', 'offer_pric..."
+    },
+    {
+      "op_id": 148,
+      "category": "IPOs",
+      "summary": "Get specific IPO details (Public)",
+      "method": "GET",
+      "endpoint": "/api/v1/ipos/OGDC",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 404,
+      "is_success": false,
+      "latency_ms": 1889.51,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "success": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "IPO for 'OGDC' not found."
+        }
+      }
+    },
+    {
+      "op_id": 149,
+      "category": "Admin Community",
+      "summary": "Get reports for admin review",
+      "method": "GET",
+      "endpoint": "/api/v1/admin/community/reports",
+      "query_params": {
+        "limit": 5,
+        "offset": 0
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5850.28,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "reports": []
+      }
+    },
+    {
+      "op_id": 156,
+      "category": "Admin Community",
+      "summary": "Get moderation audit log",
+      "method": "GET",
+      "endpoint": "/api/v1/admin/community/moderation-actions",
+      "query_params": {
+        "limit": 5
+      },
+      "request_body": null,
+      "requires_auth": true,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5857.62,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "actions": []
+      }
+    },
+    {
+      "op_id": 157,
+      "category": "Health",
+      "summary": "Health Check",
+      "method": "GET",
+      "endpoint": "/api/v1/health",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 51.21,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "status": "ok"
+      }
+    },
+    {
+      "op_id": 158,
+      "category": "Health",
+      "summary": "Readiness Check",
+      "method": "GET",
+      "endpoint": "/api/v1/health/ready",
+      "query_params": {},
+      "request_body": null,
+      "requires_auth": false,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 2217.19,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "status": "healthy",
+        "services": {
+          "api": "ready",
+          "database": "ready",
+          "redis": "ready",
+          "celery_worker": "ready",
+          "celery_beat": "ready",
+          "ml_model": "ready"
+        }
+      }
+    }
+  ]
+}

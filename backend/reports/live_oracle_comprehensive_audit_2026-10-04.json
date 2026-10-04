@@ -1,0 +1,2342 @@
+{
+  "metadata": {
+    "title": "Live Oracle PSX Backend Comprehensive Endpoint Verification Audit",
+    "base_url": "http://193.123.84.223:8000",
+    "audited_at": "2026-10-04T02:55:39.661111+00:00",
+    "admin_user": "admin@basarat.pk",
+    "admin_id": "12989aba24fa41d4aaa6cf41777a70ab",
+    "total_endpoints_tested": 80,
+    "successful_endpoints": 80,
+    "failed_endpoints": 0,
+    "success_rate_pct": 100.0,
+    "average_latency_ms": 4494.97,
+    "endpoints_with_nulls_count": 15,
+    "endpoints_with_anomalies_count": 3
+  },
+  "audit_summary_by_category": {
+    "Alerts": {
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "avg_latency_ms": 6377.33
+    },
+    "Alerts CRUD": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "avg_latency_ms": 6415.61
+    },
+    "Community": {
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "avg_latency_ms": 15933.4
+    },
+    "Community CRUD": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "avg_latency_ms": 11493.45
+    },
+    "ETFs": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "avg_latency_ms": 1941.21
+    },
+    "IPO": {
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "avg_latency_ms": 1339.33
+    },
+    "Market": {
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "avg_latency_ms": 78.67
+    },
+    "News & Sentiment": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "avg_latency_ms": 6492.06
+    },
+    "Portfolio": {
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "avg_latency_ms": 11014.7
+    },
+    "Recommendations": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "avg_latency_ms": 6196.75
+    },
+    "Risk Analytics": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "avg_latency_ms": 11058.7
+    },
+    "Risk Profiling": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "avg_latency_ms": 3260.17
+    },
+    "Shariah": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "avg_latency_ms": 1240.77
+    },
+    "Stocks": {
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "avg_latency_ms": 447.98
+    },
+    "System": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "avg_latency_ms": 1131.83
+    },
+    "Users": {
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "avg_latency_ms": 8151.77
+    },
+    "Watchlist": {
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "avg_latency_ms": 10747.3
+    },
+    "Watchlist CRUD": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "avg_latency_ms": 11424.02
+    }
+  },
+  "results": [
+    {
+      "id": 1,
+      "category": "System",
+      "name": "Liveness Probe",
+      "method": "GET",
+      "path": "/health",
+      "url": "http://193.123.84.223:8000/health",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 109.14,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": 2,
+      "category": "System",
+      "name": "Readiness Probe",
+      "method": "GET",
+      "path": "/api/v1/health/ready",
+      "url": "http://193.123.84.223:8000/api/v1/health/ready",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 2154.52,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "status": "healthy",
+        "services": {
+          "api": "ready",
+          "database": "ready",
+          "redis": "ready",
+          "celery_worker": "ready",
+          "celery_beat": "ready",
+          "ml_model": "ready"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "category": "Market",
+      "name": "Market Status & Transport Info",
+      "method": "GET",
+      "path": "/api/v1/market/live",
+      "url": "http://193.123.84.223:8000/api/v1/market/live",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 66.48,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'market_status': 'closed', 'is_market_open': False, 'timezone': 'Asia/Karachi', 'current_time_pkt': '2026-10-04T07:49:02.944992+05:00', 'as_of': '2026-10-04T02:36:54.982940+00:00', 'is_stale': True, 'quote_count': 747, 'session_refresh_enabled': Tru..."
+    },
+    {
+      "id": 4,
+      "category": "Market",
+      "name": "Benchmark Indices Overview",
+      "method": "GET",
+      "path": "/api/v1/market/indices",
+      "url": "http://193.123.84.223:8000/api/v1/market/indices",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 62.45,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'indices': [{'index': 'KSE-100', 'code': 'KSE100', 'current': 168155.49, 'change': -481.36, 'change_pct': -0.29, 'high': 168854.46, 'low': 167685.42}, {'index': 'KSE-30', 'code': 'KSE30', 'current': 50151.61, 'change': -111.06, 'change_pct': -0.22, ..."
+    },
+    {
+      "id": 5,
+      "category": "Market",
+      "name": "KSE-100 Constituents",
+      "method": "GET",
+      "path": "/api/v1/market/indices/kse-100",
+      "url": "http://193.123.84.223:8000/api/v1/market/indices/kse-100",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 105.94,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "shariah_compliant",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'index': 'KSE-100', 'code': 'KSE100', 'shariah_compliant': None, 'constituents': [{'symbol': 'ABL', 'name': 'ABL', 'ldcp': 170.04, 'current': 169.73, 'change': -0.31, 'change_pct': -0.18, 'weight_pct': 1.0, 'index_points': 0.0, 'volume': 134304, 'fr..."
+    },
+    {
+      "id": 6,
+      "category": "Market",
+      "name": "KSE-30 Constituents",
+      "method": "GET",
+      "path": "/api/v1/market/indices/kse-30",
+      "url": "http://193.123.84.223:8000/api/v1/market/indices/kse-30",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 60.9,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "shariah_compliant",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'index': 'KSE-30', 'code': 'KSE30', 'shariah_compliant': None, 'constituents': [{'symbol': 'ATRL', 'name': 'ATRL', 'ldcp': 1187.53, 'current': 1189.43, 'change': 1.9, 'change_pct': 0.16, 'weight_pct': 1.0, 'index_points': 0.0, 'volume': 839176, 'fre..."
+    },
+    {
+      "id": 7,
+      "category": "Market",
+      "name": "KMI-30 Islamic Constituents",
+      "method": "GET",
+      "path": "/api/v1/market/indices/kmi-30",
+      "url": "http://193.123.84.223:8000/api/v1/market/indices/kmi-30",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 129.64,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'index': 'KMI-30', 'code': 'KMI30', 'shariah_compliant': True, 'constituents': [{'symbol': 'AIRLINK', 'name': 'AIRLINK', 'ldcp': 120.94, 'current': 120.3, 'change': -0.64, 'change_pct': -0.53, 'weight_pct': 1.0, 'index_points': 0.0, 'volume': 625495..."
+    },
+    {
+      "id": 8,
+      "category": "Market",
+      "name": "Top Gainers (Filter: limit=5)",
+      "method": "GET",
+      "path": "/api/v1/market/gainers?limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/market/gainers?limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 64.69,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 6,
+      "null_analysis": [
+        {
+          "field": "gainers[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[1].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[2].sector",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[2].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[3].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "gainers[4].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'gainers': [{'symbol': 'WASLR', 'sector': 'MODARABAS', 'name': 'WASLR', 'ldcp': 0.64, 'open': 0.79, 'high': 0.79, 'low': 0.79, 'current': 0.79, 'change': 0.15, 'change_pct': 23.44, 'volume': 3062492, 'market_cap_m': None}, {'symbol': 'HSMCPS', 'sect..."
+    },
+    {
+      "id": 9,
+      "category": "Market",
+      "name": "Top Losers (Filter: limit=5)",
+      "method": "GET",
+      "path": "/api/v1/market/losers?limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/market/losers?limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 60.68,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 7,
+      "null_analysis": [
+        {
+          "field": "losers[0].sector",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[1].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[2].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[3].sector",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[3].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "losers[4].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'losers': [{'symbol': 'GTECHBR', 'sector': None, 'name': 'GTECHBR', 'ldcp': 0.31, 'open': 0.02, 'high': 0.02, 'low': 0.02, 'current': 0.02, 'change': -0.29, 'change_pct': -93.55, 'volume': 3997103, 'market_cap_m': None}, {'symbol': 'OBOYR1', 'sector..."
+    },
+    {
+      "id": 10,
+      "category": "Market",
+      "name": "Volume Spikes (Filter: limit=5)",
+      "method": "GET",
+      "path": "/api/v1/market/volume-spikes?limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/market/volume-spikes?limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 67.18,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 5,
+      "null_analysis": [
+        {
+          "field": "volume_spikes[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "volume_spikes[1].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "volume_spikes[2].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "volume_spikes[3].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "volume_spikes[4].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'volume_spikes': [{'symbol': 'CNERGY', 'sector': 'REFINERY', 'name': 'CNERGY', 'ldcp': 12.98, 'open': 12.72, 'high': 12.72, 'low': 12.72, 'current': 12.72, 'change': -0.26, 'change_pct': -2.0, 'volume': 110643856, 'market_cap_m': None}, {'symbol': '..."
+    },
+    {
+      "id": 11,
+      "category": "Market",
+      "name": "Market Sentiment Overview",
+      "method": "GET",
+      "path": "/api/v1/market/sentiment-overview",
+      "url": "http://193.123.84.223:8000/api/v1/market/sentiment-overview",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 73.68,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 37,
+      "null_analysis": [
+        {
+          "field": "sector_performance[0].name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[0].stock_count",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[1].name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[1].stock_count",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[1].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[2].name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[2].stock_count",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[2].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "sector_performance[3].name",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'market_mood': 'strongly_bearish', 'advancing': 173, 'declining': 362, 'unchanged': 63, 'advance_decline_ratio': 0.48, 'gainers_pct': 28.9, 'losers_pct': 60.5, 'sector_performance': [{'sector': 'TOBACCO', 'name': None, 'avg_change_pct': 3.17, 'compa..."
+    },
+    {
+      "id": 12,
+      "category": "Market",
+      "name": "Sector Performance (Order: desc)",
+      "method": "GET",
+      "path": "/api/v1/market/sectors/performance?order=desc",
+      "url": "http://193.123.84.223:8000/api/v1/market/sectors/performance?order=desc",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 70.37,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'sectors': [{'sector': 'TOBACCO', 'name': 'TOBACCO', 'avg_change_pct': 3.17, 'companies': 3, 'stock_count': 3, 'advancing': 3, 'declining': 0, 'unchanged': 0, 'total_volume': 22452, 'market_cap_m': 0.0, 'top_gainer_symbol': 'PMPK', 'top_loser_symbol..."
+    },
+    {
+      "id": 13,
+      "category": "Market",
+      "name": "Sector Performance (Order: asc)",
+      "method": "GET",
+      "path": "/api/v1/market/sectors/performance?order=asc",
+      "url": "http://193.123.84.223:8000/api/v1/market/sectors/performance?order=asc",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 66.27,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'sectors': [{'sector': 'OIL & GAS MARKETING COMPANIES', 'name': 'OIL & GAS MARKETING COMPANIES', 'avg_change_pct': -8.36, 'companies': 13, 'stock_count': 13, 'advancing': 1, 'declining': 12, 'unchanged': 0, 'total_volume': 31088908, 'market_cap_m': ..."
+    },
+    {
+      "id": 14,
+      "category": "Market",
+      "name": "Market Quotes (Filter: limit=10, sort=volume)",
+      "method": "GET",
+      "path": "/api/v1/market/quotes?limit=10&sort_by=volume&order=desc",
+      "url": "http://193.123.84.223:8000/api/v1/market/quotes?limit=10&sort_by=volume&order=desc",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 156.35,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 11,
+      "null_analysis": [
+        {
+          "field": "stocks[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[1].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[2].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[3].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[4].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[5].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[6].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[7].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[8].sector",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[8].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'stocks': [{'symbol': 'CNERGY', 'sector': 'REFINERY', 'name': 'CNERGY', 'ldcp': 12.98, 'open': 12.72, 'high': 12.72, 'low': 12.72, 'current': 12.72, 'change': -0.26, 'change_pct': -2.0, 'volume': 110643856, 'market_cap_m': None}, {'symbol': 'TISL', ..."
+    },
+    {
+      "id": 15,
+      "category": "Market",
+      "name": "Market Quotes (Filter: sector=COMMERCIAL BANKS)",
+      "method": "GET",
+      "path": "/api/v1/market/quotes?sector=COMMERCIAL%20BANKS&limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/market/quotes?sector=COMMERCIAL%20BANKS&limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 73.83,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 5,
+      "null_analysis": [
+        {
+          "field": "stocks[0].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[1].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[2].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[3].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stocks[4].market_cap_m",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'stocks': [{'symbol': 'BOP', 'sector': 'COMMERCIAL BANKS', 'name': 'BOP', 'ldcp': 30.12, 'open': 29.93, 'high': 29.93, 'low': 29.93, 'current': 29.93, 'change': -0.19, 'change_pct': -0.63, 'volume': 15750537, 'market_cap_m': None}, {'symbol': 'SILK'..."
+    },
+    {
+      "id": 16,
+      "category": "Market",
+      "name": "Curated Stocks: High Dividend Yield",
+      "method": "GET",
+      "path": "/api/v1/market/curated?category=high_dividend_yield&limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/market/curated?category=high_dividend_yield&limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 112.34,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'category': 'high_dividend_yield', 'title': 'Highest Dividend Yielding Stocks', 'description': 'Top PSX companies delivering superior dividend yields to shareholders.', 'total_count': 162, 'items': [{'symbol': 'CENI', 'name': 'CENI', 'sector': 'INSU..."
+    },
+    {
+      "id": 17,
+      "category": "Market",
+      "name": "Curated Stocks: Value Investing",
+      "method": "GET",
+      "path": "/api/v1/market/curated?category=value_investing&limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/market/curated?category=value_investing&limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 55.3,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'category': 'value_investing', 'title': 'Undervalued Value Stocks', 'description': 'Profitable PSX companies trading at low P/E multiples with solid yield.', 'total_count': 307, 'items': [{'symbol': 'DLL', 'name': 'DLL', 'sector': 'INV. BANKS / INV...."
+    },
+    {
+      "id": 18,
+      "category": "Market",
+      "name": "Curated Stocks: Most Liquid",
+      "method": "GET",
+      "path": "/api/v1/market/curated?category=most_liquid&limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/market/curated?category=most_liquid&limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 52.38,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'category': 'most_liquid', 'title': 'Most Liquid and Active Stocks', 'description': 'Equities with the highest 30-day average trading volume on the PSX.', 'total_count': 499, 'items': [{'symbol': 'CNERGY', 'name': 'CNERGY', 'sector': 'REFINERY', 'pr..."
+    },
+    {
+      "id": 19,
+      "category": "Market",
+      "name": "Curated Stocks: Best 1-Year Return",
+      "method": "GET",
+      "path": "/api/v1/market/curated?category=best_returning_1y&limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/market/curated?category=best_returning_1y&limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 58.93,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'category': 'best_returning_1y', 'title': 'Best 1-Year Returning Stocks', 'description': 'Leading PSX equities ranked by 1-year capital appreciation.', 'total_count': 499, 'items': [{'symbol': 'TPLT', 'name': 'TPLT', 'sector': 'TECHNOLOGY & COMMUNIC..."
+    },
+    {
+      "id": 20,
+      "category": "Stocks",
+      "name": "Search Stock (q=OGDC)",
+      "method": "GET",
+      "path": "/api/v1/stocks/search?q=OGDC&limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/stocks/search?q=OGDC&limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1479.22,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "results": [
+          {
+            "symbol": "OGDC",
+            "name": "Oil & Gas Development Company",
+            "sector": "OIL & GAS EXPLORATION COMPANIES"
+          }
+        ]
+      }
+    },
+    {
+      "id": 21,
+      "category": "Stocks",
+      "name": "Search Stock Alias (q=Habib)",
+      "method": "GET",
+      "path": "/api/v1/stocks/search?q=Habib&limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/stocks/search?q=Habib&limit=5",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1902.84,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "results": [
+          {
+            "symbol": "BAHL",
+            "name": "Bank AL Habib Limited",
+            "sector": "COMMERCIAL BANKS"
+          },
+          {
+            "symbol": "HBL",
+            "name": "Habib Bank Limited",
+            "sector": "COMMERCIAL BANKS"
+          },
+          {
+            "symbol": "AHCL",
+            "name": "Arif Habib Corporation Limited",
+            "sector": "FERTILIZER"
+          }
+        ]
+      }
+    },
+    {
+      "id": 22,
+      "category": "Stocks",
+      "name": "Stock Snapshot: OGDC",
+      "method": "GET",
+      "path": "/api/v1/stocks/OGDC/overview",
+      "url": "http://193.123.84.223:8000/api/v1/stocks/OGDC/overview",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 74.56,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'name': 'Ogdcl', 'sector': 'OIL & GAS EXPLORATION COMPANIES', 'current_price': 314.62, 'ltp': 314.62, 'ldcp': 313.4, 'change': 1.22, 'change_pct': 0.39, 'day_range': {'low': 314.62, 'high': 314.62}, 'volume': 3229827, 'market_cap_m..."
+    },
+    {
+      "id": 23,
+      "category": "Stocks",
+      "name": "Stock Snapshot: HBL",
+      "method": "GET",
+      "path": "/api/v1/stocks/HBL/overview",
+      "url": "http://193.123.84.223:8000/api/v1/stocks/HBL/overview",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 68.75,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'HBL', 'name': 'Habib Bank', 'sector': 'COMMERCIAL BANKS', 'current_price': 302.29, 'ltp': 302.29, 'ldcp': 303.78, 'change': -1.49, 'change_pct': -0.49, 'day_range': {'low': 302.29, 'high': 302.29}, 'volume': 1280963, 'market_cap_m': 30229..."
+    },
+    {
+      "id": 24,
+      "category": "Stocks",
+      "name": "Stock Snapshot: SYS",
+      "method": "GET",
+      "path": "/api/v1/stocks/SYS/overview",
+      "url": "http://193.123.84.223:8000/api/v1/stocks/SYS/overview",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 77.24,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'SYS', 'name': 'Systems Limited', 'sector': 'TECHNOLOGY & COMMUNICATION', 'current_price': 115.84, 'ltp': 115.84, 'ldcp': 118.34, 'change': -2.5, 'change_pct': -2.11, 'day_range': {'low': 115.84, 'high': 115.84}, 'volume': 1554344, 'market..."
+    },
+    {
+      "id": 25,
+      "category": "Stocks",
+      "name": "Price History 1M: OGDC",
+      "method": "GET",
+      "path": "/api/v1/stocks/OGDC/price-history?range=1M",
+      "url": "http://193.123.84.223:8000/api/v1/stocks/OGDC/price-history?range=1M",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 63.38,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'range': '1M', 'bars': [{'date': '2026-09-02', 'open': 330.5, 'high': 330.55, 'low': 327.7, 'close': 328.44, 'volume': 2363824}, {'date': '2026-09-03', 'open': 331.7, 'high': 331.7, 'low': 325.85, 'close': 327.02, 'volume': 2136582..."
+    },
+    {
+      "id": 26,
+      "category": "Stocks",
+      "name": "Price History 1Y: OGDC",
+      "method": "GET",
+      "path": "/api/v1/stocks/OGDC/price-history?range=1Y",
+      "url": "http://193.123.84.223:8000/api/v1/stocks/OGDC/price-history?range=1Y",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 146.44,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'range': '1Y', 'bars': [{'date': '2025-10-03', 'open': 278.5, 'high': 280.79, 'low': 277.0, 'close': 277.92, 'volume': 3023187}, {'date': '2025-10-06', 'open': 277.0, 'high': 277.0, 'low': 270.5, 'close': 274.49, 'volume': 3715447}..."
+    },
+    {
+      "id": 27,
+      "category": "Stocks",
+      "name": "Technical Indicators: OGDC",
+      "method": "GET",
+      "path": "/api/v1/stocks/OGDC/technical-indicators?period=14&limit=10",
+      "url": "http://193.123.84.223:8000/api/v1/stocks/OGDC/technical-indicators?period=14&limit=10",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 156.08,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'period': 14, 'as_of_date': '2026-10-01', 'data_age_days': 3, 'is_stale': False, 'overall_signal': 'BEARISH', 'summary_message': 'Technical outlook is Bearish with 2 sell, 3 neutral, and 0 buy signals.', 'signals_breakdown': {'buy'..."
+    },
+    {
+      "id": 28,
+      "category": "Stocks",
+      "name": "Fundamentals: OGDC",
+      "method": "GET",
+      "path": "/api/v1/stocks/OGDC/fundamentals",
+      "url": "http://193.123.84.223:8000/api/v1/stocks/OGDC/fundamentals",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 63.33,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 2,
+      "null_analysis": [
+        {
+          "field": "ratios.dividend_yield_pct",
+          "reason": "Fundamentals: Negative earnings or company did not declare cash dividends"
+        },
+        {
+          "field": "metrics[4].value",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'data_status': 'complete', 'data_message': 'Company fundamentals loaded from the configured PSX sources.', 'psx_official_url': 'https://dps.psx.com.pk/company/OGDC', 'company_profile': {'name': 'Oil & Gas Development Company Limite..."
+    },
+    {
+      "id": 29,
+      "category": "Shariah",
+      "name": "KMI-30 Islamic Index Screened List",
+      "method": "GET",
+      "path": "/api/v1/shariah/kmi30",
+      "url": "http://193.123.84.223:8000/api/v1/shariah/kmi30",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 52.45,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'index': 'KMI-30', 'total_constituents': 30, 'as_of': '2025-12-31T00:00:00Z', 'is_stale': True, 'effective_from': '2026-05-25T00:00:00Z', 'source_url': 'https://dps.psx.com.pk/download/attachment/277332-1.pdf', 'constituents': [{'symbol': 'AIRLINK',..."
+    },
+    {
+      "id": 30,
+      "category": "Shariah",
+      "name": "Shariah Screening: OGDC (Compliant)",
+      "method": "GET",
+      "path": "/api/v1/shariah/OGDC",
+      "url": "http://193.123.84.223:8000/api/v1/shariah/OGDC",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1682.13,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'screening_available': True, 'is_shariah_compliant': True, 'overall_score': 100.0, 'screening_method': 'PSX KMI-30 screening notice PSX/N-610 (2026-05-15)', 'screened_at': '2025-12-31T00:00:00', 'data_as_of': '2025-12-31T00:00:00Z'..."
+    },
+    {
+      "id": 31,
+      "category": "Shariah",
+      "name": "Shariah Screening: HBL (Non-Compliant Bank)",
+      "method": "GET",
+      "path": "/api/v1/shariah/HBL",
+      "url": "http://193.123.84.223:8000/api/v1/shariah/HBL",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1449.67,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'HBL', 'screening_available': True, 'is_shariah_compliant': False, 'overall_score': 0.0, 'screening_method': 'Known business activity classification; financial ratios unavailable', 'screened_at': '2026-10-04T02:49:11.450418', 'data_as_of':..."
+    },
+    {
+      "id": 32,
+      "category": "Shariah",
+      "name": "Shariah Screening: SYS",
+      "method": "GET",
+      "path": "/api/v1/shariah/SYS",
+      "url": "http://193.123.84.223:8000/api/v1/shariah/SYS",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1699.5,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'SYS', 'screening_available': True, 'is_shariah_compliant': True, 'overall_score': 100.0, 'screening_method': 'PSX KMI-30 screening notice PSX/N-610 (2026-05-15)', 'screened_at': '2025-12-31T00:00:00', 'data_as_of': '2025-12-31T00:00:00Z',..."
+    },
+    {
+      "id": 33,
+      "category": "Shariah",
+      "name": "Detailed 6-Criteria Screening: OGDC",
+      "method": "GET",
+      "path": "/api/v1/shariah/OGDC/criteria",
+      "url": "http://193.123.84.223:8000/api/v1/shariah/OGDC/criteria",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1250.02,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'screening_available': True, 'is_shariah_compliant': True, 'criteria': [{'name': 'Core Business Permissibility', 'threshold': 1.0, 'value': 1.0, 'passed': True, 'description': 'Core business activities must be halal and free from p..."
+    },
+    {
+      "id": 34,
+      "category": "Shariah",
+      "name": "Calculate Purification Amount: OGDC",
+      "method": "GET",
+      "path": "/api/v1/shariah/OGDC/purification?dividend_income=5000",
+      "url": "http://193.123.84.223:8000/api/v1/shariah/OGDC/purification?dividend_income=5000",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1310.84,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'dividend_income': 5000.0, 'purification_amount': 331.0, 'purification_rate': 0.0662, 'notes': 'Using the PSX screening rate dated 2025-12-31, calculate PKR 331.00 (6.62% of dividend income). PSX marks this rate provisional and sub..."
+    },
+    {
+      "id": 35,
+      "category": "Recommendations",
+      "name": "AI Recommendations List",
+      "method": "GET",
+      "path": "/api/v1/recommendations",
+      "url": "http://193.123.84.223:8000/api/v1/recommendations",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10569.62,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [
+        "Sector '0810' returned as raw numeric code instead of sector title",
+        "Sector '0807' returned as raw numeric code instead of sector title",
+        "Sector '0807' returned as raw numeric code instead of sector title",
+        "Sector '0810' returned as raw numeric code instead of sector title",
+        "Sector '0824' returned as raw numeric code instead of sector title",
+        "Sector '0816' returned as raw numeric code instead of sector title",
+        "Sector '0828' returned as raw numeric code instead of sector title",
+        "Sector '0824' returned as raw numeric code instead of sector title",
+        "Sector '0804' returned as raw numeric code instead of sector title",
+        "Sector '0807' returned as raw numeric code instead of sector title",
+        "Sector '0804' returned as raw numeric code instead of sector title",
+        "Sector '0828' returned as raw numeric code instead of sector title",
+        "Sector '0801' returned as raw numeric code instead of sector title",
+        "Sector '0828' returned as raw numeric code instead of sector title",
+        "Sector '0803' returned as raw numeric code instead of sector title",
+        "Sector '0828' returned as raw numeric code instead of sector title",
+        "Sector '0823' returned as raw numeric code instead of sector title"
+      ],
+      "error": null,
+      "response_sample": "{'count': 20, 'total_count': 100, 'generated_at': '2026-10-04T02:49:26.142336Z', 'risk_profile': 'moderate', 'recommendations': [{'symbol': 'FFL', 'name': 'FFL', 'sector': '0810', 'decision': {'signal': 'BUY', 'composite_score': 0.33, 'confidence': 0..."
+    },
+    {
+      "id": 36,
+      "category": "Recommendations",
+      "name": "Engine Model Weights",
+      "method": "GET",
+      "path": "/api/v1/recommendations/engine-weights",
+      "url": "http://193.123.84.223:8000/api/v1/recommendations/engine-weights",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5355.15,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "weights": {
+          "ml": 0.35,
+          "technical": 0.25,
+          "fundamental": 0.25,
+          "sentiment": 0.15
+        }
+      }
+    },
+    {
+      "id": 37,
+      "category": "Recommendations",
+      "name": "Set Engine Weights (POST)",
+      "method": "POST",
+      "path": "/api/v1/recommendations/engine-weights",
+      "url": "http://193.123.84.223:8000/api/v1/recommendations/engine-weights",
+      "requires_auth": true,
+      "request_payload": {
+        "gru_weight": 0.35,
+        "technical_weight": 0.25,
+        "fundamental_weight": 0.25,
+        "sentiment_weight": 0.15
+      },
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5240.63,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "weights": {
+          "ml": 0.35,
+          "technical": 0.25,
+          "fundamental": 0.25,
+          "sentiment": 0.15
+        }
+      }
+    },
+    {
+      "id": 38,
+      "category": "Recommendations",
+      "name": "Stock Recommendation: OGDC",
+      "method": "GET",
+      "path": "/api/v1/recommendations/OGDC",
+      "url": "http://193.123.84.223:8000/api/v1/recommendations/OGDC",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5364.5,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [
+        "Sector '0820' returned as raw numeric code instead of sector title"
+      ],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'name': 'OGDC', 'sector': '0820', 'generated_at': '2026-10-04T02:49:42.245230Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.138, 'confidence': 0.277, 'confidence_type': 'heuristic_signal_strength', 'status': 'available', '..."
+    },
+    {
+      "id": 39,
+      "category": "Recommendations",
+      "name": "Target Price & Stop Loss: OGDC",
+      "method": "GET",
+      "path": "/api/v1/recommendations/OGDC/target-stop",
+      "url": "http://193.123.84.223:8000/api/v1/recommendations/OGDC/target-stop",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5281.11,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'generated_at': '2026-10-04T02:49:47.496018Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.138, 'confidence': 0.277, 'confidence_type': 'heuristic_signal_strength', 'status': 'available', 'horizon': '5 trading days', 'reaso..."
+    },
+    {
+      "id": 40,
+      "category": "Recommendations",
+      "name": "Stock Recommendation: SYS",
+      "method": "GET",
+      "path": "/api/v1/recommendations/SYS",
+      "url": "http://193.123.84.223:8000/api/v1/recommendations/SYS",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5369.49,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [
+        "Sector '0828' returned as raw numeric code instead of sector title"
+      ],
+      "error": null,
+      "response_sample": "{'symbol': 'SYS', 'name': 'SYS', 'sector': '0828', 'generated_at': '2026-10-04T02:49:52.894690Z', 'decision': {'signal': 'BUY', 'composite_score': 0.264, 'confidence': 0.528, 'confidence_type': 'heuristic_signal_strength', 'status': 'available', 'hor..."
+    },
+    {
+      "id": 41,
+      "category": "News & Sentiment",
+      "name": "Financial News Feed (limit=10)",
+      "method": "GET",
+      "path": "/api/v1/news?limit=10",
+      "url": "http://193.123.84.223:8000/api/v1/news?limit=10",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 7109.57,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'items': [{'id': '0649d66b7dc1404c8516d8e79efdbc05', 'title': '\u2018Hormuz, Bab al-Mandeb expose vulnerability of energy markets\u2019', 'url': 'https://www.dawn.com/news/2034599/hormuz-bab-al-mandeb-expose-vulnerability-of-energy-markets', 'external_url': '..."
+    },
+    {
+      "id": 42,
+      "category": "News & Sentiment",
+      "name": "News Filtered by Symbol OGDC",
+      "method": "GET",
+      "path": "/api/v1/news?symbol=OGDC&limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/news?symbol=OGDC&limit=5",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 7097.05,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 1,
+      "null_analysis": [
+        {
+          "field": "items[0].sentiment",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'items': [{'id': '229662ce7eaa4bc6abe846423186db69', 'title': 'Federal Minister for Finance and Revenue, Senator Muhammad Aurangzeb, held a meeting with Mr. Srini Nagarajan, Managing Director and Head of Asia, British International Investment (BII),..."
+    },
+    {
+      "id": 43,
+      "category": "News & Sentiment",
+      "name": "Market-wide Sentiment Overview",
+      "method": "GET",
+      "path": "/api/v1/sentiment/market-overview",
+      "url": "http://193.123.84.223:8000/api/v1/sentiment/market-overview",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5435.14,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "market_mood": "neutral",
+        "overall_score": 0.0,
+        "article_count": 0,
+        "advancing": 0,
+        "declining": 0,
+        "unchanged": 0,
+        "advance_decline_ratio": 0.0,
+        "news_sentiment_avg": 0.0,
+        "score_distribution": {
+          "positive": 0,
+          "neutral": 0,
+          "negative": 0
+        }
+      }
+    },
+    {
+      "id": 44,
+      "category": "News & Sentiment",
+      "name": "Stock Sentiment: OGDC",
+      "method": "GET",
+      "path": "/api/v1/sentiment/OGDC",
+      "url": "http://193.123.84.223:8000/api/v1/sentiment/OGDC",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5240.88,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "symbol": "OGDC",
+        "score": 0.1053,
+        "label": "neutral",
+        "confidence": 0.8,
+        "positive_ratio": 0.0,
+        "neutral_ratio": 1.0,
+        "negative_ratio": 0.0,
+        "article_count": 19,
+        "trend": "stable",
+        "daily_scores": [],
+        "updated_at": "2026-10-03T18:09:42.119229+00:00"
+      }
+    },
+    {
+      "id": 45,
+      "category": "News & Sentiment",
+      "name": "Sentiment History: OGDC",
+      "method": "GET",
+      "path": "/api/v1/sentiment/OGDC/history",
+      "url": "http://193.123.84.223:8000/api/v1/sentiment/OGDC/history",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5837.84,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "symbol": "OGDC",
+        "period": "1M",
+        "data": []
+      }
+    },
+    {
+      "id": 46,
+      "category": "News & Sentiment",
+      "name": "Sentiment News: OGDC",
+      "method": "GET",
+      "path": "/api/v1/sentiment/OGDC/news",
+      "url": "http://193.123.84.223:8000/api/v1/sentiment/OGDC/news",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 8231.88,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 24,
+      "null_analysis": [
+        {
+          "field": "items[2].positive_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[2].neutral_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[2].negative_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[3].positive_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[3].neutral_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[3].negative_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[4].positive_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[4].neutral_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[4].negative_score",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[5].positive_score",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'items': [{'id': '0255ba0314554836a4480fcaee7ab125', 'title': 'OGDC faces minor cost pressure in exploration unit', 'source': 'Business Recorder', 'published_at': '2026-09-23T21:18:18.515827+00:00', 'url': 'https://brecorder.com/og..."
+    },
+    {
+      "id": 47,
+      "category": "Risk Profiling",
+      "name": "User Risk Profile Settings",
+      "method": "GET",
+      "path": "/api/v1/users/me/risk-profile",
+      "url": "http://193.123.84.223:8000/api/v1/users/me/risk-profile",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 6464.41,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "id": "12989aba24fa41d4aaa6cf41777a70ab",
+        "email": "admin@basarat.pk",
+        "username": "admin_master",
+        "full_name": "Antigravity Live Tester",
+        "avatar_url": "https://example.com/route-test",
+        "is_active": true,
+        "is_verified": true,
+        "risk_tolerance": "moderate",
+        "sector_preferences": [
+          "Commercial Banks",
+          "Oil & Gas"
+        ],
+        "investment_horizon": "long_term",
+        "created_at": "2026-09-23T21:32:24.817601Z"
+      }
+    },
+    {
+      "id": 48,
+      "category": "Risk Profiling",
+      "name": "Allowed Risk Tolerances & Sectors",
+      "method": "GET",
+      "path": "/api/v1/users/risk-profile/options",
+      "url": "http://193.123.84.223:8000/api/v1/users/risk-profile/options",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 55.94,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'risk_tolerances': ['conservative', 'moderate', 'aggressive'], 'investment_horizons': ['short_term', 'medium_term', 'long_term'], 'sectors': ['All Sectors', 'Commercial Banks', 'Oil & Gas', 'Cement', 'Fertilizer', 'Technology', 'Pharmaceuticals', 'A..."
+    },
+    {
+      "id": 49,
+      "category": "Risk Analytics",
+      "name": "Portfolio Value-at-Risk (VaR)",
+      "method": "GET",
+      "path": "/api/v1/risk/var?confidence=95&horizon=1D",
+      "url": "http://193.123.84.223:8000/api/v1/risk/var?confidence=95&horizon=1D",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 11399.06,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'confidence': 95, 'horizon': '1D', 'var_value': -0.022193, 'cvar_value': -0.033084, 'method': 'historical_simulation_compounded_overlapping', 'num_observations': 1602, 'annualized_volatility': 0.255014, 'status': 'available', 'message': 'Risk estima..."
+    },
+    {
+      "id": 50,
+      "category": "Risk Analytics",
+      "name": "Portfolio Stress Test (2008 Crash)",
+      "method": "GET",
+      "path": "/api/v1/risk/stress-test?scenario=2008_crash",
+      "url": "http://193.123.84.223:8000/api/v1/risk/stress-test?scenario=2008_crash",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10718.35,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'scenario': '2008_crash', 'name': 'Illustrative broad market crash', 'description': 'Illustrative one-step sector shocks; not a reconstruction of 2008.', 'portfolio_impact': -0.465294, 'portfolio_impact_value': -622159.95, 'worst_case_loss': -0.6, '..."
+    },
+    {
+      "id": 51,
+      "category": "Users",
+      "name": "Current User Profile",
+      "method": "GET",
+      "path": "/api/v1/users/me",
+      "url": "http://193.123.84.223:8000/api/v1/users/me",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5248.94,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "id": "12989aba24fa41d4aaa6cf41777a70ab",
+        "email": "admin@basarat.pk",
+        "username": "admin_master",
+        "full_name": "Antigravity Live Tester",
+        "avatar_url": "https://example.com/route-test",
+        "is_active": true,
+        "is_verified": true,
+        "risk_tolerance": "moderate",
+        "sector_preferences": [
+          "Commercial Banks",
+          "Oil & Gas"
+        ],
+        "investment_horizon": "long_term",
+        "created_at": "2026-09-23T21:32:24.817601Z"
+      }
+    },
+    {
+      "id": 52,
+      "category": "Users",
+      "name": "Update Profile (PATCH)",
+      "method": "PATCH",
+      "path": "/api/v1/users/me",
+      "url": "http://193.123.84.223:8000/api/v1/users/me",
+      "requires_auth": true,
+      "request_payload": {
+        "full_name": "Antigravity Live Tester",
+        "phone_number": "+923001234567"
+      },
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 9564.54,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "id": "12989aba24fa41d4aaa6cf41777a70ab",
+        "email": "admin@basarat.pk",
+        "username": "admin_master",
+        "full_name": "Antigravity Live Tester",
+        "avatar_url": "https://example.com/route-test",
+        "is_active": true,
+        "is_verified": true,
+        "risk_tolerance": "moderate",
+        "sector_preferences": [
+          "Commercial Banks",
+          "Oil & Gas"
+        ],
+        "investment_horizon": "long_term",
+        "created_at": "2026-09-23T21:32:24.817601Z"
+      }
+    },
+    {
+      "id": 53,
+      "category": "Users",
+      "name": "Update Risk Profile (PATCH)",
+      "method": "PATCH",
+      "path": "/api/v1/users/me/risk-profile",
+      "url": "http://193.123.84.223:8000/api/v1/users/me/risk-profile",
+      "requires_auth": true,
+      "request_payload": {
+        "risk_tolerance": "moderate",
+        "investment_horizon": "long_term",
+        "sector_preferences": [
+          "Commercial Banks",
+          "Oil & Gas"
+        ]
+      },
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 9641.83,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "id": "12989aba24fa41d4aaa6cf41777a70ab",
+        "email": "admin@basarat.pk",
+        "username": "admin_master",
+        "full_name": "Antigravity Live Tester",
+        "avatar_url": "https://example.com/route-test",
+        "is_active": true,
+        "is_verified": true,
+        "risk_tolerance": "moderate",
+        "sector_preferences": [
+          "Commercial Banks",
+          "Oil & Gas"
+        ],
+        "investment_horizon": "long_term",
+        "created_at": "2026-09-23T21:32:24.817601Z"
+      }
+    },
+    {
+      "id": 54,
+      "category": "Community",
+      "name": "Community Discussion Feed",
+      "method": "GET",
+      "path": "/api/v1/community/feed?limit=10",
+      "url": "http://193.123.84.223:8000/api/v1/community/feed?limit=10",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 24707.87,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 33,
+      "null_analysis": [
+        {
+          "field": "posts[0].stock_symbol",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[0].stock_name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[0].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[0].removed_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[1].stock_symbol",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[1].stock_name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[1].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[1].removed_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[2].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[2].removed_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'posts': [{'id': '45ef715e17964b4d89e3647bef9794ea', 'author_id': '12989aba24fa41d4aaa6cf41777a70ab', 'author_username': 'admin_master', 'author_full_name': 'Antigravity Live Tester', 'author_avatar_url': 'https://example.com/route-test', 'post_type..."
+    },
+    {
+      "id": 55,
+      "category": "Community",
+      "name": "Community Feed Search (q=OGDC)",
+      "method": "GET",
+      "path": "/api/v1/community/posts/search?q=OGDC&limit=5",
+      "url": "http://193.123.84.223:8000/api/v1/community/posts/search?q=OGDC&limit=5",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 22830.91,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 4,
+      "null_analysis": [
+        {
+          "field": "posts[0].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[0].removed_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[1].image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "posts[1].removed_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'posts': [{'id': 'e5c5f852ef954a47ae78d9b3e6325450', 'author_id': '12989aba24fa41d4aaa6cf41777a70ab', 'author_username': 'admin_master', 'author_full_name': 'Antigravity Live Tester', 'author_avatar_url': 'https://example.com/route-test', 'post_type..."
+    },
+    {
+      "id": 56,
+      "category": "Community",
+      "name": "Community User Self Profile",
+      "method": "GET",
+      "path": "/api/v1/community/me",
+      "url": "http://193.123.84.223:8000/api/v1/community/me",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5966.95,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "id": "12989aba24fa41d4aaa6cf41777a70ab",
+        "username": "admin_master",
+        "full_name": "Antigravity Live Tester",
+        "avatar_url": "https://example.com/route-test",
+        "followers_count": 0,
+        "following_count": 0,
+        "published_post_count": 4,
+        "is_following": false,
+        "is_own_profile": true
+      }
+    },
+    {
+      "id": 57,
+      "category": "Community",
+      "name": "Create Community Post (POST)",
+      "method": "POST",
+      "path": "/api/v1/community/posts",
+      "url": "http://193.123.84.223:8000/api/v1/community/posts",
+      "requires_auth": true,
+      "request_payload": {
+        "content": "Live Automated Audit: Testing stock discussion post lifecycle.",
+        "post_type": "GENERAL_MARKET"
+      },
+      "status_code": 201,
+      "is_success": true,
+      "latency_ms": 10227.87,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 4,
+      "null_analysis": [
+        {
+          "field": "stock_symbol",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "stock_name",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "image_url",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "removed_reason",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'id': 'fee1c4f2a07943c6987cf80835b971ec', 'author_id': '12989aba24fa41d4aaa6cf41777a70ab', 'author_username': 'admin_master', 'author_full_name': 'Antigravity Live Tester', 'author_avatar_url': 'https://example.com/route-test', 'post_type': 'GENERAL..."
+    },
+    {
+      "id": 58,
+      "category": "Watchlist",
+      "name": "Get User Watchlists",
+      "method": "GET",
+      "path": "/api/v1/watchlists",
+      "url": "http://193.123.84.223:8000/api/v1/watchlists",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10924.65,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "[{'id': '5928df9c415f4baabc664ad767e7a2ea', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'name': 'My Watchlist', 'description': 'Default stock watchlist', 'is_default': True, 'item_count': 6, 'created_at': '2026-10-03T10:49:11.737431+00:00', 'updat..."
+    },
+    {
+      "id": 59,
+      "category": "Watchlist",
+      "name": "Get Default Watchlist",
+      "method": "GET",
+      "path": "/api/v1/watchlists/default",
+      "url": "http://193.123.84.223:8000/api/v1/watchlists/default",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 16478.76,
+      "is_empty": false,
+      "has_null_values": true,
+      "null_count": 18,
+      "null_analysis": [
+        {
+          "field": "items[0].stock_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[0].target_price",
+          "reason": "ML Recommendation: Sideways/Hold recommendations do not project directional target prices"
+        },
+        {
+          "field": "items[0].notes",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[1].stock_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[1].target_price",
+          "reason": "ML Recommendation: Sideways/Hold recommendations do not project directional target prices"
+        },
+        {
+          "field": "items[1].notes",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[2].stock_id",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[2].target_price",
+          "reason": "ML Recommendation: Sideways/Hold recommendations do not project directional target prices"
+        },
+        {
+          "field": "items[2].notes",
+          "reason": "Optional domain attribute with no value assigned"
+        },
+        {
+          "field": "items[3].stock_id",
+          "reason": "Optional domain attribute with no value assigned"
+        }
+      ],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'id': '5928df9c415f4baabc664ad767e7a2ea', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'name': 'My Watchlist', 'description': 'Default stock watchlist', 'is_default': True, 'items': [{'id': '88d7d0794efe4368966e987ae1696504', 'watchlist_id': '5928..."
+    },
+    {
+      "id": 60,
+      "category": "Watchlist",
+      "name": "Check Symbol in Watchlist",
+      "method": "GET",
+      "path": "/api/v1/watchlists/check/OGDC",
+      "url": "http://193.123.84.223:8000/api/v1/watchlists/check/OGDC",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5645.93,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "symbol": "OGDC",
+        "is_in_watchlist": true,
+        "watchlist_ids": [
+          "5928df9c415f4baabc664ad767e7a2ea",
+          "20ea6114693d4d6cbbd292ff1acc8cd7",
+          "60b581ee0a6544bd94a80c107da29dec",
+          "7513f6fb703a4182a0a305baa56cba70"
+        ]
+      }
+    },
+    {
+      "id": 61,
+      "category": "Watchlist",
+      "name": "Create Custom Watchlist (POST)",
+      "method": "POST",
+      "path": "/api/v1/watchlists",
+      "url": "http://193.123.84.223:8000/api/v1/watchlists",
+      "requires_auth": true,
+      "request_payload": {
+        "name": "Audit Watchlist",
+        "description": "Audited via live runner",
+        "symbols": [
+          "OGDC",
+          "SYS"
+        ]
+      },
+      "status_code": 201,
+      "is_success": true,
+      "latency_ms": 9939.87,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "id": "d80e0d5c4c7e4cb98fb9e72f8ad783ab",
+        "user_id": "12989aba24fa41d4aaa6cf41777a70ab",
+        "name": "Audit Watchlist",
+        "description": "Audited via live runner",
+        "is_default": false,
+        "item_count": 2,
+        "created_at": "2026-10-04T02:53:07.598574+00:00",
+        "updated_at": "2026-10-04T02:53:07.598580+00:00"
+      }
+    },
+    {
+      "id": 62,
+      "category": "Portfolio",
+      "name": "Complete Portfolio Overview",
+      "method": "GET",
+      "path": "/api/v1/portfolio",
+      "url": "http://193.123.84.223:8000/api/v1/portfolio",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10431.71,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'summary': {'total_invested': '664040.0000', 'current_value': '1368595.0000', 'total_pnl': '704555.0000', 'total_pnl_percent': 106.1, 'today_pnl': '0.0000'}, 'holdings': [{'symbol': 'OGDC', 'company_name': 'Oil & Gas Development Company', 'sector': ..."
+    },
+    {
+      "id": 63,
+      "category": "Portfolio",
+      "name": "Portfolio Active Holdings",
+      "method": "GET",
+      "path": "/api/v1/portfolio/holdings",
+      "url": "http://193.123.84.223:8000/api/v1/portfolio/holdings",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10250.54,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "[{'symbol': 'OGDC', 'company_name': 'Oil & Gas Development Company', 'sector': 'OIL & GAS EXPLORATION COMPANIES', 'quantity': '2500.0000', 'average_cost': '145.6080', 'current_price': '314.62', 'market_value': '786550.0000', 'unrealized_pnl': '422530..."
+    },
+    {
+      "id": 64,
+      "category": "Portfolio",
+      "name": "Portfolio P&L Summary",
+      "method": "GET",
+      "path": "/api/v1/portfolio/pnl",
+      "url": "http://193.123.84.223:8000/api/v1/portfolio/pnl",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 14341.66,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "realized_pnl": "12935.0000",
+        "unrealized_pnl": "691620.0000",
+        "total_pnl": "704555.0000",
+        "total_pnl_percent": 106.1,
+        "today_pnl": "0.0000"
+      }
+    },
+    {
+      "id": 65,
+      "category": "Portfolio",
+      "name": "Portfolio Performance History",
+      "method": "GET",
+      "path": "/api/v1/portfolio/performance?range=1M",
+      "url": "http://193.123.84.223:8000/api/v1/portfolio/performance?range=1M",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 9857.94,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'period': '1M', 'data': [{'date': '2026-09-04', 'value': '1269668.00'}, {'date': '2026-09-07', 'value': '1244444.00'}, {'date': '2026-09-08', 'value': '1252912.00'}, {'date': '2026-09-09', 'value': '1245735.00'}, {'date': '2026-09-10', 'value': '122..."
+    },
+    {
+      "id": 66,
+      "category": "Portfolio",
+      "name": "Portfolio Allocation by Sector",
+      "method": "GET",
+      "path": "/api/v1/portfolio/allocation",
+      "url": "http://193.123.84.223:8000/api/v1/portfolio/allocation",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 10466.49,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "by_stock": [
+          {
+            "symbol": "OGDC",
+            "market_value": "786550.0000",
+            "percentage": 57.47
+          },
+          {
+            "symbol": "MCB",
+            "market_value": "582045.0000",
+            "percentage": 42.53
+          }
+        ],
+        "by_sector": [
+          {
+            "sector": "OIL & GAS EXPLORATION COMPANIES",
+            "market_value": "786550.0000",
+            "percentage": 57.47
+          },
+          {
+            "sector": "COMMERCIAL BANKS",
+            "market_value": "582045.0000",
+            "percentage": 42.53
+          }
+        ]
+      }
+    },
+    {
+      "id": 67,
+      "category": "Portfolio",
+      "name": "Portfolio Transactions History",
+      "method": "GET",
+      "path": "/api/v1/portfolio/transactions",
+      "url": "http://193.123.84.223:8000/api/v1/portfolio/transactions",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 9770.74,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'items': [{'id': '631e1eb83e3a41c3b2ab440ce7b70cc6', 'symbol': 'OGDC', 'transaction_type': 'BUY', 'quantity': '100.0000', 'price': '314.5000', 'fee': '15.0000', 'transaction_date': '2026-10-04', 'created_at': '2026-10-04T02:52:27.416857Z', 'updated_..."
+    },
+    {
+      "id": 68,
+      "category": "Portfolio",
+      "name": "Add Portfolio Transaction (POST)",
+      "method": "POST",
+      "path": "/api/v1/portfolio/transactions",
+      "url": "http://193.123.84.223:8000/api/v1/portfolio/transactions",
+      "requires_auth": true,
+      "request_payload": {
+        "symbol": "OGDC",
+        "transaction_type": "BUY",
+        "quantity": 100,
+        "price": 314.5,
+        "transaction_date": "2026-10-04",
+        "fee": 15.0
+      },
+      "status_code": 201,
+      "is_success": true,
+      "latency_ms": 11983.79,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "id": "334b8339e87542869fd668684bb9d8f0",
+        "symbol": "OGDC",
+        "transaction_type": "BUY",
+        "quantity": "100.0000",
+        "price": "314.5000",
+        "fee": "15.0000",
+        "transaction_date": "2026-10-04",
+        "created_at": "2026-10-04T02:54:27.532563Z",
+        "updated_at": "2026-10-04T02:54:27.532569Z"
+      }
+    },
+    {
+      "id": 69,
+      "category": "IPO",
+      "name": "List IPOs Directory",
+      "method": "GET",
+      "path": "/api/v1/ipos",
+      "url": "http://193.123.84.223:8000/api/v1/ipos",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1247.49,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'total': 5, 'upcoming_count': 1, 'active_count': 1, 'listed_count': 3, 'ipos': [{'id': '930ddc382341413cab552dbaaf12ea80', 'symbol': 'PRX', 'company_name': 'Pharmarex Laboratories Limited', 'sector': 'Pharmaceuticals', 'status': 'UPCOMING', 'issue_s..."
+    },
+    {
+      "id": 70,
+      "category": "IPO",
+      "name": "IPO Calendar Milestones",
+      "method": "GET",
+      "path": "/api/v1/ipos/calendar",
+      "url": "http://193.123.84.223:8000/api/v1/ipos/calendar",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1479.06,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'total_events': 10, 'upcoming_milestones': [{'ipo_id': '012770bfaffb495d8f60d3054ea2f9c0', 'symbol': 'GTECH', 'company_name': 'Green Technology Solutions Ltd', 'event_type': 'BOOK_BUILDING_START', 'event_date': '2026-10-05', 'status': 'SCHEDULED', '..."
+    },
+    {
+      "id": 71,
+      "category": "IPO",
+      "name": "IPO Listing Performance",
+      "method": "GET",
+      "path": "/api/v1/ipos/performance",
+      "url": "http://193.123.84.223:8000/api/v1/ipos/performance",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1291.44,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'total_listed': 3, 'average_listing_day_gain_pct': 0.0, 'top_performers': [{'symbol': 'FAST', 'company_name': 'Fast Cables Limited', 'sector': 'Engineering', 'listing_date': '2024-06-12', 'offer_price': 24.45, 'first_day_close': 24.45, 'current_pric..."
+    },
+    {
+      "id": 72,
+      "category": "ETFs",
+      "name": "List PSX ETFs Directory",
+      "method": "GET",
+      "path": "/api/v1/etfs",
+      "url": "http://193.123.84.223:8000/api/v1/etfs",
+      "requires_auth": false,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 1941.21,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'total': 6, 'shariah_count': 2, 'conventional_count': 4, 'etfs': [{'id': '91a4d34e21a547a887c1fb5b6619616b', 'symbol': 'HBLTETF', 'name': 'HBL Total Treasury ETF', 'fund_manager': 'HBL Asset Management Limited', 'category': 'Treasury / Debt ETF', 'b..."
+    },
+    {
+      "id": 73,
+      "category": "Alerts",
+      "name": "User Notifications List",
+      "method": "GET",
+      "path": "/api/v1/notifications",
+      "url": "http://193.123.84.223:8000/api/v1/notifications",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5845.88,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'notifications': [{'id': '438cd0e363c94065b96bc8f75d4c344f', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'rule_id': '', 'title': '[MEDIUM] Concentration Breach', 'message': 'MCB weight = 41.6% exceeds 30% limit', 'is_read': False, 'created_at': '..."
+    },
+    {
+      "id": 74,
+      "category": "Alerts",
+      "name": "User Price Alert Rules",
+      "method": "GET",
+      "path": "/api/v1/alerts/rules",
+      "url": "http://193.123.84.223:8000/api/v1/alerts/rules",
+      "requires_auth": true,
+      "request_payload": null,
+      "status_code": 200,
+      "is_success": true,
+      "latency_ms": 5964.44,
+      "is_empty": true,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": []
+    },
+    {
+      "id": 75,
+      "category": "Alerts",
+      "name": "Create Alert Rule (POST)",
+      "method": "POST",
+      "path": "/api/v1/alerts/rules",
+      "url": "http://193.123.84.223:8000/api/v1/alerts/rules",
+      "requires_auth": true,
+      "request_payload": {
+        "symbol": "OGDC",
+        "condition": "price_above",
+        "threshold": 350.0
+      },
+      "status_code": 201,
+      "is_success": true,
+      "latency_ms": 6253.06,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": {
+        "id": "21a13792e9c94d8f9be8a3f752c4687d",
+        "user_id": "12989aba24fa41d4aaa6cf41777a70ab",
+        "stock_id": "45194d8b11cc437b9aceafac582468da",
+        "symbol": "OGDC",
+        "stock_name": "Oil & Gas Development Company",
+        "condition": "price_above",
+        "threshold": 350.0,
+        "is_active": true,
+        "created_at": "2026-10-04T02:54:52.179210"
+      }
+    },
+    {
+      "id": 76,
+      "category": "Alerts",
+      "name": "Create Quick 1-Click Alert (POST)",
+      "method": "POST",
+      "path": "/api/v1/alerts/quick-rule",
+      "url": "http://193.123.84.223:8000/api/v1/alerts/quick-rule",
+      "requires_auth": true,
+      "request_payload": {
+        "symbol": "OGDC",
+        "percent_threshold": 3.0,
+        "direction": "both"
+      },
+      "status_code": 201,
+      "is_success": true,
+      "latency_ms": 7445.93,
+      "is_empty": false,
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
+      "anomalies_or_wrong_values": [],
+      "error": null,
+      "response_sample": "{'symbol': 'OGDC', 'stock_name': 'Oil & Gas Development Company', 'stock_id': '45194d8b11cc437b9aceafac582468da', 'base_price': 314.62, 'percent_threshold': 3.0, 'direction': 'both', 'rules': [{'id': '78cbd5c3d9104fb2810423cc70babd9b', 'user_id': '12..."
+    },
+    {
+      "id": 77,
+      "category": "Community CRUD",
+      "name": "Add Comment to Post (POST)",
+      "method": "POST",
+      "path": "/api/v1/community/posts/fee1c4f2a07943c6987cf80835b971ec/comments",
+      "status_code": 201,
+      "is_success": true,
+      "latency_ms": 9668.27,
+      "is_empty": false,
+      "has_null_values": false,
+      "anomalies_or_wrong_values": []
+    },
+    {
+      "id": 78,
+      "category": "Community CRUD",
+      "name": "Delete Community Post (DELETE)",
+      "method": "DELETE",
+      "path": "/api/v1/community/posts/fee1c4f2a07943c6987cf80835b971ec",
+      "status_code": 204,
+      "is_success": true,
+      "latency_ms": 13318.64,
+      "is_empty": false,
+      "has_null_values": false,
+      "anomalies_or_wrong_values": []
+    },
+    {
+      "id": 79,
+      "category": "Watchlist CRUD",
+      "name": "Delete Custom Watchlist (DELETE)",
+      "method": "DELETE",
+      "path": "/api/v1/watchlists/d80e0d5c4c7e4cb98fb9e72f8ad783ab",
+      "status_code": 204,
+      "is_success": true,
+      "latency_ms": 11424.02,
+      "is_empty": false,
+      "has_null_values": false,
+      "anomalies_or_wrong_values": []
+    },
+    {
+      "id": 80,
+      "category": "Alerts CRUD",
+      "name": "Delete Alert Rules by Stock (DELETE)",
+      "method": "DELETE",
+      "path": "/api/v1/alerts/rules/stock/OGDC",
+      "status_code": 204,
+      "is_success": true,
+      "latency_ms": 6415.61,
+      "is_empty": false,
+      "has_null_values": false,
+      "anomalies_or_wrong_values": []
+    }
+  ]
+}

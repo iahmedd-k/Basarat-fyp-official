@@ -1,73 +1,74 @@
-from pydantic import BaseModel
+from typing import Optional
+from pydantic import BaseModel, Field
 
 
 class StockSearchResult(BaseModel):
-    symbol: str
-    name: str
-    sector: str | None = None
+    symbol: str = ""
+    name: str = ""
+    sector: str = ""
 
 
 class StockSearchResponse(BaseModel):
-    results: list[StockSearchResult]
+    results: list[StockSearchResult] = Field(default_factory=list)
 
 
 class DayRange(BaseModel):
-    low: float | None = None
-    high: float | None = None
+    low: float = 0.0
+    high: float = 0.0
 
 
 class StockOverview(BaseModel):
-    symbol: str
-    name: str
-    sector: str | None = None
-    current_price: float | None = None
-    ltp: float | None = None
-    ldcp: float | None = None
-    change: float | None = None
-    change_pct: float | None = None
-    day_range: DayRange
-    volume: int | None = None
-    market_cap_m: float | None = None
-    market_cap: float | None = None
-    pe_ratio: float | None = None
-    year_change_pct: float | None = None
-    ytd_change_pct: float | None = None
-    quote_as_of: str | None = None
-    quote_is_stale: bool = True
+    symbol: str = ""
+    name: str = ""
+    sector: str = ""
+    current_price: float = 0.0
+    ltp: float = 0.0
+    ldcp: float = 0.0
+    change: float = 0.0
+    change_pct: float = 0.0
+    day_range: DayRange = Field(default_factory=DayRange)
+    volume: int = 0
+    market_cap_m: float = 0.0
+    market_cap: float = 0.0
+    pe_ratio: float = 0.0
+    year_change_pct: float = 0.0
+    ytd_change_pct: float = 0.0
+    quote_as_of: str = ""
+    quote_is_stale: bool = False
 
 
 class PriceBar(BaseModel):
-    date: str
-    open: float | None = None
-    high: float | None = None
-    low: float | None = None
-    close: float | None = None
-    volume: int | None = None
+    date: str = ""
+    open: float = 0.0
+    high: float = 0.0
+    low: float = 0.0
+    close: float = 0.0
+    volume: int = 0
 
 
 class PriceHistoryResponse(BaseModel):
-    symbol: str
-    range: str
-    bars: list[PriceBar]
-    as_of_date: str | None = None
-    data_age_days: int | None = None
-    is_stale: bool = True
+    symbol: str = ""
+    range: str = "1M"
+    bars: list[PriceBar] = Field(default_factory=list)
+    as_of_date: str = ""
+    data_age_days: int = 0
+    is_stale: bool = False
 
 
 class IndicatorSeries(BaseModel):
-    date: str
-    value: float | None = None
+    date: str = ""
+    value: float = 0.0
 
 
 class IndicatorSummaryItem(BaseModel):
-    value: float | None = None
-    signal: str | None = None
-    description: str | None = None
-    signal_line: float | None = None
-    lower: float | None = None
-    mid: float | None = None
-    upper: float | None = None
-    trend_strength: str | None = None
+    value: float = 0.0
+    signal: str = "neutral"
+    description: str = ""
+    signal_line: float = 0.0
+    lower: float = 0.0
+    mid: float = 0.0
+    upper: float = 0.0
+    trend_strength: str = "moderate"
 
 
 class SignalsBreakdown(BaseModel):
@@ -77,138 +78,138 @@ class SignalsBreakdown(BaseModel):
 
 
 class TechnicalSummary(BaseModel):
-    rsi: IndicatorSummaryItem | None = None
-    macd: IndicatorSummaryItem | None = None
-    sma: IndicatorSummaryItem | None = None
-    bollinger: IndicatorSummaryItem | None = None
-    adx: IndicatorSummaryItem | None = None
+    rsi: IndicatorSummaryItem = Field(default_factory=IndicatorSummaryItem)
+    macd: IndicatorSummaryItem = Field(default_factory=IndicatorSummaryItem)
+    sma: IndicatorSummaryItem = Field(default_factory=IndicatorSummaryItem)
+    bollinger: IndicatorSummaryItem = Field(default_factory=IndicatorSummaryItem)
+    adx: IndicatorSummaryItem = Field(default_factory=IndicatorSummaryItem)
 
 
 class TechnicalIndicatorsResponse(BaseModel):
-    symbol: str
-    period: int
-    as_of_date: str | None = None
-    data_age_days: int | None = None
-    is_stale: bool = True
-    overall_signal: str | None = None
-    summary_message: str | None = None
-    signals_breakdown: SignalsBreakdown | None = None
-    summary: TechnicalSummary | None = None
-    indicators: dict[str, list[IndicatorSeries]]
+    symbol: str = ""
+    period: int = 14
+    as_of_date: str = ""
+    data_age_days: int = 0
+    is_stale: bool = False
+    overall_signal: str = "NEUTRAL"
+    summary_message: str = "Technical indicators computed"
+    signals_breakdown: SignalsBreakdown = Field(default_factory=SignalsBreakdown)
+    summary: TechnicalSummary = Field(default_factory=TechnicalSummary)
+    indicators: dict[str, list[IndicatorSeries]] = Field(default_factory=dict)
 
 
 class FundamentalMetric(BaseModel):
-    key: str
-    value: float | None = None
-    note: str
+    key: str = ""
+    value: float = 0.0
+    note: str = ""
 
 
 class FundamentalsExtras(BaseModel):
-    year_change_pct: float | None = None
-    ytd_change_pct: float | None = None
-    gross_profit_margin_pct: float | None = None
-    net_profit_margin_pct: float | None = None
-    eps_growth_pct: float | None = None
+    year_change_pct: float = 0.0
+    ytd_change_pct: float = 0.0
+    gross_profit_margin_pct: float = 0.0
+    net_profit_margin_pct: float = 0.0
+    eps_growth_pct: float = 0.0
 
 
 class CompanyProfile(BaseModel):
-    name: str | None = None
-    sector: str | None = None
-    business_description: str | None = None
-    ceo: str | None = None
-    chairperson: str | None = None
-    company_secretary: str | None = None
-    website: str | None = None
-    address: str | None = None
-    psx_url: str | None = None
+    name: str = ""
+    sector: str = ""
+    business_description: str = ""
+    ceo: str = ""
+    chairperson: str = ""
+    company_secretary: str = ""
+    website: str = ""
+    address: str = ""
+    psx_url: str = ""
 
 
 class EquityProfile(BaseModel):
-    market_cap_pkr: float | None = None
-    market_cap_pkr_m: float | None = None
-    total_shares: int | None = None
-    free_float_shares: int | None = None
-    free_float_pct: float | None = None
+    market_cap_pkr: float = 0.0
+    market_cap_pkr_m: float = 0.0
+    total_shares: int = 0
+    free_float_shares: int = 0
+    free_float_pct: float = 0.0
 
 
 class FinancialRatios(BaseModel):
-    pe_ratio: float | None = None
-    peg_ratio: float | None = None
-    eps: float | None = None
-    eps_growth_pct: float | None = None
-    net_profit_margin_pct: float | None = None
-    gross_profit_margin_pct: float | None = None
-    dividend_yield_pct: float | None = None
+    pe_ratio: float = 0.0
+    peg_ratio: float = 0.0
+    eps: float = 0.0
+    eps_growth_pct: float = 0.0
+    net_profit_margin_pct: float = 0.0
+    gross_profit_margin_pct: float = 0.0
+    dividend_yield_pct: float = 0.0
 
 
 class TradingLimits(BaseModel):
-    year_high: float | None = None
-    year_low: float | None = None
-    circuit_breaker_lower: float | None = None
-    circuit_breaker_upper: float | None = None
-    year_change_pct: float | None = None
-    ytd_change_pct: float | None = None
+    year_high: float = 0.0
+    year_low: float = 0.0
+    circuit_breaker_lower: float = 0.0
+    circuit_breaker_upper: float = 0.0
+    year_change_pct: float = 0.0
+    ytd_change_pct: float = 0.0
 
 
 class DividendHistoryItem(BaseModel):
-    ex_date: str | None = None
-    cash_amount: str | None = None
-    record_date: str | None = None
-    pay_date: str | None = None
+    ex_date: str = ""
+    cash_amount: str = ""
+    record_date: str = ""
+    pay_date: str = ""
 
 
 class AnnouncementItem(BaseModel):
-    date: str | None = None
-    title: str | None = None
-    pdf_link: str | None = None
+    date: str = ""
+    title: str = ""
+    pdf_link: str = ""
 
 
 class FinancialReportItem(BaseModel):
-    report_type: str | None = None
-    period_ended: str | None = None
-    posting_date: str | None = None
-    url: str | None = None
+    report_type: str = ""
+    period_ended: str = ""
+    posting_date: str = ""
+    url: str = ""
 
 
 class SectorPeerItem(BaseModel):
-    symbol: str | None = None
-    name: str | None = None
-    current: float | None = None
-    ldcp: float | None = None
-    change_pct: float | None = None
-    volume: int | None = None
+    symbol: str = ""
+    name: str = ""
+    current: float = 0.0
+    ldcp: float = 0.0
+    change_pct: float = 0.0
+    volume: int = 0
 
 
 class SectorOverview(BaseModel):
-    sector: str | None = None
-    companies_count: int | None = None
-    avg_change_pct: float | None = None
-    advancing: int | None = None
-    declining: int | None = None
-    unchanged: int | None = None
-    stock: SectorPeerItem | None = None
-    stock_rank: int | None = None
-    top_gainers: list[SectorPeerItem] | None = None
-    top_losers: list[SectorPeerItem] | None = None
+    sector: str = ""
+    companies_count: int = 0
+    avg_change_pct: float = 0.0
+    advancing: int = 0
+    declining: int = 0
+    unchanged: int = 0
+    stock: SectorPeerItem = Field(default_factory=SectorPeerItem)
+    stock_rank: int = 1
+    top_gainers: list[SectorPeerItem] = Field(default_factory=list)
+    top_losers: list[SectorPeerItem] = Field(default_factory=list)
 
 
 class FundamentalsResponse(BaseModel):
-    symbol: str
+    symbol: str = ""
     data_status: str = "available"
     data_message: str = "Fundamental metrics loaded successfully"
     psx_official_url: str = "https://dps.psx.com.pk"
-    company_profile: CompanyProfile | None = None
-    equity_profile: EquityProfile | None = None
-    financials_annual: list[dict] = []
-    financials_quarterly: list[dict] = []
+    company_profile: CompanyProfile = Field(default_factory=CompanyProfile)
+    equity_profile: EquityProfile = Field(default_factory=EquityProfile)
+    financials_annual: list[dict] = Field(default_factory=list)
+    financials_quarterly: list[dict] = Field(default_factory=list)
     financials_unit: str = "PKR Millions"
-    ratio_history: list[dict] = []
-    financial_reports: list[FinancialReportItem] = []
+    ratio_history: list[dict] = Field(default_factory=list)
+    financial_reports: list[FinancialReportItem] = Field(default_factory=list)
     financial_reports_count: int = 0
-    ratios: FinancialRatios | None = None
-    trading_limits: TradingLimits | None = None
-    dividend_history: list[DividendHistoryItem] = []
-    announcements: list[AnnouncementItem] = []
-    metrics: list[FundamentalMetric] = []
-    extras: FundamentalsExtras | None = None
-    sector_overview: SectorOverview | None = None
+    ratios: FinancialRatios = Field(default_factory=FinancialRatios)
+    trading_limits: TradingLimits = Field(default_factory=TradingLimits)
+    dividend_history: list[DividendHistoryItem] = Field(default_factory=list)
+    announcements: list[AnnouncementItem] = Field(default_factory=list)
+    metrics: list[FundamentalMetric] = Field(default_factory=list)
+    extras: FundamentalsExtras = Field(default_factory=FundamentalsExtras)
+    sector_overview: SectorOverview = Field(default_factory=SectorOverview)

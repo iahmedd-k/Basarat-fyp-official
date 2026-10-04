@@ -721,17 +721,17 @@ class SentimentHistoryResponse(BaseModel):
 class SentimentNewsItem(BaseModel):
     """News article with sentiment."""
 
-    id: str
-    title: str
-    source: str | None = None
-    published_at: str | None = None
-    url: str | None = None
-    sentiment: str | None = None
-    sentiment_score: float | None = None
-    sentiment_model: str | None = None
-    positive_score: float | None = None
-    neutral_score: float | None = None
-    negative_score: float | None = None
+    id: str = ""
+    title: str = ""
+    source: str = ""
+    published_at: str = ""
+    url: str = ""
+    sentiment: str = "neutral"
+    sentiment_score: float = 0.0
+    sentiment_model: str = "finbert"
+    positive_score: float = 0.0
+    neutral_score: float = 1.0
+    negative_score: float = 0.0
 
 
 class SentimentNewsResponse(BaseModel):

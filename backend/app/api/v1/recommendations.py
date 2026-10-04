@@ -23,9 +23,19 @@ from app.ml.serving.schemas import (
     TargetStopResponse,
 )
 
+from app.services.market_service import SECTOR_CODE_TO_NAME
+
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _normalize_sector(sector: str | None) -> str:
+    if not sector:
+        return ""
+    sec_str = str(sector).strip()
+    return SECTOR_CODE_TO_NAME.get(sec_str, sec_str)
+
 
 def _get_user_risk_profile(user: User) -> str:
     return getattr(user, "risk_tolerance", None) or "moderate"
@@ -227,19 +237,21 @@ def _decision_payload(rec: dict) -> dict:
 
 
 def _risk_payload(rec: dict) -> dict:
-    tp = float(rec.get("target_price") or 0.0)
-    sl = float(rec.get("stop_loss") or 0.0)
+    tp = rec.get("target_price")
+    sl = rec.get("stop_loss")
     exp_range = rec.get("expected_range")
-    if not exp_range and tp > 0 and sl > 0:
-        exp_range = {"low": min(sl, tp), "high": max(sl, tp), "method": "atr_band"}
+    if not exp_range and tp is not None and sl is not None:
+        tp_f = float(tp)
+        sl_f = float(sl)
+        exp_range = {"low": min(sl_f, tp_f), "high": max(sl_f, tp_f), "method": "atr_band"}
     return {
-        "target_price": tp,
-        "stop_loss": sl,
+        "target_price": float(tp) if tp is not None else None,
+        "stop_loss": float(sl) if sl is not None else None,
         "expected_range": exp_range,
-        "atr_14": float(rec.get("atr_14") or 0.0),
-        "upside_pct": float(rec.get("upside_pct") or 0.0),
-        "downside_pct": float(rec.get("downside_pct") or 0.0),
-        "risk_reward_ratio": float(rec.get("risk_reward_ratio") or 0.0),
+        "atr_14": float(rec["atr_14"]) if rec.get("atr_14") is not None else None,
+        "upside_pct": float(rec["upside_pct"]) if rec.get("upside_pct") is not None else None,
+        "downside_pct": float(rec["downside_pct"]) if rec.get("downside_pct") is not None else None,
+        "risk_reward_ratio": float(rec["risk_reward_ratio"]) if rec.get("risk_reward_ratio") is not None else None,
         "method": rec.get("target_stop_method") or "atr_band",
         "explanation": _target_stop_reason(rec) or "Standard ATR risk boundaries calculated",
     }
@@ -343,7 +355,7 @@ async def get_recommendations(
             RecommendationItem(
                 symbol=r["symbol"],
                 name=r.get("name") or "",
-                sector=r.get("sector") or "",
+                sector=_normalize_sector(r.get("sector")),
                 decision=_decision_payload(r),
                 components=_component_payload(r),
                 market_data=_market_data_payload(r),
@@ -459,7 +471,7 @@ async def get_recommendation_detail(
         return RecommendationDetailResponse(
             symbol=symbol,
             name=rec.get("name") or "",
-            sector=rec.get("sector") or "",
+            sector=_normalize_sector(rec.get("sector")),
             generated_at=datetime.now(timezone.utc),
             decision=_decision_payload(rec),
             components=_component_payload(rec),

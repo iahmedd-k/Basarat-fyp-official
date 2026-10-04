@@ -96,30 +96,30 @@ class CommunityPostUpdate(BaseModel):
 class CommunityPostResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
-    author_id: str
-    author_username: Optional[str] = None
-    author_full_name: Optional[str] = None
-    author_avatar_url: Optional[str] = None
-    post_type: PostType
-    stock_symbol: Optional[str] = None
-    stock_name: Optional[str] = None
-    content: str
-    image_url: Optional[str] = None
-    like_count: int
-    comment_count: int
-    report_count: int
-    status: PostStatus
-    removed_reason: Optional[RemovedReason] = None
+    id: str = ""
+    author_id: str = ""
+    author_username: str = ""
+    author_full_name: str = ""
+    author_avatar_url: str = ""
+    post_type: PostType = PostType.GENERAL_MARKET
+    stock_symbol: str = ""
+    stock_name: str = ""
+    content: str = ""
+    image_url: str = ""
+    like_count: int = 0
+    comment_count: int = 0
+    report_count: int = 0
+    status: PostStatus = PostStatus.PUBLISHED
+    removed_reason: str = ""
     liked_by_me: bool = False
     created_at: datetime
     updated_at: datetime
 
 
 class CommunityPostListResponse(BaseModel):
-    posts: List[CommunityPostResponse]
-    cursor: Optional[str] = None
-    has_more: bool
+    posts: List[CommunityPostResponse] = Field(default_factory=list)
+    cursor: str = ""
+    has_more: bool = False
 
 
 class CommunityCommentCreate(BaseModel):
@@ -148,15 +148,15 @@ class CommunityCommentUpdate(BaseModel):
 class CommunityCommentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
-    post_id: str
-    author_id: str
-    author_username: Optional[str] = None
-    author_full_name: Optional[str] = None
-    author_avatar_url: Optional[str] = None
-    parent_comment_id: Optional[str] = None
-    content: str
-    status: CommentStatus
+    id: str = ""
+    post_id: str = ""
+    author_id: str = ""
+    author_username: str = ""
+    author_full_name: str = ""
+    author_avatar_url: str = ""
+    parent_comment_id: str = ""
+    content: str = ""
+    status: CommentStatus = CommentStatus.PUBLISHED
     reply_count: int = 0
     created_at: datetime
     updated_at: datetime

@@ -145,6 +145,7 @@ async def get_kse_100_constituents(
         return {
             "index": "KSE-100",
             "code": "KSE100",
+            "shariah_compliant": False,
             "constituents": constituents,
             **service.constituents_freshness("KSE100"),
         }
@@ -167,6 +168,7 @@ async def get_kse_30_constituents(
         return {
             "index": "KSE-30",
             "code": "KSE30",
+            "shariah_compliant": False,
             "constituents": constituents,
             **service.constituents_freshness("KSE30"),
         }

@@ -964,15 +964,17 @@ class MarketService:
             top_loser = min(quotes, key=lambda quote: self._safe_float(quote.get("change_pct")))
             sector_performance.append({
                 "sector": sector,
+                "name": sector,
                 "avg_change_pct": round(sum(changes) / len(changes), 2),
                 "companies": len(quotes),
+                "stock_count": len(quotes),
                 "advancing": len(gainers),
                 "declining": len(losers),
-                "unchanged": unchanged_count,
+                "unchanged": max(0, unchanged_count),
                 "total_volume": sum(self._safe_int(quote.get("volume")) for quote in quotes),
-                "market_cap_m": round(sum(market_caps), 2) if market_caps else None,
-                "top_gainer_symbol": top_gainer.get("symbol"),
-                "top_loser_symbol": top_loser.get("symbol"),
+                "market_cap_m": round(sum(market_caps), 2) if market_caps else 0.0,
+                "top_gainer_symbol": top_gainer.get("symbol") or "",
+                "top_loser_symbol": top_loser.get("symbol") or "",
             })
 
         sector_performance.sort(key=lambda x: x["avg_change_pct"], reverse=True)
