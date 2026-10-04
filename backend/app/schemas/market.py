@@ -114,17 +114,17 @@ class MarketLiveResponse(BaseModel):
 
 class SectorPerformance(BaseModel):
     sector: str
-    name: str = ""
-    avg_change_pct: float = 0.0
-    companies: int
-    stock_count: int = 0
+    name: str | None = None
+    avg_change_pct: float | None = None
+    companies: int = 0
+    stock_count: int | None = None
     advancing: int = 0
     declining: int = 0
     unchanged: int = 0
     total_volume: int = 0
-    market_cap_m: float = 0.0
-    top_gainer_symbol: str = ""
-    top_loser_symbol: str = ""
+    market_cap_m: float | None = None
+    top_gainer_symbol: str | None = None
+    top_loser_symbol: str | None = None
 
 
 class SectorPerformanceResponse(BaseModel):
