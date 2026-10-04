@@ -58,9 +58,9 @@ async def get_notifications(
             AlertResponse(
                 id=a.id,
                 user_id=a.user_id,
-                rule_id=a.rule_id,
+                rule_id=a.rule_id or "",
                 title=a.title,
-                message=a.message,
+                message=a.message or "",
                 is_read=a.is_read,
                 created_at=a.created_at.isoformat() if a.created_at else "",
             )

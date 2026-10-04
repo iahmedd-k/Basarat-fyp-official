@@ -21,12 +21,12 @@ class IPOResponse(BaseModel):
     sector: str
     status: IPOStatus
 
-    issue_size_shares: Optional[float] = None
-    issue_size_pkr: Optional[float] = None
-    floor_price: Optional[float] = None
-    strike_price: Optional[float] = None
-    listing_price: Optional[float] = None
-    current_price: Optional[float] = None
+    issue_size_shares: float = 0.0
+    issue_size_pkr: float = 0.0
+    floor_price: float = 0.0
+    strike_price: float = 0.0
+    listing_price: float = 0.0
+    current_price: float = 0.0
 
     book_building_start: Optional[date] = None
     book_building_end: Optional[date] = None
@@ -34,14 +34,14 @@ class IPOResponse(BaseModel):
     public_subscription_end: Optional[date] = None
     listing_date: Optional[date] = None
 
-    lead_manager: Optional[str] = None
+    lead_manager: str = ""
     is_shariah_compliant: bool = False
-    prospectus_url: Optional[str] = None
-    description: Optional[str] = None
-    subscription_multiplier: Optional[float] = None
+    prospectus_url: str = ""
+    description: str = ""
+    subscription_multiplier: float = 0.0
 
-    listing_gain_pct: Optional[float] = None
-    current_gain_pct: Optional[float] = None
+    listing_gain_pct: float = 0.0
+    current_gain_pct: float = 0.0
 
     created_at: datetime
     updated_at: datetime
@@ -62,7 +62,7 @@ class IPOCalendarMilestone(BaseModel):
     event_type: str  # BOOK_BUILDING_START, BOOK_BUILDING_END, SUBSCRIPTION_START, SUBSCRIPTION_END, LISTING
     event_date: date
     status: str
-    price_info: Optional[str] = None
+    price_info: str = ""
 
 
 class IPOCalendarResponse(BaseModel):
@@ -75,15 +75,15 @@ class IPOPerformanceItem(BaseModel):
     company_name: str
     sector: str
     listing_date: Optional[date] = None
-    offer_price: float
-    first_day_close: Optional[float] = None
-    current_price: Optional[float] = None
-    first_day_return_pct: Optional[float] = None
-    total_return_pct: Optional[float] = None
+    offer_price: float = 0.0
+    first_day_close: float = 0.0
+    current_price: float = 0.0
+    first_day_return_pct: float = 0.0
+    total_return_pct: float = 0.0
 
 
 class IPOPerformanceResponse(BaseModel):
     total_listed: int
-    average_listing_day_gain_pct: Optional[float] = None
+    average_listing_day_gain_pct: float = 0.0
     top_performers: List[IPOPerformanceItem]
     recent_listings: List[IPOPerformanceItem]

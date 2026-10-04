@@ -321,9 +321,9 @@ class AlertRuleUpdate(BaseModel):
 class AlertRuleResponse(BaseModel):
     id: str
     user_id: str
-    stock_id: str | None = None
-    symbol: str | None = None
-    stock_name: str | None = None
+    stock_id: str = ""
+    symbol: str = ""
+    stock_name: str = ""
     condition: str
     threshold: float
     is_active: bool
@@ -342,7 +342,7 @@ class QuickAlertRuleCreate(BaseModel):
 
 class QuickAlertRuleResponse(BaseModel):
     symbol: str
-    stock_name: str | None = None
+    stock_name: str = ""
     stock_id: str
     base_price: float
     percent_threshold: float

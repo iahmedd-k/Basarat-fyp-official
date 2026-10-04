@@ -151,8 +151,8 @@ class IPOService:
             await self.db.rollback()
 
     def _format_ipo_response(self, ipo: IPO) -> IPOResponse:
-        listing_gain_pct = None
-        current_gain_pct = None
+        listing_gain_pct = 0.0
+        current_gain_pct = 0.0
         base_offer = ipo.strike_price or ipo.floor_price or ipo.listing_price
         if base_offer and base_offer > 0:
             if ipo.listing_price:
@@ -166,22 +166,22 @@ class IPOService:
             company_name=ipo.company_name,
             sector=ipo.sector,
             status=IPOStatus(ipo.status),
-            issue_size_shares=ipo.issue_size_shares,
-            issue_size_pkr=ipo.issue_size_pkr,
-            floor_price=ipo.floor_price,
-            strike_price=ipo.strike_price,
-            listing_price=ipo.listing_price,
-            current_price=ipo.current_price,
+            issue_size_shares=float(ipo.issue_size_shares or 0.0),
+            issue_size_pkr=float(ipo.issue_size_pkr or 0.0),
+            floor_price=float(ipo.floor_price or 0.0),
+            strike_price=float(ipo.strike_price or 0.0),
+            listing_price=float(ipo.listing_price or 0.0),
+            current_price=float(ipo.current_price or 0.0),
             book_building_start=ipo.book_building_start,
             book_building_end=ipo.book_building_end,
             public_subscription_start=ipo.public_subscription_start,
             public_subscription_end=ipo.public_subscription_end,
             listing_date=ipo.listing_date,
-            lead_manager=ipo.lead_manager,
-            is_shariah_compliant=ipo.is_shariah_compliant,
-            prospectus_url=ipo.prospectus_url,
-            description=ipo.description,
-            subscription_multiplier=ipo.subscription_multiplier,
+            lead_manager=ipo.lead_manager or "",
+            is_shariah_compliant=bool(ipo.is_shariah_compliant),
+            prospectus_url=ipo.prospectus_url or "",
+            description=ipo.description or "",
+            subscription_multiplier=float(ipo.subscription_multiplier or 0.0),
             listing_gain_pct=listing_gain_pct,
             current_gain_pct=current_gain_pct,
             created_at=ipo.created_at,
