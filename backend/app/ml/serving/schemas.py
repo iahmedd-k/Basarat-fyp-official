@@ -9,7 +9,7 @@ Design principles:
 
 from datetime import date, datetime
 from typing import Optional, Any
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -732,6 +732,21 @@ class SentimentNewsItem(BaseModel):
     positive_score: float = 0.0
     neutral_score: float = 1.0
     negative_score: float = 0.0
+
+    @field_validator("id", "title", "source", "published_at", "url", "sentiment", "sentiment_model", mode="before")
+    @classmethod
+    def _clean_sn_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("sentiment_score", "positive_score", "negative_score", mode="before")
+    @classmethod
+    def _clean_sn_float(cls, v):
+        return 0.0 if v is None else float(v)
+
+    @field_validator("neutral_score", mode="before")
+    @classmethod
+    def _clean_sn_neutral(cls, v):
+        return 1.0 if v is None else float(v)
 
 
 class SentimentNewsResponse(BaseModel):

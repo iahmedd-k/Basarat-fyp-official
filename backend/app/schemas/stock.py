@@ -1,11 +1,16 @@
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class StockSearchResult(BaseModel):
     symbol: str = ""
     name: str = ""
     sector: str = ""
+
+    @field_validator("symbol", "name", "sector", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
 
 
 class StockSearchResponse(BaseModel):
@@ -15,6 +20,11 @@ class StockSearchResponse(BaseModel):
 class DayRange(BaseModel):
     low: float = 0.0
     high: float = 0.0
+
+    @field_validator("low", "high", mode="before")
+    @classmethod
+    def _clean_float(cls, v):
+        return 0.0 if v is None else float(v)
 
 
 class StockOverview(BaseModel):
@@ -36,6 +46,21 @@ class StockOverview(BaseModel):
     quote_as_of: str = ""
     quote_is_stale: bool = False
 
+    @field_validator("symbol", "name", "sector", "quote_as_of", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("current_price", "ltp", "ldcp", "change", "change_pct", "market_cap_m", "market_cap", "pe_ratio", "year_change_pct", "ytd_change_pct", mode="before")
+    @classmethod
+    def _clean_float(cls, v):
+        return 0.0 if v is None else float(v)
+
+    @field_validator("volume", mode="before")
+    @classmethod
+    def _clean_int(cls, v):
+        return 0 if v is None else int(v)
+
 
 class PriceBar(BaseModel):
     date: str = ""
@@ -44,6 +69,21 @@ class PriceBar(BaseModel):
     low: float = 0.0
     close: float = 0.0
     volume: int = 0
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("open", "high", "low", "close", mode="before")
+    @classmethod
+    def _clean_float(cls, v):
+        return 0.0 if v is None else float(v)
+
+    @field_validator("volume", mode="before")
+    @classmethod
+    def _clean_int(cls, v):
+        return 0 if v is None else int(v)
 
 
 class PriceHistoryResponse(BaseModel):
@@ -54,10 +94,30 @@ class PriceHistoryResponse(BaseModel):
     data_age_days: int = 0
     is_stale: bool = False
 
+    @field_validator("symbol", "range", "as_of_date", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("data_age_days", mode="before")
+    @classmethod
+    def _clean_int(cls, v):
+        return 0 if v is None else int(v)
+
 
 class IndicatorSeries(BaseModel):
     date: str = ""
     value: float = 0.0
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _clean_float(cls, v):
+        return 0.0 if v is None else float(v)
 
 
 class IndicatorSummaryItem(BaseModel):
@@ -70,11 +130,26 @@ class IndicatorSummaryItem(BaseModel):
     upper: float = 0.0
     trend_strength: str = "moderate"
 
+    @field_validator("signal", "description", "trend_strength", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("value", "signal_line", "lower", "mid", "upper", mode="before")
+    @classmethod
+    def _clean_float(cls, v):
+        return 0.0 if v is None else float(v)
+
 
 class SignalsBreakdown(BaseModel):
     buy: int = 0
     neutral: int = 0
     sell: int = 0
+
+    @field_validator("buy", "neutral", "sell", mode="before")
+    @classmethod
+    def _clean_int(cls, v):
+        return 0 if v is None else int(v)
 
 
 class TechnicalSummary(BaseModel):
@@ -103,6 +178,16 @@ class FundamentalMetric(BaseModel):
     value: float = 0.0
     note: str = ""
 
+    @field_validator("key", "note", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _clean_val(cls, v):
+        return 0.0 if v is None else float(v)
+
 
 class FundamentalsExtras(BaseModel):
     year_change_pct: float = 0.0
@@ -110,6 +195,11 @@ class FundamentalsExtras(BaseModel):
     gross_profit_margin_pct: float = 0.0
     net_profit_margin_pct: float = 0.0
     eps_growth_pct: float = 0.0
+
+    @field_validator("year_change_pct", "ytd_change_pct", "gross_profit_margin_pct", "net_profit_margin_pct", "eps_growth_pct", mode="before")
+    @classmethod
+    def _clean_float(cls, v):
+        return 0.0 if v is None else float(v)
 
 
 class CompanyProfile(BaseModel):
@@ -123,6 +213,11 @@ class CompanyProfile(BaseModel):
     address: str = ""
     psx_url: str = ""
 
+    @field_validator("name", "sector", "business_description", "ceo", "chairperson", "company_secretary", "website", "address", "psx_url", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
+
 
 class EquityProfile(BaseModel):
     market_cap_pkr: float = 0.0
@@ -130,6 +225,16 @@ class EquityProfile(BaseModel):
     total_shares: int = 0
     free_float_shares: int = 0
     free_float_pct: float = 0.0
+
+    @field_validator("market_cap_pkr", "market_cap_pkr_m", "free_float_pct", mode="before")
+    @classmethod
+    def _clean_eq_float(cls, v):
+        return 0.0 if v is None else float(v)
+
+    @field_validator("total_shares", "free_float_shares", mode="before")
+    @classmethod
+    def _clean_eq_int(cls, v):
+        return 0 if v is None else int(v)
 
 
 class FinancialRatios(BaseModel):
@@ -141,6 +246,11 @@ class FinancialRatios(BaseModel):
     gross_profit_margin_pct: float = 0.0
     dividend_yield_pct: float = 0.0
 
+    @field_validator("pe_ratio", "peg_ratio", "eps", "eps_growth_pct", "net_profit_margin_pct", "gross_profit_margin_pct", "dividend_yield_pct", mode="before")
+    @classmethod
+    def _clean_ratios(cls, v):
+        return 0.0 if v is None else float(v)
+
 
 class TradingLimits(BaseModel):
     year_high: float = 0.0
@@ -150,6 +260,11 @@ class TradingLimits(BaseModel):
     year_change_pct: float = 0.0
     ytd_change_pct: float = 0.0
 
+    @field_validator("year_high", "year_low", "circuit_breaker_lower", "circuit_breaker_upper", "year_change_pct", "ytd_change_pct", mode="before")
+    @classmethod
+    def _clean_limits(cls, v):
+        return 0.0 if v is None else float(v)
+
 
 class DividendHistoryItem(BaseModel):
     ex_date: str = ""
@@ -157,11 +272,21 @@ class DividendHistoryItem(BaseModel):
     record_date: str = ""
     pay_date: str = ""
 
+    @field_validator("ex_date", "cash_amount", "record_date", "pay_date", mode="before")
+    @classmethod
+    def _clean_div_str(cls, v):
+        return "" if v is None else str(v)
+
 
 class AnnouncementItem(BaseModel):
     date: str = ""
     title: str = ""
     pdf_link: str = ""
+
+    @field_validator("date", "title", "pdf_link", mode="before")
+    @classmethod
+    def _clean_ann_str(cls, v):
+        return "" if v is None else str(v)
 
 
 class FinancialReportItem(BaseModel):
@@ -169,6 +294,11 @@ class FinancialReportItem(BaseModel):
     period_ended: str = ""
     posting_date: str = ""
     url: str = ""
+
+    @field_validator("report_type", "period_ended", "posting_date", "url", mode="before")
+    @classmethod
+    def _clean_rep_str(cls, v):
+        return "" if v is None else str(v)
 
 
 class SectorPeerItem(BaseModel):
@@ -178,6 +308,21 @@ class SectorPeerItem(BaseModel):
     ldcp: float = 0.0
     change_pct: float = 0.0
     volume: int = 0
+
+    @field_validator("symbol", "name", mode="before")
+    @classmethod
+    def _clean_peer_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("current", "ldcp", "change_pct", mode="before")
+    @classmethod
+    def _clean_peer_float(cls, v):
+        return 0.0 if v is None else float(v)
+
+    @field_validator("volume", mode="before")
+    @classmethod
+    def _clean_peer_int(cls, v):
+        return 0 if v is None else int(v)
 
 
 class SectorOverview(BaseModel):
@@ -191,6 +336,21 @@ class SectorOverview(BaseModel):
     stock_rank: int = 1
     top_gainers: list[SectorPeerItem] = Field(default_factory=list)
     top_losers: list[SectorPeerItem] = Field(default_factory=list)
+
+    @field_validator("sector", mode="before")
+    @classmethod
+    def _clean_sec_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("companies_count", "advancing", "declining", "unchanged", "stock_rank", mode="before")
+    @classmethod
+    def _clean_sec_int(cls, v):
+        return 0 if v is None else int(v)
+
+    @field_validator("avg_change_pct", mode="before")
+    @classmethod
+    def _clean_sec_float(cls, v):
+        return 0.0 if v is None else float(v)
 
 
 class FundamentalsResponse(BaseModel):
@@ -213,3 +373,13 @@ class FundamentalsResponse(BaseModel):
     metrics: list[FundamentalMetric] = Field(default_factory=list)
     extras: FundamentalsExtras = Field(default_factory=FundamentalsExtras)
     sector_overview: SectorOverview = Field(default_factory=SectorOverview)
+
+    @field_validator("symbol", "data_status", "data_message", "psx_official_url", "financials_unit", mode="before")
+    @classmethod
+    def _clean_fund_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("financial_reports_count", mode="before")
+    @classmethod
+    def _clean_fund_int(cls, v):
+        return 0 if v is None else int(v)

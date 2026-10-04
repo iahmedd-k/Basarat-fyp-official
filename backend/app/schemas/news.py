@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SourceInfo(BaseModel):
@@ -13,10 +13,30 @@ class SentimentInfo(BaseModel):
     score: float = 0.0
     method: str = "finbert"  # "finbert" | "eps_rule" | "none"
 
+    @field_validator("label", mode="before")
+    @classmethod
+    def _clean_label(cls, v):
+        return "neutral" if v is None else str(v)
+
+    @field_validator("method", mode="before")
+    @classmethod
+    def _clean_method(cls, v):
+        return "finbert" if v is None else str(v)
+
+    @field_validator("score", mode="before")
+    @classmethod
+    def _clean_score(cls, v):
+        return 0.0 if v is None else float(v)
+
 
 class SymbolInfo(BaseModel):
     symbol: str = ""
     name: str = ""
+
+    @field_validator("symbol", "name", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
 
 
 class NewsArticleResponse(BaseModel):
@@ -35,6 +55,28 @@ class NewsArticleResponse(BaseModel):
     created_at: str = ""
 
     model_config = {"from_attributes": True}
+
+    @field_validator("id", "title", "url", "external_url", "summary", "event_type", "published_at", "created_at", mode="before")
+    @classmethod
+    def _clean_news_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("impact_score", mode="before")
+    @classmethod
+    def _clean_news_int(cls, v):
+        return 0 if v is None else int(v)
+
+    @field_validator("is_official", mode="before")
+    @classmethod
+    def _clean_news_bool(cls, v):
+        return False if v is None else bool(v)
+
+    @field_validator("sentiment", mode="before")
+    @classmethod
+    def _clean_news_sentiment(cls, v):
+        if v is None:
+            return SentimentInfo()
+        return v
 
 
 class NewsListResponse(BaseModel):
