@@ -8,7 +8,7 @@ Design principles:
 """
 
 from datetime import date, datetime
-
+from typing import Optional, Any
 from pydantic import BaseModel, Field, model_validator
 
 
