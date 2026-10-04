@@ -27,7 +27,7 @@ class Prediction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     symbol: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
-    horizon: Mapped[str] = mapped_column(String(10), default="1D")
+    horizon: Mapped[str] = mapped_column(String(10), default="1W")
     predicted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     predicted_direction: Mapped[str] = mapped_column(String(20), nullable=False)
     bullish_pct: Mapped[float] = mapped_column(Float, nullable=False)

@@ -178,6 +178,11 @@ else:
 
 ## 7. Production Model Artifacts Reference
 
+The forecast API and daily prediction batch default to `1W`, meaning five trading
+days, to match the production training target. The `1D` and `1M` API options
+change the requested output date and ensemble weights; they do not select
+separately trained one-day or one-month models.
+
 All active production artifacts are located in [`backend/models/final/final_v3/`](file:///d:/Ahmed%20Dev/Projects/Basarat-fyp-official/backend/models/final/final_v3/):
 
 | File | Format / Size | Description |

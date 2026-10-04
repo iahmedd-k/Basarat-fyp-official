@@ -36,7 +36,7 @@ class TestForecastEndpoint:
     async def test_forecast_success_mocked(self, client: AsyncClient, auth_headers):
         sample_result = {
             "symbol": "SYS",
-            "horizon": "1D",
+            "horizon": "1W",
             "direction": "bullish",
             "confidence": 0.72,
             "top_class_probability": 72.0,
@@ -44,7 +44,7 @@ class TestForecastEndpoint:
             "bearish_pct": 18.0,
             "sideways_pct": 10.0,
             "as_of_date": "2026-09-18",
-            "predicted_for_date": "2026-09-19",
+            "predicted_for_date": "2026-09-25",
             "model_version": "v1.0",
             "gate_reason": "Confidence threshold met",
             "model_details": {
@@ -70,16 +70,16 @@ class TestForecastEndpoint:
         }
 
         with patch("app.api.v1.forecast.artifacts") as mock_artifacts, \
-             patch("app.api.v1.forecast.get_forecast", return_value=sample_result), \
+             patch("app.api.v1.forecast.get_forecast", return_value=sample_result) as mock_get_forecast, \
              patch("app.api.v1.forecast.log_prediction"):
             mock_artifacts.model_ready = True
 
-            resp = await client.get("/api/v1/forecast/SYS?horizon=1D", headers=auth_headers)
+            resp = await client.get("/api/v1/forecast/SYS", headers=auth_headers)
             assert resp.status_code == 200
             data = resp.json()
 
             assert data["symbol"] == "SYS"
-            assert data["horizon"] == "1D"
+            assert data["horizon"] == "1W"
             assert data["direction"] == "bullish"
             assert data["signal_rating"] == "Strong Buy"
             assert "probabilities" in data
@@ -87,6 +87,7 @@ class TestForecastEndpoint:
             assert "models" in data
             assert "gru" in data["models"]
             assert "xgb" in data["models"]
+            mock_get_forecast.assert_called_once_with("SYS", horizon="1W")
 
     async def test_neutral_forecast_has_no_directional_target_or_stop(self, client: AsyncClient, auth_headers):
         neutral_result = {

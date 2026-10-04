@@ -207,12 +207,12 @@ def generate_predictions_task(self):
 
                 gru_result = _run_gru(sym, sym_df)
                 xgb_result = _run_xgb(sym, as_of_date)
-                ensemble = _ensemble_decide(gru_result, xgb_result)
-                target_date = next_trading_day(as_of_date, trading_days=1)
+                ensemble = _ensemble_decide(gru_result, xgb_result, horizon="1W")
+                target_date = next_trading_day(as_of_date, trading_days=5)
 
                 payload = build_prediction_payload(
                     symbol=sym,
-                    horizon="1D",
+                    horizon="1W",
                     ensemble=ensemble,
                     as_of_date=as_of_date,
                     target_date=target_date,

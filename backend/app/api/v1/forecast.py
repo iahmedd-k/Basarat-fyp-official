@@ -54,7 +54,7 @@ router = APIRouter()
 )
 async def get_stock_forecast(
     symbol: str,
-    horizon: str = Query("1D", pattern="^(1D|1W|1M)$"),
+    horizon: str = Query("1W", pattern="^(1D|1W|1M)$"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -267,7 +267,7 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
 )
 async def get_forecast_history(
     symbol: str,
-    horizon: str = Query("1D", pattern="^(1D|1W|1M)$", description="Filter by prediction horizon"),
+    horizon: str = Query("1W", pattern="^(1D|1W|1M)$", description="Filter by prediction horizon"),
     limit: int = Query(30, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

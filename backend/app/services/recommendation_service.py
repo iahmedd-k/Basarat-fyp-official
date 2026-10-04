@@ -86,22 +86,44 @@ class RecommendationEngine:
                 abs(float(source_weights.get(key, source_weights.get("gru" if key == "gru" else key, 0)) or 0) - float(value)) < 1e-8
                 for key, value in weights.items()
             )
-            if same_weights and item.get("composite_score") is not None:
+            # Minimum coverage gate: require at least 2 active signal sources for directional calls
+            if len(available) < 2:
+                score = sum(effective[key] * value for key, _, value in available) if total_weight else 0.0
+                signal = "hold"
+                confidence = 0.0
+                decision_reason = (
+                    "No signal components are available. Recommendation is held neutral."
+                    if len(available) == 0
+                    else f"Insufficient signal coverage ({len(available)}/4 active sources; minimum 2 required). Recommendation is held neutral."
+                )
+            elif same_weights and item.get("composite_score") is not None:
                 # Preserve the score actually published with this snapshot;
                 # only recompute for a user's changed weight profile.
                 score = float(item["composite_score"])
+                signal = (item.get("signal") or "hold").lower()
+                confidence = float(item.get("confidence", 0) or 0)
+                decision_reason = item.get("decision_reason")
             else:
                 score = sum(effective[key] * value for key, _, value in available) if total_weight else 0.0
+                signal = "buy" if score > BUY_THRESHOLD else "sell" if score < SELL_THRESHOLD else "hold"
+                scores = [val for _, _, val in available]
+                score_std = float(np.std(scores)) if len(scores) > 1 else 0.5
+                agreement = max(0.2, 1.0 - (score_std / 1.5))
+                coverage_factor = len(available) / 4.0
+                magnitude = min(abs(score) / 0.5, 1.0)
+                confidence = round(min(1.0, max(0.0, magnitude * agreement * coverage_factor)), 4)
+                decision_reason = (
+                    f"Composite score {score:.3f} crossed the BUY threshold ({BUY_THRESHOLD:.2f})." if score > BUY_THRESHOLD
+                    else f"Composite score {score:.3f} crossed the SELL threshold ({SELL_THRESHOLD:.2f})." if score < SELL_THRESHOLD
+                    else f"Composite score {score:.3f} is between the BUY threshold ({BUY_THRESHOLD:.2f}) and SELL threshold ({SELL_THRESHOLD:.2f})."
+                )
+
             item["weights"] = dict(weights)
             item["effective_weights"] = effective
             item["composite_score"] = round(score, 4)
-            item["signal"] = (item.get("signal") or "hold").lower() if same_weights else ("buy" if score > BUY_THRESHOLD else "sell" if score < SELL_THRESHOLD else "hold")
-            item["confidence"] = float(item.get("confidence", 0) or 0) if same_weights else round(min(abs(score) / 0.5, 1.0), 4)
-            item["decision_reason"] = item.get("decision_reason") if same_weights else (
-                f"Composite score {score:.3f} crossed the BUY threshold ({BUY_THRESHOLD:.2f})." if score > BUY_THRESHOLD
-                else f"Composite score {score:.3f} crossed the SELL threshold ({SELL_THRESHOLD:.2f})." if score < SELL_THRESHOLD
-                else f"Composite score {score:.3f} is between the BUY threshold ({BUY_THRESHOLD:.2f}) and SELL threshold ({SELL_THRESHOLD:.2f})."
-            )
+            item["signal"] = signal
+            item["confidence"] = confidence
+            item["decision_reason"] = decision_reason
             price = item.get("current_price")
             atr = item.get("atr_14")
             if (atr is None or float(atr) <= 0) and price and float(price) > 0:
@@ -376,24 +398,7 @@ class RecommendationEngine:
                 else:
                     pe_score = 0.0
                 signals.append(("pe", pe_score, f"P/E={pe_ratio:.1f}"))
-
-            # Year change momentum (mean reversion)
-            if year_change is not None:
-                if year_change > 50:
-                    yc_score = -0.4  # extended, reversion risk
-                elif year_change > 20:
-                    yc_score = -0.2
-                elif year_change < -30:
-                    yc_score = 0.5  # beaten down, potential recovery
-                elif year_change < -10:
-                    yc_score = 0.3
-                else:
-                    yc_score = 0.0
-                signals.append(("year_momentum", yc_score, f"1Y_change={year_change:.1f}%"))
-
-            # Use any other reported valuation/profitability fields instead of
-            # marking the whole fundamental component missing just because P/E
-            # and one-year change are absent from the quote feed.
+            # Use reported valuation and profitability metrics (P/E, PEG, EPS growth, Net Margin, Dividend Yield, EPS)
             peg = metric_number("peg_ratio", "peg", "p/e_g_ratio", "p_e_g_ratio")
             eps_growth = metric_number("eps_growth_pct", "eps_growth", "eps_growth_(%)")
             net_margin = metric_number("net_profit_margin_pct", "net_profit_margin", "net_profit_margin_(%)")
@@ -415,7 +420,7 @@ class RecommendationEngine:
                 signals.append(("eps", 0.1 if eps > 0 else -0.5, f"EPS={eps:.2f}"))
 
             if not signals:
-                reason = "No usable valuation, profitability, dividend, EPS, or one-year price data was returned."
+                reason = "No usable valuation, profitability, dividend, or EPS data was returned."
                 return 0.0, {"status": "unavailable", "reason": reason}
 
             raw = sum(s[1] for s in signals) / len(signals)
@@ -441,8 +446,8 @@ class RecommendationEngine:
                     "status": "unavailable",
                     "reason": sentiment.get("reason") or "FinBERT sentiment could not be computed",
                 }
-            if not sentiment or int(sentiment.get("article_count", 0) or 0) <= 0:
-                reason = (sentiment or {}).get("reason") or "no scored news articles available for this symbol in the 7-day window"
+            if not sentiment or int(sentiment.get("article_count", 0) or 0) < 2:
+                reason = (sentiment or {}).get("reason") or "fewer than 2 scored news articles available in 7-day window"
                 return 0.0, {"status": "unavailable", "reason": reason}
             raw_score = sentiment.get("score")
             if raw_score is None or not np.isfinite(float(raw_score)):
@@ -501,22 +506,39 @@ class RecommendationEngine:
         }
         composite = sum(effective_weights[key] * score for key, score, _ in available) if active_weight_total else 0.0
 
-        # Determine verdict
-        if composite > BUY_THRESHOLD:
-            verdict = "buy"
-            decision_reason = f"Composite score {composite:.3f} crossed the BUY threshold ({BUY_THRESHOLD:.2f})."
-        elif composite < SELL_THRESHOLD:
-            verdict = "sell"
-            decision_reason = f"Composite score {composite:.3f} crossed the SELL threshold ({SELL_THRESHOLD:.2f})."
-        else:
+        # Minimum coverage gate: require at least 2 active signal sources for directional calls
+        if len(available) < 2:
             verdict = "hold"
-            decision_reason = (
-                f"Composite score {composite:.3f} is between the BUY threshold ({BUY_THRESHOLD:.2f}) "
-                f"and SELL threshold ({SELL_THRESHOLD:.2f})."
-            )
+            if len(available) == 0:
+                decision_reason = "No signal components are available. Recommendation is held neutral."
+                status = "insufficient_data"
+            else:
+                decision_reason = f"Insufficient signal coverage ({len(available)}/4 active sources; minimum 2 required). Recommendation is held neutral."
+                status = "partial"
+            confidence = 0.0
+        else:
+            # Determine verdict
+            if composite > BUY_THRESHOLD:
+                verdict = "buy"
+                decision_reason = f"Composite score {composite:.3f} crossed the BUY threshold ({BUY_THRESHOLD:.2f})."
+            elif composite < SELL_THRESHOLD:
+                verdict = "sell"
+                decision_reason = f"Composite score {composite:.3f} crossed the SELL threshold ({SELL_THRESHOLD:.2f})."
+            else:
+                verdict = "hold"
+                decision_reason = (
+                    f"Composite score {composite:.3f} is between the BUY threshold ({BUY_THRESHOLD:.2f}) "
+                    f"and SELL threshold ({SELL_THRESHOLD:.2f})."
+                )
 
-        # Confidence = how far from neutral
-        confidence = min(abs(composite) / 0.5, 1.0)
+            # Consensus & dispersion-aware confidence
+            scores = [score for _, score, _ in available]
+            score_std = float(np.std(scores)) if len(scores) > 1 else 0.5
+            agreement = max(0.2, 1.0 - (score_std / 1.5))
+            coverage_factor = len(available) / float(len(components))
+            magnitude = min(abs(composite) / 0.5, 1.0)
+            confidence = round(min(1.0, max(0.0, magnitude * agreement * coverage_factor)), 4)
+            status = "available" if len(available) == len(components) else "partial"
 
         return {
             "symbol": symbol,
@@ -530,7 +552,7 @@ class RecommendationEngine:
             "sentiment_signal": round(sentiment_score, 4),
             "weights_used": w,
             "effective_weights": effective_weights,
-            "status": "available" if len(available) == len(components) else "partial" if available else "insufficient_data",
+            "status": status,
             "reasoning": {
                 "ml": ml_reasoning,
                 "technical": tech_reasoning,

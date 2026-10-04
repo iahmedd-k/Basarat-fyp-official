@@ -157,18 +157,158 @@ The assistant calls a Groq-compatible chat-completions API. The configured model
 
 ## 5. What the checked results say—and do not say
 
-### 5.1 Historical experiments
+### 5.1 `final_v3` artifact package and reported evaluation protocol
 
-The experiment documentation reports:
+The `final_v3` package manifest calls the model `final_v3_institutional_ensemble`, gives it a five-trading-day (`5D`) horizon, and maps `down=0`, `up=1`. The saved metric files report separate train, validation, and sealed-test rows. Their split metadata gives these date ranges:
 
-- Earlier three-class GRU-45 + XGBoost candidate: around 47.14% test accuracy and 0.4286 validation macro-F1 in its stated experiment.
-- The newer `final_v3` manifest: 33,730 XGBoost and 33,686 BiGRU test samples; XGBoost sealed-test accuracy about 53.24%; BiGRU sealed-test accuracy about 51.34%.
-- The same manifest/documentation describes thresholded accuracy ranges and mean Spearman rank information coefficients. These are results for particular evaluation slices and thresholds, not guaranteed live results.
-- A separate older real-stock walk-forward report concerns `final_v1`, has a three-class target, and reports only 34.23% broad-universe accuracy. It is not a result for the current binary `final_v3` package.
+| Split | Dates in artifact metadata | XGBoost rows | Attention-BiGRU rows |
+|---|---|---:|---:|
+| Train | 2020-01-01 to 2024-09-09 | 104,963 | 94,826 |
+| Validation | 2024-09-18 to 2025-05-12 | 16,605 | 16,560 |
+| Sealed test | 2025-05-20 to 2026-09-11 | 33,730 | 33,686 |
 
-Do not compare scores without saying which model version, target, sample population, dates, threshold, and test protocol they refer to. Thresholding can increase accuracy among retained predictions while reducing coverage. In the saved JSON, the XGBoost sealed-test record reports roughly 53.24% all-sample accuracy; its high-threshold subsets have low coverage. A score from a validation set or selected confidence subset must not be presented as all-sample test accuracy.
+The validation and sealed test each report 162 and 328 evaluated dates, respectively. The training metrics report 1,159 dates for XGBoost and 1,115 for BiGRU. Rows are stock/date observations, not unique companies. The date ranges show gaps between splits; the metric JSON does not, by itself, establish the precise reason for each gap or prove that all overlapping five-day label windows were embargoed.
 
-### 5.2 Metrics to explain simply
+**Q: What does “sealed test” mean?**
+**A:** It means a set documented as held out for final evaluation. To trust that interpretation, we still need the exact training/threshold-selection lineage and to confirm the test set was not repeatedly used to choose models or thresholds.
+
+The result tables below transcribe the saved `gru_metrics.json` and `xgb_metrics.json`. Accuracy, precision, recall, F1, IC, and return-spread values are percentages where shown with `%`; log loss and Brier score are shown as unitless values. “Top-minus-bottom 20% excess return” and “long-short alpha spread” are the values named in the artifact files; the files do not fully specify portfolio weighting, transaction costs, or execution assumptions, so do not describe these as net realized trading profit.
+
+### 5.2 All-sample train, validation, and sealed-test metrics
+
+| Model / split | Rows | Directional accuracy | Balanced accuracy | Macro F1 | Log loss | Brier | Mean daily Spearman IC | Median daily Spearman IC | Mean top-minus-bottom 20% excess return |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| XGBoost — train | 104,963 | 59.54% | 59.54% | 0.5954 | 0.67575 | 0.24136 | 0.2409 | 0.2533 | +2.564% |
+| XGBoost — validation | 16,605 | 52.02% | 52.02% | 0.5196 | 0.69111 | 0.24898 | 0.0636 | 0.0465 | +0.489% |
+| **XGBoost — sealed test** | **33,730** | **53.24%** | **53.24%** | **0.5324** | **0.69061** | **0.24873** | **0.0800** | **0.0856** | **+0.375%** |
+| Attention-BiGRU — train | 94,826 | 53.77% | 53.77% | 0.5376 | 0.68806 | 0.24748 | 0.0932 | 0.0988 | +0.733% |
+| Attention-BiGRU — validation | 16,560 | 52.05% | 52.05% | 0.5202 | 0.69188 | 0.24936 | 0.0329 | 0.0556 | -0.275% |
+| **Attention-BiGRU — sealed test** | **33,686** | **51.34%** | **51.35%** | **0.5124** | **0.69305** | **0.24994** | **0.0438** | **0.0610** | **+0.354%** |
+
+These are model-level results, not the accuracy of a combined ensemble on a separately tested live trading strategy. The metric files evaluate the components individually. The near-balanced up/down supports explain why accuracy and balanced accuracy are nearly the same.
+
+**Sealed-test class report:**
+
+| Model | Class | Precision | Recall | F1 | Support |
+|---|---|---:|---:|---:|---:|
+| XGBoost | Down | 53.18% | 53.75% | 53.46% | 16,855 |
+| XGBoost | Up | 53.31% | 52.74% | 53.02% | 16,875 |
+| Attention-BiGRU | Down | 51.19% | 56.01% | 53.49% | 16,827 |
+| Attention-BiGRU | Up | 51.54% | 46.69% | 48.99% | 16,859 |
+
+**Validation class report:**
+
+| Model | Class | Precision | Recall | F1 | Support |
+|---|---|---:|---:|---:|---:|
+| XGBoost | Down | 52.18% | 48.58% | 50.31% | 8,304 |
+| XGBoost | Up | 51.88% | 55.46% | 53.61% | 8,301 |
+| Attention-BiGRU | Down | 52.15% | 49.48% | 50.78% | 8,278 |
+| Attention-BiGRU | Up | 51.96% | 54.61% | 53.25% | 8,282 |
+
+**Interpretation:** On this sealed sample, XGBoost is 1.90 percentage points more accurate than the BiGRU (53.24% vs 51.34%). The BiGRU has higher recall for Down than Up (56.01% vs 46.69%), so its overall accuracy alone hides a class-specific weakness. The accuracy results are modest; small gains above a roughly balanced binary baseline need uncertainty estimates, repeated/regime-aware evaluation, and cost-aware strategy tests before they support strong claims.
+
+### 5.3 Confidence threshold, accuracy, and coverage
+
+For a binary classifier, the artifact's rejection report evaluates confidence thresholds `τ`: retain a prediction only if the higher class probability reaches the selected threshold; otherwise count it as “no signal.” **Coverage is the fraction retained.** Higher selective accuracy is not a free improvement: fewer predictions are made. These are component-level results, not a combined-ensemble result.
+
+**XGBoost — validation (16,605 rows):**
+
+| Threshold τ | Accuracy on retained rows | Coverage | Signals / no signal | Reported long-short spread |
+|---:|---:|---:|---:|---:|
+| 0.50 | 52.02% | 100.00% | 16,605 / 0 | +0.197% |
+| 0.52 | 53.16% | 64.55% | 10,718 / 5,887 | +0.266% |
+| 0.54 | 55.43% | 35.13% | 5,833 / 10,772 | +0.712% |
+| 0.55 | 56.55% | 23.44% | 3,892 / 12,713 | +0.883% |
+| 0.56 | 58.41% | 14.97% | 2,486 / 14,119 | +1.239% |
+| 0.58 | 58.12% | 4.60% | 764 / 15,841 | +1.283% |
+| 0.60 | 59.49% | 1.17% | 195 / 16,410 | +1.220% |
+
+**XGBoost — sealed test (33,730 rows):**
+
+| Threshold τ | Accuracy on retained rows | Coverage | Signals / no signal | Reported long-short spread |
+|---:|---:|---:|---:|---:|
+| 0.50 | 53.24% | 100.00% | 33,730 / 0 | +0.250% |
+| 0.52 | 54.41% | 68.98% | 23,268 / 10,462 | +0.350% |
+| 0.54 | 54.95% | 40.55% | 13,679 / 20,051 | +0.424% |
+| 0.55 | 55.30% | 29.01% | 9,784 / 23,946 | +0.358% |
+| 0.56 | 55.37% | 20.06% | 6,765 / 26,965 | +0.427% |
+| 0.58 | 56.44% | 8.15% | 2,750 / 30,980 | +0.668% |
+| 0.60 | 59.70% | 2.57% | 866 / 32,864 | +1.643% |
+
+**Attention-BiGRU — validation (16,560 rows):**
+
+| Threshold τ | Accuracy on retained rows | Coverage | Signals / no signal | Reported long-short spread |
+|---:|---:|---:|---:|---:|
+| 0.50 | 52.05% | 100.00% | 16,560 / 0 | -0.118% |
+| 0.52 | 53.00% | 44.16% | 7,313 / 9,247 | -0.284% |
+| 0.54 | 55.06% | 19.38% | 3,209 / 13,351 | -0.556% |
+| 0.55 | 56.15% | 13.25% | 2,194 / 14,366 | -0.155% |
+| 0.56 | 59.29% | 8.68% | 1,437 / 15,123 | -0.206% |
+| 0.58 | 61.11% | 3.91% | 648 / 15,912 | +1.335% |
+| 0.60 | 58.06% | 1.87% | 310 / 16,250 | +1.985% |
+
+**Attention-BiGRU — sealed test (33,686 rows):**
+
+| Threshold τ | Accuracy on retained rows | Coverage | Signals / no signal | Reported long-short spread |
+|---:|---:|---:|---:|---:|
+| 0.50 | 51.34% | 100.00% | 33,686 / 0 | +0.103% |
+| 0.52 | 52.48% | 23.44% | 7,896 / 25,790 | +0.210% |
+| 0.54 | 51.26% | 7.87% | 2,651 / 31,035 | -0.543% |
+| 0.55 | 52.37% | 4.76% | 1,604 / 32,082 | -0.402% |
+| 0.56 | 50.30% | 2.92% | 984 / 32,702 | -0.604% |
+| 0.58 | 38.95% | 1.07% | 362 / 33,324 | -3.102% |
+| 0.60 | 47.58% | 0.37% | 124 / 33,562 | -2.188% |
+
+**What this comparison tells us:** The XGBoost sealed-test selective accuracy rises from 53.24% at full coverage to 59.70% at 2.57% coverage. But the BiGRU's held-out threshold results are not monotonic: at `τ=0.58`, it retains only 1.07% and accuracy falls to 38.95%. Thus the documentation's headline “up to 65.22%” validation figure must not be quoted as sealed-test or all-sample performance. Choosing a threshold after looking at test performance would also contaminate the test set; select it on validation, freeze it, then evaluate once on test.
+
+### 5.4 Evaluation checks and audit evidence
+
+There are two different kinds of evidence in this repository. Do not present them as the same audit:
+
+1. **`final_v3` saved component metrics:** the train/validation/sealed-test tables above, 328 sealed-test dates, classification reports, threshold curves, Brier/log-loss, and daily rank-IC/return-spread summaries. These are the direct metric-file evidence for the newer binary model package.
+2. **`model-final-evaluation.md` audit:** this is explicitly for the older `final_v1` three-class candidate, not `final_v3`. It reports a separate real-stock walk-forward evaluation and ten integrity checks:
+
+| Recorded audit check (`final_v1` report) | What it checked | Reported result |
+|---|---|---|
+| Feature warmup | Required 60-day indicators had enough prior rows | Minimum 693 rows available |
+| Non-overlapping horizon | Predictions stepped by five trading days | 0 overlap violations in 5,875 predictions |
+| Point-in-time features | Features/scalers did not use data after prediction date | Report says all features were `<= T` |
+| Symbol encoding | Deterministic symbol IDs | Alphabetical deterministic mapping |
+| Label integrity | Recomputed close-to-close `T+5` labels | 0 mismatches / 5,875 |
+| Prediction schedule | Weekly dates not chosen using outcomes | Report says 61 uniform weekly dates across 106 date stamps |
+| Metric recomputation | Independent recomputation matched stored reports | Report says 100% match |
+| Confidence buckets | Accuracy by confidence band | 33.87% below 50%; 49.48% at/above 70% |
+| Dataset sanity | Nulls, duplicates, probability sums | Report says 0 nulls/duplicates and sums within `1e-5` |
+| Methodology comparison | Compared rolling offline vs walk-forward testing | Autocorrelation/sample-protocol differences documented |
+
+The report's counts are retained as the report states them; for example, it gives 5,875 predictions and also describes 61 uniform weekly dates across 106 unique date stamps. Treat these as legacy audit claims, not independently re-run `final_v3` test results.
+
+**`final_v1` real-stock results (separate, older protocol):** It reports 5,875 predictions across a broad 98-stock universe from 2025-07-01 to 2026-09-07, sampled every five trading days, with a three-class ±1% label. Broad-universe accuracy was 34.23%, macro F1 0.3398, weighted F1 0.3309, and balanced accuracy 37.84%. Core 15 liquid stocks had 29.44% accuracy, macro F1 0.2828, and balanced accuracy 34.69%. This must not be described as the binary `final_v3` score.
+
+**Automated software tests present in the repository (separate from evaluation metrics):**
+
+| Test case / behavior | What it checks | What it does not prove |
+|---|---|---|
+| Missing/NaN label handling | Invalid forward-return labels are rejected or dropped | Forecast accuracy |
+| Explicit GRU feature-list validation | Feature names/order/count match a declared legacy contract | Parity with all 79 production artifact features |
+| Class-weight computation | Weights are derived from training labels | That weighting improves unseen performance |
+| Confidence and probability-gap helpers | Probability summary calculations | Calibration |
+| Chronological split and target validation | Split dates and expected labels satisfy checks | Absence of every possible pipeline leak |
+| Technical feature construction | Expected normalized and market-relative columns are calculated | Predictive value of those features |
+| Comprehensive metric calculation | Expected evaluation metrics are produced | Correctness of the stored production metrics on independent data |
+| Ensemble agreement logic | Agreement/reason handling for model outputs | Live ensemble performance |
+| Reproducibility seed setup | Random seeds/configuration are set | Bit-for-bit reproducibility across hardware/software |
+| XGBoost sample weights | Per-class sample weights are computed | Model quality after weighting |
+| Missing inference feature behavior | Current GRU path's missing-feature handling (zero fill) | Correctness of the fallback or artifact-feature parity |
+| Recommendation component behavior | Shared forecast use, available-weight renormalization, neutral ATR handling | That the recommendation score predicts profitable trades |
+| Forecast API/history behavior | Endpoint response and history contract | Generalization or profitability |
+
+These test names are present in `tests/unit/test_ml_fixes.py`, `tests/unit/test_recommendation_engine.py`, and `tests/api/test_forecast_api.py`. They are software behavior tests, not proof that every `final_v3` metric has been independently reproduced. This report update did not run the test suite.
+
+**Q: What is the main message from the evaluation?**
+**A:** “On the saved newer binary sealed test, XGBoost reached 53.24% all-sample accuracy and the BiGRU 51.34%, across about 33.7 thousand observations each. Thresholding XGBoost to 0.60 increased retained-sample accuracy to 59.70%, but coverage dropped to 2.57%. BiGRU did not show the same threshold behavior. The separate older three-class walk-forward report scored much lower, so the versions and evaluation protocols must not be mixed. No result establishes net profitability after trading costs.”
+
+### 5.5 Metric terms to explain simply
 
 | Metric | Easy explanation | Viva note |
 |---|---|---|
@@ -190,7 +330,7 @@ Do not compare scores without saying which model version, target, sample populat
 
 The following are source-audit observations, not claims that the models cannot run. They are important questions to resolve before stating that the exact documented final model can be reproduced identically from the current repository.
 
-1. **Feature-count mismatch:** The saved `final_v3` artifacts list 79 GRU features and 70 XGBoost features. The currently scheduled `run_features` path uses a versioned 36-feature GRU list. The inference helper fills missing GRU features with 0.0; XGBoost inference also has a 0.50 fallback for a missing value. This means exact feature parity depends on the deployed parquet and should be checked, not assumed.
+1. **Feature-count mismatch:** The `final_v3` manifest claims 70 XGBoost features, but the checked `xgb_features.json` array and `xgb_metrics.json` each report 69; the GRU artifacts consistently report 79. The currently scheduled `run_features` path uses a versioned 36-feature GRU list. The inference helper fills missing GRU features with 0.0; XGBoost inference also has a 0.50 fallback for a missing value. This means exact feature parity depends on the deployed parquet and should be checked, not assumed.
 2. **Model-generation mismatch:** The `v3` feature engineer and trainer write experiment-style outputs and their feature/label logic does not by itself reproduce every field in the checked 70-feature production list. The ordinary weekly candidate-retraining task builds the older three-class GRU/XGBoost candidates and stores them separately; it does not directly overwrite the final_v3 artifact directory. Weekly scheduling therefore should not be described as automatically retraining and deploying the current final_v3 binary models.
 3. **Class mapping/label lineage:** The `final_v3` manifest says `down=0, up=1`. The separate checked v3 experiment script uses `buy=0, avoid=1` and a different target construction. Those names and class IDs must be tied to the exact saved artifact training run. Verify model class order and feature metadata before explaining the deployed probability as “up.”
 4. **Threshold performance:** Documentation numbers come from different versions, splits, and threshold settings. The model recommendation review itself says not to call the thresholds decision-grade without a chronological point-in-time evaluation of the complete API rule, an untouched holdout, calibration checks, transaction costs, slippage, liquidity and market-impact constraints.
@@ -333,7 +473,7 @@ The following are source-audit observations, not claims that the models cannot r
 - Financial sentiment: [sentiment_service.py](../app/services/sentiment_service.py), [sentiment_tasks.py](../app/tasks/sentiment_tasks.py).
 - Recommendation score: [recommendation_service.py](../app/services/recommendation_service.py).
 - Hosted chat model: [groq_client.py](../app/services/groq_client.py), [assistant_service.py](../app/services/assistant_service.py).
-- Deployed package metadata/results: `../models/final/final_v3/model_manifest.json`, `../models/final/final_v3/gru_metrics.json`, and `../models/final/final_v3/xgb_metrics.json`.
+- Deployed package metadata/results: [model_manifest.json](../models/final/final_v3/model_manifest.json), [gru_metrics.json](../models/final/final_v3/gru_metrics.json), and [xgb_metrics.json](../models/final/final_v3/xgb_metrics.json).
 
 ## 10. Final 20-second closing answer
 

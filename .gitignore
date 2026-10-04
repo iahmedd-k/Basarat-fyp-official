@@ -57,6 +57,11 @@ backend/research/backup_models/
 
 # Temporary files
 *_tmp.*
+*.tar.gz
+backend/*report.json
+backend/scripts/inspect_pso_fundamentals.py
+backend/scripts/test_pso_local.py
+backend/scripts/test_stocks_enrichment.py
 
 # Local EC2 SSH private key
 /basarat.pem

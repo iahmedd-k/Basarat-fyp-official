@@ -204,7 +204,7 @@ HORIZON_WEIGHTS = {
 def _ensemble_decide(
     gru_result: dict | None,
     xgb_result: dict | None,
-    horizon: str = "1D",
+    horizon: str = "1W",
     near_tie_threshold_pp: float = NEAR_TIE_THRESHOLD_PP,
 ) -> dict:
     """Apply horizon-aware dual-model ensemble decision logic.
@@ -322,7 +322,7 @@ def _single_model_result(
     }
 
 
-def get_forecast(symbol: str, horizon: str = "1D", sym_df: pd.DataFrame | None = None) -> dict:
+def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None = None) -> dict:
     """Run dual-model ensemble inference for a single symbol.
 
     Parameters

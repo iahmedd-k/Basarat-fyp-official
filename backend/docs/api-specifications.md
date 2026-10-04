@@ -112,8 +112,8 @@ Query params `?page=1&limit=20` — response carries `meta: { page, limit, total
 
 | Method | Endpoint | Query | Notes |
 |---|---|---|---|
-| GET | `/forecast/{symbol}` | `horizon=1D\|1W\|1M` | Typed response: direction/confidence, percentage probabilities, dates, price levels, optional model breakdown and market context. See Swagger's example for the complete JSON and units. |
-| GET | `/forecast/{symbol}/history` | `limit=30` | past predictions vs realized outcome |
+| GET | `/forecast/{symbol}` | `horizon=1D\|1W\|1M` (default `1W`) | Typed response: direction/confidence, percentage probabilities, dates, price levels, optional model breakdown and market context. Production models are trained for five trading days; `1W` is the matching default. |
+| GET | `/forecast/{symbol}/history` | `horizon=1D\|1W\|1M` (default `1W`), `limit=30` | past predictions vs realized outcome |
 
 ### 3.5 Module 5 — Recommendation Engine
 
@@ -128,7 +128,7 @@ Query params `?page=1&limit=20` — response carries `meta: { page, limit, total
 
 These endpoints return the JSON object shown below directly; they do not wrap it in a `success`/`data` envelope. Fields with no available market or price data are present as `null`. Keep null-aware UI states for targets, ranges, and market context.
 
-#### `GET /forecast/OGDC?horizon=1D`
+#### `GET /forecast/OGDC` (defaults to `horizon=1W`, five trading days)
 
 ```json
 {

@@ -58,12 +58,12 @@ class ForecastResponse(BaseModel):
         "json_schema_extra": {
             "examples": [{
                 "symbol": "UBL",
-                "horizon": "1D",
+                "horizon": "1W",
                 "direction": "bullish",
                 "confidence": 0.584,
                 "probabilities": {"bullish": 58.4, "bearish": 22.0, "sideways": 19.6},
                 "as_of_date": "2026-09-22",
-                "target_date": "2026-09-23",
+                "target_date": "2026-09-29",
                 "current_price": 142.5,
                 "target_price": 148.0,
                 "expected_range": None,
@@ -92,8 +92,8 @@ class ForecastResponse(BaseModel):
         ..., description="PSX stock ticker", examples=["OGDC"]
     )
     horizon: str = Field(
-        ..., description="Forecast horizon: '1D', '1W', or '1M'",
-        examples=["1D"],
+        ..., description="Forecast horizon: '1D', '1W' (five trading days, default), or '1M'. Production models are trained on five trading days.",
+        examples=["1W"],
     )
     direction: str = Field(
         ...,
@@ -244,7 +244,7 @@ class ForecastHistoryResponse(BaseModel):
     """Forecast history for a single symbol."""
 
     symbol: str
-    horizon: str = "1D"
+    horizon: str = "1W"
     count: int = Field(
         ..., description="Number of historical predictions returned"
     )
