@@ -166,32 +166,32 @@ async def get_sentiment(
         if cached is not None:
             return SentimentResponse(
                 symbol=cached["symbol"],
-                score=cached["score"],
-                label=cached["label"],
-                confidence=cached.get("confidence"),
-                positive_ratio=cached.get("positive_ratio"),
-                neutral_ratio=cached.get("neutral_ratio"),
-                negative_ratio=cached.get("negative_ratio"),
-                article_count=cached["article_count"],
-                trend=cached["trend"],
-                daily_scores=cached.get("daily_scores"),
-                updated_at=cached.get("updated_at"),
+                score=float(cached.get("score") or 0.0),
+                label=str(cached.get("label") or "neutral"),
+                confidence=float(cached.get("confidence") or 0.8),
+                positive_ratio=float(cached.get("positive_ratio") or 0.0),
+                neutral_ratio=float(cached.get("neutral_ratio") or 1.0),
+                negative_ratio=float(cached.get("negative_ratio") or 0.0),
+                article_count=int(cached.get("article_count") or 0),
+                trend=str(cached.get("trend") or "stable"),
+                daily_scores=cached.get("daily_scores") or [],
+                updated_at=str(cached.get("updated_at") or datetime.now(timezone.utc).isoformat()),
             )
 
         # Compute live
         result = await compute_stock_sentiment(db, symbol, days=days)
         return SentimentResponse(
             symbol=result["symbol"],
-            score=result["score"],
-            label=result["label"],
-            confidence=result.get("confidence"),
-            positive_ratio=result.get("positive_ratio"),
-            neutral_ratio=result.get("neutral_ratio"),
-            negative_ratio=result.get("negative_ratio"),
-            article_count=result["article_count"],
-            trend=result["trend"],
-            daily_scores=result.get("daily_scores"),
-            updated_at=result.get("updated_at"),
+            score=float(result.get("score") or 0.0),
+            label=str(result.get("label") or "neutral"),
+            confidence=float(result.get("confidence") or 0.8),
+            positive_ratio=float(result.get("positive_ratio") or 0.0),
+            neutral_ratio=float(result.get("neutral_ratio") or 1.0),
+            negative_ratio=float(result.get("negative_ratio") or 0.0),
+            article_count=int(result.get("article_count") or 0),
+            trend=str(result.get("trend") or "stable"),
+            daily_scores=result.get("daily_scores") or [],
+            updated_at=str(result.get("updated_at") or datetime.now(timezone.utc).isoformat()),
         )
 
     except Exception as exc:

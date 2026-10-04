@@ -96,14 +96,14 @@ async def get_shariah_screening(
         if not source_fields.get("data_as_of"):
             from datetime import timezone
             source_fields["data_as_of"] = datetime.now(timezone.utc)
-        if source_fields.get("data_is_stale") is None:
-            source_fields["data_is_stale"] = False
+        source_fields["data_is_stale"] = bool(source_fields.get("data_is_stale") or False)
         if not source_fields.get("effective_from"):
             source_fields["effective_from"] = source_fields["data_as_of"]
         if not source_fields.get("source_url"):
             source_fields["source_url"] = "https://www.psx.com.pk"
         if not source_fields.get("source_exception"):
             source_fields["source_exception"] = "None (Standard PSX KMI-30 screening)"
+        source_fields["purification_rate_provisional"] = bool(source_fields.get("purification_rate_provisional") or False)
         eff_val = source_fields.get("effective_from")
         eff_str = eff_val.strftime("%Y-%m-%d") if hasattr(eff_val, "strftime") else str(eff_val or "")
         data_val = source_fields.get("data_as_of")
