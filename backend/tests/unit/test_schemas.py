@@ -306,7 +306,7 @@ class TestMarketSchemas:
             index="KSE-100", code="KSE100", constituents=[]
         )
         assert resp.index == "KSE-100"
-        assert resp.shariah_compliant is None
+        assert resp.shariah_compliant is False
 
 
 # ── Portfolio schemas ───────────────────────────────────────────────────────

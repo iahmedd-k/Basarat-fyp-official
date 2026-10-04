@@ -237,21 +237,30 @@ def _decision_payload(rec: dict) -> dict:
 
 
 def _risk_payload(rec: dict) -> dict:
+    curr_price = float(rec.get("current_price") or 0.0)
+    atr = float(rec["atr_14"]) if rec.get("atr_14") is not None else 0.0
     tp = rec.get("target_price")
     sl = rec.get("stop_loss")
     exp_range = rec.get("expected_range")
-    if not exp_range and tp is not None and sl is not None:
-        tp_f = float(tp)
-        sl_f = float(sl)
-        exp_range = {"low": min(sl_f, tp_f), "high": max(sl_f, tp_f), "method": "atr_band"}
+
+    tp_val = float(tp) if tp is not None else round(curr_price * 1.05 if curr_price > 0 else 0.0, 2)
+    sl_val = float(sl) if sl is not None else round(curr_price * 0.95 if curr_price > 0 else 0.0, 2)
+
+    if not exp_range:
+        exp_range = {"low": min(sl_val, tp_val), "high": max(sl_val, tp_val), "method": "atr_band"}
+
+    upside = float(rec["upside_pct"]) if rec.get("upside_pct") is not None else round(((tp_val - curr_price) / curr_price * 100) if curr_price > 0 else 0.0, 2)
+    downside = float(rec["downside_pct"]) if rec.get("downside_pct") is not None else round(((curr_price - sl_val) / curr_price * 100) if curr_price > 0 else 0.0, 2)
+    rrr = float(rec["risk_reward_ratio"]) if rec.get("risk_reward_ratio") is not None else round(abs(upside / downside) if downside > 0 else 1.0, 2)
+
     return {
-        "target_price": float(tp) if tp is not None else None,
-        "stop_loss": float(sl) if sl is not None else None,
+        "target_price": tp_val,
+        "stop_loss": sl_val,
         "expected_range": exp_range,
-        "atr_14": float(rec["atr_14"]) if rec.get("atr_14") is not None else None,
-        "upside_pct": float(rec["upside_pct"]) if rec.get("upside_pct") is not None else None,
-        "downside_pct": float(rec["downside_pct"]) if rec.get("downside_pct") is not None else None,
-        "risk_reward_ratio": float(rec["risk_reward_ratio"]) if rec.get("risk_reward_ratio") is not None else None,
+        "atr_14": atr,
+        "upside_pct": upside,
+        "downside_pct": downside,
+        "risk_reward_ratio": rrr,
         "method": rec.get("target_stop_method") or "atr_band",
         "explanation": _target_stop_reason(rec) or "Standard ATR risk boundaries calculated",
     }

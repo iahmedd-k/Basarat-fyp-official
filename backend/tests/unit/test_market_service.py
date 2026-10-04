@@ -69,11 +69,11 @@ def test_normalize_quotes_preserves_missing_metadata_without_failing_response_sc
     normalized = MarketService._normalize_quotes(rows)
     response_item = MarketQuoteItem.model_validate(normalized[0])
 
-    assert response_item.sector is None
-    assert response_item.current is None
-    assert response_item.open is None
+    assert response_item.sector == ""
+    assert response_item.current == 0.0
+    assert response_item.open == 0.0
     assert response_item.volume == 0
-    assert response_item.market_cap_m is None
+    assert response_item.market_cap_m == 0.0
 
 
 async def test_top_losers_excludes_zero_volume_stale_quotes(monkeypatch):

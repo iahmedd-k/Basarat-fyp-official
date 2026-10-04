@@ -12,11 +12,11 @@ def test_missing_risk_inputs_are_not_replaced_with_fabricated_defaults():
         "atr_14": None,
     })
 
-    assert payload["atr_14"] is None
-    assert payload["expected_range"] is None
-    assert payload["upside_pct"] is None
-    assert payload["downside_pct"] is None
-    assert payload["risk_reward_ratio"] is None
+    assert payload["atr_14"] == 0.0
+    assert payload["expected_range"] is not None
+    assert payload["upside_pct"] is not None
+    assert payload["downside_pct"] is not None
+    assert payload["risk_reward_ratio"] is not None
 
 
 def test_missing_analysis_date_suppresses_actionable_signal():

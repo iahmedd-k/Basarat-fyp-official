@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class IndexItem(BaseModel):
@@ -35,25 +35,55 @@ class ConstituentItem(BaseModel):
 class IndexConstituentsResponse(BaseModel):
     index: str = ""
     code: str = ""
-    shariah_compliant: Optional[bool] = None
+    shariah_compliant: bool = False
     constituents: list[ConstituentItem] = Field(default_factory=list)
     as_of: str = ""
     is_stale: bool = True
 
+    @field_validator("shariah_compliant", mode="before")
+    @classmethod
+    def _clean_shariah(cls, v):
+        return bool(v) if v is not None else False
+
 
 class MarketQuoteItem(BaseModel):
     symbol: str = ""
-    sector: Optional[str] = None
-    name: Optional[str] = None
-    ldcp: Optional[float] = None
-    open: Optional[float] = None
-    high: Optional[float] = None
-    low: Optional[float] = None
-    current: Optional[float] = None
-    change: Optional[float] = None
-    change_pct: Optional[float] = None
+    sector: str = ""
+    name: str = ""
+    ldcp: float = 0.0
+    open: float = 0.0
+    high: float = 0.0
+    low: float = 0.0
+    current: float = 0.0
+    change: float = 0.0
+    change_pct: float = 0.0
     volume: int = 0
-    market_cap_m: Optional[float] = None
+    market_cap_m: float = 0.0
+
+    @field_validator("symbol", "sector", "name", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return str(v) if v is not None else ""
+
+    @field_validator("ldcp", "open", "high", "low", "current", "change", "change_pct", "market_cap_m", mode="before")
+    @classmethod
+    def _clean_float(cls, v):
+        if v is None:
+            return 0.0
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 0.0
+
+    @field_validator("volume", mode="before")
+    @classmethod
+    def _clean_int(cls, v):
+        if v is None:
+            return 0
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return 0
 
 
 class GainersResponse(BaseModel):
