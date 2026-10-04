@@ -37,6 +37,26 @@ class WatchlistItemResponse(BaseModel):
     created_at: str = ""
     updated_at: str = ""
 
+    @field_validator("id", "watchlist_id", "stock_id", "symbol", "name", "sector", "notes", "created_at", "updated_at", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("target_price", "current_price", "change", "change_pct", "high", "low", mode="before")
+    @classmethod
+    def _clean_float(cls, v):
+        return 0.0 if v is None else float(v)
+
+    @field_validator("volume", mode="before")
+    @classmethod
+    def _clean_int(cls, v):
+        return 0 if v is None else int(v)
+
+    @field_validator("is_stale", mode="before")
+    @classmethod
+    def _clean_bool(cls, v):
+        return False if v is None else bool(v)
+
 
 class WatchlistCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Name of the watchlist")
@@ -64,6 +84,16 @@ class WatchlistSummaryResponse(BaseModel):
     created_at: str = ""
     updated_at: str = ""
 
+    @field_validator("id", "user_id", "name", "description", "created_at", "updated_at", mode="before")
+    @classmethod
+    def _clean_summary_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("item_count", mode="before")
+    @classmethod
+    def _clean_item_count(cls, v):
+        return 0 if v is None else int(v)
+
 
 class WatchlistDetailResponse(BaseModel):
     id: str = ""
@@ -74,6 +104,11 @@ class WatchlistDetailResponse(BaseModel):
     items: list[WatchlistItemResponse] = Field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+
+    @field_validator("id", "user_id", "name", "description", "created_at", "updated_at", mode="before")
+    @classmethod
+    def _clean_detail_str(cls, v):
+        return "" if v is None else str(v)
 
 
 class WatchlistCheckResponse(BaseModel):

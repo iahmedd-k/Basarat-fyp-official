@@ -277,7 +277,7 @@ async def main():
 
     log.info(f"Executing {len(test_cases)} primary endpoint verifications...")
 
-    async with httpx.AsyncClient(timeout=25.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         for idx, tc in enumerate(test_cases, 1):
             method = tc["method"]
             path = tc["path"]

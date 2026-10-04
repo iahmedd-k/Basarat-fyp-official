@@ -115,6 +115,25 @@ class CommunityPostResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator("id", "author_id", "author_username", "author_full_name", "author_avatar_url", "stock_symbol", "stock_name", "content", "image_url", "removed_reason", mode="before")
+    @classmethod
+    def _clean_post_str(cls, v):
+        if v is None:
+            return ""
+        if hasattr(v, "value"):
+            return str(v.value)
+        return str(v)
+
+    @field_validator("like_count", "comment_count", "report_count", mode="before")
+    @classmethod
+    def _clean_post_int(cls, v):
+        return 0 if v is None else int(v)
+
+    @field_validator("liked_by_me", mode="before")
+    @classmethod
+    def _clean_post_bool(cls, v):
+        return False if v is None else bool(v)
+
 
 class CommunityPostListResponse(BaseModel):
     posts: List[CommunityPostResponse] = Field(default_factory=list)
@@ -160,6 +179,16 @@ class CommunityCommentResponse(BaseModel):
     reply_count: int = 0
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("id", "post_id", "author_id", "author_username", "author_full_name", "author_avatar_url", "parent_comment_id", "content", mode="before")
+    @classmethod
+    def _clean_comment_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("reply_count", mode="before")
+    @classmethod
+    def _clean_reply_count(cls, v):
+        return 0 if v is None else int(v)
 
 
 class CommunityCommentListResponse(BaseModel):

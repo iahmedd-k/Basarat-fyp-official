@@ -217,19 +217,49 @@ class ResendVerificationRequest(BaseModel):
 
 
 class UserProfileResponse(BaseModel):
-    id: str
-    email: str
-    username: str
-    full_name: str | None = None
-    avatar_url: str | None = None
-    is_active: bool
-    is_verified: bool
-    risk_tolerance: RiskTolerance | None = None
-    sector_preferences: list[str] | None = None
-    investment_horizon: InvestmentHorizon | None = None
+    id: str = ""
+    email: str = ""
+    username: str = ""
+    full_name: str = ""
+    avatar_url: str = ""
+    is_active: bool = True
+    is_verified: bool = True
+    risk_tolerance: str = "moderate"
+    sector_preferences: list[str] = Field(default_factory=list)
+    investment_horizon: str = "medium_term"
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("id", "email", "username", "full_name", "avatar_url", mode="before")
+    @classmethod
+    def _clean_user_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("risk_tolerance", mode="before")
+    @classmethod
+    def _clean_user_risk(cls, v):
+        if v is None:
+            return "moderate"
+        if hasattr(v, "value"):
+            return str(v.value)
+        return str(v)
+
+    @field_validator("investment_horizon", mode="before")
+    @classmethod
+    def _clean_user_horizon(cls, v):
+        if v is None:
+            return "medium_term"
+        if hasattr(v, "value"):
+            return str(v.value)
+        return str(v)
+
+    @field_validator("sector_preferences", mode="before")
+    @classmethod
+    def _clean_user_sectors(cls, v):
+        if v is None:
+            return []
+        return [str(getattr(x, "value", x)) for x in v]
 
 
 class UpdateProfileRequest(BaseModel):
