@@ -4,6 +4,7 @@ import math
 import re
 from datetime import datetime, timezone
 from collections import defaultdict
+from typing import Any
 
 import httpx
 try:
@@ -42,6 +43,48 @@ PSX_SCREENER_URL = "https://dps.psx.com.pk/screener"
 
 _STATIC_SCREENER_CACHE: list[dict] = []
 _STATIC_SCREENER_TIMESTAMP: float = 0.0
+
+SECTOR_CODE_TO_NAME: dict[str, str] = {
+    "0801": "AUTOMOBILE ASSEMBLER",
+    "0802": "AUTOMOBILE PARTS & ACCESSORIES",
+    "0803": "CABLE & ELECTRICAL GOODS",
+    "0804": "CEMENT",
+    "0805": "CHEMICAL",
+    "0806": "CLOSE - END MUTUAL FUND",
+    "0807": "COMMERCIAL BANKS",
+    "0808": "ENGINEERING",
+    "0809": "FERTILIZER",
+    "0810": "FOOD & PERSONAL CARE PRODUCTS",
+    "0811": "GLASS & CERAMICS",
+    "0812": "INSURANCE",
+    "0813": "INV. BANKS / INV. COS. / SECURITIES COS.",
+    "0814": "JUTE",
+    "0815": "LEASING COMPANIES",
+    "0816": "LEATHER & TANNERIES",
+    "0817": "MISCELLANEOUS",
+    "0818": "MISCELLANEOUS",
+    "0819": "MODARABAS",
+    "0820": "OIL & GAS EXPLORATION COMPANIES",
+    "0821": "OIL & GAS MARKETING COMPANIES",
+    "0822": "PAPER, BOARD & PACKAGING",
+    "0823": "PHARMACEUTICALS",
+    "0824": "POWER GENERATION & DISTRIBUTION",
+    "0825": "REFINERY",
+    "0826": "SUGAR & ALLIED INDUSTRIES",
+    "0827": "SYNTHETIC & RAYON",
+    "0828": "TECHNOLOGY & COMMUNICATION",
+    "0829": "TEXTILE COMPOSITE",
+    "0830": "TEXTILE SPINNING",
+    "0831": "TEXTILE WEAVING",
+    "0832": "TOBACCO",
+    "0833": "TRANSPORT",
+    "0834": "VANASPATI & ALLIED INDUSTRIES",
+    "0835": "WOOLLEN",
+    "0836": "REAL ESTATE INVESTMENT TRUST",
+    "0837": "EXCHANGE TRADED FUNDS",
+    "0838": "PROPERTY",
+    "0839": "FUTURE CONTRACTS",
+}
 
 _STATIC_SECTOR_MAP: dict[str, str] = {
     "ABL": "COMMERCIAL BANKS",
@@ -158,6 +201,25 @@ class MarketService:
     }
 
     @staticmethod
+    def _normalize_sector_code_or_name(val: Any) -> str | None:
+        """Normalize sector names or numeric codes (e.g. '0807' -> 'COMMERCIAL BANKS')."""
+        if val is None:
+            return None
+        s = str(val).strip()
+        if not s or s.casefold() in {"none", "null", "nan", "unclassified", "unknown", "default"}:
+            return None
+        if s.isdigit():
+            padded = s.zfill(4)
+            if padded in SECTOR_CODE_TO_NAME:
+                return SECTOR_CODE_TO_NAME[padded]
+        if s.upper() in SECTOR_CODE_TO_NAME.values():
+            return s.upper()
+        for name in SECTOR_CODE_TO_NAME.values():
+            if s.casefold() == name.casefold():
+                return name
+        return s.upper()
+
+    @staticmethod
     def _fetch_sector_map_sync() -> dict[str, str]:
         """Read PSX's public screener once to map symbols to sector names.
 
@@ -174,54 +236,12 @@ class MarketService:
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
-        sector_names: dict[str, str] = {}
+        sector_names: dict[str, str] = dict(SECTOR_CODE_TO_NAME)
         for option in soup.select("select option"):
             code = str(option.get("value") or "").strip()
             name = option.get_text(" ", strip=True)
             if re.fullmatch(r"08\d{2}", code) and name:
                 sector_names[code] = name.upper()
-
-        # PSX's current sector codes are stable; this table lets the screener
-        # still classify rows if its sector select is rendered client-side.
-        sector_names.update({
-            "0801": "AUTOMOBILE ASSEMBLER",
-            "0802": "AUTOMOBILE PARTS & ACCESSORIES",
-            "0803": "CABLE & ELECTRICAL GOODS",
-            "0804": "CEMENT",
-            "0805": "CHEMICAL",
-            "0806": "CLOSE - END MUTUAL FUND",
-            "0807": "COMMERCIAL BANKS",
-            "0808": "ENGINEERING",
-            "0809": "FERTILIZER",
-            "0810": "FOOD & PERSONAL CARE PRODUCTS",
-            "0811": "GLASS & CERAMICS",
-            "0812": "INSURANCE",
-            "0813": "INV. BANKS / INV. COS. / SECURITIES COS.",
-            "0814": "JUTE",
-            "0815": "LEASING COMPANIES",
-            "0816": "LEATHER & TANNERIES",
-            "0818": "MISCELLANEOUS",
-            "0819": "MODARABAS",
-            "0820": "OIL & GAS EXPLORATION COMPANIES",
-            "0821": "OIL & GAS MARKETING COMPANIES",
-            "0822": "PAPER, BOARD & PACKAGING",
-            "0823": "PHARMACEUTICALS",
-            "0824": "POWER GENERATION & DISTRIBUTION",
-            "0825": "REFINERY",
-            "0826": "SUGAR & ALLIED INDUSTRIES",
-            "0827": "SYNTHETIC & RAYON",
-            "0828": "TECHNOLOGY & COMMUNICATION",
-            "0829": "TEXTILE COMPOSITE",
-            "0830": "TEXTILE SPINNING",
-            "0831": "TEXTILE WEAVING",
-            "0832": "TOBACCO",
-            "0833": "TRANSPORT",
-            "0834": "VANASPATI & ALLIED INDUSTRIES",
-            "0835": "WOOLLEN",
-            "0836": "REAL ESTATE INVESTMENT TRUST",
-            "0837": "EXCHANGE TRADED FUNDS",
-            "0838": "PROPERTY",
-            })
 
         sector_map: dict[str, str] = {}
         for table in soup.find_all("table"):
@@ -238,7 +258,7 @@ class MarketService:
                     continue
                 symbol = cells[symbol_index].get_text(" ", strip=True).upper().split()[0]
                 code = cells[sector_index].get_text(" ", strip=True)
-                sector = sector_names.get(code)
+                sector = sector_names.get(code) or MarketService._normalize_sector_code_or_name(code)
                 if symbol and sector:
                     sector_map[symbol] = sector
             if sector_map:
@@ -315,7 +335,8 @@ class MarketService:
             row["symbol"] = symbol.upper()
             row["name"] = str(row.get("name") or symbol)
             sector = row.get("sector")
-            row["sector"] = str(sector).strip() if sector not in (None, "") else None
+            norm_sec = MarketService._normalize_sector_code_or_name(sector)
+            row["sector"] = norm_sec if norm_sec else None
             row["volume"] = MarketService._safe_int(row.get("volume"))
             market_cap = MarketService._positive_or_none(row.get("market_cap_m"))
             row["market_cap_m"] = market_cap
@@ -437,7 +458,7 @@ class MarketService:
                             "CHANGE": change,
                             "CHANGE_PCT": ch_pct,
                             "VOLUME": vol,
-                            "SECTOR": tds[sector_idx] if sector_idx >= 0 else None,
+                            "SECTOR": MarketService._normalize_sector_code_or_name(tds[sector_idx]) if sector_idx >= 0 else None,
                         })
                     if rows:
                         frame = pd.DataFrame(rows).set_index("SYMBOL")
@@ -738,11 +759,12 @@ class MarketService:
                 current = self._positive_or_none(row.get("CURRENT"))
                 change = round(current - ldcp, 4) if current is not None and ldcp is not None else None
                 change_pct = round(change / ldcp * 100, 2) if change is not None and ldcp else None
-                sector_val = (
+                raw_sector = (
                     row.get("SECTOR")
                     or previous_sectors.get(str(symbol).upper())
                     or sector_map.get(str(symbol).upper())
                 )
+                sector_val = MarketService._normalize_sector_code_or_name(raw_sector) or sector_map.get(str(symbol).upper())
                 open_val = self._positive_or_none(row.get("OPEN"))
                 high_val = self._positive_or_none(row.get("HIGH"))
                 low_val = self._positive_or_none(row.get("LOW"))
@@ -815,11 +837,12 @@ class MarketService:
                 current = self._positive_or_none(row.get("CURRENT"))
                 change = round(current - ldcp, 4) if current is not None and ldcp is not None else None
                 change_pct = round(change / ldcp * 100, 2) if change is not None and ldcp else None
-                sector_val = (
+                raw_sector = (
                     row.get("SECTOR")
                     or previous_sectors.get(str(symbol).upper())
                     or sector_map.get(str(symbol).upper())
                 )
+                sector_val = MarketService._normalize_sector_code_or_name(raw_sector) or sector_map.get(str(symbol).upper())
                 open_val = self._positive_or_none(row.get("OPEN"))
                 high_val = self._positive_or_none(row.get("HIGH"))
                 low_val = self._positive_or_none(row.get("LOW"))
@@ -981,36 +1004,49 @@ class MarketService:
 
         grouped = defaultdict(list)
         for quote in data:
-            sector = str(quote.get("sector") or "").strip()
+            raw_sec = quote.get("sector")
+            sector = MarketService._normalize_sector_code_or_name(raw_sec)
             if not sector or sector.casefold() in {"unclassified", "unknown"}:
                 continue
             grouped[sector].append(quote)
 
         sectors = []
         for sector, quotes in grouped.items():
-            sector_traded = self._traded_quotes(quotes)
-            changes = [self._safe_float(quote.get("change_pct")) for quote in sector_traded]
-            gainers = [quote for quote, change in zip(sector_traded, changes) if change > 0]
-            losers = [quote for quote, change in zip(sector_traded, changes) if change < 0]
-            unchanged = len(sector_traded) - len(gainers) - len(losers)
+            sector_with_change = [
+                q for q in quotes
+                if q.get("change_pct") is not None
+                and not (isinstance(q.get("change_pct"), float) and math.isnan(q["change_pct"]))
+            ]
+            changes = [self._safe_float(quote.get("change_pct")) for quote in sector_with_change]
+            gainers = [quote for quote, change in zip(sector_with_change, changes) if change > 0]
+            losers = [quote for quote, change in zip(sector_with_change, changes) if change < 0]
+            unchanged = len(quotes) - len(gainers) - len(losers)
             cap_values = [self._safe_float(quote.get("market_cap_m")) for quote in quotes]
             market_caps = [value for value in cap_values if value > 0]
-            top_gainer = max(sector_traded, key=lambda quote: quote["change_pct"]) if sector_traded else None
-            top_loser = min(sector_traded, key=lambda quote: quote["change_pct"]) if sector_traded else None
+
+            sorted_quotes = sorted(sector_with_change, key=lambda q: self._safe_float(q.get("change_pct")), reverse=True) if sector_with_change else quotes
+            top_gainer = sorted_quotes[0] if sorted_quotes else None
+            top_loser = sorted_quotes[-1] if sorted_quotes else None
+
+            avg_chg = round(sum(changes) / len(changes), 2) if changes else 0.0
+            tot_mcap = round(sum(market_caps), 2) if market_caps else 0.0
+
             sectors.append({
                 "sector": sector,
-                "avg_change_pct": round(sum(changes) / len(changes), 2) if changes else None,
+                "name": sector,
+                "avg_change_pct": avg_chg,
                 "companies": len(quotes),
+                "stock_count": len(quotes),
                 "advancing": len(gainers),
                 "declining": len(losers),
-                "unchanged": unchanged,
+                "unchanged": max(0, unchanged),
                 "total_volume": sum(self._safe_int(quote.get("volume")) for quote in quotes),
-                "market_cap_m": round(sum(market_caps), 2) if market_caps else None,
+                "market_cap_m": tot_mcap,
                 "top_gainer_symbol": top_gainer.get("symbol") if top_gainer else None,
                 "top_loser_symbol": top_loser.get("symbol") if top_loser else None,
             })
 
-        sectors.sort(key=lambda item: item["avg_change_pct"] or 0.0, reverse=order.lower() != "asc")
+        sectors.sort(key=lambda item: item["avg_change_pct"] if item["avg_change_pct"] is not None else 0.0, reverse=order.lower() != "asc")
         classified = sum(len(quotes) for quotes in grouped.values())
         return {
             "sectors": sectors,
@@ -1087,9 +1123,15 @@ class MarketService:
         screener_items = await asyncio.to_thread(_scrape)
         
         sector_map = await asyncio.to_thread(self._load_sector_map_sync)
-        if sector_map and screener_items:
+        if screener_items:
             for it in screener_items:
-                it["sector"] = sector_map.get(it["symbol"], "Unclassified")
+                sym = it["symbol"]
+                sec_code = it.get("sector_code")
+                it["sector"] = (
+                    sector_map.get(sym)
+                    or MarketService._normalize_sector_code_or_name(sec_code)
+                    or "Unclassified"
+                )
 
         # Enrich company names and sectors from active quote catalog
         try:

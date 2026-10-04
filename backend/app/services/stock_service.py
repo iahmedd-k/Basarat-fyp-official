@@ -157,17 +157,23 @@ class StockService:
         ]
 
     def _sector_of(self, symbol):
+        symbol = str(symbol).strip().upper()
         frame = self._get_market_frame()
-        if frame is None:
-            return None
-        try:
-            if "Sector" in frame.columns:
-                return frame.loc[symbol, "Sector"]
-            if "sector" in frame.columns:
-                return frame.loc[symbol, "sector"]
-            return None
-        except Exception:
-            return None
+        if frame is not None:
+            try:
+                raw_sec = None
+                if "Sector" in frame.columns and symbol in frame.index:
+                    raw_sec = frame.loc[symbol, "Sector"]
+                elif "sector" in frame.columns and symbol in frame.index:
+                    raw_sec = frame.loc[symbol, "sector"]
+                if raw_sec:
+                    sec = MarketService._normalize_sector_code_or_name(raw_sec)
+                    if sec and sec.casefold() not in {"unclassified", "unknown"}:
+                        return sec
+            except Exception:
+                pass
+        sector_map = MarketService._load_sector_map_sync()
+        return sector_map.get(symbol)
 
     def get_sector_overview(self, symbol: str, limit: int = 5):
         symbol = str(symbol).upper()
@@ -198,9 +204,13 @@ class StockService:
         stock = next((d for d in peers if d.get("symbol") == symbol), None)
 
         def _peer(d):
+            peer_sym = d.get("symbol")
+            peer_name = d.get("name")
+            if not peer_name or peer_name == peer_sym:
+                peer_name = StockService._company_name(peer_sym)
             return {
-                "symbol": d.get("symbol"),
-                "name": d.get("name", d.get("symbol")),
+                "symbol": peer_sym,
+                "name": peer_name,
                 "current": d.get("current"),
                 "ldcp": d.get("ldcp"),
                 "change_pct": d.get("change_pct"),

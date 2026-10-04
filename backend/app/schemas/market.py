@@ -117,8 +117,10 @@ class MarketLiveResponse(BaseModel):
 
 class SectorPerformance(BaseModel):
     sector: str
+    name: str | None = None
     avg_change_pct: float | None = None
     companies: int
+    stock_count: int | None = None
     advancing: int = 0
     declining: int = 0
     unchanged: int = 0
