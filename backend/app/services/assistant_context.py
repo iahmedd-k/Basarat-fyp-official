@@ -158,20 +158,31 @@ class ContextBuilder:
             )
         ) or intent in ("stock_analysis", "personalized_investment_advice")
 
-        # AsyncSession is not safe for concurrent awaits — fetch sequentially.
-        if need_stock and symbol:
-            stock = await self._fetch_stock(
-                symbol,
-                include_technical=include_technical,
-                include_fundamentals=include_fundamentals,
-                hard_live=hard_live,
-            )
-            if stock:
-                context["stock"] = stock
-        if need_market:
-            market = await self._fetch_market(hard_live=hard_live)
-            if market:
-                context["market"] = market
+        # Parallel Asynchronous Fetching: Fetch independent stock & market layers concurrently
+        stock_task = self._fetch_stock(
+            symbol,
+            include_technical=include_technical,
+            include_fundamentals=include_fundamentals,
+            hard_live=hard_live,
+        ) if (need_stock and symbol) else None
+
+        market_task = self._fetch_market(hard_live=hard_live) if need_market else None
+
+        if stock_task and market_task:
+            stock_res, market_res = await asyncio.gather(stock_task, market_task)
+            if stock_res:
+                context["stock"] = stock_res
+            if market_res:
+                context["market"] = market_res
+        elif stock_task:
+            stock_res = await stock_task
+            if stock_res:
+                context["stock"] = stock_res
+        elif market_task:
+            market_res = await market_task
+            if market_res:
+                context["market"] = market_res
+
         if need_portfolio:
             portfolio = await self._fetch_portfolio(hard_live=hard_live_portfolio)
             if portfolio:
@@ -216,52 +227,91 @@ class ContextBuilder:
         hard_live: bool = False,
     ) -> Optional[dict]:
         try:
-            stock: dict = {"symbol": symbol.upper()}
+            sym_upper = symbol.upper().strip()
+            stock: dict = {"symbol": sym_upper}
 
-            # Tier A — stable profile from universe / market cache
-            profile = await self.cache.get_profile(symbol)
+            async def _get_profile():
+                return await self.cache.get_profile(sym_upper)
+
+            async def _get_quote():
+                return await self.cache.resolve_quote(sym_upper, hard_live=hard_live)
+
+            async def _get_fundamentals():
+                if include_fundamentals:
+                    try:
+                        return await self.cache.resolve_fundamentals(sym_upper)
+                    except Exception:
+                        return None
+                return None
+
+            async def _get_technicals():
+                if include_technical:
+                    try:
+                        res = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                self.stock_service.technical_indicators,
+                                sym_upper,
+                                "RSI,MACD,BB,SMA,ADX",
+                                14,
+                                1,
+                            ),
+                            timeout=4.0,
+                        )
+                        return {
+                            "summary": res.get("summary"),
+                            "overall_signal": res.get("overall_signal"),
+                            "as_of_date": res.get("as_of_date"),
+                            "is_stale": res.get("is_stale"),
+                        }
+                    except Exception:
+                        return None
+                return None
+
+            profile, quote, fund, technicals = await asyncio.gather(
+                _get_profile(),
+                _get_quote(),
+                _get_fundamentals(),
+                _get_technicals(),
+            )
+
             if profile:
-                stock["name"] = profile.get("name") or symbol
+                stock["name"] = profile.get("name") or sym_upper
                 stock["sector"] = profile.get("sector")
                 stock["indexes"] = profile.get("indexes") or []
                 stock["profile_source"] = profile.get("source")
                 if profile.get("fundamentals") and not include_fundamentals:
-                    # Always allow lean cached fundamentals when already warm
                     stock["fundamentals"] = profile["fundamentals"]
 
-            # Tier B/C — quote with soft/hard live + full fallback chain
-            quote = await self.cache.resolve_quote(symbol, hard_live=hard_live)
-            stock.update({
-                k: v for k, v in quote.items()
-                if k not in ("name", "sector") or not stock.get(k)
-            })
-            if quote.get("name") and (not stock.get("name") or stock.get("name") == symbol):
-                stock["name"] = quote["name"]
-            if quote.get("sector") and not stock.get("sector"):
-                stock["sector"] = quote["sector"]
-            stock["current_price"] = quote.get("current_price")
-            stock["change"] = quote.get("change")
-            stock["change_pct"] = quote.get("change_pct")
-            stock["volume"] = quote.get("volume")
-            stock["quote_as_of"] = quote.get("quote_as_of")
-            stock["quote_is_stale"] = quote.get("quote_is_stale")
-            stock["quote_source"] = quote.get("source")
-            stock["quote_refreshed"] = quote.get("refreshed")
-            stock["hard_live_requested"] = hard_live
-            if quote.get("unavailable_reason"):
-                stock["unavailable_reason"] = quote["unavailable_reason"]
+            if quote:
+                stock.update({
+                    k: v for k, v in quote.items()
+                    if k not in ("name", "sector") or not stock.get(k)
+                })
+                if quote.get("name") and (not stock.get("name") or stock.get("name") == sym_upper):
+                    stock["name"] = quote["name"]
+                if quote.get("sector") and not stock.get("sector"):
+                    stock["sector"] = quote["sector"]
+                stock["current_price"] = quote.get("current_price")
+                stock["change"] = quote.get("change")
+                stock["change_pct"] = quote.get("change_pct")
+                stock["volume"] = quote.get("volume")
+                stock["quote_as_of"] = quote.get("quote_as_of")
+                stock["quote_is_stale"] = quote.get("quote_is_stale")
+                stock["quote_source"] = quote.get("source")
+                stock["quote_refreshed"] = quote.get("refreshed")
+                stock["hard_live_requested"] = hard_live
+                if quote.get("unavailable_reason"):
+                    stock["unavailable_reason"] = quote["unavailable_reason"]
 
-            if include_fundamentals or not stock.get("fundamentals"):
-                try:
-                    fund = await self.cache.resolve_fundamentals(symbol)
-                    if fund:
-                        stock["fundamentals"] = fund
-                except Exception as e:
-                    log.info("Fundamentals skipped for %s: %s", symbol, e)
+            if fund:
+                stock["fundamentals"] = fund
 
-            # DB-bound work sequential
+            if technicals:
+                stock["technicals"] = technicals
+
+            # Sequential DB tasks
             try:
-                articles, _, _ = await NewsService(self.db).get_articles(limit=MAX_NEWS_ITEMS, symbol=symbol)
+                articles, _, _ = await NewsService(self.db).get_articles(limit=MAX_NEWS_ITEMS, symbol=sym_upper)
                 stock["recent_news"] = [
                     {
                         "title": a.title,
@@ -271,37 +321,16 @@ class ContextBuilder:
                     for a in articles
                 ]
             except Exception as e:
-                log.info("News skipped for %s: %s", symbol, e)
+                log.info("News skipped for %s: %s", sym_upper, e)
 
-            forecast = await self._fetch_prediction(symbol)
+            forecast = await self._fetch_prediction(sym_upper)
             if forecast:
                 stock["forecast"] = forecast
-
-            if include_technical:
-                try:
-                    technicals = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            self.stock_service.technical_indicators,
-                            symbol,
-                            "RSI,MACD,BB,SMA,ADX",
-                            14,
-                            1,
-                        ),
-                        timeout=6.0,
-                    )
-                    stock["technicals"] = {
-                        "summary": technicals.get("summary"),
-                        "overall_signal": technicals.get("overall_signal"),
-                        "as_of_date": technicals.get("as_of_date"),
-                        "is_stale": technicals.get("is_stale"),
-                    }
-                except Exception as e:
-                    log.info("Technicals skipped for %s: %s", symbol, e)
 
             # If we have neither price nor profile identity, treat as miss
             if stock.get("current_price") in (None, 0, 0.0) and not profile:
                 if stock.get("unavailable_reason"):
-                    return stock  # still useful so model can say unavailable
+                    return stock
                 return None
             return stock
         except Exception as e:

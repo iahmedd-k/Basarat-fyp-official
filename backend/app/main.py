@@ -102,6 +102,13 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             log.warning("Could not enqueue initial market cache refresh: %s", exc)
 
+    # Background warmup of assistant universe profile cache
+    try:
+        from app.services.assistant_context_cache import AssistantContextCache
+        asyncio.create_task(AssistantContextCache().warm_universe())
+    except Exception as exc:
+        log.warning("Could not pre-warm assistant universe cache: %s", exc)
+
     yield
 
     try:
