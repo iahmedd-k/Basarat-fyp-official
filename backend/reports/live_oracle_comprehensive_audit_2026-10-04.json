@@ -2,125 +2,125 @@
   "metadata": {
     "title": "Live Oracle PSX Backend Comprehensive Endpoint Verification Audit",
     "base_url": "http://193.123.84.223:8000",
-    "audited_at": "2026-10-04T02:55:39.661111+00:00",
+    "audited_at": "2026-10-04T03:51:03.125858+00:00",
     "admin_user": "admin@basarat.pk",
     "admin_id": "12989aba24fa41d4aaa6cf41777a70ab",
     "total_endpoints_tested": 80,
     "successful_endpoints": 80,
     "failed_endpoints": 0,
     "success_rate_pct": 100.0,
-    "average_latency_ms": 4494.97,
-    "endpoints_with_nulls_count": 15,
-    "endpoints_with_anomalies_count": 3
+    "average_latency_ms": 4668.69,
+    "endpoints_with_nulls_count": 0,
+    "endpoints_with_anomalies_count": 0
   },
   "audit_summary_by_category": {
     "Alerts": {
       "total": 4,
       "passed": 4,
       "failed": 0,
-      "avg_latency_ms": 6377.33
+      "avg_latency_ms": 5995.08
     },
     "Alerts CRUD": {
       "total": 1,
       "passed": 1,
       "failed": 0,
-      "avg_latency_ms": 6415.61
+      "avg_latency_ms": 5688.8
     },
     "Community": {
       "total": 4,
       "passed": 4,
       "failed": 0,
-      "avg_latency_ms": 15933.4
+      "avg_latency_ms": 18764.29
     },
     "Community CRUD": {
       "total": 2,
       "passed": 2,
       "failed": 0,
-      "avg_latency_ms": 11493.45
+      "avg_latency_ms": 11608.61
     },
     "ETFs": {
       "total": 1,
       "passed": 1,
       "failed": 0,
-      "avg_latency_ms": 1941.21
+      "avg_latency_ms": 1516.17
     },
     "IPO": {
       "total": 3,
       "passed": 3,
       "failed": 0,
-      "avg_latency_ms": 1339.33
+      "avg_latency_ms": 1958.01
     },
     "Market": {
       "total": 17,
       "passed": 17,
       "failed": 0,
-      "avg_latency_ms": 78.67
+      "avg_latency_ms": 611.76
     },
     "News & Sentiment": {
       "total": 6,
       "passed": 6,
       "failed": 0,
-      "avg_latency_ms": 6492.06
+      "avg_latency_ms": 6482.47
     },
     "Portfolio": {
       "total": 7,
       "passed": 7,
       "failed": 0,
-      "avg_latency_ms": 11014.7
+      "avg_latency_ms": 10377.94
     },
     "Recommendations": {
       "total": 6,
       "passed": 6,
       "failed": 0,
-      "avg_latency_ms": 6196.75
+      "avg_latency_ms": 6006.6
     },
     "Risk Analytics": {
       "total": 2,
       "passed": 2,
       "failed": 0,
-      "avg_latency_ms": 11058.7
+      "avg_latency_ms": 9739.61
     },
     "Risk Profiling": {
       "total": 2,
       "passed": 2,
       "failed": 0,
-      "avg_latency_ms": 3260.17
+      "avg_latency_ms": 2650.53
     },
     "Shariah": {
       "total": 6,
       "passed": 6,
       "failed": 0,
-      "avg_latency_ms": 1240.77
+      "avg_latency_ms": 1511.17
     },
     "Stocks": {
       "total": 9,
       "passed": 9,
       "failed": 0,
-      "avg_latency_ms": 447.98
+      "avg_latency_ms": 642.33
     },
     "System": {
       "total": 2,
       "passed": 2,
       "failed": 0,
-      "avg_latency_ms": 1131.83
+      "avg_latency_ms": 1588.18
     },
     "Users": {
       "total": 3,
       "passed": 3,
       "failed": 0,
-      "avg_latency_ms": 8151.77
+      "avg_latency_ms": 9242.19
     },
     "Watchlist": {
       "total": 4,
       "passed": 4,
       "failed": 0,
-      "avg_latency_ms": 10747.3
+      "avg_latency_ms": 9639.16
     },
     "Watchlist CRUD": {
       "total": 1,
       "passed": 1,
       "failed": 0,
-      "avg_latency_ms": 11424.02
+      "avg_latency_ms": 10433.54
     }
   },
   "results": [
@@ -135,7 +135,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 109.14,
+      "latency_ms": 125.39,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -157,7 +157,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 2154.52,
+      "latency_ms": 3050.97,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -187,14 +187,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 66.48,
+      "latency_ms": 63.72,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'market_status': 'closed', 'is_market_open': False, 'timezone': 'Asia/Karachi', 'current_time_pkt': '2026-10-04T07:49:02.944992+05:00', 'as_of': '2026-10-04T02:36:54.982940+00:00', 'is_stale': True, 'quote_count': 747, 'session_refresh_enabled': Tru..."
+      "response_sample": "{'market_status': 'closed', 'is_market_open': False, 'timezone': 'Asia/Karachi', 'current_time_pkt': '2026-10-04T08:44:14.917825+05:00', 'as_of': '2026-10-04T03:28:31.956980+00:00', 'is_stale': True, 'quote_count': 747, 'session_refresh_enabled': Tru..."
     },
     {
       "id": 4,
@@ -207,7 +207,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 62.45,
+      "latency_ms": 71.31,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -227,19 +227,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 105.94,
+      "latency_ms": 2263.85,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 1,
-      "null_analysis": [
-        {
-          "field": "shariah_compliant",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'index': 'KSE-100', 'code': 'KSE100', 'shariah_compliant': None, 'constituents': [{'symbol': 'ABL', 'name': 'ABL', 'ldcp': 170.04, 'current': 169.73, 'change': -0.31, 'change_pct': -0.18, 'weight_pct': 1.0, 'index_points': 0.0, 'volume': 134304, 'fr..."
+      "response_sample": "{'index': 'KSE-100', 'code': 'KSE100', 'shariah_compliant': False, 'constituents': [{'symbol': 'ABL', 'name': 'ABL', 'ldcp': 170.04, 'current': 169.73, 'change': -0.31, 'change_pct': -0.18, 'weight_pct': 1.0, 'index_points': 0.0, 'volume': 134304, 'f..."
     },
     {
       "id": 6,
@@ -252,19 +247,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 60.9,
+      "latency_ms": 103.47,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 1,
-      "null_analysis": [
-        {
-          "field": "shariah_compliant",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'index': 'KSE-30', 'code': 'KSE30', 'shariah_compliant': None, 'constituents': [{'symbol': 'ATRL', 'name': 'ATRL', 'ldcp': 1187.53, 'current': 1189.43, 'change': 1.9, 'change_pct': 0.16, 'weight_pct': 1.0, 'index_points': 0.0, 'volume': 839176, 'fre..."
+      "response_sample": "{'index': 'KSE-30', 'code': 'KSE30', 'shariah_compliant': False, 'constituents': [{'symbol': 'ATRL', 'name': 'ATRL', 'ldcp': 1187.53, 'current': 1189.43, 'change': 1.9, 'change_pct': 0.16, 'weight_pct': 1.0, 'index_points': 0.0, 'volume': 839176, 'fr..."
     },
     {
       "id": 7,
@@ -277,7 +267,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 129.64,
+      "latency_ms": 122.28,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -297,39 +287,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 64.69,
+      "latency_ms": 1021.44,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 6,
-      "null_analysis": [
-        {
-          "field": "gainers[0].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "gainers[1].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "gainers[2].sector",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "gainers[2].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "gainers[3].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "gainers[4].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'gainers': [{'symbol': 'WASLR', 'sector': 'MODARABAS', 'name': 'WASLR', 'ldcp': 0.64, 'open': 0.79, 'high': 0.79, 'low': 0.79, 'current': 0.79, 'change': 0.15, 'change_pct': 23.44, 'volume': 3062492, 'market_cap_m': None}, {'symbol': 'HSMCPS', 'sect..."
+      "response_sample": "{'gainers': [{'symbol': 'WASLR', 'sector': 'MODARABAS', 'name': 'WASLR', 'ldcp': 0.64, 'open': 0.79, 'high': 0.79, 'low': 0.79, 'current': 0.79, 'change': 0.15, 'change_pct': 23.44, 'volume': 3062492, 'market_cap_m': 0.0}, {'symbol': 'HSMCPS', 'secto..."
     },
     {
       "id": 9,
@@ -342,43 +307,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 60.68,
+      "latency_ms": 65.22,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 7,
-      "null_analysis": [
-        {
-          "field": "losers[0].sector",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "losers[0].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "losers[1].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "losers[2].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "losers[3].sector",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "losers[3].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "losers[4].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'losers': [{'symbol': 'GTECHBR', 'sector': None, 'name': 'GTECHBR', 'ldcp': 0.31, 'open': 0.02, 'high': 0.02, 'low': 0.02, 'current': 0.02, 'change': -0.29, 'change_pct': -93.55, 'volume': 3997103, 'market_cap_m': None}, {'symbol': 'OBOYR1', 'sector..."
+      "response_sample": "{'losers': [{'symbol': 'GTECHBR', 'sector': '', 'name': 'GTECHBR', 'ldcp': 0.31, 'open': 0.02, 'high': 0.02, 'low': 0.02, 'current': 0.02, 'change': -0.29, 'change_pct': -93.55, 'volume': 3997103, 'market_cap_m': 0.0}, {'symbol': 'OBOYR1', 'sector': ..."
     },
     {
       "id": 10,
@@ -391,35 +327,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 67.18,
+      "latency_ms": 692.29,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 5,
-      "null_analysis": [
-        {
-          "field": "volume_spikes[0].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "volume_spikes[1].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "volume_spikes[2].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "volume_spikes[3].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "volume_spikes[4].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'volume_spikes': [{'symbol': 'CNERGY', 'sector': 'REFINERY', 'name': 'CNERGY', 'ldcp': 12.98, 'open': 12.72, 'high': 12.72, 'low': 12.72, 'current': 12.72, 'change': -0.26, 'change_pct': -2.0, 'volume': 110643856, 'market_cap_m': None}, {'symbol': '..."
+      "response_sample": "{'volume_spikes': [{'symbol': 'CNERGY', 'sector': 'REFINERY', 'name': 'CNERGY', 'ldcp': 12.98, 'open': 12.72, 'high': 12.72, 'low': 12.72, 'current': 12.72, 'change': -0.26, 'change_pct': -2.0, 'volume': 110643856, 'market_cap_m': 0.0}, {'symbol': 'T..."
     },
     {
       "id": 11,
@@ -432,55 +347,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 73.68,
+      "latency_ms": 3081.44,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 37,
-      "null_analysis": [
-        {
-          "field": "sector_performance[0].name",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "sector_performance[0].stock_count",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "sector_performance[0].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "sector_performance[1].name",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "sector_performance[1].stock_count",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "sector_performance[1].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "sector_performance[2].name",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "sector_performance[2].stock_count",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "sector_performance[2].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "sector_performance[3].name",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'market_mood': 'strongly_bearish', 'advancing': 173, 'declining': 362, 'unchanged': 63, 'advance_decline_ratio': 0.48, 'gainers_pct': 28.9, 'losers_pct': 60.5, 'sector_performance': [{'sector': 'TOBACCO', 'name': None, 'avg_change_pct': 3.17, 'compa..."
+      "response_sample": "{'market_mood': 'strongly_bearish', 'advancing': 173, 'declining': 362, 'unchanged': 63, 'advance_decline_ratio': 0.48, 'gainers_pct': 28.9, 'losers_pct': 60.5, 'sector_performance': [{'sector': 'TOBACCO', 'name': 'TOBACCO', 'avg_change_pct': 3.17, '..."
     },
     {
       "id": 12,
@@ -493,7 +367,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 70.37,
+      "latency_ms": 327.27,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -513,7 +387,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 66.27,
+      "latency_ms": 1757.69,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -533,55 +407,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 156.35,
+      "latency_ms": 111.85,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 11,
-      "null_analysis": [
-        {
-          "field": "stocks[0].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[1].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[2].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[3].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[4].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[5].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[6].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[7].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[8].sector",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[8].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'stocks': [{'symbol': 'CNERGY', 'sector': 'REFINERY', 'name': 'CNERGY', 'ldcp': 12.98, 'open': 12.72, 'high': 12.72, 'low': 12.72, 'current': 12.72, 'change': -0.26, 'change_pct': -2.0, 'volume': 110643856, 'market_cap_m': None}, {'symbol': 'TISL', ..."
+      "response_sample": "{'stocks': [{'symbol': 'CNERGY', 'sector': 'REFINERY', 'name': 'CNERGY', 'ldcp': 12.98, 'open': 12.72, 'high': 12.72, 'low': 12.72, 'current': 12.72, 'change': -0.26, 'change_pct': -2.0, 'volume': 110643856, 'market_cap_m': 0.0}, {'symbol': 'TISL', '..."
     },
     {
       "id": 15,
@@ -594,35 +427,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 73.83,
+      "latency_ms": 72.61,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 5,
-      "null_analysis": [
-        {
-          "field": "stocks[0].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[1].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[2].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[3].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stocks[4].market_cap_m",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'stocks': [{'symbol': 'BOP', 'sector': 'COMMERCIAL BANKS', 'name': 'BOP', 'ldcp': 30.12, 'open': 29.93, 'high': 29.93, 'low': 29.93, 'current': 29.93, 'change': -0.19, 'change_pct': -0.63, 'volume': 15750537, 'market_cap_m': None}, {'symbol': 'SILK'..."
+      "response_sample": "{'stocks': [{'symbol': 'BOP', 'sector': 'COMMERCIAL BANKS', 'name': 'BOP', 'ldcp': 30.12, 'open': 29.93, 'high': 29.93, 'low': 29.93, 'current': 29.93, 'change': -0.19, 'change_pct': -0.63, 'volume': 15750537, 'market_cap_m': 0.0}, {'symbol': 'SILK',..."
     },
     {
       "id": 16,
@@ -635,7 +447,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 112.34,
+      "latency_ms": 58.6,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -655,7 +467,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 55.3,
+      "latency_ms": 55.76,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -675,7 +487,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 52.38,
+      "latency_ms": 169.89,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -695,7 +507,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 58.93,
+      "latency_ms": 361.25,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -715,7 +527,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1479.22,
+      "latency_ms": 1467.68,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -743,7 +555,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1902.84,
+      "latency_ms": 1447.85,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -781,7 +593,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 74.56,
+      "latency_ms": 435.29,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -801,7 +613,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 68.75,
+      "latency_ms": 337.73,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -821,7 +633,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 77.24,
+      "latency_ms": 240.34,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -841,7 +653,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 63.38,
+      "latency_ms": 112.34,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -861,7 +673,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 146.44,
+      "latency_ms": 443.52,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -881,7 +693,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 156.08,
+      "latency_ms": 557.39,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -901,20 +713,11 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 63.33,
+      "latency_ms": 738.8,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 2,
-      "null_analysis": [
-        {
-          "field": "ratios.dividend_yield_pct",
-          "reason": "Fundamentals: Negative earnings or company did not declare cash dividends"
-        },
-        {
-          "field": "metrics[4].value",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
       "response_sample": "{'symbol': 'OGDC', 'data_status': 'complete', 'data_message': 'Company fundamentals loaded from the configured PSX sources.', 'psx_official_url': 'https://dps.psx.com.pk/company/OGDC', 'company_profile': {'name': 'Oil & Gas Development Company Limite..."
@@ -930,7 +733,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 52.45,
+      "latency_ms": 641.47,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -950,7 +753,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1682.13,
+      "latency_ms": 1521.21,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -970,14 +773,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1449.67,
+      "latency_ms": 2536.36,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'symbol': 'HBL', 'screening_available': True, 'is_shariah_compliant': False, 'overall_score': 0.0, 'screening_method': 'Known business activity classification; financial ratios unavailable', 'screened_at': '2026-10-04T02:49:11.450418', 'data_as_of':..."
+      "response_sample": "{'symbol': 'HBL', 'screening_available': True, 'is_shariah_compliant': False, 'overall_score': 0.0, 'screening_method': 'Known business activity classification; financial ratios unavailable', 'screened_at': '2026-10-04T03:44:34.658481', 'data_as_of':..."
     },
     {
       "id": 32,
@@ -990,7 +793,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1699.5,
+      "latency_ms": 1764.04,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1010,7 +813,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1250.02,
+      "latency_ms": 1293.23,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1030,7 +833,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1310.84,
+      "latency_ms": 1310.72,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1050,32 +853,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 10569.62,
+      "latency_ms": 9591.69,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
-      "anomalies_or_wrong_values": [
-        "Sector '0810' returned as raw numeric code instead of sector title",
-        "Sector '0807' returned as raw numeric code instead of sector title",
-        "Sector '0807' returned as raw numeric code instead of sector title",
-        "Sector '0810' returned as raw numeric code instead of sector title",
-        "Sector '0824' returned as raw numeric code instead of sector title",
-        "Sector '0816' returned as raw numeric code instead of sector title",
-        "Sector '0828' returned as raw numeric code instead of sector title",
-        "Sector '0824' returned as raw numeric code instead of sector title",
-        "Sector '0804' returned as raw numeric code instead of sector title",
-        "Sector '0807' returned as raw numeric code instead of sector title",
-        "Sector '0804' returned as raw numeric code instead of sector title",
-        "Sector '0828' returned as raw numeric code instead of sector title",
-        "Sector '0801' returned as raw numeric code instead of sector title",
-        "Sector '0828' returned as raw numeric code instead of sector title",
-        "Sector '0803' returned as raw numeric code instead of sector title",
-        "Sector '0828' returned as raw numeric code instead of sector title",
-        "Sector '0823' returned as raw numeric code instead of sector title"
-      ],
+      "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'count': 20, 'total_count': 100, 'generated_at': '2026-10-04T02:49:26.142336Z', 'risk_profile': 'moderate', 'recommendations': [{'symbol': 'FFL', 'name': 'FFL', 'sector': '0810', 'decision': {'signal': 'BUY', 'composite_score': 0.33, 'confidence': 0..."
+      "response_sample": "{'count': 20, 'total_count': 100, 'generated_at': '2026-10-04T03:44:45.371975Z', 'risk_profile': 'moderate', 'recommendations': [{'symbol': 'FFL', 'name': 'FFL', 'sector': 'FOOD & PERSONAL CARE PRODUCTS', 'decision': {'signal': 'BUY', 'composite_scor..."
     },
     {
       "id": 36,
@@ -1088,7 +873,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5355.15,
+      "latency_ms": 5279.7,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1120,7 +905,7 @@
       },
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5240.63,
+      "latency_ms": 5235.53,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1147,16 +932,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5364.5,
+      "latency_ms": 5276.39,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
-      "anomalies_or_wrong_values": [
-        "Sector '0820' returned as raw numeric code instead of sector title"
-      ],
+      "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'symbol': 'OGDC', 'name': 'OGDC', 'sector': '0820', 'generated_at': '2026-10-04T02:49:42.245230Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.138, 'confidence': 0.277, 'confidence_type': 'heuristic_signal_strength', 'status': 'available', '..."
+      "response_sample": "{'symbol': 'OGDC', 'name': 'OGDC', 'sector': 'OIL & GAS EXPLORATION COMPANIES', 'generated_at': '2026-10-04T03:45:05.504831Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.138, 'confidence': 0.277, 'confidence_type': 'heuristic_signal_strength..."
     },
     {
       "id": 39,
@@ -1169,14 +952,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5281.11,
+      "latency_ms": 5259.55,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'symbol': 'OGDC', 'generated_at': '2026-10-04T02:49:47.496018Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.138, 'confidence': 0.277, 'confidence_type': 'heuristic_signal_strength', 'status': 'available', 'horizon': '5 trading days', 'reaso..."
+      "response_sample": "{'symbol': 'OGDC', 'generated_at': '2026-10-04T03:45:10.767629Z', 'decision': {'signal': 'HOLD', 'composite_score': 0.138, 'confidence': 0.277, 'confidence_type': 'heuristic_signal_strength', 'status': 'available', 'horizon': '5 trading days', 'reaso..."
     },
     {
       "id": 40,
@@ -1189,16 +972,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5369.49,
+      "latency_ms": 5396.72,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
-      "anomalies_or_wrong_values": [
-        "Sector '0828' returned as raw numeric code instead of sector title"
-      ],
+      "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'symbol': 'SYS', 'name': 'SYS', 'sector': '0828', 'generated_at': '2026-10-04T02:49:52.894690Z', 'decision': {'signal': 'BUY', 'composite_score': 0.264, 'confidence': 0.528, 'confidence_type': 'heuristic_signal_strength', 'status': 'available', 'hor..."
+      "response_sample": "{'symbol': 'SYS', 'name': 'SYS', 'sector': 'TECHNOLOGY & COMMUNICATION', 'generated_at': '2026-10-04T03:45:16.044867Z', 'decision': {'signal': 'BUY', 'composite_score': 0.264, 'confidence': 0.528, 'confidence_type': 'heuristic_signal_strength', 'stat..."
     },
     {
       "id": 41,
@@ -1211,7 +992,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 7109.57,
+      "latency_ms": 6944.6,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1231,16 +1012,11 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 7097.05,
+      "latency_ms": 7077.65,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 1,
-      "null_analysis": [
-        {
-          "field": "items[0].sentiment",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
       "response_sample": "{'items': [{'id': '229662ce7eaa4bc6abe846423186db69', 'title': 'Federal Minister for Finance and Revenue, Senator Muhammad Aurangzeb, held a meeting with Mr. Srini Nagarajan, Managing Director and Head of Asia, British International Investment (BII),..."
@@ -1256,7 +1032,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5435.14,
+      "latency_ms": 5259.98,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1290,7 +1066,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5240.88,
+      "latency_ms": 5293.76,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1322,7 +1098,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5837.84,
+      "latency_ms": 5652.61,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1346,52 +1122,11 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 8231.88,
+      "latency_ms": 8666.25,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 24,
-      "null_analysis": [
-        {
-          "field": "items[2].positive_score",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[2].neutral_score",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[2].negative_score",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[3].positive_score",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[3].neutral_score",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[3].negative_score",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[4].positive_score",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[4].neutral_score",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[4].negative_score",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[5].positive_score",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
       "response_sample": "{'symbol': 'OGDC', 'items': [{'id': '0255ba0314554836a4480fcaee7ab125', 'title': 'OGDC faces minor cost pressure in exploration unit', 'source': 'Business Recorder', 'published_at': '2026-09-23T21:18:18.515827+00:00', 'url': 'https://brecorder.com/og..."
@@ -1407,7 +1142,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 6464.41,
+      "latency_ms": 5241.52,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1442,7 +1177,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 55.94,
+      "latency_ms": 59.53,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1462,14 +1197,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 11399.06,
+      "latency_ms": 9837.02,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'confidence': 95, 'horizon': '1D', 'var_value': -0.022193, 'cvar_value': -0.033084, 'method': 'historical_simulation_compounded_overlapping', 'num_observations': 1602, 'annualized_volatility': 0.255014, 'status': 'available', 'message': 'Risk estima..."
+      "response_sample": "{'confidence': 95, 'horizon': '1D', 'var_value': -0.022713, 'cvar_value': -0.033926, 'method': 'historical_simulation_compounded_overlapping', 'num_observations': 1602, 'annualized_volatility': 0.26392, 'status': 'available', 'message': 'Risk estimat..."
     },
     {
       "id": 50,
@@ -1482,14 +1217,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 10718.35,
+      "latency_ms": 9642.2,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'scenario': '2008_crash', 'name': 'Illustrative broad market crash', 'description': 'Illustrative one-step sector shocks; not a reconstruction of 2008.', 'portfolio_impact': -0.465294, 'portfolio_impact_value': -622159.95, 'worst_case_loss': -0.6, '..."
+      "response_sample": "{'scenario': '2008_crash', 'name': 'Illustrative broad market crash', 'description': 'Illustrative one-step sector shocks; not a reconstruction of 2008.', 'portfolio_impact': -0.45606, 'portfolio_impact_value': -710253.55, 'worst_case_loss': -0.6, 'v..."
     },
     {
       "id": 51,
@@ -1502,7 +1237,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5248.94,
+      "latency_ms": 5271.13,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1540,7 +1275,7 @@
       },
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 9564.54,
+      "latency_ms": 11199.65,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1582,7 +1317,7 @@
       },
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 9641.83,
+      "latency_ms": 11255.8,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1617,55 +1352,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 24707.87,
+      "latency_ms": 31429.22,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 33,
-      "null_analysis": [
-        {
-          "field": "posts[0].stock_symbol",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[0].stock_name",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[0].image_url",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[0].removed_reason",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[1].stock_symbol",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[1].stock_name",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[1].image_url",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[1].removed_reason",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[2].image_url",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[2].removed_reason",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'posts': [{'id': '45ef715e17964b4d89e3647bef9794ea', 'author_id': '12989aba24fa41d4aaa6cf41777a70ab', 'author_username': 'admin_master', 'author_full_name': 'Antigravity Live Tester', 'author_avatar_url': 'https://example.com/route-test', 'post_type..."
+      "response_sample": "{'posts': [{'id': '176dca5f156540baaf224e834a117f81', 'author_id': '12989aba24fa41d4aaa6cf41777a70ab', 'author_username': 'admin_master', 'author_full_name': 'Antigravity Live Tester', 'author_avatar_url': 'https://example.com/route-test', 'post_type..."
     },
     {
       "id": 55,
@@ -1678,28 +1372,11 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 22830.91,
+      "latency_ms": 26979.83,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 4,
-      "null_analysis": [
-        {
-          "field": "posts[0].image_url",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[0].removed_reason",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[1].image_url",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "posts[1].removed_reason",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
       "response_sample": "{'posts': [{'id': 'e5c5f852ef954a47ae78d9b3e6325450', 'author_id': '12989aba24fa41d4aaa6cf41777a70ab', 'author_username': 'admin_master', 'author_full_name': 'Antigravity Live Tester', 'author_avatar_url': 'https://example.com/route-test', 'post_type..."
@@ -1715,7 +1392,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5966.95,
+      "latency_ms": 6481.54,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1729,7 +1406,7 @@
         "avatar_url": "https://example.com/route-test",
         "followers_count": 0,
         "following_count": 0,
-        "published_post_count": 4,
+        "published_post_count": 3,
         "is_following": false,
         "is_own_profile": true
       }
@@ -1748,31 +1425,14 @@
       },
       "status_code": 201,
       "is_success": true,
-      "latency_ms": 10227.87,
+      "latency_ms": 10166.56,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 4,
-      "null_analysis": [
-        {
-          "field": "stock_symbol",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "stock_name",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "image_url",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "removed_reason",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'id': 'fee1c4f2a07943c6987cf80835b971ec', 'author_id': '12989aba24fa41d4aaa6cf41777a70ab', 'author_username': 'admin_master', 'author_full_name': 'Antigravity Live Tester', 'author_avatar_url': 'https://example.com/route-test', 'post_type': 'GENERAL..."
+      "response_sample": "{'id': 'e4f0c95bae4b4bde939a6a7ed5f83197', 'author_id': '12989aba24fa41d4aaa6cf41777a70ab', 'author_username': 'admin_master', 'author_full_name': 'Antigravity Live Tester', 'author_avatar_url': 'https://example.com/route-test', 'post_type': 'GENERAL..."
     },
     {
       "id": 58,
@@ -1785,7 +1445,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 10924.65,
+      "latency_ms": 10266.0,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1805,52 +1465,11 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 16478.76,
+      "latency_ms": 14553.98,
       "is_empty": false,
-      "has_null_values": true,
-      "null_count": 18,
-      "null_analysis": [
-        {
-          "field": "items[0].stock_id",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[0].target_price",
-          "reason": "ML Recommendation: Sideways/Hold recommendations do not project directional target prices"
-        },
-        {
-          "field": "items[0].notes",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[1].stock_id",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[1].target_price",
-          "reason": "ML Recommendation: Sideways/Hold recommendations do not project directional target prices"
-        },
-        {
-          "field": "items[1].notes",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[2].stock_id",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[2].target_price",
-          "reason": "ML Recommendation: Sideways/Hold recommendations do not project directional target prices"
-        },
-        {
-          "field": "items[2].notes",
-          "reason": "Optional domain attribute with no value assigned"
-        },
-        {
-          "field": "items[3].stock_id",
-          "reason": "Optional domain attribute with no value assigned"
-        }
-      ],
+      "has_null_values": false,
+      "null_count": 0,
+      "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
       "response_sample": "{'id': '5928df9c415f4baabc664ad767e7a2ea', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'name': 'My Watchlist', 'description': 'Default stock watchlist', 'is_default': True, 'items': [{'id': '88d7d0794efe4368966e987ae1696504', 'watchlist_id': '5928..."
@@ -1866,7 +1485,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5645.93,
+      "latency_ms": 5454.36,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1879,8 +1498,7 @@
         "watchlist_ids": [
           "5928df9c415f4baabc664ad767e7a2ea",
           "20ea6114693d4d6cbbd292ff1acc8cd7",
-          "60b581ee0a6544bd94a80c107da29dec",
-          "7513f6fb703a4182a0a305baa56cba70"
+          "60b581ee0a6544bd94a80c107da29dec"
         ]
       }
     },
@@ -1902,7 +1520,7 @@
       },
       "status_code": 201,
       "is_success": true,
-      "latency_ms": 9939.87,
+      "latency_ms": 8282.31,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1910,14 +1528,14 @@
       "anomalies_or_wrong_values": [],
       "error": null,
       "response_sample": {
-        "id": "d80e0d5c4c7e4cb98fb9e72f8ad783ab",
+        "id": "37d67aac98854d1ebc7e8547cae0b99c",
         "user_id": "12989aba24fa41d4aaa6cf41777a70ab",
         "name": "Audit Watchlist",
         "description": "Audited via live runner",
         "is_default": false,
         "item_count": 2,
-        "created_at": "2026-10-04T02:53:07.598574+00:00",
-        "updated_at": "2026-10-04T02:53:07.598580+00:00"
+        "created_at": "2026-10-04T03:48:38.375021+00:00",
+        "updated_at": "2026-10-04T03:48:38.375027+00:00"
       }
     },
     {
@@ -1931,14 +1549,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 10431.71,
+      "latency_ms": 9723.08,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'summary': {'total_invested': '664040.0000', 'current_value': '1368595.0000', 'total_pnl': '704555.0000', 'total_pnl_percent': 106.1, 'today_pnl': '0.0000'}, 'holdings': [{'symbol': 'OGDC', 'company_name': 'Oil & Gas Development Company', 'sector': ..."
+      "response_sample": "{'summary': {'total_invested': '852830.0000', 'current_value': '1557367.0000', 'total_pnl': '704537.0000', 'total_pnl_percent': 82.61, 'today_pnl': '0.0000'}, 'holdings': [{'symbol': 'OGDC', 'company_name': 'Oil & Gas Development Company', 'sector': ..."
     },
     {
       "id": 63,
@@ -1951,14 +1569,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 10250.54,
+      "latency_ms": 9644.4,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "[{'symbol': 'OGDC', 'company_name': 'Oil & Gas Development Company', 'sector': 'OIL & GAS EXPLORATION COMPANIES', 'quantity': '2500.0000', 'average_cost': '145.6080', 'current_price': '314.62', 'market_value': '786550.0000', 'unrealized_pnl': '422530..."
+      "response_sample": "[{'symbol': 'OGDC', 'company_name': 'Oil & Gas Development Company', 'sector': 'OIL & GAS EXPLORATION COMPANIES', 'quantity': '3100.0000', 'average_cost': '178.3258', 'current_price': '314.62', 'market_value': '975322.0000', 'unrealized_pnl': '422512..."
     },
     {
       "id": 64,
@@ -1971,7 +1589,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 14341.66,
+      "latency_ms": 13930.87,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -1980,9 +1598,9 @@
       "error": null,
       "response_sample": {
         "realized_pnl": "12935.0000",
-        "unrealized_pnl": "691620.0000",
-        "total_pnl": "704555.0000",
-        "total_pnl_percent": 106.1,
+        "unrealized_pnl": "691602.0000",
+        "total_pnl": "704537.0000",
+        "total_pnl_percent": 82.61,
         "today_pnl": "0.0000"
       }
     },
@@ -1997,7 +1615,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 9857.94,
+      "latency_ms": 9637.17,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -2017,7 +1635,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 10466.49,
+      "latency_ms": 9905.86,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -2028,25 +1646,25 @@
         "by_stock": [
           {
             "symbol": "OGDC",
-            "market_value": "786550.0000",
-            "percentage": 57.47
+            "market_value": "975322.0000",
+            "percentage": 62.63
           },
           {
             "symbol": "MCB",
             "market_value": "582045.0000",
-            "percentage": 42.53
+            "percentage": 37.37
           }
         ],
         "by_sector": [
           {
             "sector": "OIL & GAS EXPLORATION COMPANIES",
-            "market_value": "786550.0000",
-            "percentage": 57.47
+            "market_value": "975322.0000",
+            "percentage": 62.63
           },
           {
             "sector": "COMMERCIAL BANKS",
             "market_value": "582045.0000",
-            "percentage": 42.53
+            "percentage": 37.37
           }
         ]
       }
@@ -2062,14 +1680,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 9770.74,
+      "latency_ms": 9507.25,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'items': [{'id': '631e1eb83e3a41c3b2ab440ce7b70cc6', 'symbol': 'OGDC', 'transaction_type': 'BUY', 'quantity': '100.0000', 'price': '314.5000', 'fee': '15.0000', 'transaction_date': '2026-10-04', 'created_at': '2026-10-04T02:52:27.416857Z', 'updated_..."
+      "response_sample": "{'items': [{'id': 'ca609183f9ae4c2992f2b6297572a20b', 'symbol': 'OGDC', 'transaction_type': 'BUY', 'quantity': '100.0000', 'price': '314.5000', 'fee': '15.0000', 'transaction_date': '2026-10-04', 'created_at': '2026-10-04T03:42:54.164706Z', 'updated_..."
     },
     {
       "id": 68,
@@ -2089,7 +1707,7 @@
       },
       "status_code": 201,
       "is_success": true,
-      "latency_ms": 11983.79,
+      "latency_ms": 10296.96,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -2097,15 +1715,15 @@
       "anomalies_or_wrong_values": [],
       "error": null,
       "response_sample": {
-        "id": "334b8339e87542869fd668684bb9d8f0",
+        "id": "afeaf8a890e54d6eb538c3462e4eb2c5",
         "symbol": "OGDC",
         "transaction_type": "BUY",
         "quantity": "100.0000",
         "price": "314.5000",
         "fee": "15.0000",
         "transaction_date": "2026-10-04",
-        "created_at": "2026-10-04T02:54:27.532563Z",
-        "updated_at": "2026-10-04T02:54:27.532569Z"
+        "created_at": "2026-10-04T03:49:53.224856Z",
+        "updated_at": "2026-10-04T03:49:53.224863Z"
       }
     },
     {
@@ -2119,7 +1737,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1247.49,
+      "latency_ms": 2320.55,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -2139,7 +1757,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1479.06,
+      "latency_ms": 1455.49,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -2159,7 +1777,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1291.44,
+      "latency_ms": 2098.0,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -2179,7 +1797,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 1941.21,
+      "latency_ms": 1516.17,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -2199,14 +1817,14 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5845.88,
+      "latency_ms": 5982.67,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'notifications': [{'id': '438cd0e363c94065b96bc8f75d4c344f', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'rule_id': '', 'title': '[MEDIUM] Concentration Breach', 'message': 'MCB weight = 41.6% exceeds 30% limit', 'is_read': False, 'created_at': '..."
+      "response_sample": "{'notifications': [{'id': '49b7c9a1582f42c29f074854a24f9ac2', 'user_id': '12989aba24fa41d4aaa6cf41777a70ab', 'rule_id': '', 'title': '[MEDIUM] Concentration Breach', 'message': 'MCB weight = 36.6% exceeds 30% limit', 'is_read': False, 'created_at': '..."
     },
     {
       "id": 74,
@@ -2219,7 +1837,7 @@
       "request_payload": null,
       "status_code": 200,
       "is_success": true,
-      "latency_ms": 5964.44,
+      "latency_ms": 5673.92,
       "is_empty": true,
       "has_null_values": false,
       "null_count": 0,
@@ -2243,7 +1861,7 @@
       },
       "status_code": 201,
       "is_success": true,
-      "latency_ms": 6253.06,
+      "latency_ms": 5834.15,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
@@ -2251,7 +1869,7 @@
       "anomalies_or_wrong_values": [],
       "error": null,
       "response_sample": {
-        "id": "21a13792e9c94d8f9be8a3f752c4687d",
+        "id": "88a52936da264dddbbde45a5df91c595",
         "user_id": "12989aba24fa41d4aaa6cf41777a70ab",
         "stock_id": "45194d8b11cc437b9aceafac582468da",
         "symbol": "OGDC",
@@ -2259,7 +1877,7 @@
         "condition": "price_above",
         "threshold": 350.0,
         "is_active": true,
-        "created_at": "2026-10-04T02:54:52.179210"
+        "created_at": "2026-10-04T03:50:18.318572"
       }
     },
     {
@@ -2277,24 +1895,24 @@
       },
       "status_code": 201,
       "is_success": true,
-      "latency_ms": 7445.93,
+      "latency_ms": 6489.58,
       "is_empty": false,
       "has_null_values": false,
       "null_count": 0,
       "null_analysis": [],
       "anomalies_or_wrong_values": [],
       "error": null,
-      "response_sample": "{'symbol': 'OGDC', 'stock_name': 'Oil & Gas Development Company', 'stock_id': '45194d8b11cc437b9aceafac582468da', 'base_price': 314.62, 'percent_threshold': 3.0, 'direction': 'both', 'rules': [{'id': '78cbd5c3d9104fb2810423cc70babd9b', 'user_id': '12..."
+      "response_sample": "{'symbol': 'OGDC', 'stock_name': 'Oil & Gas Development Company', 'stock_id': '45194d8b11cc437b9aceafac582468da', 'base_price': 314.62, 'percent_threshold': 3.0, 'direction': 'both', 'rules': [{'id': '69c1a4f49a7c49e1a377c7da9b6f6088', 'user_id': '12..."
     },
     {
       "id": 77,
       "category": "Community CRUD",
       "name": "Add Comment to Post (POST)",
       "method": "POST",
-      "path": "/api/v1/community/posts/fee1c4f2a07943c6987cf80835b971ec/comments",
+      "path": "/api/v1/community/posts/e4f0c95bae4b4bde939a6a7ed5f83197/comments",
       "status_code": 201,
       "is_success": true,
-      "latency_ms": 9668.27,
+      "latency_ms": 10101.91,
       "is_empty": false,
       "has_null_values": false,
       "anomalies_or_wrong_values": []
@@ -2304,10 +1922,10 @@
       "category": "Community CRUD",
       "name": "Delete Community Post (DELETE)",
       "method": "DELETE",
-      "path": "/api/v1/community/posts/fee1c4f2a07943c6987cf80835b971ec",
+      "path": "/api/v1/community/posts/e4f0c95bae4b4bde939a6a7ed5f83197",
       "status_code": 204,
       "is_success": true,
-      "latency_ms": 13318.64,
+      "latency_ms": 13115.32,
       "is_empty": false,
       "has_null_values": false,
       "anomalies_or_wrong_values": []
@@ -2317,10 +1935,10 @@
       "category": "Watchlist CRUD",
       "name": "Delete Custom Watchlist (DELETE)",
       "method": "DELETE",
-      "path": "/api/v1/watchlists/d80e0d5c4c7e4cb98fb9e72f8ad783ab",
+      "path": "/api/v1/watchlists/37d67aac98854d1ebc7e8547cae0b99c",
       "status_code": 204,
       "is_success": true,
-      "latency_ms": 11424.02,
+      "latency_ms": 10433.54,
       "is_empty": false,
       "has_null_values": false,
       "anomalies_or_wrong_values": []
@@ -2333,7 +1951,7 @@
       "path": "/api/v1/alerts/rules/stock/OGDC",
       "status_code": 204,
       "is_success": true,
-      "latency_ms": 6415.61,
+      "latency_ms": 5688.8,
       "is_empty": false,
       "has_null_values": false,
       "anomalies_or_wrong_values": []
