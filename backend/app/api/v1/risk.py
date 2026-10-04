@@ -93,7 +93,11 @@ async def _get_holdings(db: AsyncSession, user_id: str) -> list[HoldingInfo]:
 async def get_var(
     request: Request,
     confidence: int = Query(95, ge=90, le=99),
-    horizon: str = Query("1D", pattern="^(1D|1W|1M)$"),
+    horizon: str = Query(
+        "1D",
+        pattern="^(1D|1W|2W|1M)$",
+        description="Risk horizon: '1D' (1 day), '1W' (5 days), '2W' (10 days), or '1M' (21 days).",
+    ),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

@@ -112,7 +112,7 @@ def run_features(
 
     # ── Labeling ───────────────────────────────────────────────────────
     log.info("Step 4: Labeling (threshold=%.3f) ...", label_threshold)
-    df, label_report = assign_labels(df, threshold=label_threshold)
+    df, label_report = assign_labels(df, threshold=label_threshold, drop_na=False)
     label_map_filename = f"label_mapping{file_prefix}.json" if suffix else "label_mapping.json"
     save_label_mapping(FEATURES_DIR, filename=label_map_filename)
 
@@ -163,7 +163,8 @@ def run_features(
 
     # ── Build sequences ────────────────────────────────────────────────
     log.info("Step 6: Building sequences (window_size=%d) ...", window_size)
-    X, y, meta = build_sequences(df, feature_columns, label_report["label_mapping"], window_size)
+    df_train = df.dropna(subset=["label"]).copy()
+    X, y, meta = build_sequences(df_train, feature_columns, label_report["label_mapping"], window_size)
     save_sequences(X, y, meta, SEQUENCES_DIR, prefix=suffix)
 
     log.info("=" * 60)

@@ -1,0 +1,296 @@
+{
+  "5D": {
+    "horizon": "5D",
+    "model_type": "XGBoost v3 (5D Cross-Sectional Alpha)",
+    "test_samples": 18919,
+    "baseline_accuracy": 0.5433162429303875,
+    "macro_f1": 0.5379172843688285,
+    "roc_auc": 0.5606642773879486,
+    "spearman_rank_ic": 0.06810549816875185,
+    "rejection_decision_layer": {
+      "threshold_0.50": {
+        "threshold": 0.5,
+        "actionable_accuracy": 0.5433,
+        "actionable_accuracy_pct": "54.33%",
+        "coverage_pct": 100.0,
+        "signals_generated_count": 18919,
+        "no_signal_count": 0,
+        "mean_buy_excess_return": 0.00484,
+        "long_short_alpha_spread": 0.00734
+      },
+      "threshold_0.52": {
+        "threshold": 0.52,
+        "actionable_accuracy": 0.5577,
+        "actionable_accuracy_pct": "55.77%",
+        "coverage_pct": 74.54,
+        "signals_generated_count": 14102,
+        "no_signal_count": 4817,
+        "mean_buy_excess_return": 0.00515,
+        "long_short_alpha_spread": 0.00947
+      },
+      "threshold_0.54": {
+        "threshold": 0.54,
+        "actionable_accuracy": 0.57,
+        "actionable_accuracy_pct": "57.00%",
+        "coverage_pct": 48.58,
+        "signals_generated_count": 9190,
+        "no_signal_count": 9729,
+        "mean_buy_excess_return": 0.00494,
+        "long_short_alpha_spread": 0.01173
+      },
+      "threshold_0.55": {
+        "threshold": 0.55,
+        "actionable_accuracy": 0.5756,
+        "actionable_accuracy_pct": "57.56%",
+        "coverage_pct": 37.53,
+        "signals_generated_count": 7100,
+        "no_signal_count": 11819,
+        "mean_buy_excess_return": 0.00422,
+        "long_short_alpha_spread": 0.01306
+      },
+      "threshold_0.56": {
+        "threshold": 0.56,
+        "actionable_accuracy": 0.5852,
+        "actionable_accuracy_pct": "58.52%",
+        "coverage_pct": 27.32,
+        "signals_generated_count": 5169,
+        "no_signal_count": 13750,
+        "mean_buy_excess_return": 0.00374,
+        "long_short_alpha_spread": 0.01452
+      },
+      "threshold_0.58": {
+        "threshold": 0.58,
+        "actionable_accuracy": 0.5995,
+        "actionable_accuracy_pct": "59.95%",
+        "coverage_pct": 10.7,
+        "signals_generated_count": 2025,
+        "no_signal_count": 16894,
+        "mean_buy_excess_return": 0.0013,
+        "long_short_alpha_spread": 0.01411
+      },
+      "threshold_0.60": {
+        "threshold": 0.6,
+        "actionable_accuracy": 0.6538,
+        "actionable_accuracy_pct": "65.38%",
+        "coverage_pct": 2.61,
+        "signals_generated_count": 494,
+        "no_signal_count": 18425,
+        "mean_buy_excess_return": 0.00443,
+        "long_short_alpha_spread": 0.02304
+      }
+    },
+    "best_iteration": 124,
+    "top_features": {
+      "dist_ema12_csrank": 0.11464626342058182,
+      "ret_5d_csrank": 0.05921671539545059,
+      "dist_ema26_csrank": 0.05107812583446503,
+      "rel_to_index_5d_csrank": 0.04825541377067566,
+      "ret_3d_csrank": 0.04618803411722183,
+      "norm_atr14_csrank": 0.044010113924741745,
+      "is_upper_circuit_csrank": 0.037479426711797714,
+      "amihud_illiquidity_csrank": 0.030090246349573135,
+      "dist_sma20_csrank": 0.02907908521592617,
+      "dist_52w_high_csrank": 0.028752699494361877,
+      "ret_1d_csrank": 0.027424829080700874,
+      "mom_12m_1m_csrank": 0.027259301394224167,
+      "macd_norm_csrank": 0.026613909751176834,
+      "hl_range_csrank": 0.026268376037478447,
+      "pkr_usd_ret_20d_csrank": 0.02606336399912834
+    }
+  },
+  "10D": {
+    "horizon": "10D",
+    "model_type": "XGBoost v3 (10D Cross-Sectional Alpha)",
+    "test_samples": 18614,
+    "baseline_accuracy": 0.544267755452885,
+    "macro_f1": 0.5362533876485464,
+    "roc_auc": 0.5573252557483621,
+    "spearman_rank_ic": 0.055790889967872515,
+    "rejection_decision_layer": {
+      "threshold_0.50": {
+        "threshold": 0.5,
+        "actionable_accuracy": 0.5443,
+        "actionable_accuracy_pct": "54.43%",
+        "coverage_pct": 100.0,
+        "signals_generated_count": 18614,
+        "no_signal_count": 0,
+        "mean_buy_excess_return": 0.00264,
+        "long_short_alpha_spread": 0.01056
+      },
+      "threshold_0.52": {
+        "threshold": 0.52,
+        "actionable_accuracy": 0.5571,
+        "actionable_accuracy_pct": "55.71%",
+        "coverage_pct": 63.06,
+        "signals_generated_count": 11738,
+        "no_signal_count": 6876,
+        "mean_buy_excess_return": 0.00261,
+        "long_short_alpha_spread": 0.01348
+      },
+      "threshold_0.54": {
+        "threshold": 0.54,
+        "actionable_accuracy": 0.584,
+        "actionable_accuracy_pct": "58.40%",
+        "coverage_pct": 30.23,
+        "signals_generated_count": 5627,
+        "no_signal_count": 12987,
+        "mean_buy_excess_return": 0.00203,
+        "long_short_alpha_spread": 0.01901
+      },
+      "threshold_0.55": {
+        "threshold": 0.55,
+        "actionable_accuracy": 0.6001,
+        "actionable_accuracy_pct": "60.01%",
+        "coverage_pct": 16.82,
+        "signals_generated_count": 3131,
+        "no_signal_count": 15483,
+        "mean_buy_excess_return": 0.00592,
+        "long_short_alpha_spread": 0.0253
+      },
+      "threshold_0.56": {
+        "threshold": 0.56,
+        "actionable_accuracy": 0.6182,
+        "actionable_accuracy_pct": "61.82%",
+        "coverage_pct": 8.43,
+        "signals_generated_count": 1569,
+        "no_signal_count": 17045,
+        "mean_buy_excess_return": 0.00742,
+        "long_short_alpha_spread": 0.03147
+      },
+      "threshold_0.58": {
+        "threshold": 0.58,
+        "actionable_accuracy": 0.7003,
+        "actionable_accuracy_pct": "70.03%",
+        "coverage_pct": 1.76,
+        "signals_generated_count": 327,
+        "no_signal_count": 18287,
+        "mean_buy_excess_return": 0.01795,
+        "long_short_alpha_spread": 0.04794
+      },
+      "threshold_0.60": {
+        "threshold": 0.6,
+        "actionable_accuracy": 0.7333,
+        "actionable_accuracy_pct": "73.33%",
+        "coverage_pct": 0.16,
+        "signals_generated_count": 30,
+        "no_signal_count": 18584,
+        "mean_buy_excess_return": 0.00796,
+        "long_short_alpha_spread": 0.04179
+      }
+    },
+    "best_iteration": 61,
+    "top_features": {
+      "dist_ema26_csrank": 0.09740603715181351,
+      "dist_ema12_csrank": 0.07543076574802399,
+      "dist_sma20_csrank": 0.05227043479681015,
+      "rel_to_index_5d_csrank": 0.043695565313100815,
+      "norm_atr14_csrank": 0.039198677986860275,
+      "macd_hist_norm_csrank": 0.03676721826195717,
+      "mom_12m_1m_csrank": 0.0331890732049942,
+      "dist_sma50_csrank": 0.03259309381246567,
+      "ret_20d_csrank": 0.032427117228507996,
+      "policy_rate_chg_20d_csrank": 0.031318292021751404,
+      "dist_52w_high_csrank": 0.029688237234950066,
+      "amihud_illiquidity_csrank": 0.0295810978859663,
+      "hl_range_csrank": 0.027902694419026375,
+      "ret_3d_csrank": 0.027854979038238525,
+      "bb_width_csrank": 0.027225373312830925
+    }
+  },
+  "20D": {
+    "horizon": "20D",
+    "model_type": "XGBoost v3 (20D Cross-Sectional Alpha)",
+    "test_samples": 18004,
+    "baseline_accuracy": 0.5344367918240391,
+    "macro_f1": 0.5184340302594268,
+    "roc_auc": 0.5453606347537034,
+    "spearman_rank_ic": 0.028961608837744866,
+    "rejection_decision_layer": {
+      "threshold_0.50": {
+        "threshold": 0.5,
+        "actionable_accuracy": 0.5344,
+        "actionable_accuracy_pct": "53.44%",
+        "coverage_pct": 100.0,
+        "signals_generated_count": 18004,
+        "no_signal_count": 0,
+        "mean_buy_excess_return": -0.00396,
+        "long_short_alpha_spread": 0.0044
+      },
+      "threshold_0.52": {
+        "threshold": 0.52,
+        "actionable_accuracy": 0.5515,
+        "actionable_accuracy_pct": "55.15%",
+        "coverage_pct": 59.61,
+        "signals_generated_count": 10732,
+        "no_signal_count": 7272,
+        "mean_buy_excess_return": -0.00346,
+        "long_short_alpha_spread": 0.00372
+      },
+      "threshold_0.54": {
+        "threshold": 0.54,
+        "actionable_accuracy": 0.5763,
+        "actionable_accuracy_pct": "57.63%",
+        "coverage_pct": 20.86,
+        "signals_generated_count": 3755,
+        "no_signal_count": 14249,
+        "mean_buy_excess_return": -0.00012,
+        "long_short_alpha_spread": 0.02124
+      },
+      "threshold_0.55": {
+        "threshold": 0.55,
+        "actionable_accuracy": 0.5891,
+        "actionable_accuracy_pct": "58.91%",
+        "coverage_pct": 10.81,
+        "signals_generated_count": 1947,
+        "no_signal_count": 16057,
+        "mean_buy_excess_return": 0.0065,
+        "long_short_alpha_spread": 0.02969
+      },
+      "threshold_0.56": {
+        "threshold": 0.56,
+        "actionable_accuracy": 0.6272,
+        "actionable_accuracy_pct": "62.72%",
+        "coverage_pct": 4.32,
+        "signals_generated_count": 778,
+        "no_signal_count": 17226,
+        "mean_buy_excess_return": 0.00743,
+        "long_short_alpha_spread": 0.03534
+      },
+      "threshold_0.58": {
+        "threshold": 0.58,
+        "actionable_accuracy": 0.6759,
+        "actionable_accuracy_pct": "67.59%",
+        "coverage_pct": 0.6,
+        "signals_generated_count": 108,
+        "no_signal_count": 17896,
+        "mean_buy_excess_return": -0.05425,
+        "long_short_alpha_spread": -0.01211
+      },
+      "threshold_0.60": {
+        "threshold": 0.6,
+        "actionable_accuracy": 0.0,
+        "coverage_pct": 0.0,
+        "signals_generated_count": 0,
+        "no_signal_count": 18004
+      }
+    },
+    "best_iteration": 40,
+    "top_features": {
+      "dist_sma20_csrank": 0.08708187192678452,
+      "dist_ema26_csrank": 0.07806195318698883,
+      "macd_hist_norm_csrank": 0.06106057018041611,
+      "dist_ema12_csrank": 0.06060289964079857,
+      "mom_12m_1m_csrank": 0.04431946948170662,
+      "norm_atr14_csrank": 0.03717213124036789,
+      "ret_20d_csrank": 0.03567491099238396,
+      "ret_10d_csrank": 0.034907661378383636,
+      "ret_5d_csrank": 0.03463028743863106,
+      "policy_rate_chg_20d_csrank": 0.033422745764255524,
+      "is_lower_circuit_csrank": 0.031137336045503616,
+      "bb_width_csrank": 0.030877074226737022,
+      "volatility_20d_csrank": 0.030494606122374535,
+      "dist_52w_high_csrank": 0.030376803129911423,
+      "volatility_60d_csrank": 0.03010604903101921
+    }
+  }
+}

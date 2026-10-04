@@ -58,8 +58,19 @@ def label_from_return(future_return: float, threshold: float = DEFAULT_THRESHOLD
 def assign_labels(
     df: pd.DataFrame,
     threshold: float = DEFAULT_THRESHOLD,
+    drop_na: bool = True,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """Add forward_return and label columns to *df*.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with symbols, dates, and closes.
+    threshold : float
+        Directional threshold for labeling.
+    drop_na : bool
+        If True, drop rows with missing forward_return (e.g. for supervised training).
+        If False, preserve latest unclosed rows with None/NaN label (for inference feature store).
 
     Returns (df_with_labels, quality_report) where quality_report contains
     class distributions overall and per symbol.
@@ -75,22 +86,25 @@ def assign_labels(
         lambda s: s.shift(-1) / s - 1
     )
 
-    # Drop rows with missing forward_return (last row per symbol, or any gaps)
-    before = len(df)
-    df = df.dropna(subset=["forward_return"])
-    after = len(df)
-    log.info("Dropped %d rows with missing forward_return (%d -> %d)", before - after, before, after)
+    if drop_na:
+        # Drop rows with missing forward_return (last row per symbol, or any gaps)
+        before = len(df)
+        df = df.dropna(subset=["forward_return"]).copy()
+        after = len(df)
+        log.info("Dropped %d rows with missing forward_return (%d -> %d)", before - after, before, after)
 
-    # Explicit assertion: never proceed with NaN forward returns
-    if df["forward_return"].isna().any():
-        raise AssertionError("forward_return contains NaN values after dropna; missing targets must be eliminated")
+        if df["forward_return"].isna().any():
+            raise AssertionError("forward_return contains NaN values after dropna; missing targets must be eliminated")
 
-    # Assign label using the canonical function
-    df["label"] = df["forward_return"].apply(lambda r: label_from_return(r, threshold))
+        df["label"] = df["forward_return"].apply(lambda r: label_from_return(r, threshold))
 
-    # Explicit assertion: every remaining row must have a valid label
-    if df["label"].isna().any():
-        raise AssertionError("label column contains NaN values; all samples must have a valid class label")
+        if df["label"].isna().any():
+            raise AssertionError("label column contains NaN values; all samples must have a valid class label")
+    else:
+        # Assign labels where forward_return is present; leave NaN for unclosed rows
+        df["label"] = df["forward_return"].apply(
+            lambda r: label_from_return(r, threshold) if pd.notna(r) else None
+        )
 
     # Build quality report
     report: Dict[str, Any] = {

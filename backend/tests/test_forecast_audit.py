@@ -57,7 +57,7 @@ def run_forecast_audit():
         # 1. Multi-Horizon Forecasts for Blue-Chip Stocks
         # -------------------------------------------------------------
         test_symbols = ["OGDC", "SYS", "LUCK", "ENGROH", "UBL"]
-        horizons = ["1D", "1W", "1M"]
+        horizons = ["1D", "1W", "2W", "1M"]
 
         for sym in test_symbols:
             print(f"\n--- 1. Testing Forecasts for {sym} ---")

@@ -54,7 +54,11 @@ router = APIRouter()
 )
 async def get_stock_forecast(
     symbol: str,
-    horizon: str = Query("1W", pattern="^(1D|1W|1M)$"),
+    horizon: str = Query(
+        "1W",
+        pattern="^(1D|1W|2W|1M)$",
+        description="Forecast horizon: '1D' (1 trading day), '1W' (5 trading days, default), '2W' (10 trading days), or '1M' (22 trading days).",
+    ),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -127,7 +131,7 @@ async def get_stock_forecast(
                 if curr_p <= 0:
                     raise ValueError("No current price is available for target/stop calculation")
                 atr = 0.0
-                mult = 2.0 if horizon == "1D" else 3.0 if horizon == "1W" else 4.0
+                mult = 2.0 if horizon == "1D" else 3.0 if horizon == "1W" else 3.5 if horizon == "2W" else 4.0
                 dir_str = str(result.get("direction", "sideways")).lower()
                 if dir_str in ("bullish", "buy", "up") and atr > 0:
                     tp = round(curr_p + (atr * mult), 2)
@@ -233,15 +237,43 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
     else:
         price_target_rationale = "Target and stop-loss calculations are pending current session price data."
 
+    # UI display helpers
+    as_of = result["as_of_date"]
+    target_d = result["predicted_for_date"]
+
+    HORIZON_LABELS = {
+        "1D": "1-Day (1 Trading Day)",
+        "1W": "1-Week (5 Trading Days)",
+        "2W": "2-Weeks (10 Trading Days)",
+        "1M": "1-Month (22 Trading Days)",
+    }
+    HORIZON_TRADING_DAYS = {"1D": 1, "1W": 5, "2W": 10, "1M": 22}
+
+    horizon_label = HORIZON_LABELS.get(horizon, f"{horizon} (5 Trading Days)")
+    trading_days = HORIZON_TRADING_DAYS.get(horizon, 5)
+
+    as_of_label = as_of.strftime("%a, %b %d, %Y") if hasattr(as_of, "strftime") else str(as_of)
+    target_label = f"Target by {target_d.strftime('%a, %b %d, %Y')}" if hasattr(target_d, "strftime") else f"Target by {target_d}"
+
+    from zoneinfo import ZoneInfo
+    from datetime import datetime as dt
+    pkt_now = dt.now(ZoneInfo("Asia/Karachi"))
+    market_status = "closed" if pkt_now.weekday() >= 5 else "open"
+
     return ForecastResponse(
         price_target_rationale=price_target_rationale,
         symbol=result["symbol"],
         horizon=horizon,
+        horizon_label=horizon_label,
+        trading_days=trading_days,
         direction=direction,
         confidence=confidence,
         probabilities=probabilities,
-        as_of_date=result["as_of_date"],
-        target_date=result["predicted_for_date"],
+        as_of_date=as_of,
+        as_of_label=as_of_label,
+        target_date=target_d,
+        target_label=target_label,
+        market_status=market_status,
         current_price=current_price,
         target_price=target_price,
         expected_range=expected_range,
@@ -267,7 +299,7 @@ def _build_forecast_response(result: dict, horizon: str, target_stop: dict | Non
 )
 async def get_forecast_history(
     symbol: str,
-    horizon: str = Query("1W", pattern="^(1D|1W|1M)$", description="Filter by prediction horizon"),
+    horizon: str = Query("1W", pattern="^(1D|1W|2W|1M)$", description="Filter by prediction horizon"),
     limit: int = Query(30, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

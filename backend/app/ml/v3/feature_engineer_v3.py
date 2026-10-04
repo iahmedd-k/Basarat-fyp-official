@@ -31,17 +31,28 @@ def build_v3_features() -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
     
-    # 1. Trading Calendar Forward 5-Day Horizon
-    log.info("Constructing calendar-aligned 5-day forward returns per symbol...")
+    # 1. Trading Calendar Forward 5-Day, 10-Day, and 20-Day Horizons
+    log.info("Constructing calendar-aligned forward returns per symbol...")
     df["close_t5"] = df.groupby("symbol")["close"].shift(-5)
     df["actual_5d_return"] = (df["close_t5"] - df["close"]) / (df["close"] + 1e-6)
+
+    df["close_t10"] = df.groupby("symbol")["close"].shift(-10)
+    df["actual_10d_return"] = (df["close_t10"] - df["close"]) / (df["close"] + 1e-6)
+
+    df["close_t20"] = df.groupby("symbol")["close"].shift(-20)
+    df["actual_20d_return"] = (df["close_t20"] - df["close"]) / (df["close"] + 1e-6)
 
     # Filter out anomalous overnight corporate action drops (e.g. unadjusted bonus jumps > 25% drop)
     df["daily_pct_change"] = df.groupby("symbol")["close"].pct_change()
     
-    # Benchmark 5-day return
-    df["index_return_5d"] = df["index_return_5d"].fillna(0.0)
+    # Benchmark returns
+    df["index_return_5d"] = df["index_return_5d"].fillna(0.0) if "index_return_5d" in df.columns else 0.0
+    df["index_return_20d"] = df["index_return_20d"].fillna(0.0) if "index_return_20d" in df.columns else 0.0
+    df["index_return_10d"] = (df["index_return_5d"] * 0.5 + df["index_return_20d"] * 0.5).fillna(0.0)
+    
     df["excess_5d_return"] = df["actual_5d_return"] - df["index_return_5d"]
+    df["excess_10d_return"] = df["actual_10d_return"] - df["index_return_10d"]
+    df["excess_20d_return"] = df["actual_20d_return"] - df["index_return_20d"]
 
     # 2. Institutional Quantitative Features
     log.info("Engineering institutional alpha factors...")
@@ -110,29 +121,40 @@ def build_v3_features() -> pd.DataFrame:
     df["policy_rate_chg_20d"] = df["policy_rate"].diff(20).fillna(0.0) / 10.0
     df["pkr_usd_ret_20d"] = df.groupby("symbol")["pkr_usd_rate"].pct_change(20).fillna(0.0)
 
-    # 3. Cross-Sectional Labeling per Trading Date
-    log.info("Computing cross-sectional percentile targets per trading date...")
+    # 3. Cross-Sectional Labeling per Trading Date (5D, 10D, 20D Horizons)
+    log.info("Computing cross-sectional percentile targets per trading date (5D, 10D, 20D)...")
     
-    # Drop rows where future return is NaN (last 5 rows per stock)
-    valid_target_mask = df["actual_5d_return"].notna()
-    
-    # Rank excess returns cross-sectionally within each date [0.0, 1.0]
-    df["excess_5d_rank"] = df[valid_target_mask].groupby("date")["excess_5d_return"].rank(pct=True)
+    # --- 5-Day Horizon ---
+    valid_5d = df["actual_5d_return"].notna()
+    df["excess_5d_rank"] = df[valid_5d].groupby("date")["excess_5d_return"].rank(pct=True)
+    df["target_5d_cs_class"] = np.nan
+    df.loc[valid_5d & (df["excess_5d_rank"] >= 0.70), "target_5d_cs_class"] = 0
+    df.loc[valid_5d & (df["excess_5d_rank"] <= 0.30), "target_5d_cs_class"] = 1
+    df.loc[valid_5d & (df["excess_5d_rank"] > 0.30) & (df["excess_5d_rank"] < 0.70), "target_5d_cs_class"] = 2
+    df["is_extreme_5d"] = df["target_5d_cs_class"].isin([0, 1])
 
-    # Target Classes:
-    # 0 = Buy (Top 30% highest excess return, rank >= 0.70)
-    # 1 = Avoid (Bottom 30% lowest excess return, rank <= 0.30)
-    # 2 = Neutral (Middle 40%, 0.30 < rank < 0.70)
-    df["target_cs_class"] = np.nan
-    df.loc[valid_target_mask & (df["excess_5d_rank"] >= 0.70), "target_cs_class"] = 0
-    df.loc[valid_target_mask & (df["excess_5d_rank"] <= 0.30), "target_cs_class"] = 1
-    df.loc[valid_target_mask & (df["excess_5d_rank"] > 0.30) & (df["excess_5d_rank"] < 0.70), "target_cs_class"] = 2
-
-    # Binary Target for Direct Directional Evaluation (0 = Buy / Outperform, 1 = Avoid / Underperform)
+    # Backward compatibility aliases
+    df["target_cs_class"] = df["target_5d_cs_class"]
     df["target_binary_class"] = np.where(df["excess_5d_rank"] >= 0.50, 0, 1)
+    df["is_extreme_signal"] = df["is_extreme_5d"]
 
-    # Extreme signal flag for clean training (drops ambiguous middle 40%)
-    df["is_extreme_signal"] = (df["target_cs_class"].isin([0, 1]))
+    # --- 10-Day Horizon (2-Week) ---
+    valid_10d = df["actual_10d_return"].notna()
+    df["excess_10d_rank"] = df[valid_10d].groupby("date")["excess_10d_return"].rank(pct=True)
+    df["target_10d_cs_class"] = np.nan
+    df.loc[valid_10d & (df["excess_10d_rank"] >= 0.70), "target_10d_cs_class"] = 0
+    df.loc[valid_10d & (df["excess_10d_rank"] <= 0.30), "target_10d_cs_class"] = 1
+    df.loc[valid_10d & (df["excess_10d_rank"] > 0.30) & (df["excess_10d_rank"] < 0.70), "target_10d_cs_class"] = 2
+    df["is_extreme_10d"] = df["target_10d_cs_class"].isin([0, 1])
+
+    # --- 20-Day Horizon (1-Month) ---
+    valid_20d = df["actual_20d_return"].notna()
+    df["excess_20d_rank"] = df[valid_20d].groupby("date")["excess_20d_return"].rank(pct=True)
+    df["target_20d_cs_class"] = np.nan
+    df.loc[valid_20d & (df["excess_20d_rank"] >= 0.70), "target_20d_cs_class"] = 0
+    df.loc[valid_20d & (df["excess_20d_rank"] <= 0.30), "target_20d_cs_class"] = 1
+    df.loc[valid_20d & (df["excess_20d_rank"] > 0.30) & (df["excess_20d_rank"] < 0.70), "target_20d_cs_class"] = 2
+    df["is_extreme_20d"] = df["target_20d_cs_class"].isin([0, 1])
 
     # 4. Cross-Sectional Rank Normalization across Stocks per Date
     log.info("Applying cross-sectional rank normalization across all feature columns...")

@@ -15,7 +15,8 @@ import numpy as np
 import pandas as pd
 
 log = logging.getLogger(__name__)
-DATA_DIR = Path("data")
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DATA_DIR = ROOT_DIR / "data"
 MC_RESULTS_DIR = DATA_DIR / "reports" / "monte_carlo"
 try:
     MC_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -88,7 +89,7 @@ def calculate_var(holdings: list, confidence: int = 95, horizon: str = "1D") -> 
         return _empty_risk("no_holdings", "Portfolio has no positive market value.", confidence, horizon, total_value, used, excluded)
     if returns is None:
         return _empty_risk("insufficient_data", "No complete price history for the valued holdings.", confidence, horizon, total_value, used, excluded)
-    horizon_days = {"1D": 1, "1W": 5, "1M": 21}.get(horizon, 1)
+    horizon_days = {"1D": 1, "1W": 5, "2W": 10, "1M": 21}.get(horizon, 1)
     # Each asset's buy-and-hold return is compounded over each rolling horizon;
     # current portfolio weights are held fixed at the start of each observation.
     if horizon_days == 1:

@@ -206,20 +206,24 @@ def generate_predictions_task(self):
                 as_of_dates.add(as_of_date.isoformat())
 
                 gru_result = _run_gru(sym, sym_df)
-                xgb_result = _run_xgb(sym, as_of_date)
-                ensemble = _ensemble_decide(gru_result, xgb_result, horizon="1W")
-                target_date = next_trading_day(as_of_date, trading_days=5)
+                horizon_trading_days = [("1W", 5), ("2W", 10), ("1M", 22)]
+                
+                for h_code, t_days in horizon_trading_days:
+                    xgb_result = _run_xgb(sym, as_of_date, horizon=h_code)
+                    ensemble = _ensemble_decide(gru_result, xgb_result, horizon=h_code)
+                    target_date = next_trading_day(as_of_date, trading_days=t_days)
 
-                payload = build_prediction_payload(
-                    symbol=sym,
-                    horizon="1W",
-                    ensemble=ensemble,
-                    as_of_date=as_of_date,
-                    target_date=target_date,
-                    gru_result=gru_result,
-                    xgb_result=xgb_result,
-                )
-                upsert_prediction_sync(session, payload)
+                    payload = build_prediction_payload(
+                        symbol=sym,
+                        horizon=h_code,
+                        ensemble=ensemble,
+                        as_of_date=as_of_date,
+                        target_date=target_date,
+                        gru_result=gru_result,
+                        xgb_result=xgb_result,
+                    )
+                    upsert_prediction_sync(session, payload)
+                
                 session.commit()
                 success += 1
 

@@ -66,37 +66,56 @@ class ModelArtifacts:
 
     # XGB artifacts
     xgb_model: object | None = None
+    xgb_models: dict[str, object] = field(default_factory=dict)
     xgb_feature_names: list[str] = field(default_factory=list)
     xgb_data_path: Path = Path("data/features/features_daily.parquet")
     xgb_ready: bool = False
-    xgb_model_version: str = "xgb_v4_event_fundamentals"
+    xgb_model_version: str = "xgb_v4_institutional_multi_horizon"
 
 
 artifacts = ModelArtifacts()
 
 
 def _load_xgb_artifacts() -> None:
-    """Load XGBoost model and feature names. Called during startup."""
+    """Load multi-horizon XGBoost models and feature names. Called during startup."""
     try:
         from xgboost import XGBClassifier
 
+        # 1W / 5D Default Model
         prod_model_path = PROD_V3_DIR / "xgb_model.ubj"
-
         if prod_model_path.exists():
             artifacts.xgb_model = XGBClassifier()
             artifacts.xgb_model.load_model(str(prod_model_path))
-            log.info("Loaded Production XGBoost v4 model <- %s", prod_model_path)
+            artifacts.xgb_models["1W"] = artifacts.xgb_model
+            artifacts.xgb_models["5D"] = artifacts.xgb_model
+            log.info("Loaded Production 1W XGBoost model <- %s", prod_model_path)
 
-            prod_meta_path = PROD_V3_DIR / "xgb_features.json"
-            if prod_meta_path.exists():
-                artifacts.xgb_feature_names = json.loads(prod_meta_path.read_text(encoding="utf-8"))
-            log.info("Loaded XGB features <- %d features in exact training order", len(artifacts.xgb_feature_names))
-            artifacts.xgb_ready = True
-            artifacts.xgb_model_version = "xgb_v4_event_fundamentals"
-            log.info("XGB artifacts loaded successfully — xgb_ready=True (xgb_v4_event_fundamentals)")
-            return
+        # 2W / 10D Model
+        m10_path = PROD_V3_DIR / "xgb_model_10d.ubj"
+        if m10_path.exists():
+            m10 = XGBClassifier()
+            m10.load_model(str(m10_path))
+            artifacts.xgb_models["2W"] = m10
+            artifacts.xgb_models["10D"] = m10
+            log.info("Loaded Production 2W (10D) XGBoost model <- %s", m10_path)
 
-        log.warning("Production XGBoost model artifact not found at %s", prod_model_path)
+        # 1M / 20D Model
+        m20_path = PROD_V3_DIR / "xgb_model_20d.ubj"
+        if m20_path.exists():
+            m20 = XGBClassifier()
+            m20.load_model(str(m20_path))
+            artifacts.xgb_models["1M"] = m20
+            artifacts.xgb_models["20D"] = m20
+            log.info("Loaded Production 1M (20D) XGBoost model <- %s", m20_path)
+
+        prod_meta_path = PROD_V3_DIR / "xgb_features.json"
+        if prod_meta_path.exists():
+            artifacts.xgb_feature_names = json.loads(prod_meta_path.read_text(encoding="utf-8"))
+            log.info("Loaded XGB features <- %d features", len(artifacts.xgb_feature_names))
+
+        artifacts.xgb_ready = artifacts.xgb_model is not None or len(artifacts.xgb_models) > 0
+        artifacts.xgb_model_version = "xgb_v4_institutional_multi_horizon"
+        log.info("XGB multi-horizon artifacts loaded successfully — xgb_ready=%s (%d horizon models)", artifacts.xgb_ready, len(artifacts.xgb_models))
 
     except ImportError:
         log.warning("xgboost not installed — XGB ensemble disabled")

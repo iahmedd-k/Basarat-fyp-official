@@ -119,9 +119,13 @@ def _run_gru(symbol: str, sym_df: pd.DataFrame) -> dict | None:
         return None
 
 
-def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None) -> dict | None:
-    """Run XGBoost v4 inference. Returns dict with direction/probs/gap or None on failure."""
-    if not artifacts.xgb_ready or artifacts.xgb_model is None:
+def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None, horizon: str = "1W") -> dict | None:
+    """Run XGBoost inference with horizon specialization. Returns dict with direction/probs/gap or None on failure."""
+    if not artifacts.xgb_ready:
+        return None
+
+    xgb_model = artifacts.xgb_models.get(horizon, artifacts.xgb_model)
+    if xgb_model is None:
         return None
 
     try:
@@ -156,7 +160,7 @@ def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None) 
             feat_values.append(float(val))
 
         X_pred = np.array([feat_values], dtype=np.float32)
-        proba = artifacts.xgb_model.predict_proba(X_pred)[0]
+        proba = xgb_model.predict_proba(X_pred)[0]
 
         if len(proba) == 2:
             # Class 0: down (bearish), Class 1: up (bullish)
@@ -186,7 +190,7 @@ def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None) 
             "sideways_pct": sideways_pct,
             "top_class_probability": top_prob,
             "gap_pp": gap_pp,
-            "model_version": getattr(artifacts, "xgb_model_version", "xgb_v4_event_fundamentals"),
+            "model_version": getattr(artifacts, "xgb_model_version", "xgb_v4_institutional_multi_horizon"),
         }
 
     except Exception:
@@ -197,7 +201,8 @@ def _run_xgb(symbol: str, as_of_date: date, sym_df: pd.DataFrame | None = None) 
 HORIZON_WEIGHTS = {
     "1D": {"gru": 0.65, "xgb": 0.35},
     "1W": {"gru": 0.50, "xgb": 0.50},
-    "1M": {"gru": 0.35, "xgb": 0.65},
+    "2W": {"gru": 0.40, "xgb": 0.60},
+    "1M": {"gru": 0.30, "xgb": 0.70},
 }
 
 
@@ -392,14 +397,14 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
 
     # ── Run both models ────────────────────────────────────────────────
     gru_result = _run_gru(symbol, sym_df)
-    xgb_result = _run_xgb(symbol, as_of_date, sym_df)
+    xgb_result = _run_xgb(symbol, as_of_date, sym_df, horizon=horizon)
 
     # ── Ensemble decision ──────────────────────────────────────────────
     ensemble = _ensemble_decide(gru_result, xgb_result, horizon=horizon)
 
     # ── Calculate predicted_for_date based on horizon ──────────────────
-    HORIZON_DAYS = {"1D": 1, "1W": 5, "1M": 22}
-    biz_days = HORIZON_DAYS.get(horizon, 1)
+    HORIZON_DAYS = {"1D": 1, "1W": 5, "2W": 10, "1M": 22}
+    biz_days = HORIZON_DAYS.get(horizon, 5)
 
     predicted_for_date = as_of_date
     days_added = 0

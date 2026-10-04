@@ -34,6 +34,7 @@ htmlcov/
 *.sqlite3
 
 # ML data artifacts
+data/
 backend/data/raw/
 backend/data/features/*.parquet
 backend/data/sequences/

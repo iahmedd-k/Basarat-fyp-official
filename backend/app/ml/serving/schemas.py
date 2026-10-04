@@ -57,26 +57,32 @@ class ForecastResponse(BaseModel):
     model_config = {
         "json_schema_extra": {
             "examples": [{
-                "symbol": "UBL",
-                "horizon": "1W",
+                "symbol": "OGDC",
+                "horizon": "2W",
+                "horizon_label": "2-Weeks (10 Trading Days)",
+                "trading_days": 10,
                 "direction": "bullish",
-                "confidence": 0.584,
-                "probabilities": {"bullish": 58.4, "bearish": 22.0, "sideways": 19.6},
-                "as_of_date": "2026-09-22",
-                "target_date": "2026-09-29",
-                "current_price": 142.5,
-                "target_price": 148.0,
-                "expected_range": None,
-                "stop_loss": 138.0,
+                "confidence": 0.602,
+                "probabilities": {"bullish": 60.2, "bearish": 21.3, "sideways": 18.5},
+                "as_of_date": "2026-10-02",
+                "as_of_label": "Fri, Oct 02, 2026",
+                "target_date": "2026-10-16",
+                "target_label": "Target by Fri, Oct 16, 2026",
+                "market_status": "closed",
+                "current_price": 314.62,
+                "target_price": 333.76,
+                "expected_range": {"low": 301.86, "high": 333.76, "method": "atr_band"},
+                "stop_loss": 301.86,
                 "signal_rating": "Strong Buy",
-                "upside_pct": 3.86,
-                "downside_pct": -3.16,
-                "risk_reward_ratio": 1.22,
+                "upside_pct": 6.08,
+                "downside_pct": -4.06,
+                "risk_reward_ratio": 1.50,
+                "price_target_rationale": "Target price and stop-loss calculated via ATR volatility interval for 2W horizon.",
                 "model_version": "ensemble",
                 "gate_reason": "agree(bullish)",
                 "models": {
-                    "gru": {"direction": "bullish", "bullish_pct": 61.0, "bearish_pct": 20.0, "sideways_pct": 19.0, "gap_pp": 42.0},
-                    "xgb": {"direction": "bullish", "bullish_pct": 56.0, "bearish_pct": 24.0, "sideways_pct": 20.0, "gap_pp": 32.0},
+                    "gru": {"direction": "bullish", "bullish_pct": 58.0, "bearish_pct": 22.0, "sideways_pct": 20.0, "gap_pp": 36.0},
+                    "xgb": {"direction": "bullish", "bullish_pct": 61.5, "bearish_pct": 20.8, "sideways_pct": 17.7, "gap_pp": 40.7},
                 },
                 "market_context": {
                     "market_return_5d": 0.012,
@@ -92,8 +98,8 @@ class ForecastResponse(BaseModel):
         ..., description="PSX stock ticker", examples=["OGDC"]
     )
     horizon: str = Field(
-        ..., description="Forecast horizon: '1D', '1W' (five trading days, default), or '1M'. Production models are trained on five trading days.",
-        examples=["1W"],
+        ..., description="Forecast horizon: '1D' (1 trading day), '1W' (5 trading days, default), '2W' (10 trading days), or '1M' (22 trading days).",
+        examples=["2W"],
     )
     direction: str = Field(
         ...,
@@ -114,14 +120,39 @@ class ForecastResponse(BaseModel):
         examples=[{"bullish": 42.3, "bearish": 28.7, "sideways": 29.0}],
     )
 
-    # Dates
+    # Dates & Horizon Display Helpers
     as_of_date: date = Field(
         ..., description="Latest date represented in the input market-data window.",
         examples=["2026-09-12"],
     )
+    as_of_label: str | None = Field(
+        default=None,
+        description="Formatted date with day-of-week (e.g. 'Fri, Oct 02, 2026') for UI display.",
+        examples=["Fri, Oct 02, 2026"],
+    )
     target_date: date = Field(
-        ..., description="Target trading date: 1, 5, or 22 trading days ahead for 1D, 1W, or 1M.",
+        ..., description="Target trading date: 5, 10, or 22 trading days ahead for 1W, 2W, or 1M.",
         examples=["2026-09-15"],
+    )
+    target_label: str | None = Field(
+        default=None,
+        description="Formatted target date label for UI display.",
+        examples=["Target by Fri, Oct 09, 2026"],
+    )
+    horizon_label: str | None = Field(
+        default=None,
+        description="Formatted horizon description explaining the number of active trading days.",
+        examples=["1-Week (5 Trading Days)"],
+    )
+    trading_days: int | None = Field(
+        default=None,
+        description="Exact number of active trading sessions in this forecast horizon.",
+        examples=[5],
+    )
+    market_status: str | None = Field(
+        default=None,
+        description="Current market status: 'open' or 'closed'.",
+        examples=["closed"],
     )
 
     # Price context
@@ -440,13 +471,13 @@ class RiskVaRResponse(BaseModel):
     horizon: str = Field(
         ..., description="Risk horizon: '1D', '1W', '1M'", examples=["1D"]
     )
-    var_value: float = Field(
-        default=0.0,
+    var_value: float | None = Field(
+        default=None,
         description="Value at Risk (negative = potential loss). Historical simulation.",
         examples=[-0.0234],
     )
-    cvar_value: float = Field(
-        default=0.0,
+    cvar_value: float | None = Field(
+        default=None,
         description="Conditional VaR (Expected Shortfall). Mean loss beyond VaR.",
         examples=[-0.0351],
     )
@@ -460,22 +491,22 @@ class RiskVaRResponse(BaseModel):
         description="Number of historical return observations used",
         examples=[252],
     )
-    annualized_volatility: float = Field(
-        default=0.0,
+    annualized_volatility: float | None = Field(
+        default=None,
         description="Annualized portfolio volatility (std * sqrt(252))",
         examples=[0.1856],
     )
     status: str = "available"
     message: str = "VaR calculated successfully"
-    portfolio_value: float = 0.0
-    covered_portfolio_value: float = 0.0
-    var_loss_amount: float = 0.0
-    cvar_loss_amount: float = 0.0
+    portfolio_value: float | None = 0.0
+    covered_portfolio_value: float | None = 0.0
+    var_loss_amount: float | None = None
+    cvar_loss_amount: float | None = None
     currency: str = "PKR"
     symbols_used: list[str] = Field(default_factory=list)
     symbols_excluded: list[str] = Field(default_factory=list)
-    data_as_of: str = ""
-    lookback_start: str = ""
+    data_as_of: str | None = None
+    lookback_start: str | None = None
 
 
 class MonteCarloRequest(BaseModel):

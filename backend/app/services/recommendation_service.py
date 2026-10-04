@@ -610,7 +610,7 @@ class RecommendationEngine:
         stop_mult = multipliers["stop"]
 
         # Scale multipliers based on forecast horizon
-        horizon_scales = {"1D": 0.60, "1W": 1.00, "1M": 1.60}
+        horizon_scales = {"1D": 0.60, "1W": 1.00, "2W": 1.30, "1M": 1.60}
         scale = horizon_scales.get(horizon, 1.00)
         target_mult *= scale
         stop_mult *= scale
