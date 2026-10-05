@@ -81,11 +81,11 @@ class NewsArticleResponse(BaseModel):
 
 class NewsListResponse(BaseModel):
     items: list[NewsArticleResponse] = Field(default_factory=list)
-    next_cursor: str = ""
+    next_cursor: Optional[str] = None
     has_more: bool = False
     row: str = "news"  # "news" | "portfolio"
-    last_updated_at: str = ""
-    empty_reason: str = ""  # "", "no_holdings", "no_results"
+    last_updated_at: Optional[str] = None
+    empty_reason: Optional[str] = None  # "", "no_holdings", "no_results"
     total: int = 0
 
 
