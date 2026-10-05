@@ -3,6 +3,10 @@ name: Backend CI and Oracle ARM64 deploy
 on:
   push:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "docker-compose.oracle.yml"
+      - ".github/workflows/deploy-oracle.yml"
   workflow_dispatch:
 
 permissions:
@@ -10,7 +14,7 @@ permissions:
 
 concurrency:
   group: basarat-oracle-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   IMAGE_NAME: ghcr.io/iahmedd-k/basarat-backend

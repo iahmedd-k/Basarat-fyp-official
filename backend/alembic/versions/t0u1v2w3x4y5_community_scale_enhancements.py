@@ -1,7 +1,7 @@
 """community scale enhancements
 
-Revision ID: d4e5f6a7b8c9
-Revises: c3d4e5f6a7b8
+Revision ID: t0u1v2w3x4y5
+Revises: s9t0u1v2w3x4
 Create Date: 2026-10-05 23:30:00.000000
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'd4e5f6a7b8c9'
-down_revision: Union[str, None] = 'c3d4e5f6a7b8'
+revision: str = 't0u1v2w3x4y5'
+down_revision: Union[str, None] = 's9t0u1v2w3x4'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
