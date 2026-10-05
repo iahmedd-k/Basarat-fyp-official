@@ -208,7 +208,7 @@ sequenceDiagram
 | **NLP & LLM** | HuggingFace FinBERT, Groq Cloud (Llama 3.3) | News sentiment classification, conversational Copilot RAG |
 | **Testing & Quality** | Pytest, Faker, AnyIO, Postman | Automated unit testing, schema validation, live API tests |
 | **Containerization** | Docker, Docker Compose | Multi-container micro-monolith isolation |
-| **CI/CD & Hosting** | GitHub Actions, Oracle Cloud VM / AWS EC2 | Automated build, test, and zero-downtime deployment |
+| **CI/CD & Hosting** | GitHub Actions, GHCR, Oracle Cloud Infrastructure (OCI ARM64 VM) | Automated build, test, and containerized deployment |
 | **Monitoring** | FastAPI Health Probes, Celery Flower | Container liveness, readiness, and task queue monitoring |
 
 ---

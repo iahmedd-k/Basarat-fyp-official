@@ -2,57 +2,53 @@
 
 ## Overview
 
-The project uses GitHub Actions for continuous integration and deployment.
+The project uses GitHub Actions for automated continuous integration, testing, Docker image packaging, and deployment to **Oracle Cloud Infrastructure (OCI)**.
 
-**Workflow file:** `.github/workflows/deploy-ec2.yml`
+**Primary Deployment Workflow:** `.github/workflows/deploy-oracle.yml`  
+**Automated CI PR Validation:** `.github/workflows/backend-ci.yml`
 
 ## Pipeline Triggers
 - Push to `main` branch
-- Manual dispatch (`workflow_dispatch`)
+- Pull Requests to `main`
+- Manual trigger (`workflow_dispatch`)
 
 ## Pipeline Stages
 
-### Job 1: `test-build-push`
-Runs on: `ubuntu-latest`
-Timeout: 90 minutes
+### Stage 1: Automated Testing & Validation (`test`)
+Runs on: `ubuntu-latest`  
+Timeout: 30 minutes
 
-| Step | Description |
-|------|-------------|
-| Checkout | Clone repository |
-| Setup Python 3.11.9 | Install runtime with pip caching |
-| Install dependencies | Install from `requirements-test.lock` with hash verification |
-| Compile modules | `python -m compileall -q backend/app` |
-| Validate Alembic | Ensure single migration head |
-| Run tests | `pytest backend/tests/api backend/tests/unit` |
-| Validate deployment | Syntax-check deploy scripts; validate production Compose |
-| AWS OIDC auth | Configure AWS credentials via GitHub OIDC |
-| ECR login | Authenticate with Amazon ECR |
-| Build & push | Docker build + push with Git SHA tag |
-| Upload artifacts | Upload deployment bundle (compose, scripts, nginx) |
+| Step | Action | Description |
+|---|---|---|
+| 1. Python Environment Setup | Python 3.11 with pip cache | Installs backend dependencies from `requirements.txt` |
+| 2. Bytecode Compilation | `python -m compileall -q backend/app` | Validates Python syntax across all 22 domain modules |
+| 3. Alembic Graph Integrity | `alembic heads` | Asserts exactly 1 linear migration head |
+| 4. Pytest Test Suite | `pytest tests/unit/` | Runs all 204 unit and schema validation tests |
+| 5. Compose Syntax Validation | `docker compose -f docker-compose.production.yml config` | Validates production container topology |
 
-### Job 2: `deploy-api`
-Runs on: `[self-hosted, linux, x64, basarat-demo]` (EC2 runner)
-Timeout: 180 minutes
-Environment: `production`
+### Stage 2: Multi-Platform Image Packaging (`build-and-push`)
+Runs on: `ubuntu-latest`  
+Target Architecture: `linux/arm64` (Native for Oracle Ampere A1)
 
-| Step | Description |
-|------|-------------|
-| Download bundle | Download deployment artifacts |
-| Install scripts | Copy files to `/opt/basarat/` |
-| AWS OIDC auth | Configure AWS credentials |
-| Pull & deploy | Pull ECR image; run `deploy-api.sh` |
+| Step | Action | Description |
+|---|---|---|
+| 1. QEMU & Docker Buildx | Multi-arch emulation | Configures native ARM64 container build |
+| 2. GHCR Authentication | `ghcr.io` Login | Authenticates using scoped `GITHUB_TOKEN` (`packages: write`) |
+| 3. Build & Publish Image | `docker buildx build --platform linux/arm64` | Publishes `ghcr.io/iahmedd-k/basarat-backend:<commit_sha>` |
 
-## Concurrency
-- Group: `basarat-production`
-- `cancel-in-progress: false` (deployments complete before starting next)
+### Stage 3: Remote Oracle VM Cutover (`deploy`)
+Target Host: `193.123.84.223` (Oracle Cloud Infrastructure)  
+Environment: `oracle-production`
 
-## Security
-- **AWS OIDC**: Federated identity via `id-token: write` permission
-- **No secrets in code**: AWS role ARN stored as GitHub secret
-- **Immutable images**: Tagged with 40-char Git SHA; `:latest` rejected
-- **Hash-verified dependencies**: `--require-hashes` on pip install
+| Step | Action | Description |
+|---|---|---|
+| 1. Secure SSH Connection | SSH Key Auth | Authenticates with `ORACLE_HOST` using `ORACLE_SSH_PRIVATE_KEY` |
+| 2. GHCR Pull on Host | `docker pull` | Pulls immutable SHA-tagged ARM64 container image |
+| 3. Database Migration | `alembic upgrade head` | Runs one-off database migration container (`basarat-migrate-1`) |
+| 4. Fleet Restart | `docker compose up -d` | Restarts API (`basarat-app-1`), Celery worker, and Celery beat |
+| 5. Health Probe Verification | `/health` & `/api/v1/health/ready` | Polls readiness probe until status is healthy |
 
-## Limitations
-- No staging environment in pipeline
-- No automated rollback trigger (manual via `--rollback` flag)
-- No integration test database in CI (tests use mocks)
+## Security & Secrets Management
+- **No Secrets in Code**: Environment secrets (`ORACLE_SSH_PRIVATE_KEY`, `CLOUD_DATABASE_URL`, `SECRET_KEY`) are managed via GitHub Actions Secrets and runtime `.env`.
+- **Immutable Container Tagging**: Every build is tagged with the exact 40-character Git Commit SHA; mutable `:latest` tags are restricted.
+- **Role Isolation**: Celery workers run with worker-only queue bindings; API runs unprivileged.

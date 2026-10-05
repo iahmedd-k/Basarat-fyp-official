@@ -269,8 +269,8 @@ pytest tests/unit/test_schemas.py
 ## 8. CI/CD & Deployment
 
 - **Containerization**: Standardized multi-stage [dockerfile](file:///d:/FYP/Basarat-fyp-official/backend/dockerfile) with embedded production ML model bundle (`models/production/v3/`).
-- **Zero-Downtime Blue-Green Deployment**: Automated cutover script running on AWS EC2 instances with health check probe verification ([ec2-blue-green-deployment.md](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/ec2-blue-green-deployment.md)).
-- **GitHub Actions**: Automated linting, test execution, container image builds, and AWS deployment on pull requests and pushes to `main`.
+- **Oracle Cloud Production Fleet**: Containerized deployment on Oracle Cloud Infrastructure (OCI) Ampere A1 ARM64 VM (`193.123.84.223`) running FastAPI, Celery Worker, Celery Beat, and Redis ([oracle-deployment.md](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/oracle-deployment.md)).
+- **Automated CI/CD Workflows**: GitHub Actions pipeline automating linting, test execution (204 unit tests), immutable Docker packaging on GHCR, and automated SSH cutover on pushes to `main` ([ci-cd.md](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/ci-cd.md)).
 
 ---
 

@@ -1,27 +1,26 @@
-# ADR-006: Blue-Green Deployment on EC2
+# ADR-006: Containerized CI/CD Deployment on Oracle Cloud Infrastructure (OCI)
 
 ## Status
 Accepted / Implemented
 
 ## Context
-Production deployment needs zero-downtime updates with automatic rollback.
+Production deployment requires high-performance, cost-effective, and reproducible containerized updates with health check verification and zero unhandled downtime.
 
 ## Decision
-Blue-green deployment on AWS EC2 with Nginx proxy switching, health check verification, automatic rollback, and immutable Docker images tagged with Git SHA.
+Deploy containerized backend fleet on **Oracle Cloud Infrastructure (OCI) Ampere A1 ARM64 VM** using **GitHub Actions**, **GitHub Container Registry (GHCR)** for immutable image publishing, and SSH-based automated rollout with Alembic database migrations and health probe validation.
 
-## Alternatives
-- **Rolling update**: Brief downtime during restart
-- **Kubernetes**: Over-engineered for single-instance
-- **AWS ECS/Fargate**: Higher cost
+## Alternatives Considered
+- **AWS EC2 x86_64**: Higher ongoing cost and lower memory allocation on standard free tiers.
+- **Kubernetes (EKS/OKE)**: Excessive architectural complexity and overhead for single-node container orchestration.
+- **AWS ECS/Fargate**: Significantly higher runtime costs.
 
 ## Consequences
-- Zero-downtime deployments
-- Rollback via `deploy-api.sh --rollback`
-- Stabilization period (60s) before removing old container
-- Self-hosted GitHub Actions runner on EC2
+- Cost-efficient production compute on high-performance 4-core 24GB ARM64 instance.
+- Immutable Docker container images published to GHCR with git commit SHA tagging.
+- Automated migrations and health verification (`/health`, `/api/v1/health/ready`) before cutover.
 
 ## Current Implementation
-- Deploy: `deploy/ec2/deploy-api.sh`
-- Bootstrap: `deploy/ec2/bootstrap-bluegreen.sh`
-- Nginx: `deploy/nginx/basarat-api.conf`
-- CI/CD: `.github/workflows/deploy-ec2.yml`
+- Production Host: `193.123.84.223` (Oracle Cloud Infrastructure)
+- Workflow: `.github/workflows/deploy-oracle.yml`
+- Docker Compose: `docker-compose.production.yml`
+- Documentation: `docs/07-deployment/oracle-deployment.md`

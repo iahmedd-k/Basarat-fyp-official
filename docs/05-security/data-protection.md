@@ -29,9 +29,9 @@
 - All secrets stored as environment variables
 - `.env` file excluded from Git via `.gitignore`
 - Docker Compose reads from `.env` file
-- Production: Secrets in EC2 `.env` file (manual management)
+- Production: Secrets in Oracle VM `~/basarat/.env` file (restricted permissions `600`)
 
-> **Note:** No secrets management service (AWS Secrets Manager, Vault) is currently used.
+> **Note:** Secrets are injected directly via GitHub Actions Secrets and runtime `.env`.
 
 ## Password Storage
 

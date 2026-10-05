@@ -26,7 +26,7 @@ This document provides a comprehensive dictionary of all runtime environment var
 |---|---|---|---|---|
 | `DATABASE_URL` | **Yes** | `str` | `postgresql+asyncpg://basarat:password@localhost:5432/basarat` | Primary asynchronous PostgreSQL connection URL. |
 | `DATABASE_URL_SYNC` | No | `str` | Auto-derived from `DATABASE_URL` (`postgresql+psycopg2://...`) | Synchronous connection string utilized by Celery workers & Alembic. |
-| `CLOUD_DATABASE_URL` | Prod | `str` | — | Cloud-hosted database URL (e.g., Supabase / AWS RDS). |
+| `CLOUD_DATABASE_URL` | Prod | `str` | — | Cloud-hosted database URL (e.g., Supabase / Managed Cloud PostgreSQL). |
 | `POSTGRES_USER` | Docker | `str` | `basarat` | PostgreSQL username for local Docker Compose instance. |
 | `POSTGRES_PASSWORD` | Docker | `str` | — | PostgreSQL password for local Docker Compose instance. |
 | `POSTGRES_DB` | Docker | `str` | `basarat` | PostgreSQL database name for local Docker Compose instance. |

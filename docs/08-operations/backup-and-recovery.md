@@ -32,7 +32,7 @@
 
 ### Application Recovery
 1. Re-deploy from Git using CI/CD pipeline
-2. Docker images available in ECR (tagged with Git SHA)
+2. Docker images available in GHCR (tagged with Git SHA)
 3. Previous image available for rollback
 
 ### Migration Rollback
@@ -45,8 +45,8 @@
 > **Not currently implemented:**
 
 1. Automated database backup verification
-2. ML model artifact backup to S3
-3. `.env` file backup to AWS Secrets Manager
+2. ML model artifact backup to OCI Object Storage
+3. `.env` secret rotation via OCI Vault
 4. Documented RTO/RPO targets
 5. Disaster recovery runbook
 6. Regular backup restore testing

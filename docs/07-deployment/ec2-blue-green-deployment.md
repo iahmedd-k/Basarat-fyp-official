@@ -1,4 +1,7 @@
-# EC2 API Blue/Green Deployment
+# EC2 API Blue/Green Deployment (Historical Architecture)
+
+> [!NOTE]
+> **Historical Reference**: This document records the initial AWS EC2 x86_64 blue-green rollout specification. For the active production deployment running on **Oracle Cloud Infrastructure (OCI) ARM64** with GitHub Actions and GHCR, refer to **[oracle-deployment.md](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/oracle-deployment.md)** and **[ci-cd.md](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/ci-cd.md)**.
 
 ## Deployment shape
 

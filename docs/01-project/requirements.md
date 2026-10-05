@@ -121,9 +121,9 @@
 
 | Requirement | Status |
 |-------------|--------|
-| Blue-green deployment on EC2 | Implemented |
+| Containerized deployment on Oracle Cloud Infrastructure (OCI) | Implemented |
 | Automated CI/CD via GitHub Actions | Implemented |
-| Immutable Docker images (SHA-tagged) | Implemented |
+| Immutable Docker images (GHCR registry) | Implemented |
 | Database migration before deployment | Implemented |
 | Health check verification before traffic switch | Implemented |
 | Rollback capability | Implemented |

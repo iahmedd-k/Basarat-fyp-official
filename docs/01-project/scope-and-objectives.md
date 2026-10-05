@@ -59,16 +59,16 @@ To build an intelligent PSX investment platform that democratizes access to adva
 2. PSX market data is obtainable via public web scraping (pypsx-toolkit, psxdata, psx-data-reader)
 3. Groq free-tier API provides sufficient capacity for the AI assistant in the current user base
 4. HuggingFace Inference API provides reliable FinBERT model access
-5. Supabase PostgreSQL and Upstash Redis provide adequate performance for production workloads
-6. A single EC2 instance handles the current traffic volume
+5. Supabase PostgreSQL and Redis provide adequate performance for production workloads
+6. A single Oracle Cloud OCI ARM64 instance handles the current traffic volume
 
 ## Constraints
 
-1. **Budget** — Free-tier or low-cost cloud services (Groq, HuggingFace, Supabase, Upstash)
+1. **Budget** — Free-tier or low-cost cloud services (Groq, HuggingFace, Supabase, Oracle Cloud Always Free)
 2. **PSX data access** — Dependent on public scraping; no official PSX data API
-3. **ML model size** — Limited by EC2 instance memory (TensorFlow + XGBoost loaded in memory)
+3. **ML model size** — Limited by VM memory allocation (TensorFlow + XGBoost loaded in memory)
 4. **Celery concurrency** — Production worker runs with `--concurrency=1` to manage memory
-5. **Database connections** — Supabase free-tier has tight connection limits (pool_size=3, max_overflow=2)
+5. **Database connections** — Managed connection pooling (pool_size=3, max_overflow=2)
 
 ## Dependencies
 
@@ -79,8 +79,7 @@ To build an intelligent PSX investment platform that democratizes access to adva
 | HuggingFace API | NLP inference | Low — sentiment scoring retries hourly for failures |
 | SendGrid | Email delivery | Low — auth works without email; features degrade gracefully |
 | Supabase | Managed database | Medium — single database provider |
-| Upstash | Managed Redis | Low — in-memory fallback exists |
-| AWS ECR/EC2 | Infrastructure | Medium — deployment depends on AWS availability |
+| Oracle OCI / GHCR | Infrastructure | Medium — deployment depends on Oracle VM and GHCR availability |
 
 ## Known Limitations
 

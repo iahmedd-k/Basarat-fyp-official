@@ -4,54 +4,49 @@
 
 ```mermaid
 flowchart TD
-    subgraph "AWS EC2 Instance"
+    subgraph OCI ["Oracle Cloud Infrastructure (Ampere A1 ARM64 VM)"]
         NGINX[Nginx Reverse Proxy<br/>Port 8000]
-        API_BLUE[API Container Blue<br/>Port 8090]
-        API_GREEN[API Container Green<br/>Port 8091]
-        WORKER[Celery Worker Container]
-        BEAT[Celery Beat Container]
-        LOCAL_REDIS[Local Redis Container<br/>Port 6379]
+        API[FastAPI Container<br/>basarat-app-1]
+        WORKER[Celery Worker Container<br/>basarat-celery-worker-1]
+        BEAT[Celery Beat Container<br/>basarat-celery-beat-1]
+        LOCAL_REDIS[Redis 7 Container<br/>basarat-redis-1]
     end
 
-    subgraph "Supabase"
-        PG[(PostgreSQL<br/>Managed)]
+    subgraph "Cloud Database"
+        PG[(PostgreSQL 16<br/>Supabase / Dedicated Cloud)]
     end
 
-    subgraph "Upstash"
-        CLOUD_REDIS[(Redis<br/>Managed)]
-    end
-
-    subgraph "External Services"
-        ECR[AWS ECR<br/>Image Registry]
-        GROQ[Groq API]
-        HF[HuggingFace API]
-        SG[SendGrid]
+    subgraph "External AI & Cloud Services"
+        GHCR[GitHub Container Registry<br/>ghcr.io/iahmedd-k/basarat-backend]
+        GROQ[Groq Cloud API<br/>Llama 3.3 70B]
+        HF[HuggingFace API<br/>FinBERT Sentiment]
+        SG[SendGrid Email API]
         FCM[Firebase FCM]
         CLOUD[Cloudinary]
     end
 
-    NGINX --> API_BLUE
-    NGINX -.->|inactive| API_GREEN
-    API_BLUE --> PG
-    API_BLUE --> LOCAL_REDIS
+    NGINX --> API
+    API --> PG
+    API --> LOCAL_REDIS
+    API --> GROQ
     WORKER --> PG
     WORKER --> LOCAL_REDIS
+    WORKER --> HF
     BEAT --> LOCAL_REDIS
-    LOCAL_REDIS -.-> CLOUD_REDIS
 ```
 
 ## Infrastructure Components
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Application Server** | Uvicorn (ASGI) | FastAPI application serving |
-| **Reverse Proxy** | Nginx | Rate limiting, TLS termination, blue-green routing |
-| **Container Runtime** | Docker Engine | Container orchestration |
-| **Database** | PostgreSQL 16 (Supabase) | Primary data store |
-| **Cache/Broker** | Redis 7 (local + Upstash) | Caching, Celery broker, pub/sub |
-| **Image Registry** | AWS ECR | Docker image storage |
-| **CI/CD** | GitHub Actions | Build, test, deploy automation |
-| **Compute** | AWS EC2 | Self-hosted runner + application hosting |
+| **Application Server** | Uvicorn (ASGI) / FastAPI | Asynchronous REST and WebSocket web API |
+| **Reverse Proxy** | Nginx | Reverse proxy, rate limiting, and CORS |
+| **Container Runtime** | Docker Engine & Compose v2 | Container orchestration |
+| **Database** | PostgreSQL 16 | Primary relational persistence |
+| **Cache/Broker** | Redis 7 (In-Memory) | Caching, Celery task broker, pub/sub quotes |
+| **Image Registry** | GitHub Container Registry (GHCR) | Immutable Docker image distribution |
+| **CI/CD** | GitHub Actions | Automated build, test, and deployment pipeline |
+| **Compute** | Oracle Cloud Infrastructure (OCI) | Ampere A1 4 OCPU 24GB ARM64 Ubuntu VM |
 | **Object Storage** | Cloudinary | Community post images |
 
 ## Recommended Production Improvements

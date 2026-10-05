@@ -82,8 +82,8 @@ Basarat consolidates these capabilities into a single platform.
 | **Object Storage** | Cloudinary (community images) |
 | **Data Scraping** | BeautifulSoup4, pypsx-toolkit, psxdata, psx-data-reader |
 | **Containerization** | Docker, Docker Compose |
-| **CI/CD** | GitHub Actions → AWS ECR → EC2 |
-| **Reverse Proxy** | Nginx (blue-green deployment) |
+| **CI/CD** | GitHub Actions → GHCR → Oracle Cloud Infrastructure (OCI) |
+| **Reverse Proxy** | Nginx (reverse proxy, rate limiting, and SSL) |
 | **API Documentation** | OpenAPI/Swagger (auto-generated) |
 | **Migration** | Alembic |
 | **Rate Limiting** | SlowAPI |
@@ -105,19 +105,19 @@ The repository contains only the **backend** application. The Android mobile cli
 | **Google OAuth** | Social login | Implemented |
 | **Apple OAuth** | Social login | Implemented |
 | **Supabase** | Cloud PostgreSQL hosting | Implemented (production) |
-| **Upstash** | Cloud Redis hosting | Implemented (production) |
-| **AWS ECR** | Docker image registry | Implemented |
-| **AWS EC2** | Production hosting | Implemented |
+| **Upstash / Private Redis** | Redis cache & Celery broker | Implemented (production) |
+| **GitHub Container Registry (GHCR)** | Docker image registry | Implemented |
+| **Oracle Cloud Infrastructure (OCI)** | Production hosting (Ampere A1 ARM64 VM) | Implemented |
 
 ## Current Implementation Status
 
-The system is **fully implemented** and deployed to production on AWS EC2. All 16 major modules are operational with CI/CD pipeline, blue-green deployment, and health monitoring.
+The system is **fully implemented** and deployed to production on **Oracle Cloud Infrastructure (OCI)** at `http://193.123.84.223:8000`. All major modules are operational with CI/CD automation, containerized fleet, and health monitoring.
 
 ## Major Limitations
 
 1. **Backend-only repository** — No frontend/mobile source code is included; the API serves an Android client built separately
 2. **Free-tier LLM constraints** — Groq free-tier imposes rate limits; fallback model configured
 3. **PSX data scraping** — Data depends on PSX website availability; circuit breaker pauses scraping on 403/429 responses
-4. **Single-region deployment** — Currently deployed on a single EC2 instance (not multi-AZ)
-5. **No automated database backups** — Database backups depend on Supabase managed service
-6. **Limited test coverage for some modules** — E2E and integration tests exist but unit test coverage varies by module
+4. **Single-region deployment** — Currently deployed on a single Oracle OCI ARM64 instance
+5. **Database backups** — Managed via Supabase cloud PostgreSQL automated retention
+6. **Live Market Hours** — Automated scraping tasks scheduled for Mon-Fri PSX trading sessions
