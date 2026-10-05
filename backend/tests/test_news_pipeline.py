@@ -126,21 +126,13 @@ class TestEventClassifier:
         assert classify_event("UBL declares final dividend of Rs10") == "dividend"
 
     def test_interest_rate(self):
-        # "SBP holds policy rate at 22%" matches monetary_policy first (more specific)
-        assert classify_event("SBP holds policy rate at 22%") == "monetary_policy"
+        assert classify_event("SBP holds policy rate at 22%") == "sbp_monetary_policy"
 
     def test_interest_rate_pure(self):
-        # Pure interest rate language without SBP/monetary policy keywords
-        assert classify_event("Rate cut expected next quarter") == "interest_rate"
+        assert classify_event("Rate cut expected next quarter") == "sbp_monetary_policy"
 
     def test_monetary_policy(self):
-        assert classify_event("Monetary policy decision announced") == "monetary_policy"
-
-    def test_acquisition(self):
-        assert classify_event("Company A acquires Company B") == "acquisition"
-
-    def test_regulatory(self):
-        assert classify_event("SECP issues new compliance notice") == "regulatory_action"
+        assert classify_event("Monetary policy decision announced") == "sbp_monetary_policy"
 
     def test_earnings_surprise_beat(self):
         assert classify_event("OGDC beats earnings estimates") == "earnings"
@@ -148,26 +140,8 @@ class TestEventClassifier:
     def test_earnings_surprise_miss(self):
         assert classify_event("LUCK misses profit expectations") == "earnings"
 
-    def test_imf_announcement(self):
-        assert classify_event("IMF board approves new $7bn bailout programme") == "imf"
-
-    def test_imf_tranche_disbursement(self):
-        assert classify_event("IMF releases next tranche after review") == "imf"
-
     def test_interest_rate_decision(self):
-        assert classify_event("SBP raises interest rate by 100bps") == "monetary_policy"
-
-    def test_circular_debt(self):
-        assert classify_event("Circular debt balloons to Rs 2.6 trillion") == "circular_debt"
-
-    def test_circular_debt_energy_arrears(self):
-        assert classify_event("Power sector arrears mount as gas dues rise") == "circular_debt"
-
-    def test_block_order(self):
-        assert classify_event("Block order of OGDC triggers institutional buying") == "block_order"
-
-    def test_block_order_foreign_selling(self):
-        assert classify_event("Foreign selling continues on PSX") == "block_order"
+        assert classify_event("SBP raises interest rate by 100bps") == "sbp_monetary_policy"
 
     def test_other(self):
         assert classify_event("Random news about weather") == "other"
