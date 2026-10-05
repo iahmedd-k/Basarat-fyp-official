@@ -14,10 +14,15 @@ flowchart TD
     OHLCV --> TREND["2. Trend & Range Distance<br/>(Dist 52W High, SMA-20/50, EMA-12/26)"]
     OHLCV --> VOL["3. Volatility & Spread<br/>(10D/20D/60D Vol, ATR-14, BB Width)"]
     OHLCV --> LIQ["4. Liquidity & Microstructure<br/>(Amihud Illiquidity, Volume Ratios)"]
-    OHLCV --> PSX_SPEC["5. PSX Structural Factors<br/>(+-7.5% Upper/Lower Circuit Flags)"]
+    OHLCV --> PSX_SPEC["5. PSX Structural Factors<br/>(+/- 7.5% Upper/Lower Circuit Flags)"]
     OHLCV --> OSC["6. Technical Oscillators<br/>(RSI-14, MACD, Stochastic %K/%D)"]
 
-    MOM & TREND & VOL & LIQ & PSX_SPEC & OSC --> CSRANK["Cross-Sectional Daily Rank Transform<br/>r = (rank(x) - 1) / (N - 1) in [0, 1]"]
+    MOM --> CSRANK["Cross-Sectional Daily Rank Transform<br/>r = (rank(x) - 1) / (N - 1) in [0, 1]"]
+    TREND --> CSRANK
+    VOL --> CSRANK
+    LIQ --> CSRANK
+    PSX_SPEC --> CSRANK
+    OSC --> CSRANK
     CSRANK --> FINAL_FEATURES["Final Model Input Tensor (X_train, X_test)"]
 ```
 

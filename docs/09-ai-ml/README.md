@@ -13,7 +13,7 @@ flowchart TD
 
     subgraph FeaturePipeline ["2. Preprocessing & Feature Engineering"]
         DATA_CLEAN["Data Hygiene & Corporate Action Adjustments<br/>(Drop bonuses >25%, Zero Volume Filter)"]
-        FE_ENGINE["Cross-Sectional Rank Feature Builder<br/>• 12M-1M Momentum, 52W High Distance<br/>• Amihud Illiquidity, Multi-horizon Volatility<br/>• PSX +-7.5% Circuit Limit Indicators"]
+        FE_ENGINE["Cross-Sectional Rank Feature Builder<br/>- 12M-1M Momentum, 52W High Distance<br/>- Amihud Illiquidity, Multi-horizon Volatility<br/>- PSX +/- 7.5% Circuit Limit Indicators"]
         FINBERT_TOKEN["FinBERT NLP Tokenization & Embeddings"]
     end
 
@@ -31,9 +31,18 @@ flowchart TD
         ALERTS["Automated Price & Risk Breach Alerts"]
     end
 
-    DataIngestion --> FeaturePipeline
-    FeaturePipeline --> ModelTier
-    ModelTier --> DownstreamServing
+    PSX_OHLCV --> DATA_CLEAN
+    NEWS_CORPUS --> FINBERT_TOKEN
+    DATA_CLEAN --> FE_ENGINE
+    FE_ENGINE --> BIGRU
+    FE_ENGINE --> XGBOOST
+    FINBERT_TOKEN --> FINBERT
+    BIGRU --> ENSEMBLE
+    XGBOOST --> ENSEMBLE
+    ENSEMBLE --> QUANT_RANK
+    FINBERT --> QUANT_RANK
+    QUANT_RANK --> API_SERVING
+    QUANT_RANK --> ALERTS
 ```
 
 ---

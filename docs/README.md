@@ -13,8 +13,8 @@ flowchart TD
     end
 
     subgraph ServiceFleet ["Containerized Backend Services (Oracle Cloud Infrastructure)"]
-        FASTAPI["FastAPI API Server & Gateway (Uvicorn ASGI Port 8000)<br/>• 22 Domain Routers<br/>• Correlation ID (X-Request-ID)<br/>• SlowAPI Rate Limiting<br/>• RAG AI Copilot (Groq LLM)"]
-        CELERY_W["Celery Distributed Workers<br/>• Post-Close Automated Pipeline<br/>• Multi-Source News Ingestion<br/>• FinBERT Sentiment Scoring<br/>• Price & Risk Alert Monitors"]
+        FASTAPI["FastAPI API Server & Gateway (Port 8000)<br/>- 22 Domain Routers<br/>- Correlation ID (X-Request-ID)<br/>- SlowAPI Rate Limiting<br/>- RAG AI Copilot (Groq LLM)"]
+        CELERY_W["Celery Distributed Workers<br/>- Post-Close Automated Pipeline<br/>- Multi-Source News Ingestion<br/>- FinBERT Sentiment Scoring<br/>- Price & Risk Alert Monitors"]
         CELERY_B["Celery Beat Scheduler<br/>(Mon-Fri Intraday & Post-Market Crons)"]
     end
 
@@ -25,17 +25,19 @@ flowchart TD
     end
 
     subgraph PersistenceTier ["Data & Cache Tier"]
-        POSTGRES[("PostgreSQL 16 Database<br/>(SQLAlchemy Async ORM / asyncpg)")]
-        REDIS[("Redis 7 In-Memory Cache & Broker<br/>(Pub/Sub, Locks, Caches, Celery Queues)")]
+        POSTGRES[("PostgreSQL 16 Database<br/>SQLAlchemy Async ORM / asyncpg")]
+        REDIS[("Redis 7 In-Memory Cache & Broker<br/>Pub/Sub, Locks, Caches, Celery Queues")]
     end
 
-    ANDROID -->|HTTPS / WSS (Port 8000)| FASTAPI
-    FASTAPI --> MLSubsystem
+    ANDROID -->|HTTPS / WSS Port 8000| FASTAPI
+    FASTAPI --> GRU_XGB
+    FASTAPI --> QUANT
     FASTAPI --> POSTGRES
     FASTAPI --> REDIS
     CELERY_B -->|Task Dispatch| REDIS
     REDIS -->|Task Consumption| CELERY_W
-    CELERY_W --> MLSubsystem
+    CELERY_W --> GRU_XGB
+    CELERY_W --> FINBERT
     CELERY_W --> POSTGRES
     CELERY_W --> REDIS
     REDIS -->|Live Quote Pub/Sub| FASTAPI

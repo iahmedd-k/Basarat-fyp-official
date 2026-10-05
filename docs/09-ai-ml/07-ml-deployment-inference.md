@@ -12,7 +12,7 @@ flowchart TD
 
     subgraph MemoryLoaded ["Preloaded Model Singleton (model_loader.py)"]
         GRU_IN_MEM["artifacts.model<br/>(gru_model.keras + scaler.joblib)"]
-        XGB_IN_MEM["artifacts.xgb_models<br/>{'5D': xgb_model.ubj, '10D': xgb_model_10d.ubj, '20D': xgb_model_20d.ubj}"]
+        XGB_IN_MEM["artifacts.xgb_models<br/>5D, 10D, 20D UBJ Models"]
     end
 
     subgraph ConcurrentExecution ["Concurrent Inference (inference.py)"]
@@ -21,8 +21,8 @@ flowchart TD
     end
 
     subgraph BlendingEngine ["Horizon-Aware Ensemble Decision (_ensemble_decide)"]
-        DECIDE["Blend Probabilities by Horizon:<br/>• 1D:  65% BiGRU + 35% XGBoost<br/>• 1W:  50% BiGRU + 50% XGBoost (Balanced)<br/>• 2W:  40% BiGRU + 60% XGBoost<br/>• 1M:  30% BiGRU + 70% XGBoost"]
-        NEAR_TIE{"Spread |P_up - P_down| <= 5.0pp?"}
+        DECIDE["Blend Probabilities by Horizon:<br/>- 1D:  65% BiGRU + 35% XGBoost<br/>- 1W:  50% BiGRU + 50% XGBoost<br/>- 2W:  40% BiGRU + 60% XGBoost<br/>- 1M:  30% BiGRU + 70% XGBoost"]
+        NEAR_TIE{"Spread |P_up - P_down| <= 5.0%?"}
         NEAR_TIE -->|Yes| UNCERTAIN["Direction: 'sideways' / 'uncertain'"]
         NEAR_TIE -->|No| DIRECTION["Direction: 'bullish' or 'bearish'"]
     end
@@ -32,10 +32,16 @@ flowchart TD
         RETURN["ForecastResponse (P_up, P_down, Direction, Target, StopLoss)"]
     end
 
-    REQ --> ConcurrentExecution
-    MemoryLoaded --> ConcurrentExecution
-    ConcurrentExecution --> BlendingEngine
-    BlendingEngine --> ResponseBuilding
+    REQ --> GRU_RUN
+    REQ --> XGB_RUN
+    GRU_IN_MEM --> GRU_RUN
+    XGB_IN_MEM --> XGB_RUN
+    GRU_RUN --> DECIDE
+    XGB_RUN --> DECIDE
+    DECIDE --> NEAR_TIE
+    UNCERTAIN --> TARGET_STOP
+    DIRECTION --> TARGET_STOP
+    TARGET_STOP --> RETURN
 ```
 
 ---

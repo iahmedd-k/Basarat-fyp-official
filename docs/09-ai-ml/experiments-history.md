@@ -34,22 +34,23 @@ To forecast 5-day equity returns robustly, our research pipeline tested sequenti
 
 ```mermaid
 flowchart TD
-    subgraph Iteration1["Cycle 1: final_v1 (3-Class Baseline)"]
-        A1[3-Class Target: Bullish / Bearish / Sideways ±1%] --> B1[GRU-45 + XGB-29 Ensemble]
-        B1 --> C1[Result: 42.8% Val F1, Walk-Forward Neutral Dominance]
+    subgraph Iteration1 ["Cycle 1: final_v1 (3-Class Baseline)"]
+        A1["3-Class Target: Bullish / Bearish / Sideways (+/- 1%)"] --> B1["GRU-45 + XGB-29 Ensemble"]
+        B1 --> C1["Result: 42.8% Val F1, Walk-Forward Neutral Dominance"]
     end
 
-    subgraph Iteration2["Cycle 2: final_v2 (Multi-Factor Exploration)"]
-        A2[Expanded Technical Ratios & Factor Normalization] --> B2[Candidate v2 Models]
+    subgraph Iteration2 ["Cycle 2: final_v2 (Multi-Factor Exploration)"]
+        A2["Expanded Technical Ratios & Factor Normalization"] --> B2["Candidate v2 Models"]
     end
 
-    subgraph Iteration3["Cycle 3 & 4: final_v3 (Institutional Directional + Events)"]
-        A3[Binary Cross-Sectional Alpha Target + Rejection Layer] --> B3[PSX Announcement Events + Fundamentals]
-        B3 --> C3[Event-Augmented XGBoost + Attention-BiGRU]
-        C3 --> D3[Result: 55.3% to 59.7% Actionable Accuracy, Rank IC +0.080]
+    subgraph Iteration3 ["Cycle 3 & 4: final_v3 (Institutional Directional + Events)"]
+        A3["Binary Cross-Sectional Alpha Target + Rejection Layer"] --> B3["PSX Announcement Events + Fundamentals"]
+        B3 --> C3["Event-Augmented XGBoost + Attention-BiGRU"]
+        C3 --> D3["Result: 55.3% to 59.7% Actionable Accuracy, Rank IC +0.080"]
     end
 
-    Iteration1 --> Iteration2 --> Iteration3
+    C1 --> A2
+    B2 --> A3
 ```
 
 ---

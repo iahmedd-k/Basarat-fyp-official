@@ -5,24 +5,24 @@
 ```mermaid
 flowchart TD
     subgraph OCI ["Oracle Cloud Infrastructure (Ampere A1 ARM64 VM)"]
-        NGINX[Nginx Reverse Proxy<br/>Port 8000]
-        API[FastAPI Container<br/>basarat-app-1]
-        WORKER[Celery Worker Container<br/>basarat-celery-worker-1]
-        BEAT[Celery Beat Container<br/>basarat-celery-beat-1]
-        LOCAL_REDIS[Redis 7 Container<br/>basarat-redis-1]
+        NGINX["Nginx Reverse Proxy<br/>Port 8000"]
+        API["FastAPI Container<br/>basarat-app-1"]
+        WORKER["Celery Worker Container<br/>basarat-celery-worker-1"]
+        BEAT["Celery Beat Container<br/>basarat-celery-beat-1"]
+        LOCAL_REDIS["Redis 7 Container<br/>basarat-redis-1"]
     end
 
-    subgraph "Cloud Database"
-        PG[(PostgreSQL 16<br/>Supabase / Dedicated Cloud)]
+    subgraph CloudDB ["Cloud Database"]
+        PG[("PostgreSQL 16<br/>Supabase / Dedicated Cloud")]
     end
 
-    subgraph "External AI & Cloud Services"
-        GHCR[GitHub Container Registry<br/>ghcr.io/iahmedd-k/basarat-backend]
-        GROQ[Groq Cloud API<br/>Llama 3.3 70B]
-        HF[HuggingFace API<br/>FinBERT Sentiment]
-        SG[SendGrid Email API]
-        FCM[Firebase FCM]
-        CLOUD[Cloudinary]
+    subgraph ExternalCloud ["External AI & Cloud Services"]
+        GHCR["GitHub Container Registry<br/>ghcr.io/iahmedd-k/basarat-backend"]
+        GROQ["Groq Cloud API<br/>Llama 3.3 70B"]
+        HF["HuggingFace API<br/>FinBERT Sentiment"]
+        SG["SendGrid Email API"]
+        FCM["Firebase FCM"]
+        CLOUD["Cloudinary"]
     end
 
     NGINX --> API

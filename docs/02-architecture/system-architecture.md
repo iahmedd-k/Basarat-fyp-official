@@ -91,8 +91,8 @@ flowchart TD
     end
 
     subgraph DataStorage ["Data & Cache Storage Tier"]
-        POSTGRES[("PostgreSQL 16 Database<br/>(SQLAlchemy Async ORM / asyncpg)<br/>20+ Domain Tables & Migrations")]
-        REDIS[("Redis 7 In-Memory Cache & Broker<br/>• Celery Task Queue Broker<br/>• Live Ticker & Market Snapshot Cache<br/>• Single-Flight Locks & Dedup Keys<br/>• Rate Limit Token Buckets<br/>• WebSocket Pub/Sub Bus")]
+        POSTGRES[("PostgreSQL 16 Database<br/>SQLAlchemy Async ORM / asyncpg<br/>20+ Domain Tables & Migrations")]
+        REDIS[("Redis 7 In-Memory Cache & Broker<br/>Celery Broker, Live Tickers, Locks, Pub/Sub")]
     end
 
     subgraph MigrationService ["One-Shot Migration Container"]
@@ -136,70 +136,83 @@ flowchart TD
 The system is organized into distinct functional layers adhering to separation of concerns and dependency inversion principles:
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph L1 ["1. API Presentation Layer (app/api/v1/)"]
-        A1[Auth & User Routers]
-        A2[Market & Stock Routers]
-        A3[Portfolio & Risk Routers]
-        A4[AI Assistant & Recommendations]
-        A5[News, Sentiment & Events]
-        A6[Alerts, Devices & Notifications]
-        A7[Community & Social Routers]
-        A8[Shariah, ETFs, IPOs, Health]
+        A1["Auth & User Routers"]
+        A2["Market & Stock Routers"]
+        A3["Portfolio & Risk Routers"]
+        A4["AI Assistant & Recommendations"]
+        A5["News, Sentiment & Events"]
+        A6["Alerts, Devices & Notifications"]
+        A7["Community & Social Routers"]
+        A8["Shariah, ETFs, IPOs, Health"]
     end
 
     subgraph L2 ["2. Security & Middleware Layer (app/core/)"]
-        M1[Correlation ID Middleware]
-        M2[TrustedHost & CORS Security]
-        M3[SlowAPI Rate Limiting]
-        M4[Authentication & RBAC Dependencies]
-        M5[Global Exception Handlers]
+        M1["Correlation ID Middleware"]
+        M2["TrustedHost & CORS Security"]
+        M3["SlowAPI Rate Limiting"]
+        M4["Authentication & RBAC Dependencies"]
+        M5["Global Exception Handlers"]
     end
 
     subgraph L3 ["3. Domain Service Layer (app/services/)"]
-        S1[MarketService & LiveBus]
-        S2[StockService & PriceCacheService]
-        S3[PortfolioService & ValuationEngine]
-        S4[RiskService & MonteCarloEngine]
-        S5[RecommendationService]
-        S6[SentimentService & FinBERT]
-        S7[AssistantService & GroqClient]
-        S8[NewsPipeline Ingestion Engine]
-        S9[AlertService & NotificationService]
-        S10[ShariahScreeningService]
-        S11[CommunityService & Moderation]
-        S12[WebSocketManager]
+        S1["MarketService & LiveBus"]
+        S2["StockService & PriceCacheService"]
+        S3["PortfolioService & ValuationEngine"]
+        S4["RiskService & MonteCarloEngine"]
+        S5["RecommendationService"]
+        S6["SentimentService & FinBERT"]
+        S7["AssistantService & GroqClient"]
+        S8["NewsPipeline Ingestion Engine"]
+        S9["AlertService & NotificationService"]
+        S10["ShariahScreeningService"]
+        S11["CommunityService & Moderation"]
+        S12["WebSocketManager"]
     end
 
     subgraph L4 ["4. ML & Analytics Layer (app/ml/ & backend/models/)"]
-        ML1[BiGRU Neural Network Horizon Forecaster]
-        ML2[XGBoost Gradient Boosted Classifier]
-        ML3[Ensemble Voting & Calibration Engine]
-        ML4[Technical Indicator Calculation TA-Lib]
-        ML5[Model Evaluation & Drift Tracker]
+        ML1["BiGRU Neural Network Horizon Forecaster"]
+        ML2["XGBoost Gradient Boosted Classifier"]
+        ML3["Ensemble Voting & Calibration Engine"]
+        ML4["Technical Indicator Calculation TA-Lib"]
+        ML5["Model Evaluation & Drift Tracker"]
     end
 
     subgraph L5 ["5. Background Job Subsystem (app/tasks/)"]
-        T1[daily_workflow: Close OHLCV -> ML -> Eval]
-        T2[refresh_market_cache: Intraday 60s quotes]
-        T3[scrape_news & sentiment_tasks: Ingestion]
-        T4[alert_tasks: Real-time price trigger evaluation]
-        T5[risk_tasks: Portfolio stress & breach checks]
-        T6[weekly_retraining: Model hyperparameter tuning]
+        T1["daily_workflow: Close OHLCV -> ML -> Eval"]
+        T2["refresh_market_cache: Intraday 60s quotes"]
+        T3["scrape_news & sentiment_tasks: Ingestion"]
+        T4["alert_tasks: Real-time price trigger evaluation"]
+        T5["risk_tasks: Portfolio stress & breach checks"]
+        T6["weekly_retraining: Model hyperparameter tuning"]
     end
 
     subgraph L6 ["6. Data Persistence & Cache Layer"]
-        D1[(PostgreSQL 16 Database)]
-        D2[(Redis 7 Cache / Broker / PubSub)]
+        D1[("PostgreSQL 16 Database")]
+        D2[("Redis 7 Cache / Broker / PubSub")]
     end
 
-    L1 --> L2
-    L2 --> L3
-    L3 --> L4
-    L3 --> L6
-    L5 --> L3
-    L5 --> L4
-    L5 --> L6
+    A1 --> M1
+    A2 --> M2
+    A3 --> M4
+    A4 --> M5
+    M1 --> S1
+    M2 --> S2
+    M4 --> S3
+    M5 --> S5
+    S1 --> ML4
+    S3 --> S4
+    S4 --> ML3
+    S5 --> ML1
+    S5 --> ML2
+    S1 --> D2
+    S2 --> D1
+    S3 --> D1
+    T1 --> D1
+    T1 --> ML1
+    T2 --> D2
+    T3 --> S6
 ```
 
 ---
@@ -271,7 +284,14 @@ flowchart TD
         ALERT_DISPATCH["Alert Engine Dispatch<br/>(Triggers Sentiment Impact Alerts)"]
     end
 
-    Sources --> COLLECT
+    S_BR --> COLLECT
+    S_DAWN --> COLLECT
+    S_METTIS --> COLLECT
+    S_PSX --> COLLECT
+    S_SBP --> COLLECT
+    S_SECP --> COLLECT
+    S_OGRA --> COLLECT
+    S_FBR --> COLLECT
     COLLECT --> DEDUP
     DEDUP -->|Unique Articles| TAGGER
     TAGGER --> CLASSIFIER
@@ -295,13 +315,13 @@ flowchart TD
 
     subgraph Step1 ["Step 1: OHLCV Data Acquisition"]
         CHECK_HOLIDAY{"Is PSX Trading Day?<br/>(Check Calendar & Holidays)"}
-        SCRAPER["Scraper Engine (run_after_close.py)<br/>• Incremental Symbol Fetch<br/>• Batching (10 symbols + pause)<br/>• Atomic Staging Directory"]
+        SCRAPER["Scraper Engine (run_after_close.py)<br/>- Incremental Symbol Fetch<br/>- Batching (10 symbols + pause)<br/>- Atomic Staging Directory"]
         VERIFY{"Verify Data Completeness<br/>(All symbols present?)"}
         PROMOTE["Promote Staged Parquet<br/>to Production Dataset"]
     end
 
     subgraph Step2 ["Step 2: Feature Engineering & Technicals"]
-        FE["Feature Generation Engine<br/>• Returns, Volatility, Log Volumes<br/>• Technicals: RSI-14, MACD, BB, SMA-20/50/200, ATR<br/>• Macro & Sector Factors"]
+        FE["Feature Generation Engine<br/>- Returns, Volatility, Log Volumes<br/>- Technicals: RSI-14, MACD, BB, SMA-20/50/200, ATR<br/>- Macro & Sector Factors"]
     end
 
     subgraph Step3 ["Step 3: ML Model Inference Fleet"]
@@ -312,7 +332,7 @@ flowchart TD
     end
 
     subgraph Step4 ["Step 4: Recommendation Engine & Evaluation"]
-        RECS["Recompute Quantitative Stock Rankings<br/>(35% Technicals + 35% Fundamentals + 20% ML Forecast + 10% Sentiment)"]
+        RECS["Recompute Quantitative Stock Rankings<br/>(35% Tech + 35% Fund + 20% Forecast + 10% Sentiment)"]
         CACHE_RECS["Warm Redis Recommendation Cache"]
         EVAL["Evaluate Previous Horizon Predictions<br/>(Compare target_date price with actual close)"]
         STORE_EVAL["Record Accuracy & Drift Metrics in DB"]
@@ -325,8 +345,10 @@ flowchart TD
     VERIFY -->|Success| PROMOTE
     VERIFY -->|Partial/Failed| PRESERVE([Preserve Last Known Good Dataset])
     PROMOTE --> FE
-    FE --> GRU & XGB
-    GRU & XGB --> ENSEMBLE
+    FE --> GRU
+    FE --> XGB
+    GRU --> ENSEMBLE
+    XGB --> ENSEMBLE
     ENSEMBLE --> PRED_STORE
     PRED_STORE --> RECS
     RECS --> CACHE_RECS
@@ -388,7 +410,7 @@ flowchart LR
 
     subgraph Valuation ["Valuation Engine (app/services/portfolio/)"]
         LIVE_PRICES["Live Price Resolver<br/>(Redis Live Cache -> Last Known OHLCV Close)"]
-        MTM["Mark-to-Market Calculator<br/>• Current Value<br/>• Unrealized P&L<br/>• Realized P&L<br/>• Daily Return %"]
+        MTM["Mark-to-Market Calculator<br/>- Current Value<br/>- Unrealized P&L<br/>- Realized P&L<br/>- Daily Return %"]
         SECTOR_ALLOC["Sector & Asset Allocation Breakdown"]
     end
 
@@ -405,9 +427,12 @@ flowchart LR
     HOLDINGS --> LIVE_PRICES
     LIVE_PRICES --> MTM
     MTM --> SECTOR_ALLOC
-    MTM --> VAR_PARAMETRIC & VAR_HISTORICAL & CVAR
+    MTM --> VAR_PARAMETRIC
+    MTM --> VAR_HISTORICAL
+    MTM --> CVAR
     MTM --> SHARPE_BETA
-    MTM --> MONTE_CARLO & STRESS_TEST
+    MTM --> MONTE_CARLO
+    MTM --> STRESS_TEST
 ```
 
 ---

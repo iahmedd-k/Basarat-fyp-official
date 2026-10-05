@@ -25,11 +25,12 @@ flowchart TD
         BIGRU --> P_GRU["P_GRU: [P_up, P_down]"]
         XGB --> P_XGB["P_XGB: [P_up, P_down]"]
         
-        P_GRU & P_XGB --> BLEND["Dynamic Weight Matrix<br/>• 1D:  65% GRU + 35% XGB<br/>• 1W (5D):  50% GRU + 50% XGB<br/>• 2W (10D): 40% GRU + 60% XGB<br/>• 1M (20D): 30% GRU + 70% XGB"]
+        P_GRU --> BLEND["Dynamic Weight Matrix<br/>- 1D:  65% GRU + 35% XGB<br/>- 1W (5D):  50% GRU + 50% XGB<br/>- 2W (10D): 40% GRU + 60% XGB<br/>- 1M (20D): 30% GRU + 70% XGB"]
+        P_XGB --> BLEND
     end
 
     subgraph DecisionGate ["Confidence & Near-Tie Decision Gate"]
-        BLEND --> NEAR_TIE{"|P_up - P_down| <= 5.0pp?"}
+        BLEND --> NEAR_TIE{"Difference |P_up - P_down| <= 5%?"}
         NEAR_TIE -->|Yes (Near-Tie)| SIDEWAYS["Emit SIDEWAYS / UNCERTAIN Direction"]
         NEAR_TIE -->|No (Clear Spread)| ACTIONABLE["Emit Confident Direction (BULLISH / BEARISH)"]
     end
