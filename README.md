@@ -5,8 +5,8 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16.0-4169E1.svg?logo=postgresql)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7.0-DC382D.svg?logo=redis)](https://redis.io/)
 [![Celery](https://img.shields.io/badge/Celery-Distributed%20Workers-37814A.svg?logo=celery)](https://docs.celeryq.dev/)
-[![ML Engine](https://img.shields.io/badge/AI%2FML-BiGRU%20%2B%20XGBoost%20v3-FF6F00.svg)](file:///d:/FYP/Basarat-fyp-official/docs/09-ai-ml/README.md)
-[![Test Suite](https://img.shields.io/badge/tests-204%20passed%20(100%25)-brightgreen.svg)](file:///d:/FYP/Basarat-fyp-official/docs/06-testing/testing-strategy.md)
+[![ML Engine](https://img.shields.io/badge/AI%2FML-BiGRU%20%2B%20XGBoost%20v3-FF6F00.svg)](docs/09-ai-ml/README.md)
+[![Test Suite](https://img.shields.io/badge/tests-204%20passed%20(100%25)-brightgreen.svg)](docs/06-testing/testing-strategy.md)
 [![License](https://img.shields.io/badge/license-Proprietary%20%2F%20Academic-lightgrey.svg)]()
 
 > **Basarat** is an enterprise-grade AI-powered financial intelligence and quantitative recommendation platform purpose-built for the **Pakistan Stock Exchange (PSX)**. It unifies real-time PSX data feeds, hybrid machine learning price directional forecasting, FinBERT financial sentiment analysis, mathematical portfolio risk analytics (VaR/CVaR/Monte Carlo), Shariah compliance screening (KMI-30 rules), and a contextual RAG AI Investment Copilot into a high-performance backend API.
@@ -17,7 +17,7 @@
 
 | Resource | URL Link | Description |
 |---|---|---|
-| **Live Production API** | [http://193.123.84.223:8000](http://193.123.84.223:8000) | Root service gateway with health and readiness status |
+| **Live Production API Gateway** | [http://193.123.84.223:8000](http://193.123.84.223:8000) | Root service gateway with health and readiness status |
 | **Interactive Swagger API Docs** | [http://193.123.84.223:8000/docs](http://193.123.84.223:8000/docs) | Interactive OpenAPI 3.1 schema for testing all 22 domain routers |
 | **Interactive Architecture Diagram**| [http://193.123.84.223:8000/architecture](http://193.123.84.223:8000/architecture) | Live web-based dynamic architecture visualization |
 | **Alternative ReDoc Docs** | [http://193.123.84.223:8000/redoc](http://193.123.84.223:8000/redoc) | Clean formatted REST endpoint specifications |
@@ -71,7 +71,7 @@ flowchart TD
 |---|---|
 | **PSX Real-Time Tracking & Screener** | Real-time and end-of-day market data ingestion across 100+ PSX equities and major sector indices with Redis pub/sub streaming. |
 | **Hybrid Directional Forecasting** | Multi-horizon directional forecasting (5-Day, 10-Day, 20-Day) combining **Temporal Attention-BiGRU** and **XGBoost Classifier v3** with dynamic volatility-weighted blending. |
-| **Quantitative Recommendations** | 4-pillar deterministic multi-factor recommendation engine combining Technicals ($35\%$), ML Forecasts ($25\%$), Financial Sentiment ($20\%$), and Valuation Fundamentals ($20\%$) with strict stop-loss and target bounds. |
+| **Quantitative Recommendations** | 4-pillar deterministic multi-factor recommendation engine combining Technicals (35%), ML Forecasts (25%), Financial Sentiment (20%), and Valuation Fundamentals (20%) with strict stop-loss and target bounds. |
 | **FinBERT Market Sentiment** | Dedicated NLP pipeline ingesting Pakistani financial news (Dawn, Business Recorder, Profit) scored via Hugging Face **FinBERT**. |
 | **Portfolio Risk Engine** | Parametric, Historical, and Monte Carlo Value-at-Risk (**VaR**), Conditional VaR (**CVaR**), Sharpe/Sortino ratios, and macroeconomic stress testing. |
 | **Shariah Compliance Screening** | Automated financial ratio filtering based on SECP and KMI-30 Shariah governance standards (debt-to-assets, illiquid assets, non-compliant income purification). |
@@ -83,31 +83,31 @@ flowchart TD
 
 Our production models are trained on **151,484 daily PSX rows (2020-03-12 to 2026-10-02)** across 100 liquid symbols using strict temporal walk-forward splits to eliminate lookahead bias:
 
-| Horizon | Primary Production Model | Out-of-Sample Accuracy | Actionable Win Rate ($\tau \ge 0.55$) | Actionable Win Rate ($\tau \ge 0.60$) | Spearman Rank IC |
+| Horizon | Primary Production Model | Out-of-Sample Accuracy | Actionable Win Rate (Confidence &ge; 0.55) | Actionable Win Rate (Confidence &ge; 0.60) | Spearman Rank IC |
 |---|---|:---:|:---:|:---:|:---:|
-| **5-Day (1-Week)** | **Hybrid Attention-BiGRU + XGBoost** | **55.30%** | **59.70%** | **65.38%** | **+0.093 ($p < 0.001$)** |
-| **10-Day (2-Week)** | **XGBoost 10D Classifier** | **54.85%** | **58.20%** | **64.71%** | **+0.088 ($p < 0.001$)** |
-| **20-Day (1-Month)** | **XGBoost 20D Classifier** | **54.33%** | **57.56%** | **65.22%** | **+0.080 ($p < 0.001$)** |
+| **5-Day (1-Week)** | **Hybrid Attention-BiGRU + XGBoost** | **55.30%** | **59.70%** | **65.38%** | **+0.093 (p &lt; 0.001)** |
+| **10-Day (2-Week)** | **XGBoost 10D Classifier** | **54.85%** | **58.20%** | **64.71%** | **+0.088 (p &lt; 0.001)** |
+| **20-Day (1-Month)** | **XGBoost 20D Classifier** | **54.33%** | **57.56%** | **65.22%** | **+0.080 (p &lt; 0.001)** |
 
-> Complete training methodologies, feature engineering definitions (29+ alpha signals), ablation studies, and viva defense guides are documented in **[docs/09-ai-ml/](file:///d:/FYP/Basarat-fyp-official/docs/09-ai-ml/)**.
+> Complete training methodologies, feature engineering definitions (29+ alpha signals), ablation studies, and viva defense guides are documented in **[docs/09-ai-ml/](docs/09-ai-ml/README.md)**.
 
 ---
 
 ## 4. Documentation Suite
 
-The project includes an exhaustive technical documentation suite located in the **[docs/](file:///d:/FYP/Basarat-fyp-official/docs/)** directory:
+The project includes an exhaustive technical documentation suite located in the **[docs/](docs/README.md)** directory:
 
-| Module | Title | Key Contents |
+| Module | Title | Key Documents |
 |---|---|---|
-| **01-Project** | **[Project & SDLC](file:///d:/FYP/Basarat-fyp-official/docs/01-project/)** | **[SDLC Methodology](file:///d:/FYP/Basarat-fyp-official/docs/01-project/software-development-life-cycle.md)**, [Project Overview](file:///d:/FYP/Basarat-fyp-official/docs/01-project/project-overview.md), [SRS Requirements](file:///d:/FYP/Basarat-fyp-official/docs/01-project/functional-requirements.md), [NFRs](file:///d:/FYP/Basarat-fyp-official/docs/01-project/non-functional-requirements.md) |
-| **02-Architecture** | **[Architecture & SDD](file:///d:/FYP/Basarat-fyp-official/docs/02-architecture/)** | **[Software Design Document (SDD)](file:///d:/FYP/Basarat-fyp-official/docs/02-architecture/software-design-document.md)**, [HLD System Arch](file:///d:/FYP/Basarat-fyp-official/docs/02-architecture/system-architecture.md), [LLD API Arch](file:///d:/FYP/Basarat-fyp-official/docs/02-architecture/api-architecture.md), [Database ERD](file:///d:/FYP/Basarat-fyp-official/docs/02-architecture/database-design.md), [ADR Catalog](file:///d:/FYP/Basarat-fyp-official/docs/02-architecture/decisions/) |
-| **03-API** | **[API Specifications](file:///d:/FYP/Basarat-fyp-official/docs/03-api/)** | [Endpoint Catalog](file:///d:/FYP/Basarat-fyp-official/docs/03-api/api-overview.md), [Authentication](file:///d:/FYP/Basarat-fyp-official/docs/03-api/authentication.md), [Error Contracts](file:///d:/FYP/Basarat-fyp-official/docs/03-api/error-handling.md), [Mobile API Contract](file:///d:/FYP/Basarat-fyp-official/docs/03-api/recommendation-api-mobile-contract.md) |
-| **04-Development** | **[Development Guides](file:///d:/FYP/Basarat-fyp-official/docs/04-development/)** | [Project Structure](file:///d:/FYP/Basarat-fyp-official/docs/04-development/project-structure.md), [Local Setup](file:///d:/FYP/Basarat-fyp-official/docs/04-development/development-setup.md), [Environment Config](file:///d:/FYP/Basarat-fyp-official/docs/04-development/environment-variables.md), [Coding Standards](file:///d:/FYP/Basarat-fyp-official/docs/04-development/coding-standards.md) |
-| **05-Security** | **[Security & Governance](file:///d:/FYP/Basarat-fyp-official/docs/05-security/)** | [Security Architecture](file:///d:/FYP/Basarat-fyp-official/docs/05-security/security.md), [RBAC Authorization](file:///d:/FYP/Basarat-fyp-official/docs/05-security/authorization.md), [Data Protection](file:///d:/FYP/Basarat-fyp-official/docs/05-security/data-protection.md) |
-| **06-Testing** | **[Quality Assurance](file:///d:/FYP/Basarat-fyp-official/docs/06-testing/)** | [Testing Strategy](file:///d:/FYP/Basarat-fyp-official/docs/06-testing/testing-strategy.md), [Master Test Plan](file:///d:/FYP/Basarat-fyp-official/docs/06-testing/test-plan.md), [Test Cases Catalog](file:///d:/FYP/Basarat-fyp-official/docs/06-testing/test-cases.md) |
-| **07-Deployment** | **[DevOps & Deployment](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/)** | [Deployment Guide](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/deployment.md), [Blue-Green EC2 Rollout](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/ec2-blue-green-deployment.md), [CI/CD Pipelines](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/ci-cd.md) |
-| **08-Operations** | **[Operations & Runbooks](file:///d:/FYP/Basarat-fyp-official/docs/08-operations/)** | [Monitoring & Health](file:///d:/FYP/Basarat-fyp-official/docs/08-operations/monitoring.md), [Troubleshooting Guide](file:///d:/FYP/Basarat-fyp-official/docs/08-operations/troubleshooting.md), [Execution Runbook](file:///d:/FYP/Basarat-fyp-official/docs/08-operations/execution-runbook.md) |
-| **09-AI-ML** | **[AI/ML Deep Dives](file:///d:/FYP/Basarat-fyp-official/docs/09-ai-ml/)** | [AI/ML Index](file:///d:/FYP/Basarat-fyp-official/docs/09-ai-ml/README.md), [Dataset Specs](file:///d:/FYP/Basarat-fyp-official/docs/09-ai-ml/01-dataset.md), [Feature Engineering](file:///d:/FYP/Basarat-fyp-official/docs/09-ai-ml/03-feature-engineering.md), [Evaluation Results](file:///d:/FYP/Basarat-fyp-official/docs/09-ai-ml/06-model-evaluation-results.md), [Viva Defense Guide](file:///d:/FYP/Basarat-fyp-official/docs/09-ai-ml/viva-preparation-guide.md) |
+| **01-Project** | **[Project & SDLC](docs/01-project/)** | **[SDLC Methodology](docs/01-project/software-development-life-cycle.md)**, [Project Overview](docs/01-project/project-overview.md), [SRS Requirements](docs/01-project/functional-requirements.md), [NFRs](docs/01-project/non-functional-requirements.md) |
+| **02-Architecture** | **[Architecture & SDD](docs/02-architecture/)** | **[Software Design Document (SDD)](docs/02-architecture/software-design-document.md)**, [HLD System Arch](docs/02-architecture/system-architecture.md), [LLD API Arch](docs/02-architecture/api-architecture.md), [Database ERD](docs/02-architecture/database-design.md), [ADR Decisions](docs/02-architecture/decisions/) |
+| **03-API** | **[API Specifications](docs/03-api/)** | [Endpoint Catalog](docs/03-api/api-overview.md), [Authentication](docs/03-api/authentication.md), [Error Contracts](docs/03-api/error-handling.md), [Mobile API Contract](docs/03-api/recommendation-api-mobile-contract.md) |
+| **04-Development** | **[Development Guides](docs/04-development/)** | [Project Structure](docs/04-development/project-structure.md), [Local Setup](docs/04-development/development-setup.md), [Environment Config](docs/04-development/environment-variables.md), [Coding Standards](docs/04-development/coding-standards.md) |
+| **05-Security** | **[Security & Governance](docs/05-security/)** | [Security Architecture](docs/05-security/security.md), [RBAC Authorization](docs/05-security/authorization.md), [Data Protection](docs/05-security/data-protection.md) |
+| **06-Testing** | **[Quality Assurance](docs/06-testing/)** | [Testing Strategy](docs/06-testing/testing-strategy.md), [Master Test Plan](docs/06-testing/test-plan.md), [Test Cases Catalog](docs/06-testing/test-cases.md) |
+| **07-Deployment** | **[DevOps & Deployment](docs/07-deployment/)** | [Deployment Guide](docs/07-deployment/deployment.md), [Oracle Cloud Deployment](docs/07-deployment/oracle-deployment.md), [CI/CD Pipelines](docs/07-deployment/ci-cd.md), [Infrastructure](docs/07-deployment/infrastructure.md) |
+| **08-Operations** | **[Operations & Runbooks](docs/08-operations/)** | [Monitoring & Health](docs/08-operations/monitoring.md), [Troubleshooting Guide](docs/08-operations/troubleshooting.md), [Execution Runbook](docs/08-operations/execution-runbook.md) |
+| **09-AI-ML** | **[AI/ML Deep Dives](docs/09-ai-ml/)** | [AI/ML Index](docs/09-ai-ml/README.md), [Dataset Specs](docs/09-ai-ml/01-dataset.md), [Feature Engineering](docs/09-ai-ml/03-feature-engineering.md), [Evaluation Results](docs/09-ai-ml/06-model-evaluation-results.md), [Viva Defense Guide](docs/09-ai-ml/viva-preparation-guide.md) |
 
 ---
 
@@ -122,7 +122,7 @@ Basarat-fyp-official/
 │   ├── 04-development/                 # Setup guides, coding standards, configs
 │   ├── 05-security/                    # Threat modeling, RBAC, PII protection
 │   ├── 06-testing/                     # QA test plans, automated test reports
-│   ├── 07-deployment/                  # Docker Compose, AWS EC2 Blue-Green, CI/CD
+│   ├── 07-deployment/                  # Docker Compose, Oracle OCI, CI/CD
 │   ├── 08-operations/                  # Runbooks, monitoring, production reviews
 │   ├── 09-ai-ml/                       # Complete AI/ML lifecycle & Viva guide
 │   └── README.md                       # Documentation index and reading paths
@@ -144,7 +144,7 @@ Basarat-fyp-official/
 │   │   └── tasks/                      # Celery background tasks & beat schedules
 │   ├── alembic/                        # Database migration scripts
 │   ├── data/                           # Canonical dataset & features parquet
-│   ├── deploy/                         # Nginx configurations & deployment scripts
+│   ├── deploy/                         # Production deployment definitions & guides
 │   ├── models/                         # Model Artifacts Store
 │   │   ├── production/v3/              # Active production models (GRU .keras + XGB .ubj)
 │   │   └── archive/                    # Archived legacy models & checkpoints
@@ -236,7 +236,7 @@ For live FYP defense, jury evaluation, and mobile client demoing, the following 
 
 ## 7. Testing & Quality Verification
 
-Basarat adheres to a strict test-driven development and verification strategy. All 204 tests currently pass with 100% success rate:
+Basarat adheres to a strict test-driven development and verification strategy. All 204 tests pass with 100% success rate:
 
 ```bash
 cd backend
@@ -263,9 +263,9 @@ pytest tests/unit/test_schemas.py
 
 ## 8. CI/CD & Deployment
 
-- **Containerization**: Standardized multi-stage [dockerfile](file:///d:/FYP/Basarat-fyp-official/backend/dockerfile) with embedded production ML model bundle (`models/production/v3/`).
-- **Oracle Cloud Production Fleet**: Containerized deployment on Oracle Cloud Infrastructure (OCI) Ampere A1 ARM64 VM (`193.123.84.223`) running FastAPI, Celery Worker, Celery Beat, and Redis ([oracle-deployment.md](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/oracle-deployment.md)).
-- **Automated CI/CD Workflows**: GitHub Actions pipeline automating linting, test execution (204 unit tests), immutable Docker packaging on GHCR, and automated SSH cutover on pushes to `main` ([ci-cd.md](file:///d:/FYP/Basarat-fyp-official/docs/07-deployment/ci-cd.md)).
+- **Containerization**: Standardized multi-stage [dockerfile](backend/dockerfile) with embedded production ML model bundle (`models/production/v3/`).
+- **Oracle Cloud Production Fleet**: Containerized deployment on Oracle Cloud Infrastructure (OCI) Ampere A1 ARM64 VM (`193.123.84.223`) running FastAPI, Celery Worker, Celery Beat, and Redis ([oracle-deployment.md](docs/07-deployment/oracle-deployment.md)).
+- **Automated CI/CD Workflows**: GitHub Actions pipeline automating linting, test execution (204 unit tests), immutable Docker packaging on GHCR, and automated SSH cutover on pushes to `main` ([ci-cd.md](docs/07-deployment/ci-cd.md)).
 
 ---
 
