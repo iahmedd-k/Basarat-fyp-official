@@ -21,11 +21,11 @@ COPY --chown=1000:1000 app/ ./app/
 COPY --chown=1000:1000 alembic/ ./alembic/
 COPY --chown=1000:1000 alembic.ini ./alembic.ini
 COPY --chown=1000:1000 data/config/ ./data/config/
-COPY --chown=1000:1000 models/final/final_v3/gru_best_weights.weights.h5 ./models/final/final_v3/gru_best_weights.weights.h5
-COPY --chown=1000:1000 models/final/final_v3/gru_features.json ./models/final/final_v3/gru_features.json
-COPY --chown=1000:1000 models/final/final_v3/gru_scaler.joblib ./models/final/final_v3/gru_scaler.joblib
-COPY --chown=1000:1000 models/final/final_v3/xgb_model.ubj ./models/final/final_v3/xgb_model.ubj
-COPY --chown=1000:1000 models/final/final_v3/xgb_features.json ./models/final/final_v3/xgb_features.json
+COPY --chown=1000:1000 models/production/v3/gru_best_weights.weights.h5 ./models/production/v3/gru_best_weights.weights.h5
+COPY --chown=1000:1000 models/production/v3/gru_features.json ./models/production/v3/gru_features.json
+COPY --chown=1000:1000 models/production/v3/gru_scaler.joblib ./models/production/v3/gru_scaler.joblib
+COPY --chown=1000:1000 models/production/v3/xgb_model.ubj ./models/production/v3/xgb_model.ubj
+COPY --chown=1000:1000 models/production/v3/xgb_features.json ./models/production/v3/xgb_features.json
 
 RUN mkdir -p /app/tmp /app/data/raw/ohlcv /app/data/features /app/data/reports /app/data/reports/sentiment /app/data/reports/monte_carlo /app/data/news_state /var/lib/celery /home/app \
     && chown -R 1000:1000 /app /var/lib/celery /home/app \

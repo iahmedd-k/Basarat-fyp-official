@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 
-PROD_V3_DIR = Path("models/final/final_v3") if Path("models/final/final_v3").exists() else ROOT_DIR / "models" / "final" / "final_v3"
+PROD_V3_DIR = Path("models/production/v3") if Path("models/production/v3").exists() else ROOT_DIR / "models" / "production" / "v3"
 DATA_DIR = Path("data/scalers") if Path("data/scalers").exists() else ROOT_DIR / "data" / "scalers"
 
 

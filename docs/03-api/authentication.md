@@ -76,3 +76,25 @@ The `get_current_user` dependency in `app/core/authorization.py`:
 - **Password reset grant tokens**: Short-lived (15 min) JWT grants
 - **Password changed alerts**: Email notification on password change
 - **Session revocation**: Password changes revoke all other sessions
+
+---
+
+## Seeded Demo & Evaluator Accounts
+
+For live evaluations, FYP panel demonstrations, and automated test execution, the database includes pre-seeded accounts. All accounts are pre-verified (`is_verified = true`, `is_active = true`), bypassing email OTP validation:
+
+| Account Type | Email | Username | Default Password | Status & Role | Pre-Seeded Fixtures |
+|---|---|---|---|:---:|---|
+| **Primary Demo Investor** | `demo@basarat.pk` | `demo_investor` | `TestPassword12345!` | `is_admin: false`<br/>`is_verified: true` | **Full Feature Showcase**: 6-stock diversified portfolio, risk analytics (VaR/CVaR), default watchlist with notes/targets, price alerts, in-app notification inbox, multi-turn AI chat history, community posts & comments. |
+| **System Administrator** | `admin@basarat.pk` | `admin_master` | `TestPassword12345!` | `is_admin: true`<br/>`is_verified: true` | Full administrative privileges, user management, and audit inspection access. |
+| **Secondary Trader** | `trader2@basarat.pk` | `trader_two` | `TestPassword12345!` | `is_admin: false`<br/>`is_verified: true` | Secondary user fixture for community feed interactions, post comments, and multi-user follower testing. |
+
+### Seeding or Resetting Demo Accounts
+
+To re-seed or verify these demo credentials at any time:
+
+```bash
+cd backend
+python -m scripts.seed_demo_users
+```
+

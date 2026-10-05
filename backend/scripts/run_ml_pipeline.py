@@ -7,7 +7,7 @@ parquet files:
   1. Data Ingestion & Cleaning from data/raw/ohlcv/*.parquet
   2. Technical & Cross-Sectional Feature Engineering
   3. Clean Parquet Generation (features_daily.parquet & features_xgb.parquet)
-  4. XGBoost Production Model Retraining & Export (models/final/final_v3/)
+  4. XGBoost Production Model Retraining & Export (models/production/v3/)
   5. GRU Deep Neural Network Sequence Fitting & Export (models/gru_v1/)
   6. Stale Experimental Cleanup & Manifest Generation
 
@@ -42,7 +42,7 @@ sys.path.insert(0, str(ROOT_DIR))
 RAW_OHLCV_DIR = ROOT_DIR / "data" / "raw" / "ohlcv"
 FEATURES_DIR = ROOT_DIR / "data" / "features"
 PROCESSED_DIR = ROOT_DIR / "data" / "processed"
-FINAL_MODEL_DIR = ROOT_DIR / "models" / "final" / "final_v3"
+FINAL_MODEL_DIR = ROOT_DIR / "models" / "production" / "v3"
 GRU_MODEL_DIR = ROOT_DIR / "models" / "gru_v1"
 SCALER_DIR = ROOT_DIR / "data" / "scalers"
 REPORTS_DIR = ROOT_DIR / "data" / "reports"

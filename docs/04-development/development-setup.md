@@ -98,12 +98,26 @@ python -m pytest -m unit
 python -m pytest -m api
 ```
 
-## Seed Data
+## Seed Data & Demo Credentials
+
+For local development, API testing, and live FYP demonstrations, use the pre-configured verified credentials:
+
+| Role | Email | Username | Password | Status & Fixtures |
+|---|---|---|---|---|
+| **Admin** | `admin@basarat.pk` | `admin_master` | `TestPassword12345!` | `is_admin=True`, `is_verified=True` |
+| **Demo User 1** | `trader1@basarat.pk` | `trader_one` | `TestPassword12345!` | `is_verified=True`, Pre-seeded portfolio (`SYS`, `OGDC`, `HUBC`, `ENGRO`, `MEBL`) |
+| **Demo User 2** | `trader2@basarat.pk` | `trader_two` | `TestPassword12345!` | `is_verified=True`, Community testing user |
+
+### Running Seed Scripts
 
 ```bash
-# Seed admin user
+# Seed all demo users and sample portfolio fixtures (Recommended)
+python -m scripts.seed_demo_users
+
+# Seed only the administrator user
 python scripts/seed_admin.py
 
-# Initialize database tables
+# Initialize database tables and relations
 python scripts/init_db_tables.py
 ```
+

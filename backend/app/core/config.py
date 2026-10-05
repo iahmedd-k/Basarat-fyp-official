@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     GROQ_FALLBACK_MODEL: str = "qwen/qwen3.8-27b"
 
     # ML
-    GRU_MODEL_PATH: str = "models/gru_v1"
+    GRU_MODEL_PATH: str = "models/production/v3"
 
     # Training / Retraining
     TRAINING_LOOKBACK_YEARS: int = 5

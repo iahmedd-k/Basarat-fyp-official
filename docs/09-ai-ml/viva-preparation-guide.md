@@ -473,7 +473,7 @@ The following are source-audit observations, not claims that the models cannot r
 - Financial sentiment: [sentiment_service.py](../app/services/sentiment_service.py), [sentiment_tasks.py](../app/tasks/sentiment_tasks.py).
 - Recommendation score: [recommendation_service.py](../app/services/recommendation_service.py).
 - Hosted chat model: [groq_client.py](../app/services/groq_client.py), [assistant_service.py](../app/services/assistant_service.py).
-- Deployed package metadata/results: [model_manifest.json](../models/final/final_v3/model_manifest.json), [gru_metrics.json](../models/final/final_v3/gru_metrics.json), and [xgb_metrics.json](../models/final/final_v3/xgb_metrics.json).
+- Deployed package metadata/results: [model_manifest.json](../models/production/v3/model_manifest.json), [gru_metrics.json](../models/production/v3/gru_metrics.json), and [xgb_metrics.json](../models/production/v3/xgb_metrics.json).
 
 ## 10. Final 20-second closing answer
 

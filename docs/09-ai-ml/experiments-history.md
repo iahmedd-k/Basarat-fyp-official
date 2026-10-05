@@ -184,7 +184,7 @@ Evaluated on 33,730 sealed out-of-sample test instances:
 
 The active production serving layer [`backend/app/ml/serving/model_loader.py`](file:///d:/Ahmed%20Dev/Projects/Basarat-fyp-official/backend/app/ml/serving/model_loader.py) and [`backend/app/ml/serving/inference.py`](file:///d:/Ahmed%20Dev/Projects/Basarat-fyp-official/backend/app/ml/serving/inference.py) loads the `final_v3_institutional_ensemble`:
 
-1. **XGBoost Artifact:** [`backend/models/final/final_v3/xgb_model.ubj`](file:///d:/Ahmed%20Dev/Projects/Basarat-fyp-official/backend/models/final/final_v3/xgb_model.ubj) (70 features, Universal Binary JSON)
-2. **Attention-BiGRU Artifact:** [`backend/models/final/final_v3/gru_model.keras`](file:///d:/Ahmed%20Dev/Projects/Basarat-fyp-official/backend/models/final/final_v3/gru_model.keras) & [`gru_best_weights.weights.h5`](file:///d:/Ahmed%20Dev/Projects/Basarat-fyp-official/backend/models/final/final_v3/gru_best_weights.weights.h5) (79 features, sequence length = 45)
-3. **Scaler & Metadata:** [`gru_scaler.joblib`](file:///d:/Ahmed%20Dev/Projects/Basarat-fyp-official/backend/models/final/final_v3/gru_scaler.joblib), [`gru_train_medians.json`](file:///d:/Ahmed%20Dev/Projects/Basarat-fyp-official/backend/models/final/final_v3/gru_train_medians.json)
-4. **Manifest:** [`backend/models/final/final_v3/model_manifest.json`](file:///d:/Ahmed%20Dev/Projects/Basarat-fyp-official/backend/models/final/final_v3/model_manifest.json)
+1. **XGBoost Artifact:** [`xgb_model.ubj`](../models/production/v3/xgb_model.ubj) (70 features, Universal Binary JSON)
+2. **Attention-BiGRU Artifact:** [`gru_model.keras`](../models/production/v3/gru_model.keras) & [`gru_best_weights.weights.h5`](../models/production/v3/gru_best_weights.weights.h5) (79 features, sequence length = 45)
+3. **Scaler & Metadata:** [`gru_scaler.joblib`](../models/production/v3/gru_scaler.joblib), [`gru_train_medians.json`](../models/production/v3/gru_train_medians.json)
+4. **Manifest:** [`model_manifest.json`](../models/production/v3/model_manifest.json)

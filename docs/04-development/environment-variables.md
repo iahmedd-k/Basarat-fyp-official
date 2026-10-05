@@ -1,103 +1,91 @@
-# Environment Variables
+# Environment Variables Reference
 
-## Core Configuration
+This document provides a comprehensive dictionary of all runtime environment variables accepted and validated by `app/core/config.py` (Pydantic `Settings`).
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `PROJECT_NAME` | No | Application name | `Basarat` | No |
-| `ENVIRONMENT` | No | Runtime environment | `development` | No |
-| `DEBUG` | No | Debug mode | `false` | No |
-| `SECRET_KEY` | **Yes** | JWT signing key (32+ chars) | — | **Yes** |
-| `ALGORITHM` | No | JWT algorithm | `HS256` | No |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Access token lifetime | `30` | No |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | No | Refresh token lifetime | `7` | No |
+---
 
-## Database
+## 1. Core Server & Security Settings
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `DATABASE_URL` | Yes | Async PostgreSQL URL | `postgresql+asyncpg://...localhost...` | **Yes** |
-| `DATABASE_URL_SYNC` | No | Sync PostgreSQL URL (auto-derived) | — | **Yes** |
-| `CLOUD_DATABASE_URL` | Prod | Production database URL | — | **Yes** |
-| `POSTGRES_USER` | Docker | Docker Compose DB user | `basarat` | No |
-| `POSTGRES_PASSWORD` | Docker | Docker Compose DB password | — | **Yes** |
-| `POSTGRES_DB` | Docker | Docker Compose DB name | `basarat` | No |
+| Variable | Required | Type | Default | Description |
+|---|---|---|---|---|
+| `PROJECT_NAME` | No | `str` | `Basarat` | Application brand name displayed in logs and documentation. |
+| `ENVIRONMENT` | No | `str` | `development` | Runtime environment: `development`, `staging`, `production`. |
+| `DEBUG` | No | `bool` | `false` | Enables verbose tracebacks and Swagger UI. Must be `false` in production. |
+| `SECRET_KEY` | **Yes** | `str` | — | Cryptographic secret for signing JWT tokens (min 32 characters). |
+| `ALGORITHM` | No | `str` | `HS256` | JWT signature algorithm. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | `int` | `60` | JWT Access token expiration lifetime in minutes. |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | No | `int` | `7` | JWT Refresh token validity window in days. |
+| `CORS_ORIGINS` | No | `list[str]` | `["http://localhost:3000","http://localhost:8080"]` | Allowed CORS origins. In production, wildcard `*` and `localhost` are rejected. |
+| `ALLOWED_HOSTS` | No | `list[str]` | `["localhost","127.0.0.1"]` | Allowed HTTP `Host` header values validated by `TrustedHostMiddleware`. |
 
-## Redis & Cache
+---
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `REDIS_URL` | No | Redis connection URL | `redis://localhost:6379/0` | **Yes** |
-| `CLOUD_REDIS_URL` | Prod | Production Redis URL | — | **Yes** |
-| `REDIS_ENABLED` | No | Enable Redis | `true` | No |
-| `CACHE_TTL_SECONDS` | No | Default cache TTL | `300` | No |
+## 2. Database & Data Stores
 
-## Celery
+| Variable | Required | Type | Default | Description |
+|---|---|---|---|---|
+| `DATABASE_URL` | **Yes** | `str` | `postgresql+asyncpg://basarat:password@localhost:5432/basarat` | Primary asynchronous PostgreSQL connection URL. |
+| `DATABASE_URL_SYNC` | No | `str` | Auto-derived from `DATABASE_URL` (`postgresql+psycopg2://...`) | Synchronous connection string utilized by Celery workers & Alembic. |
+| `CLOUD_DATABASE_URL` | Prod | `str` | — | Cloud-hosted database URL (e.g., Supabase / AWS RDS). |
+| `POSTGRES_USER` | Docker | `str` | `basarat` | PostgreSQL username for local Docker Compose instance. |
+| `POSTGRES_PASSWORD` | Docker | `str` | — | PostgreSQL password for local Docker Compose instance. |
+| `POSTGRES_DB` | Docker | `str` | `basarat` | PostgreSQL database name for local Docker Compose instance. |
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `USE_CELERY` | No | Enable Celery | `true` | No |
-| `CELERY_BROKER_URL` | No | Celery broker URL | `redis://localhost:6379/1` | **Yes** |
-| `CELERY_RESULT_BACKEND` | No | Celery result backend | `redis://localhost:6379/2` | **Yes** |
+---
 
-## External Services
+## 3. Redis & Caching Tier
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `GROQ_API_KEY` | No | Groq LLM API key | — | **Yes** |
-| `GROQ_BASE_URL` | No | Groq API base URL | `https://api.groq.com/openai/v1` | No |
-| `GROQ_MODEL` | No | Primary LLM model | `openai/gpt-oss-20b` | No |
-| `GROQ_FALLBACK_MODEL` | No | Fallback LLM model | `qwen/qwen3.8-27b` | No |
-| `HF_API_TOKEN` | No | HuggingFace API token | — | **Yes** |
-| `SENDGRID_API_KEY` | No | SendGrid email API key | — | **Yes** |
-| `SENDGRID_FROM_EMAIL` | No | Sender email address | — | No |
-| `CLOUDINARY_CLOUD_NAME` | No | Cloudinary cloud name | — | No |
-| `CLOUDINARY_API_KEY` | No | Cloudinary API key | — | **Yes** |
-| `CLOUDINARY_API_SECRET` | No | Cloudinary API secret | — | **Yes** |
+| Variable | Required | Type | Default | Description |
+|---|---|---|---|---|
+| `REDIS_URL` | No | `str` | `redis://localhost:6379/0` | Primary Redis connection URI for application caching. |
+| `CLOUD_REDIS_URL` | Prod | `str` | — | Managed cloud Redis connection URI (e.g. Upstash). |
+| `REDIS_ENABLED` | No | `bool` | `true` | Toggle Redis caching layer. |
+| `CACHE_TTL_SECONDS` | No | `int` | `300` | Default application cache TTL in seconds. |
 
-## OAuth
+---
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `GOOGLE_CLIENT_ID` | No | Google OAuth client ID | — | No |
-| `GOOGLE_CLIENT_SECRET` | No | Google OAuth secret | — | **Yes** |
-| `APPLE_CLIENT_ID` | No | Apple service/bundle ID | — | No |
-| `APPLE_TEAM_ID` | No | Apple team ID | — | No |
-| `APPLE_KEY_ID` | No | Apple key ID | — | No |
+## 4. Celery Distributed Task Processing
 
-## Firebase
+| Variable | Required | Type | Default | Description |
+|---|---|---|---|---|
+| `USE_CELERY` | No | `bool` | `true` | When `true`, dispatches background jobs via Celery worker queue. |
+| `CELERY_BROKER_URL` | No | `str` | `redis://localhost:6379/1` | Redis database URI dedicated to Celery message broker. |
+| `CELERY_RESULT_BACKEND` | No | `str` | `redis://localhost:6379/2` | Redis database URI dedicated to Celery task execution results. |
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `FIREBASE_ENABLED` | No | Enable FCM push | `false` | No |
-| `FIREBASE_CREDENTIALS_PATH` | If enabled | Firebase service account JSON | — | **Yes** |
-| `FIREBASE_PROJECT_ID` | If enabled | Firebase project ID | — | No |
+---
 
-## SMTP (Legacy/Alternative to SendGrid)
+## 5. AI, ML & NLP Integrations
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `SMTP_HOST` | No | SMTP server host | — | No |
-| `SMTP_PORT` | No | SMTP port | `465` | No |
-| `SMTP_USERNAME` | No | SMTP username | — | No |
-| `SMTP_PASSWORD` | No | SMTP password | — | **Yes** |
-| `SMTP_FROM_EMAIL` | No | Sender email | — | No |
-| `PASSWORD_RESET_URL` | No | Deep link template | `basarat://reset-password?token={token}` | No |
+| Variable | Required | Type | Default | Description |
+|---|---|---|---|---|
+| `GROQ_API_KEY` | No | `str` | — | API authentication key for Groq Cloud LLM acceleration. |
+| `GROQ_BASE_URL` | No | `str` | `https://api.groq.com/openai/v1` | OpenAI-compatible endpoint URL for Groq. |
+| `GROQ_MODEL` | No | `str` | `llama-3.3-70b-versatile` | Primary large language model for AI Copilot chat. |
+| `GROQ_FALLBACK_MODEL` | No | `str` | `llama-3.1-8b-instant` | Fallback model in case of primary model rate limiting. |
+| `HF_API_TOKEN` | No | `str` | — | HuggingFace API token for FinBERT financial sentiment inference. |
+| `GRU_MODEL_PATH` | No | `str` | `models/production/v3` | Local filesystem path to trained GRU model artifacts. |
 
-## ML Configuration
+---
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `GRU_MODEL_PATH` | No | ML model artifacts path | `models/gru_v1` | No |
-| `TRAINING_LOOKBACK_YEARS` | No | Training data window | `5` | No |
-| `WINDOW_SIZE` | No | Feature window size | `30` | No |
-| `LABEL_THRESHOLD` | No | Direction label threshold | `0.01` | No |
+## 6. External Messaging & Storage Services
 
-## Market Data
+| Variable | Required | Type | Default | Description |
+|---|---|---|---|---|
+| `SENDGRID_API_KEY` | No | `str` | — | SendGrid API key for transactional email and OTP dispatch. |
+| `SENDGRID_FROM_EMAIL` | No | `str` | `noreply@basarat.com` | Verified sender email address for system emails. |
+| `CLOUDINARY_CLOUD_NAME` | No | `str` | — | Cloudinary cloud account name. |
+| `CLOUDINARY_API_KEY` | No | `str` | — | Cloudinary API access key for image management. |
+| `CLOUDINARY_API_SECRET` | No | `str` | — | Cloudinary secret access key. |
+| `FIREBASE_ENABLED` | No | `bool` | `false` | Enable Firebase Cloud Messaging for push notifications. |
+| `FIREBASE_CREDENTIALS_PATH` | No | `str` | — | Filesystem path to Firebase Admin SDK service account JSON. |
 
-| Variable | Required | Purpose | Default | Sensitive |
-|----------|----------|---------|---------|-----------|
-| `MARKET_SESSION_REFRESH_SECONDS` | No | Quote refresh interval | `60` | No |
-| `MARKET_QUOTES_TTL_SECONDS` | No | Redis quote TTL | `90` | No |
-| `MARKET_CIRCUIT_BREAKER_SECONDS` | No | Scrape pause on PSX error | `900` | No |
-| `NEWS_INGESTION_INTERVAL_MARKET` | No | News interval during market | `1800` | No |
+---
+
+## 7. Market Scraping & Pipeline Timing
+
+| Variable | Required | Type | Default | Description |
+|---|---|---|---|---|
+| `MARKET_SESSION_REFRESH_SECONDS` | No | `int` | `60` | Interval between intraday live market quote snapshots. |
+| `MARKET_QUOTES_TTL_SECONDS` | No | `int` | `90` | Cache retention TTL for live market quote lists in Redis. |
+| `MARKET_CIRCUIT_BREAKER_SECONDS` | No | `int` | `900` | Circuit breaker pause duration upon upstream PSX 403/429 HTTP status. |
+| `NEWS_INGESTION_INTERVAL_MARKET` | No | `int` | `1800` | News scrape interval during market hours (30 minutes). |

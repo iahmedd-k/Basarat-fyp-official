@@ -8,7 +8,7 @@
 **Resolution:**
 - Verify `.env` file has valid `SECRET_KEY` (32+ chars, not a placeholder)
 - Verify `DATABASE_URL` is reachable
-- Verify ML model files exist in `models/final/final_v3/`
+- Verify ML model files exist in `models/production/v3/`
 - Check for import errors in logs
 
 ## Database Connection Errors

@@ -5,7 +5,7 @@ Computes:
   - Directional accuracy across full test set
   - Actionable accuracy at confidence rejection thresholds (tau = 0.50 to 0.60)
   - Long/Short alpha spread and Spearman Rank IC
-  - Production model artifacts saved to models/final/final_v3/
+  - Production model artifacts saved to models/production/v3/
 """
 
 import json
@@ -24,7 +24,7 @@ log = logging.getLogger("train_all_horizons")
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DATA_PATH = ROOT_DIR / "data" / "processed_v3" / "features_v3.parquet"
-OUTPUT_DIR = ROOT_DIR / "models" / "final" / "final_v3"
+OUTPUT_DIR = ROOT_DIR / "models" / "production" / "v3"
 
 
 def get_v3_feature_columns(df: pd.DataFrame) -> list:

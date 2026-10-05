@@ -1,94 +1,79 @@
-# Project Structure
+# Repository & Project Structure
+
+The Basarat repository is organized into distinct functional layers separating API presentation, domain services, database models, ML training & serving pipelines, asynchronous background tasks, testing suites, and deployment assets.
 
 ```
 Basarat-fyp-official/
-+-- .github/
-|   +-- workflows/
-|       +-- deploy-ec2.yml          # CI/CD pipeline
-+-- backend/
-    +-- app/                        # Main application package
-    |   +-- api/
-    |   |   +-- v1/                 # API v1 route handlers
-    |   |       +-- admin/          # Admin endpoints (community moderation)
-    |   |       +-- assistant/      # AI assistant chat endpoints
-    |   |       +-- community/      # Social trading endpoints
-    |   |       +-- auth.py         # Authentication routes
-    |   |       +-- market.py       # Market data routes
-    |   |       +-- stocks.py       # Stock detail routes
-    |   |       +-- portfolio.py    # Portfolio management routes
-    |   |       +-- ... (22 total route modules)
-    |   +-- core/                   # Core infrastructure
-    |   |   +-- config.py           # Settings (Pydantic BaseSettings)
-    |   |   +-- security.py         # JWT, bcrypt, token functions
-    |   |   +-- authorization.py    # Auth dependencies
-    |   |   +-- exceptions.py       # Custom exception classes
-    |   |   +-- rate_limiter.py     # SlowAPI rate limiting
-    |   |   +-- redis.py            # Redis cache client
-    |   |   +-- logging.py          # Logging setup
-    |   |   +-- task_runner.py      # Celery/in-process task dispatcher
-    |   |   +-- database_urls.py    # DB URL normalization
-    |   |   +-- health.py           # Health check constants
-    |   +-- db/                     # Database configuration
-    |   |   +-- base.py             # Engine, session factory, Base class
-    |   |   +-- session.py          # get_db() dependency
-    |   +-- models/                 # SQLAlchemy ORM models (19 model files)
-    |   +-- schemas/                # Pydantic schemas (12 schema files)
-    |   +-- services/               # Business logic layer (32 service files)
-    |   |   +-- news_pipeline/      # Multi-source news scraping
-    |   |   +-- portfolio/          # Portfolio calculation helpers
-    |   +-- repository/             # Data access layer (2 files)
-    |   +-- tasks/                  # Celery background tasks (16 task files)
-    |   +-- ml/                     # Machine learning
-    |   |   +-- serving/            # Model loading, inference, prediction store
-    |   |   +-- training/           # Training pipelines
-    |   |   +-- v2/, v3/            # Model versions
-    |   +-- data/                   # Static data, scrapers, config files
-    |   +-- cache/                  # Redis client module
-    |   +-- main.py                 # FastAPI application entry point
-    |   +-- celery_app.py           # Celery configuration and beat schedule
-    +-- alembic/                    # Database migrations
-    |   +-- versions/               # 19 migration files
-    +-- deploy/
-    |   +-- ec2/                    # EC2 deployment scripts (blue-green)
-    |   +-- nginx/                  # Nginx reverse proxy configuration
-    +-- models/
-    |   +-- final/                  # Trained ML model artifacts
-    +-- data/                       # Runtime data (OHLCV, features, config)
-    +-- scripts/                    # Utility scripts (21 files)
-    +-- tests/                      # Test suite
-    |   +-- api/                    # API endpoint tests (17 files)
-    |   +-- unit/                   # Unit tests (15 files)
-    |   +-- e2e/                    # End-to-end tests
-    |   +-- integration/            # Integration tests
-    |   +-- performance/            # Performance tests
-    |   +-- security/               # Security tests
-    |   +-- conftest.py             # Test fixtures and configuration
-    +-- dockerfile                  # Docker image definition
-    +-- docker-compose.yml          # Development compose
-    +-- docker-compose.production.yml  # Production compose
-    +-- requirements.txt            # Python dependencies
-    +-- requirements.lock           # Locked dependencies with hashes
-    +-- alembic.ini                 # Alembic configuration
-    +-- pytest.ini                  # Test configuration
-    +-- .env.example                # Environment variable template
+│
+├── .github/
+│   └── workflows/
+│       └── deploy-ec2.yml          # GitHub Actions CI/CD automated pipeline
+│
+├── docs/                           # Master Documentation Directory
+│   ├── README.md                   # Documentation Index & Sitemap
+│   ├── 01-project/                 # Project Requirements & Scope
+│   ├── 02-architecture/            # SDD, HLD, LLD, Database Design & ADRs
+│   ├── 03-api/                     # API Reference, Authentication & Contracts
+│   ├── 04-development/             # Setup Guides, Environment & Standards
+│   ├── 05-security/                # Security, RBAC & Data Protection
+│   ├── 06-testing/                 # Test Plans, Pytest Suite & Coverage
+│   ├── 07-deployment/              # Docker, Infrastructure & Blue-Green Rollout
+│   ├── 08-operations/              # Monitoring, Logging, Troubleshooting & Runbooks
+│   └── 09-ai-ml/                   # Complete AI/ML Lifecycle Documentation
+│
+├── data/                           # Global Data Assets & Training Corpus
+│   ├── raw/                        # Historical raw PSX equity OHLCVs
+│   └── features/                   # Normalized parquet feature datasets (2020-2026)
+│
+└── backend/                        # Backend Application Root
+    │
+    ├── app/                        # FastAPI Application Package
+    │   ├── api/                    # API Presentation & Route Handlers
+    │   │   └── v1/                 # 22 Domain Routers (Auth, Stocks, Forecast, etc.)
+    │   │
+    │   ├── core/                   # Infrastructure, Security, Rate Limiter & Exceptions
+    │   ├── db/                     # SQLAlchemy Async Session & Declarative Base
+    │   ├── models/                 # SQLAlchemy 2.0 ORM Entity Models
+    │   ├── schemas/                # Pydantic v2 Request / Response Schemas
+    │   ├── services/               # 32 Domain Business Services & News Pipeline
+    │   ├── tasks/                  # Celery Background Workers & Schedulers
+    │   │
+    │   ├── ml/                     # Machine Learning Package
+    │   │   ├── README.md           # Package overview & navigation guide
+    │   │   ├── serving/            # [ACTIVE] Dual-model loader & real-time inference
+    │   │   ├── v3/                 # [ACTIVE] Feature engineering v3 & multi-horizon trainer
+    │   │   ├── v2/                 # [ARCHIVE] Previous v2 pipeline
+    │   │   ├── training/           # [ARCHIVE] Initial v1 GRU experiments
+    │   │   └── training_xgb/       # [ARCHIVE] Initial v1 XGBoost experiments
+    │   │
+    │   ├── main.py                 # FastAPI Application Initialization & Lifespan
+    │   └── celery_app.py           # Celery Worker Configuration & Beat Schedules
+    │
+    ├── models/                     # Packaged ML Model Weights & Manifests
+    │   ├── README.md               # Model catalog & artifact reference
+    │   ├── production/
+    │   │   └── v3/                 # [ACTIVE PRODUCTION] Attention-BiGRU & XGBoost (5D, 10D, 20D)
+    │   └── archive/                # Legacy models & experimental archives
+    │
+    ├── scripts/                    # Operational & Diagnostic Utilities
+    │   ├── README.md               # Index of all operational, seeding, sync, and testing scripts
+    │   ├── init_db_tables.py       # Database schema initialization
+    │   ├── seed_admin.py           # Admin account seeding
+    │   ├── seed_all_fundamentals.py# Fundamentals seeder
+    │   ├── sync_friday_prices.py   # Friday market session synchronization
+    │   ├── sync_kse100_database.py # KSE-100 constituents sync
+    │   ├── test_live_ai_ml_endpoints.py # AI/ML live endpoint test
+    │   ├── test_live_chatbot_streaming.py # Chatbot SSE streaming test
+    │   ├── run_live_oracle_comprehensive_audit.py # Comprehensive live audit
+    │   ├── validate_recommendation_engine.py # Recommendation engine validator
+    │   ├── run_ml_pipeline.py      # ML pipeline orchestration
+    │   └── archive/                # Archived one-off / scratch / inspection scripts
+    │
+    ├── tests/                      # Automated Pytest Suite (unit, api, e2e)
+    ├── deploy/                     # Deployment Scripts & Nginx Configurations
+    ├── Dockerfile                  # Multi-stage production container definition
+    ├── docker-compose.yml          # Local development compose
+    ├── docker-compose.production.yml # Production compose stack
+    ├── requirements.txt            # Direct dependencies
+    └── requirements.lock           # Locked dependencies with SHA-256 hashes
 ```
-
-## Key Directories
-
-### `app/api/v1/`
-Thin route handlers that validate input, call services, and return responses. Each file corresponds to a Swagger tag group.
-
-### `app/services/`
-Contains all business logic. Services are the largest layer, handling data processing, external API calls, ML inference orchestration, and complex business rules.
-
-### `app/models/`
-SQLAlchemy ORM models defining the database schema. Each file represents a domain entity or group of related entities.
-
-### `app/tasks/`
-Celery task definitions for background processing. Each file groups related tasks (news, sentiment, alerts, etc.).
-
-### `app/ml/serving/`
-ML model serving infrastructure: model loading, inference pipeline, prediction storage, model registry, and promotion logic.
-
-### `deploy/`
-Production deployment infrastructure: EC2 blue-green deployment scripts and Nginx reverse proxy configuration.
