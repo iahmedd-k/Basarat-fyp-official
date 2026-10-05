@@ -32,12 +32,8 @@ flowchart TD
         ANDROID["Android Mobile App<br/>(Kotlin / Jetpack Compose / MVI)"]
     end
 
-    subgraph IngressTier ["Edge & Ingress Tier"]
-        NGINX["Nginx Reverse Proxy<br/>(TLS Termination, Rate Limiting, CORS)"]
-    end
-
-    subgraph ServiceFleet ["Application Service Tier"]
-        FASTAPI["FastAPI Async API Server (Port 8000)<br/>• 22 Domain Routers & Auth Middleware<br/>• SlowAPI IP/User Rate Limiting<br/>• Correlation ID (X-Request-ID) Tracing<br/>• RAG AI Copilot (Groq Llama 3.3 70B)"]
+    subgraph ServiceFleet ["Application Service Tier (Oracle Cloud Infrastructure)"]
+        FASTAPI["FastAPI Async API Gateway & Server (Port 8000)<br/>• 22 Domain Routers & Auth Middleware<br/>• SlowAPI IP/User Rate Limiting<br/>• Correlation ID (X-Request-ID) Tracing<br/>• RAG AI Copilot (Groq Llama 3.3 70B)"]
         CELERY_W["Celery Distributed Workers<br/>• Post-Market Data Ingestion Pipeline<br/>• Multi-Source News Scraper & FinBERT Sentiment<br/>• Dynamic Alert Trigger Engine"]
         CELERY_B["Celery Beat Scheduler<br/>(Mon-Fri Cron Schedules)"]
     end
@@ -53,8 +49,7 @@ flowchart TD
         REDIS[("Redis 7 In-Memory Store<br/>(Pub/Sub Quotes, Rate Limits, Celery Broker, Locks)")]
     end
 
-    ANDROID -->|HTTPS / WSS| NGINX
-    NGINX -->|Reverse Proxy| FASTAPI
+    ANDROID -->|HTTPS / WSS (Port 8000)| FASTAPI
     FASTAPI --> MLSubsystem
     FASTAPI --> POSTGRES
     FASTAPI --> REDIS

@@ -66,15 +66,11 @@ The Container diagram illustrates the runtime deployment topology of Docker cont
 ```mermaid
 flowchart TD
     subgraph Client ["Client Device"]
-        APP["Android Mobile Client"]
+        APP["Android Mobile Client (Kotlin / Compose)"]
     end
 
-    subgraph Ingress ["Edge & Security Ingress"]
-        NGINX["Nginx Reverse Proxy<br/>TLS Termination, Rate Limiting (20 req/s, burst 50),<br/>Request Routing, Static Asset Cache"]
-    end
-
-    subgraph AppContainer ["Core API Service Container (FastAPI)"]
-        UVICORN["Uvicorn ASGI Server<br/>(Worker Pool)"]
+    subgraph AppContainer ["Core API Service Container (FastAPI on Oracle OCI)"]
+        UVICORN["Uvicorn ASGI Server<br/>(Port 8000)"]
         FASTAPI["FastAPI Web Framework"]
         MIDDLEWARE["Middleware Stack<br/>• Correlation ID (X-Request-ID)<br/>• TrustedHost Security<br/>• CORS Origin Enforcer<br/>• SlowAPI Rate Limiter<br/>• RFC 7807 Error Handler"]
         ROUTERS["API v1 Route Handlers<br/>(22 Domain Routers)"]
@@ -103,10 +99,8 @@ flowchart TD
         ALEMBIC["Alembic Migration Runner<br/>(Runs before API startup on deployment)"]
     end
 
-    APP -->|HTTPS REST (Port 443)| NGINX
-    APP -->|WSS WebSockets (Port 443)| NGINX
-
-    NGINX -->|HTTP Reverse Proxy (Port 8000)| UVICORN
+    APP -->|HTTPS REST (Port 8000)| UVICORN
+    APP -->|WSS WebSockets (Port 8000)| UVICORN
     UVICORN --> FASTAPI
     FASTAPI --> MIDDLEWARE
     MIDDLEWARE --> ROUTERS

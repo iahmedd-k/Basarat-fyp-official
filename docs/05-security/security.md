@@ -19,7 +19,7 @@
 
 ### Rate Limiting
 - SlowAPI per-user/IP rate limiting on auth endpoints (3-15 req/min)
-- Nginx-level rate limiting (20 req/s burst 50, 20 concurrent connections)
+- Application-level rate limit middleware across public and authenticated API routes
 - Trusted proxy IP support for X-Forwarded-For extraction
 
 ### Input Validation

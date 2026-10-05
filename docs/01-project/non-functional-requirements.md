@@ -70,12 +70,12 @@
 **Evidence:** `app/api/v1/`, `app/services/`, `app/models/`, `app/schemas/`, `app/core/`.
 **Gaps:** Some services (e.g., `stock_service.py` at 69KB) are very large and could benefit from decomposition.
 
-## NFR-011 — Availability: Blue-Green Deployment
+## NFR-011 — Availability: Containerized CI/CD Deployment
 
-**Requirement:** Deployments should not cause downtime.
-**Current Implementation:** Blue-green deployment with Nginx proxy switching, health check verification, and automatic rollback on failure.
-**Evidence:** `deploy/ec2/deploy-api.sh`, `deploy/ec2/bootstrap-bluegreen.sh`.
-**Gaps:** None identified for single-instance deployment.
+**Requirement:** Deployments should minimize downtime and verify health before service activation.
+**Current Implementation:** Containerized deployment on Oracle Cloud Infrastructure with automated migration execution, container restarting, and readiness health probe verification (`/health`, `/api/v1/health/ready`).
+**Evidence:** `.github/workflows/deploy-oracle.yml`, `docker-compose.production.yml`, `docs/07-deployment/oracle-deployment.md`.
+**Gaps:** None identified for single-node compute deployment.
 
 ## NFR-012 — Observability: Logging
 

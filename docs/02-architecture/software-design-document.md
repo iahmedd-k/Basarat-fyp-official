@@ -86,30 +86,25 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    subgraph Host ["Production Host (Docker Compose)"]
-        NGINX["Nginx (Port 80/443)"]
-        
+    subgraph Host ["Production Host (Oracle Cloud OCI / Docker Compose)"]
         subgraph Services ["Application Services"]
-            APP["basarat-app<br/>(FastAPI / Uvicorn)"]
-            MIGRATE["basarat-migrate<br/>(Alembic Upgrade Head)"]
-            WORKER_GEN["basarat-worker-general<br/>(Alerts / Push / Email)"]
-            WORKER_ML["basarat-worker-ml<br/>(Daily Workflow / ML Inference)"]
-            WORKER_LIVE["basarat-worker-live<br/>(Market 60s Cache / News)"]
-            BEAT["basarat-beat<br/>(Cron Scheduler)"]
+            APP["basarat-app-1<br/>(FastAPI / Uvicorn Port 8000)"]
+            MIGRATE["basarat-migrate-1<br/>(Alembic Upgrade Head)"]
+            WORKER["basarat-celery-worker-1<br/>(Alerts / ML / Ingestion)"]
+            BEAT["basarat-celery-beat-1<br/>(Periodic Scheduler)"]
         end
 
-        subgraph DataStores ["Data Stores"]
-            REDIS["Redis 7 (Port 6379)"]
-            POSTGRES["PostgreSQL 16 (Port 5432)"]
+        subgraph DataStores ["Data & In-Memory Stores"]
+            REDIS["basarat-redis-1<br/>(Redis 7 Port 6379)"]
+            POSTGRES[("PostgreSQL 16 DB<br/>(Managed Cloud)")]
         end
     end
 
-    NGINX -->|Proxy :8000| APP
-    MIGRATE -.->|One-shot Run| POSTGRES
     APP --> POSTGRES
     APP --> REDIS
-    WORKER_GEN & WORKER_ML & WORKER_LIVE --> REDIS
-    WORKER_GEN & WORKER_ML & WORKER_LIVE --> POSTGRES
+    MIGRATE -.->|One-shot Run| POSTGRES
+    WORKER --> REDIS
+    WORKER --> POSTGRES
     BEAT --> REDIS
 ```
 
