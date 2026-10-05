@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+import hashlib
+import json
 import logging
+from typing import Optional, List
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Request, Header, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.rate_limiter import limiter
@@ -19,11 +22,18 @@ from app.schemas.community import (
     CommunityPostUpdate,
     CommunityPostResponse,
     CommunityPostListResponse,
+    CommunityPostDetailResponse,
+    CommunityCommentResponse,
+    CommunityAuthorSummary,
+    CommunityTrendingResponse,
     FeedQueryParams,
     PostType,
+    PostStatus,
 )
 from app.services.community_service import CommunityService
 from app.services.cloudinary_service import cloudinary_service
+from app.services.idempotency_service import IdempotencyService
+from app.services.trending_service import TrendingService
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -33,143 +43,269 @@ async def _get_service(db: AsyncSession = Depends(get_db)) -> CommunityService:
     return CommunityService(db)
 
 
+def _build_post_response(
+    post,
+    liked_by_me: bool = False,
+    bookmarked_by_me: bool = False,
+) -> CommunityPostResponse:
+    # Extract ticker symbols
+    tickers = []
+    if hasattr(post, "tickers") and post.tickers:
+        tickers = [t.ticker for t in post.tickers]
+    elif post.stock_symbol:
+        tickers = [post.stock_symbol]
+
+    # Parse media metadata
+    media_meta = None
+    if post.media_metadata:
+        try:
+            media_meta = json.loads(post.media_metadata) if isinstance(post.media_metadata, str) else post.media_metadata
+        except Exception:
+            pass
+
+    author_obj = None
+    if post.author:
+        author_obj = CommunityAuthorSummary(
+            id=post.author.id,
+            username=post.author.username,
+            full_name=post.author.full_name or "",
+            avatar_url=post.author.avatar_url or "",
+            is_verified=getattr(post.author, "is_verified", False),
+        )
+
+    return CommunityPostResponse(
+        id=post.id,
+        author_id=post.author_id,
+        author_username=post.author.username if post.author else "",
+        author_full_name=post.author.full_name if post.author else "",
+        author_avatar_url=post.author.avatar_url if post.author else "",
+        author_verified=getattr(post.author, "is_verified", False) if post.author else False,
+        author=author_obj,
+        post_type=PostType(post.post_type),
+        stock_symbol=post.stock_symbol or "",
+        stock_name=post.stock.name if post.stock else "",
+        tickers=tickers,
+        price_at_post=post.price_at_post,
+        price_snapshot=post.price_at_post,
+        content=post.content,
+        image_url=post.image_url or "",
+        media_metadata=media_meta,
+        like_count=post.like_count,
+        comment_count=post.comment_count,
+        report_count=post.report_count,
+        view_count=getattr(post, "view_count", 0),
+        bookmark_count=getattr(post, "bookmark_count", 0),
+        is_edited=getattr(post, "is_edited", False),
+        edited_at=getattr(post, "edited_at", None),
+        status=PostStatus(post.status) if hasattr(PostStatus, post.status) else PostStatus.PUBLISHED,
+        removed_reason=post.removed_reason or "",
+        liked_by_me=liked_by_me,
+        bookmarked_by_me=bookmarked_by_me,
+        created_at=post.created_at,
+        updated_at=post.updated_at,
+    )
+
+
 @router.post(
     "/community/posts",
     response_model=CommunityPostResponse,
     status_code=201,
     summary="Create a new community post",
 )
-@limiter.limit("1/30seconds")
+@limiter.limit("10/minute")
 async def create_post(
     request: Request,
     content: str = Form(..., min_length=1, max_length=5000),
     post_type: PostType = Form(...),
     stock_symbol: str | None = Form(None),
+    image_url: str | None = Form(None),
+    image_public_id: str | None = Form(None),
+    media_metadata: str | None = Form(None),
     image: UploadFile | None = File(None),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
 ):
+    # Check Idempotency Key
+    if idempotency_key:
+        cached_res = await IdempotencyService.get_stored_response(
+            service.db, user.id, idempotency_key, "/community/posts"
+        )
+        if cached_res:
+            code, body = cached_res
+            return CommunityPostResponse(**body)
+
+    uploaded_public_id = None
     try:
+        final_image_url = image_url
+        final_image_public_id = image_public_id
+
+        # Direct multipart upload fallback if provided
         if image:
             if not cloudinary_service.is_configured():
                 raise ServiceUnavailableError("Image upload service not configured")
-
-            image_url, image_public_id = await cloudinary_service.upload_image(image)
-        else:
-            image_url = None
-            image_public_id = None
+            final_image_url, final_image_public_id = await cloudinary_service.upload_image(image)
+            uploaded_public_id = final_image_public_id
 
         post = await service.create_post(
             author_id=user.id,
             content=content,
             post_type=post_type,
             stock_symbol=stock_symbol.upper() if stock_symbol else None,
-            image_url=image_url,
-            image_public_id=image_public_id,
+            image_url=final_image_url,
+            image_public_id=final_image_public_id,
+            media_metadata=media_metadata,
         )
 
         post_data = await service.get_post_with_details(post.id, current_user_id=user.id)
         post_obj = post_data["post"]
-
-        return CommunityPostResponse(
-            id=post_obj.id,
-            author_id=post_obj.author_id,
-            author_username=post_obj.author.username if post_obj.author else None,
-            author_full_name=post_obj.author.full_name if post_obj.author else None,
-            author_avatar_url=post_obj.author.avatar_url if post_obj.author else None,
-            post_type=PostType(post_obj.post_type),
-            stock_symbol=post_obj.stock_symbol,
-            stock_name=post_obj.stock.name if post_obj.stock else None,
-            content=post_obj.content,
-            image_url=post_obj.image_url,
-            like_count=post_obj.like_count,
-            comment_count=post_obj.comment_count,
-            report_count=post_obj.report_count,
-            status=post_obj.status,
-            removed_reason=post_obj.removed_reason,
+        response_model = _build_post_response(
+            post_obj,
             liked_by_me=post_data["liked_by_me"],
-            created_at=post_obj.created_at,
-            updated_at=post_obj.updated_at,
+            bookmarked_by_me=post_data["bookmarked_by_me"],
         )
+
+        # Record Idempotency Key
+        if idempotency_key:
+            await IdempotencyService.record_response(
+                service.db,
+                user.id,
+                idempotency_key,
+                "/community/posts",
+                201,
+                response_model.model_dump(mode="json"),
+            )
+
+        return response_model
     except (ValidationFailedError, ConflictError, NotFoundError, BadRequestError):
-        if image_public_id:
-            await cloudinary_service.delete_image(image_public_id)
+        if uploaded_public_id:
+            await cloudinary_service.delete_image(uploaded_public_id)
         raise
-    except Exception as e:
-        if image_public_id:
-            await cloudinary_service.delete_image(image_public_id)
+    except Exception:
+        if uploaded_public_id:
+            await cloudinary_service.delete_image(uploaded_public_id)
         log.exception("Create post failed")
         raise ServiceUnavailableError("Failed to create post")
-
-
-def _build_post_response(post, liked_by_me: bool) -> CommunityPostResponse:
-    return CommunityPostResponse(
-        id=post.id,
-        author_id=post.author_id,
-        author_username=post.author.username if post.author else None,
-        author_full_name=post.author.full_name if post.author else None,
-        author_avatar_url=post.author.avatar_url if post.author else None,
-        post_type=PostType(post.post_type),
-        stock_symbol=post.stock_symbol,
-        stock_name=post.stock.name if post.stock else None,
-        content=post.content,
-        image_url=post.image_url,
-        like_count=post.like_count,
-        comment_count=post.comment_count,
-        report_count=post.report_count,
-        status=post.status,
-        removed_reason=post.removed_reason,
-        liked_by_me=liked_by_me,
-        created_at=post.created_at,
-        updated_at=post.updated_at,
-    )
 
 
 @router.get(
     "/community/feed",
     response_model=CommunityPostListResponse,
-    summary="Get community feed with optional keyword search and stock/market filtering",
+    summary="Get community feed with unified tabs, search, and batched hydration",
 )
 async def get_feed(
-    q: str | None = Query(None, description="Search keyword, symbol, cashtag, or phrase"),
-    search: str | None = Query(None, description="Alias for search query"),
-    stock_symbol: str | None = Query(None, description="Filter by stock symbol (e.g. HBL, OGDC)"),
-    post_type: PostType | None = Query(None, description="Filter by post type: STOCK or GENERAL_MARKET"),
-    author_username: str | None = Query(None, description="Filter by author username"),
+    request: Request,
+    response: Response,
+    tab: Optional[str] = Query("for_you", description="Feed tab: for_you, following, or ticker"),
+    ticker: Optional[str] = Query(None, description="Ticker symbol for ticker tab (e.g. OGDC)"),
+    stock_symbol: Optional[str] = Query(None, description="Filter by stock symbol"),
+    post_type: Optional[PostType] = Query(None, description="Filter by post type: STOCK or GENERAL_MARKET"),
+    q: Optional[str] = Query(None, description="Search keyword, symbol, or cashtag"),
+    search: Optional[str] = Query(None, description="Alias for search query"),
+    author_username: Optional[str] = Query(None, description="Filter by author username"),
     mine: bool = Query(False, description="Filter to current user's posts"),
-    following: bool = Query(False, description="Filter to posts from followed authors"),
-    cursor: str | None = Query(None, description="Pagination cursor"),
+    following: bool = Query(False, description="Filter to followed authors"),
+    cursor: Optional[str] = Query(None, description="Pagination cursor"),
     limit: int = Query(20, ge=1, le=50, description="Items per page"),
+    if_none_match: Optional[str] = Header(None, alias="If-None-Match"),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        # Normalize tab parameters
+        effective_stock = ticker or stock_symbol
+        is_following_tab = following or (tab == "following")
         search_query = q or search
+
         posts, next_cursor, has_more = await service.get_feed(
             current_user_id=user.id,
-            stock_symbol=stock_symbol,
+            stock_symbol=effective_stock,
             post_type=post_type,
             search_query=search_query,
             author_username=author_username,
             mine=mine,
-            following=following,
+            following=is_following_tab,
             cursor=cursor,
             limit=limit,
         )
 
-        post_responses = []
-        for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(_build_post_response(post, liked_by_me))
+        # Batch fetch all liked and bookmarked statuses in ONE query (Kills N+1 completely!)
+        post_ids = [p.id for p in posts]
+        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
+        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
 
-        return CommunityPostListResponse(
+        post_responses = [
+            _build_post_response(
+                p,
+                liked_by_me=p.id in liked_set,
+                bookmarked_by_me=p.id in bookmarked_set,
+            )
+            for p in posts
+        ]
+
+        result = CommunityPostListResponse(
             posts=post_responses,
-            cursor=next_cursor,
+            cursor=next_cursor or "",
+            next_cursor=next_cursor or "",
             has_more=has_more,
         )
-    except Exception as e:
+
+        # ETag calculation for caching / 304 Not Modified support
+        if posts:
+            etag_raw = f"{posts[0].id}_{len(posts)}_{posts[0].updated_at.isoformat()}"
+            computed_etag = f'"{hashlib.md5(etag_raw.encode("utf-8")).hexdigest()}"'
+            response.headers["ETag"] = computed_etag
+            response.headers["Cache-Control"] = "private, max-age=5, stale-while-revalidate=15"
+
+            if if_none_match and if_none_match == computed_etag:
+                response.status_code = status.HTTP_304_NOT_MODIFIED
+                return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=dict(response.headers))
+
+        return result
+    except Exception:
         log.exception("Get feed failed")
         raise ServiceUnavailableError("Failed to get feed")
+
+
+@router.get(
+    "/community/trending",
+    response_model=CommunityTrendingResponse,
+    summary="Get trending tickers and ranked posts",
+)
+async def get_trending(
+    limit: int = Query(10, ge=1, le=30),
+    user: User = Depends(get_current_user),
+    service: CommunityService = Depends(_get_service),
+):
+    """Fetch trending cashtags and ranked viral discussions."""
+    try:
+        trending_tickers = await TrendingService.get_trending_tickers(service.db, limit=limit)
+        trending_post_ids = await TrendingService.get_trending_posts(service.db, limit=limit)
+
+        posts = []
+        if trending_post_ids:
+            liked_set = await service.batch_fetch_liked_post_ids(trending_post_ids, user.id)
+            bookmarked_set = await service.batch_fetch_bookmarked_post_ids(trending_post_ids, user.id)
+            for pid in trending_post_ids:
+                try:
+                    p = await service.get_post_by_id(pid)
+                    posts.append(
+                        _build_post_response(
+                            p,
+                            liked_by_me=pid in liked_set,
+                            bookmarked_by_me=pid in bookmarked_set,
+                        )
+                    )
+                except Exception:
+                    pass
+
+        return CommunityTrendingResponse(
+            trending_tickers=trending_tickers,
+            trending_posts=posts,
+        )
+    except Exception:
+        log.exception("Get trending failed")
+        raise ServiceUnavailableError("Failed to get trending data")
 
 
 @router.get(
@@ -178,12 +314,12 @@ async def get_feed(
     summary="Search community posts with multi-factor filters",
 )
 async def search_posts(
-    q: str | None = Query(None, description="Search text query across post content and symbols"),
-    search: str | None = Query(None, description="Alias for search query"),
-    stock_symbol: str | None = Query(None, description="Filter by stock ticker symbol"),
-    post_type: PostType | None = Query(None, description="Filter by post type (STOCK or GENERAL_MARKET)"),
-    author_username: str | None = Query(None, description="Filter by author username"),
-    cursor: str | None = Query(None, description="Pagination cursor"),
+    q: Optional[str] = Query(None, description="Search text query across post content and symbols"),
+    search: Optional[str] = Query(None, description="Alias for search query"),
+    stock_symbol: Optional[str] = Query(None, description="Filter by stock ticker symbol"),
+    post_type: Optional[PostType] = Query(None, description="Filter by post type (STOCK or GENERAL_MARKET)"),
+    author_username: Optional[str] = Query(None, description="Filter by author username"),
+    cursor: Optional[str] = Query(None, description="Pagination cursor"),
     limit: int = Query(20, ge=1, le=50, description="Items per page"),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
@@ -200,17 +336,26 @@ async def search_posts(
             limit=limit,
         )
 
-        post_responses = []
-        for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(_build_post_response(post, liked_by_me))
+        post_ids = [p.id for p in posts]
+        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
+        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+
+        post_responses = [
+            _build_post_response(
+                p,
+                liked_by_me=p.id in liked_set,
+                bookmarked_by_me=p.id in bookmarked_set,
+            )
+            for p in posts
+        ]
 
         return CommunityPostListResponse(
             posts=post_responses,
-            cursor=next_cursor,
+            cursor=next_cursor or "",
+            next_cursor=next_cursor or "",
             has_more=has_more,
         )
-    except Exception as e:
+    except Exception:
         log.exception("Search posts failed")
         raise ServiceUnavailableError("Failed to search community posts")
 
@@ -221,8 +366,8 @@ async def search_posts(
     summary="Get general market community posts",
 )
 async def get_market_posts(
-    q: str | None = Query(None, description="Optional search query within general market posts"),
-    cursor: str | None = Query(None, description="Pagination cursor"),
+    q: Optional[str] = Query(None, description="Optional search query within general market posts"),
+    cursor: Optional[str] = Query(None, description="Pagination cursor"),
     limit: int = Query(20, ge=1, le=50, description="Items per page"),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
@@ -236,17 +381,26 @@ async def get_market_posts(
             limit=limit,
         )
 
-        post_responses = []
-        for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(_build_post_response(post, liked_by_me))
+        post_ids = [p.id for p in posts]
+        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
+        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+
+        post_responses = [
+            _build_post_response(
+                p,
+                liked_by_me=p.id in liked_set,
+                bookmarked_by_me=p.id in bookmarked_set,
+            )
+            for p in posts
+        ]
 
         return CommunityPostListResponse(
             posts=post_responses,
-            cursor=next_cursor,
+            cursor=next_cursor or "",
+            next_cursor=next_cursor or "",
             has_more=has_more,
         )
-    except Exception as e:
+    except Exception:
         log.exception("Get market posts failed")
         raise ServiceUnavailableError("Failed to get market posts")
 
@@ -258,8 +412,8 @@ async def get_market_posts(
 )
 async def get_stock_posts(
     symbol: str,
-    q: str | None = Query(None, description="Optional search query within stock posts"),
-    cursor: str | None = Query(None, description="Pagination cursor"),
+    q: Optional[str] = Query(None, description="Optional search query within stock posts"),
+    cursor: Optional[str] = Query(None, description="Pagination cursor"),
     limit: int = Query(20, ge=1, le=50, description="Items per page"),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
@@ -273,17 +427,26 @@ async def get_stock_posts(
             limit=limit,
         )
 
-        post_responses = []
-        for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(_build_post_response(post, liked_by_me))
+        post_ids = [p.id for p in posts]
+        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
+        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+
+        post_responses = [
+            _build_post_response(
+                p,
+                liked_by_me=p.id in liked_set,
+                bookmarked_by_me=p.id in bookmarked_set,
+            )
+            for p in posts
+        ]
 
         return CommunityPostListResponse(
             posts=post_responses,
-            cursor=next_cursor,
+            cursor=next_cursor or "",
+            next_cursor=next_cursor or "",
             has_more=has_more,
         )
-    except Exception as e:
+    except Exception:
         log.exception("Get stock posts failed for symbol %s", symbol)
         raise ServiceUnavailableError(f"Failed to get posts for stock {symbol}")
 
@@ -299,40 +462,25 @@ async def get_post(
     service: CommunityService = Depends(_get_service),
 ):
     try:
-        is_admin = user.is_admin
+        is_admin = getattr(user, "is_admin", False)
         post_data = await service.get_post_with_details(
             post_id,
             current_user_id=user.id,
-            include_hidden=is_admin or True,
+            include_hidden=is_admin,
         )
         post = post_data["post"]
 
-        if post.status != "PUBLISHED" and post.author_id != user.id and not is_admin:
+        if post.status != PostStatus.PUBLISHED.value and post.author_id != user.id and not is_admin:
             raise NotFoundError("Post not found")
 
-        return CommunityPostResponse(
-            id=post.id,
-            author_id=post.author_id,
-            author_username=post.author.username if post.author else None,
-            author_full_name=post.author.full_name if post.author else None,
-            author_avatar_url=post.author.avatar_url if post.author else None,
-            post_type=PostType(post.post_type),
-            stock_symbol=post.stock_symbol,
-            stock_name=post.stock.name if post.stock else None,
-            content=post.content,
-            image_url=post.image_url,
-            like_count=post.like_count,
-            comment_count=post.comment_count,
-            report_count=post.report_count,
-            status=post.status,
-            removed_reason=post.removed_reason,
+        return _build_post_response(
+            post,
             liked_by_me=post_data["liked_by_me"],
-            created_at=post.created_at,
-            updated_at=post.updated_at,
+            bookmarked_by_me=post_data["bookmarked_by_me"],
         )
     except NotFoundError:
         raise
-    except Exception as e:
+    except Exception:
         log.exception("Get post failed")
         raise ServiceUnavailableError("Failed to get post")
 
@@ -350,33 +498,15 @@ async def update_post(
 ):
     try:
         post = await service.update_post(post_id, user.id, data.content)
-
         post_data = await service.get_post_with_details(post.id, current_user_id=user.id)
-        post_obj = post_data["post"]
-
-        return CommunityPostResponse(
-            id=post_obj.id,
-            author_id=post_obj.author_id,
-            author_username=post_obj.author.username if post_obj.author else None,
-            author_full_name=post_obj.author.full_name if post_obj.author else None,
-            author_avatar_url=post_obj.author.avatar_url if post_obj.author else None,
-            post_type=PostType(post_obj.post_type),
-            stock_symbol=post_obj.stock_symbol,
-            stock_name=post_obj.stock.name if post_obj.stock else None,
-            content=post_obj.content,
-            image_url=post_obj.image_url,
-            like_count=post_obj.like_count,
-            comment_count=post_obj.comment_count,
-            report_count=post_obj.report_count,
-            status=post_obj.status,
-            removed_reason=post_obj.removed_reason,
+        return _build_post_response(
+            post_data["post"],
             liked_by_me=post_data["liked_by_me"],
-            created_at=post_obj.created_at,
-            updated_at=post_obj.updated_at,
+            bookmarked_by_me=post_data["bookmarked_by_me"],
         )
     except (NotFoundError, ForbiddenError, ConflictError, ValidationFailedError):
         raise
-    except Exception as e:
+    except Exception:
         log.exception("Update post failed")
         raise ServiceUnavailableError("Failed to update post")
 
@@ -395,7 +525,7 @@ async def delete_post(
         await service.delete_post(post_id, user.id)
     except (NotFoundError, ForbiddenError):
         raise
-    except Exception as e:
+    except Exception:
         log.exception("Delete post failed")
         raise ServiceUnavailableError("Failed to delete post")
 
@@ -407,6 +537,7 @@ async def delete_post(
 )
 async def like_post(
     post_id: str,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
 ):
@@ -414,7 +545,7 @@ async def like_post(
         await service.like_post(post_id, user.id)
     except (NotFoundError, ConflictError):
         raise
-    except Exception as e:
+    except Exception:
         log.exception("Like post failed")
         raise ServiceUnavailableError("Failed to like post")
 
@@ -433,9 +564,47 @@ async def unlike_post(
         await service.unlike_post(post_id, user.id)
     except NotFoundError:
         raise
-    except Exception as e:
+    except Exception:
         log.exception("Unlike post failed")
         raise ServiceUnavailableError("Failed to unlike post")
+
+
+@router.post(
+    "/community/posts/{post_id}/bookmark",
+    status_code=204,
+    summary="Bookmark a post",
+)
+async def bookmark_post(
+    post_id: str,
+    user: User = Depends(get_current_user),
+    service: CommunityService = Depends(_get_service),
+):
+    try:
+        await service.bookmark_post(post_id, user.id)
+    except (NotFoundError, ConflictError):
+        raise
+    except Exception:
+        log.exception("Bookmark post failed")
+        raise ServiceUnavailableError("Failed to bookmark post")
+
+
+@router.delete(
+    "/community/posts/{post_id}/bookmark",
+    status_code=204,
+    summary="Unbookmark a post",
+)
+async def unbookmark_post(
+    post_id: str,
+    user: User = Depends(get_current_user),
+    service: CommunityService = Depends(_get_service),
+):
+    try:
+        await service.unbookmark_post(post_id, user.id)
+    except NotFoundError:
+        raise
+    except Exception:
+        log.exception("Unbookmark post failed")
+        raise ServiceUnavailableError("Failed to unbookmark post")
 
 
 @router.post(
@@ -464,6 +633,6 @@ async def report_post(
         raise
     except ValueError as e:
         raise ValidationFailedError(f"Invalid report reason: {e}")
-    except Exception as e:
+    except Exception:
         log.exception("Report post failed")
         raise ServiceUnavailableError("Failed to report post")

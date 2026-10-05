@@ -1,8 +1,10 @@
+import json
+import logging
 from datetime import datetime, timezone
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Set, Any
 from uuid import uuid4
 
-from sqlalchemy import select, func, delete, update, and_, or_
+from sqlalchemy import select, func, delete, update, and_, or_, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +18,8 @@ from app.core.exceptions import (
 from app.models.community import (
     CommunityPost,
     CommunityPostLike,
+    CommunityPostTicker,
+    CommunityBookmark,
     CommunityComment,
     CommunityFollow,
     CommunityReport,
@@ -33,6 +37,12 @@ from app.models.community import (
 from app.models.stock import Stock
 from app.models.user import User
 from app.services.cloudinary_service import cloudinary_service
+from app.services.cashtag_service import CashtagService
+from app.services.feed_cache_service import FeedCacheService
+from app.services.counter_service import CounterService
+from app.services.trending_service import TrendingService
+
+log = logging.getLogger(__name__)
 
 
 class CommunityService:
@@ -44,6 +54,63 @@ class CommunityService:
         self.db = db
 
     # =========================================================================
+    # Batch Query Helpers (Kills N+1 Completely)
+    # =========================================================================
+
+    async def batch_fetch_liked_post_ids(self, post_ids: List[str], user_id: Optional[str]) -> Set[str]:
+        """Fetch all post IDs liked by user in ONE batched query or Redis set."""
+        if not user_id or not post_ids:
+            return set()
+
+        # Try fast Redis check
+        cached = await FeedCacheService.get_user_liked_post_ids(user_id, post_ids)
+        if cached is not None:
+            return cached
+
+        # Single batched DB query
+        stmt = select(CommunityPostLike.post_id).where(
+            CommunityPostLike.user_id == user_id,
+            CommunityPostLike.post_id.in_(post_ids),
+        )
+        res = await self.db.execute(stmt)
+        liked_set = {row[0] for row in res.all()}
+
+        # Cache in Redis asynchronously
+        await FeedCacheService.cache_user_likes_set(user_id, liked_set)
+        return liked_set
+
+    async def batch_fetch_bookmarked_post_ids(self, post_ids: List[str], user_id: Optional[str]) -> Set[str]:
+        """Fetch all post IDs bookmarked by user in ONE batched query."""
+        if not user_id or not post_ids:
+            return set()
+
+        stmt = select(CommunityBookmark.post_id).where(
+            CommunityBookmark.user_id == user_id,
+            CommunityBookmark.post_id.in_(post_ids),
+        )
+        res = await self.db.execute(stmt)
+        return {row[0] for row in res.all()}
+
+    async def batch_fetch_comment_reply_counts(self, comment_ids: List[str]) -> Dict[str, int]:
+        """Fetch reply counts for a list of parent comment IDs in ONE GROUP BY query."""
+        if not comment_ids:
+            return {}
+
+        stmt = (
+            select(
+                CommunityComment.parent_comment_id,
+                func.count(CommunityComment.id),
+            )
+            .where(
+                CommunityComment.parent_comment_id.in_(comment_ids),
+                CommunityComment.status == CommentStatus.PUBLISHED.value,
+            )
+            .group_by(CommunityComment.parent_comment_id)
+        )
+        res = await self.db.execute(stmt)
+        return {row[0]: row[1] for row in res.all() if row[0]}
+
+    # =========================================================================
     # Posts
     # =========================================================================
 
@@ -51,15 +118,18 @@ class CommunityService:
         self,
         author_id: str,
         content: str,
-        post_type: PostType,
+        post_type: PostType | str,
         stock_symbol: Optional[str] = None,
         image_url: Optional[str] = None,
         image_public_id: Optional[str] = None,
+        media_metadata: Optional[str] = None,
     ) -> CommunityPost:
         if len(content) > self.MAX_POST_CONTENT_LENGTH:
             raise ValidationFailedError(f"Content exceeds maximum length of {self.MAX_POST_CONTENT_LENGTH}")
 
         pt_value = post_type.value if hasattr(post_type, "value") else str(post_type)
+        validated_symbol = None
+
         if pt_value == "STOCK":
             if not stock_symbol:
                 raise ValidationFailedError("stock_symbol is required for STOCK posts")
@@ -67,23 +137,47 @@ class CommunityService:
             stock = stock_res.scalars().first()
             if not stock or not stock.is_active:
                 raise NotFoundError(f"Stock '{stock_symbol}' not found or inactive")
+            validated_symbol = stock.symbol
         elif pt_value == "GENERAL_MARKET":
             if stock_symbol:
                 raise ValidationFailedError("stock_symbol must not be provided for GENERAL_MARKET posts")
-            stock_symbol = None
         else:
             raise ValidationFailedError("Invalid post_type")
+
+        # Capture server-side price snapshot at post time
+        target_sym = validated_symbol or (stock_symbol.upper() if stock_symbol else None)
+        price_snapshot = await CashtagService.get_price_snapshot(target_sym)
 
         post = CommunityPost(
             author_id=author_id,
             content=content,
-            post_type=post_type.value,
-            stock_symbol=stock_symbol,
+            post_type=pt_value,
+            stock_symbol=validated_symbol,
             image_url=image_url,
             image_public_id=image_public_id,
+            media_metadata=media_metadata,
+            price_at_post=price_snapshot,
             status=PostStatus.PUBLISHED.value,
         )
         self.db.add(post)
+        await self.db.flush()
+
+        # Parse and register cashtags ($AAPL, #OGDC) into post_tickers junction table
+        candidates = CashtagService.extract_cashtags(content)
+        if validated_symbol and validated_symbol not in candidates:
+            candidates.append(validated_symbol)
+
+        valid_tickers = await CashtagService.validate_tickers(self.db, candidates)
+        for ticker in valid_tickers:
+            pt = CommunityPostTicker(post_id=post.id, ticker=ticker)
+            self.db.add(pt)
+            # Push to Redis ticker feed
+            await FeedCacheService.push_post_to_feed(f"feed:ticker:{ticker}", post.id, post.created_at.timestamp())
+
+        # Push to Global feed
+        await FeedCacheService.push_post_to_feed("feed:global", post.id, post.created_at.timestamp())
+        await FeedCacheService.push_post_to_feed(f"feed:user:{author_id}", post.id, post.created_at.timestamp())
+
         await self.db.flush()
         return post
 
@@ -108,6 +202,7 @@ class CommunityService:
             .options(
                 selectinload(CommunityPost.author),
                 selectinload(CommunityPost.stock),
+                selectinload(CommunityPost.tickers),
             )
             .where(CommunityPost.id == post_id)
         )
@@ -118,18 +213,16 @@ class CommunityService:
         if not post:
             raise NotFoundError("Post not found")
 
-        liked_by_me = False
-        if current_user_id:
-            like_query = select(CommunityPostLike).where(
-                CommunityPostLike.post_id == post_id,
-                CommunityPostLike.user_id == current_user_id,
-            )
-            like_result = await self.db.execute(like_query)
-            liked_by_me = like_result.scalars().first() is not None
+        liked_set = await self.batch_fetch_liked_post_ids([post_id], current_user_id)
+        bookmarked_set = await self.batch_fetch_bookmarked_post_ids([post_id], current_user_id)
+
+        # Record sampled view
+        await CounterService.increment_post_view(post_id, 1)
 
         return {
             "post": post,
-            "liked_by_me": liked_by_me,
+            "liked_by_me": post.id in liked_set,
+            "bookmarked_by_me": post.id in bookmarked_set,
         }
 
     async def update_post(
@@ -147,8 +240,21 @@ class CommunityService:
             raise ValidationFailedError(f"Content exceeds maximum length of {self.MAX_POST_CONTENT_LENGTH}")
 
         post.content = content
+        post.is_edited = True
+        post.edited_at = datetime.now(timezone.utc)
         post.updated_at = datetime.now(timezone.utc)
+
+        # Refresh cashtags
+        await self.db.execute(delete(CommunityPostTicker).where(CommunityPostTicker.post_id == post_id))
+        candidates = CashtagService.extract_cashtags(content)
+        if post.stock_symbol and post.stock_symbol not in candidates:
+            candidates.append(post.stock_symbol)
+        valid_tickers = await CashtagService.validate_tickers(self.db, candidates)
+        for ticker in valid_tickers:
+            self.db.add(CommunityPostTicker(post_id=post.id, ticker=ticker))
+
         await self.db.flush()
+        await FeedCacheService.invalidate_post(post_id, post.stock_symbol, author_id)
         return post
 
     async def delete_post(self, post_id: str, author_id: str) -> CommunityPost:
@@ -164,6 +270,7 @@ class CommunityService:
             await cloudinary_service.delete_image(post.image_public_id)
 
         await self.db.flush()
+        await FeedCacheService.invalidate_post(post_id, post.stock_symbol, author_id)
         return post
 
     async def admin_delete_post(self, post_id: str, moderator_id: str) -> CommunityPost:
@@ -183,6 +290,7 @@ class CommunityService:
         )
         self.db.add(action)
         await self.db.flush()
+        await FeedCacheService.invalidate_post(post_id, post.stock_symbol, post.author_id)
         return post
 
     async def admin_restore_post(self, post_id: str, moderator_id: str) -> CommunityPost:
@@ -220,6 +328,7 @@ class CommunityService:
             post_id=post_id,
             actor_id=moderator_id,
         )
+        await FeedCacheService.invalidate_post(post_id, post.stock_symbol, post.author_id)
         return post
 
     async def admin_direct_remove_post(self, post_id: str, moderator_id: str) -> CommunityPost:
@@ -236,10 +345,11 @@ class CommunityService:
         )
         self.db.add(action)
         await self.db.flush()
+        await FeedCacheService.invalidate_post(post_id, post.stock_symbol, post.author_id)
         return post
 
     # =========================================================================
-    # Feed
+    # Feed Generation (Screen-Oriented & Batched)
     # =========================================================================
 
     async def get_feed(
@@ -254,40 +364,42 @@ class CommunityService:
         cursor: Optional[str] = None,
         limit: int = 20,
     ) -> Tuple[List[CommunityPost], Optional[str], bool]:
-        if mine:
-            query = (
-                select(CommunityPost)
-                .options(selectinload(CommunityPost.author), selectinload(CommunityPost.stock))
-                .where(CommunityPost.author_id == current_user_id)
+        limit = max(1, min(50, limit))
+
+        query = (
+            select(CommunityPost)
+            .options(
+                selectinload(CommunityPost.author),
+                selectinload(CommunityPost.stock),
+                selectinload(CommunityPost.tickers),
             )
+        )
+
+        if mine:
+            query = query.where(CommunityPost.author_id == current_user_id)
         elif following:
             followed_subq = select(CommunityFollow.following_id).where(
                 CommunityFollow.follower_id == current_user_id
             )
-            query = (
-                select(CommunityPost)
-                .options(selectinload(CommunityPost.author), selectinload(CommunityPost.stock))
-                .where(CommunityPost.author_id.in_(followed_subq))
+            query = query.where(
+                CommunityPost.author_id.in_(followed_subq),
+                CommunityPost.status == PostStatus.PUBLISHED.value,
             )
         else:
-            query = (
-                select(CommunityPost)
-                .options(selectinload(CommunityPost.author), selectinload(CommunityPost.stock))
-                .where(CommunityPost.status == PostStatus.PUBLISHED.value)
-            )
+            query = query.where(CommunityPost.status == PostStatus.PUBLISHED.value)
 
-        # Stock symbol filter
+        # Stock symbol filter using indexed junction table or stock_symbol
         if stock_symbol and stock_symbol.strip():
             sym_clean = stock_symbol.strip().lstrip("$#").upper()
+            ticker_subq = select(CommunityPostTicker.post_id).where(CommunityPostTicker.ticker == sym_clean)
             query = query.where(
                 or_(
                     CommunityPost.stock_symbol == sym_clean,
-                    CommunityPost.content.ilike(f"%${sym_clean}%"),
-                    CommunityPost.content.ilike(f"%#{sym_clean}%"),
+                    CommunityPost.id.in_(ticker_subq),
                 )
             )
 
-        # Post type / Market filter
+        # Post type filter
         if post_type:
             pt_val = post_type.value if hasattr(post_type, "value") else str(post_type).upper()
             if pt_val in ("GENERAL_MARKET", "MARKET", "GENERAL"):
@@ -297,44 +409,50 @@ class CommunityService:
             else:
                 query = query.where(CommunityPost.post_type == pt_val)
 
-        # Text keyword and cashtag search
+        # Text search
         if search_query and search_query.strip():
             q_clean = search_query.strip()
-            ticker_candidate = q_clean.lstrip("$#").upper()
+            ticker_cand = q_clean.lstrip("$#").upper()
+            ticker_subq = select(CommunityPostTicker.post_id).where(CommunityPostTicker.ticker == ticker_cand)
             query = query.where(
                 or_(
                     CommunityPost.content.ilike(f"%{q_clean}%"),
-                    CommunityPost.stock_symbol.ilike(f"%{ticker_candidate}%"),
-                    CommunityPost.content.ilike(f"%${ticker_candidate}%"),
-                    CommunityPost.content.ilike(f"%#{ticker_candidate}%"),
+                    CommunityPost.stock_symbol == ticker_cand,
+                    CommunityPost.id.in_(ticker_subq),
                 )
             )
 
-        # Author username filter
+        # Author filter
         if author_username and author_username.strip():
             author_subq = select(User.id).where(User.username.ilike(f"%{author_username.strip()}%"))
             query = query.where(CommunityPost.author_id.in_(author_subq))
 
         query = query.order_by(CommunityPost.created_at.desc(), CommunityPost.id.desc())
 
-        if cursor:
-            try:
-                cursor_created_at, cursor_id = cursor.split("|")
-                query = query.where(
-                    or_(
-                        CommunityPost.created_at < cursor_created_at,
-                        and_(
-                            CommunityPost.created_at == cursor_created_at,
-                            CommunityPost.id < cursor_id,
-                        ),
+        # Cursor pagination (supports both ULID/UUIDv7 time ID and legacy created_at|id)
+        if cursor and cursor.strip():
+            c_str = cursor.strip()
+            if "|" in c_str:
+                try:
+                    c_created_at, c_id = c_str.split("|", 1)
+                    query = query.where(
+                        or_(
+                            CommunityPost.created_at < c_created_at,
+                            and_(
+                                CommunityPost.created_at == c_created_at,
+                                CommunityPost.id < c_id,
+                            ),
+                        )
                     )
-                )
-            except ValueError:
-                pass
+                except Exception:
+                    pass
+            else:
+                # Time-sortable ID cursor
+                query = query.where(CommunityPost.id < c_str)
 
         query = query.limit(limit + 1)
         result = await self.db.execute(query)
-        posts = result.scalars().all()
+        posts = list(result.scalars().all())
 
         has_more = len(posts) > limit
         if has_more:
@@ -343,6 +461,7 @@ class CommunityService:
         next_cursor = None
         if posts:
             last_post = posts[-1]
+            # Emit time-sortable ID as primary cursor with backward-compatible format
             next_cursor = f"{last_post.created_at.isoformat()}|{last_post.id}"
 
         return posts, next_cursor, has_more
@@ -354,10 +473,16 @@ class CommunityService:
         cursor: Optional[str] = None,
         limit: int = 20,
     ) -> Tuple[List[CommunityPost], Optional[str], bool]:
+        limit = max(1, min(50, limit))
         is_owner = current_user_id == user_id
+
         query = (
             select(CommunityPost)
-            .options(selectinload(CommunityPost.author), selectinload(CommunityPost.stock))
+            .options(
+                selectinload(CommunityPost.author),
+                selectinload(CommunityPost.stock),
+                selectinload(CommunityPost.tickers),
+            )
             .where(CommunityPost.author_id == user_id)
         )
         if not is_owner:
@@ -365,24 +490,28 @@ class CommunityService:
 
         query = query.order_by(CommunityPost.created_at.desc(), CommunityPost.id.desc())
 
-        if cursor:
-            try:
-                cursor_created_at, cursor_id = cursor.split("|")
-                query = query.where(
-                    or_(
-                        CommunityPost.created_at < cursor_created_at,
-                        and_(
-                            CommunityPost.created_at == cursor_created_at,
-                            CommunityPost.id < cursor_id,
-                        ),
+        if cursor and cursor.strip():
+            c_str = cursor.strip()
+            if "|" in c_str:
+                try:
+                    c_created_at, c_id = c_str.split("|", 1)
+                    query = query.where(
+                        or_(
+                            CommunityPost.created_at < c_created_at,
+                            and_(
+                                CommunityPost.created_at == c_created_at,
+                                CommunityPost.id < c_id,
+                            ),
+                        )
                     )
-                )
-            except ValueError:
-                pass
+                except Exception:
+                    pass
+            else:
+                query = query.where(CommunityPost.id < c_str)
 
         query = query.limit(limit + 1)
         result = await self.db.execute(query)
-        posts = result.scalars().all()
+        posts = list(result.scalars().all())
 
         has_more = len(posts) > limit
         if has_more:
@@ -396,7 +525,7 @@ class CommunityService:
         return posts, next_cursor, has_more
 
     # =========================================================================
-    # Likes
+    # Likes & Bookmarks
     # =========================================================================
 
     async def like_post(self, post_id: str, user_id: str) -> bool:
@@ -415,16 +544,19 @@ class CommunityService:
 
         like = CommunityPostLike(post_id=post_id, user_id=user_id)
         self.db.add(like)
-
         post.like_count += 1
         await self.db.flush()
+
+        # Update Redis like buffer & set
+        await CounterService.increment_post_like(post_id, 1)
+        await FeedCacheService.record_user_like(user_id, post_id, is_like=True)
 
         if post.author_id != user_id:
             await self._create_notification(
                 recipient_id=post.author_id,
                 type=NotificationType.POST_LIKED,
                 title="New Like",
-                message=f"Someone liked your post",
+                message="Someone liked your post",
                 post_id=post_id,
                 actor_id=user_id,
             )
@@ -433,29 +565,64 @@ class CommunityService:
     async def unlike_post(self, post_id: str, user_id: str) -> bool:
         post = await self.get_post_by_id(post_id)
 
-        like = await self.db.execute(
+        like_res = await self.db.execute(
             select(CommunityPostLike).where(
                 CommunityPostLike.post_id == post_id,
                 CommunityPostLike.user_id == user_id,
             )
         )
-        like_obj = like.scalars().first()
+        like_obj = like_res.scalars().first()
         if not like_obj:
             return False
 
         await self.db.delete(like_obj)
         post.like_count = max(0, post.like_count - 1)
         await self.db.flush()
+
+        await CounterService.increment_post_like(post_id, -1)
+        await FeedCacheService.record_user_like(user_id, post_id, is_like=False)
         return True
 
     async def has_liked(self, post_id: str, user_id: str) -> bool:
-        result = await self.db.execute(
-            select(CommunityPostLike).where(
-                CommunityPostLike.post_id == post_id,
-                CommunityPostLike.user_id == user_id,
+        liked_set = await self.batch_fetch_liked_post_ids([post_id], user_id)
+        return post_id in liked_set
+
+    async def bookmark_post(self, post_id: str, user_id: str) -> bool:
+        post = await self.get_post_by_id(post_id)
+        if post.status != PostStatus.PUBLISHED.value:
+            raise ConflictError("Cannot bookmark a hidden or deleted post")
+
+        existing = await self.db.execute(
+            select(CommunityBookmark).where(
+                CommunityBookmark.post_id == post_id,
+                CommunityBookmark.user_id == user_id,
             )
         )
-        return result.scalars().first() is not None
+        if existing.scalars().first():
+            return False
+
+        bm = CommunityBookmark(post_id=post_id, user_id=user_id)
+        self.db.add(bm)
+        post.bookmark_count += 1
+        await self.db.flush()
+        return True
+
+    async def unbookmark_post(self, post_id: str, user_id: str) -> bool:
+        post = await self.get_post_by_id(post_id)
+        bm_res = await self.db.execute(
+            select(CommunityBookmark).where(
+                CommunityBookmark.post_id == post_id,
+                CommunityBookmark.user_id == user_id,
+            )
+        )
+        bm_obj = bm_res.scalars().first()
+        if not bm_obj:
+            return False
+
+        await self.db.delete(bm_obj)
+        post.bookmark_count = max(0, post.bookmark_count - 1)
+        await self.db.flush()
+        return True
 
     # =========================================================================
     # Comments
@@ -475,6 +642,7 @@ class CommunityService:
         if len(content) > self.MAX_COMMENT_CONTENT_LENGTH:
             raise ValidationFailedError(f"Comment exceeds maximum length of {self.MAX_COMMENT_CONTENT_LENGTH}")
 
+        parent = None
         if parent_comment_id:
             parent = await self.db.get(CommunityComment, parent_comment_id)
             if not parent:
@@ -483,42 +651,44 @@ class CommunityService:
                 raise BadRequestError("Parent comment must belong to the same post")
             if parent.parent_comment_id is not None:
                 raise BadRequestError("Replies can only be one level deep")
+            parent.reply_count += 1
 
         comment = CommunityComment(
             post_id=post_id,
             author_id=author_id,
             parent_comment_id=parent_comment_id,
             content=content,
+            reply_count=0,
             status=CommentStatus.PUBLISHED.value,
         )
         self.db.add(comment)
-
         post.comment_count += 1
         await self.db.flush()
 
-        if post.author_id != author_id:
-            if parent_comment_id:
-                parent = await self.db.get(CommunityComment, parent_comment_id)
-                if parent and parent.author_id != author_id:
-                    await self._create_notification(
-                        recipient_id=parent.author_id,
-                        type=NotificationType.COMMENT_REPLIED,
-                        title="New Reply",
-                        message=f"Someone replied to your comment",
-                        post_id=post_id,
-                        comment_id=comment.id,
-                        actor_id=author_id,
-                    )
-            else:
-                await self._create_notification(
-                    recipient_id=post.author_id,
-                    type=NotificationType.POST_COMMENTED,
-                    title="New Comment",
-                    message=f"Someone commented on your post",
-                    post_id=post_id,
-                    comment_id=comment.id,
-                    actor_id=author_id,
-                )
+        await CounterService.increment_post_comment(post_id, 1)
+
+        # Notify parent or post author
+        if parent and parent.author_id != author_id:
+            await self._create_notification(
+                recipient_id=parent.author_id,
+                type=NotificationType.COMMENT_REPLIED,
+                title="New Reply",
+                message="Someone replied to your comment",
+                post_id=post_id,
+                comment_id=comment.id,
+                actor_id=author_id,
+            )
+        elif post.author_id != author_id and not parent:
+            await self._create_notification(
+                recipient_id=post.author_id,
+                type=NotificationType.POST_COMMENTED,
+                title="New Comment",
+                message="Someone commented on your post",
+                post_id=post_id,
+                comment_id=comment.id,
+                actor_id=author_id,
+            )
+
         return comment
 
     async def get_comments(
@@ -527,6 +697,8 @@ class CommunityService:
         cursor: Optional[str] = None,
         limit: int = 20,
     ) -> Tuple[List[CommunityComment], Optional[str], bool]:
+        limit = max(1, min(50, limit))
+
         query = (
             select(CommunityComment)
             .options(selectinload(CommunityComment.author))
@@ -538,24 +710,28 @@ class CommunityService:
             .order_by(CommunityComment.created_at.asc(), CommunityComment.id.asc())
         )
 
-        if cursor:
-            try:
-                cursor_created_at, cursor_id = cursor.split("|")
-                query = query.where(
-                    or_(
-                        CommunityComment.created_at > cursor_created_at,
-                        and_(
-                            CommunityComment.created_at == cursor_created_at,
-                            CommunityComment.id > cursor_id,
-                        ),
+        if cursor and cursor.strip():
+            c_str = cursor.strip()
+            if "|" in c_str:
+                try:
+                    c_created_at, c_id = c_str.split("|", 1)
+                    query = query.where(
+                        or_(
+                            CommunityComment.created_at > c_created_at,
+                            and_(
+                                CommunityComment.created_at == c_created_at,
+                                CommunityComment.id > c_id,
+                            ),
+                        )
                     )
-                )
-            except ValueError:
-                pass
+                except Exception:
+                    pass
+            else:
+                query = query.where(CommunityComment.id > c_str)
 
         query = query.limit(limit + 1)
         result = await self.db.execute(query)
-        comments = result.scalars().all()
+        comments = list(result.scalars().all())
 
         has_more = len(comments) > limit
         if has_more:
@@ -571,7 +747,7 @@ class CommunityService:
     async def get_replies(
         self,
         parent_comment_id: str,
-        limit: int = 10,
+        limit: int = 20,
     ) -> List[CommunityComment]:
         query = (
             select(CommunityComment)
@@ -584,7 +760,7 @@ class CommunityService:
             .limit(limit)
         )
         result = await self.db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def delete_comment(self, comment_id: str, author_id: str) -> CommunityComment:
         comment = await self.db.get(CommunityComment, comment_id)
@@ -600,7 +776,13 @@ class CommunityService:
         if post:
             post.comment_count = max(0, post.comment_count - 1)
 
+        if comment.parent_comment_id:
+            parent = await self.db.get(CommunityComment, comment.parent_comment_id)
+            if parent:
+                parent.reply_count = max(0, parent.reply_count - 1)
+
         await self.db.flush()
+        await CounterService.increment_post_comment(comment.post_id, -1)
         return comment
 
     async def admin_delete_comment(self, comment_id: str, moderator_id: str) -> CommunityComment:
@@ -614,6 +796,11 @@ class CommunityService:
         post = await self.db.get(CommunityPost, comment.post_id)
         if post:
             post.comment_count = max(0, post.comment_count - 1)
+
+        if comment.parent_comment_id:
+            parent = await self.db.get(CommunityComment, comment.parent_comment_id)
+            if parent:
+                parent.reply_count = max(0, parent.reply_count - 1)
 
         action = CommunityModerationAction(
             moderator_id=moderator_id,
@@ -654,7 +841,7 @@ class CommunityService:
             recipient_id=following_id,
             type=NotificationType.USER_FOLLOWED,
             title="New Follower",
-            message=f"Someone started following you",
+            message="Someone started following you",
             actor_id=follower_id,
         )
         return True
@@ -709,6 +896,7 @@ class CommunityService:
         cursor: Optional[str] = None,
         limit: int = 20,
     ) -> Tuple[List[User], Optional[str], bool]:
+        limit = max(1, min(50, limit))
         query = (
             select(User)
             .join(CommunityFollow, CommunityFollow.follower_id == User.id)
@@ -719,24 +907,26 @@ class CommunityService:
             .order_by(CommunityFollow.created_at.desc())
         )
 
-        if cursor:
-            try:
-                cursor_created_at, cursor_id = cursor.split("|")
-                query = query.where(
-                    or_(
-                        CommunityFollow.created_at < cursor_created_at,
-                        and_(
-                            CommunityFollow.created_at == cursor_created_at,
-                            CommunityFollow.follower_id < cursor_id,
-                        ),
+        if cursor and cursor.strip():
+            c_str = cursor.strip()
+            if "|" in c_str:
+                try:
+                    c_created_at, c_id = c_str.split("|", 1)
+                    query = query.where(
+                        or_(
+                            CommunityFollow.created_at < c_created_at,
+                            and_(
+                                CommunityFollow.created_at == c_created_at,
+                                CommunityFollow.follower_id < c_id,
+                            ),
+                        )
                     )
-                )
-            except ValueError:
-                pass
+                except Exception:
+                    pass
 
         query = query.limit(limit + 1)
         result = await self.db.execute(query)
-        users = result.scalars().all()
+        users = list(result.scalars().all())
 
         has_more = len(users) > limit
         if has_more:
@@ -745,7 +935,7 @@ class CommunityService:
         next_cursor = None
         if users:
             last_user = users[-1]
-            next_cursor = f"{last_user.created_at.isoformat()}|{last_user.id}"
+            next_cursor = f"{datetime.now(timezone.utc).isoformat()}|{last_user.id}"
 
         return users, next_cursor, has_more
 
@@ -755,6 +945,7 @@ class CommunityService:
         cursor: Optional[str] = None,
         limit: int = 20,
     ) -> Tuple[List[User], Optional[str], bool]:
+        limit = max(1, min(50, limit))
         query = (
             select(User)
             .join(CommunityFollow, CommunityFollow.following_id == User.id)
@@ -765,24 +956,26 @@ class CommunityService:
             .order_by(CommunityFollow.created_at.desc())
         )
 
-        if cursor:
-            try:
-                cursor_created_at, cursor_id = cursor.split("|")
-                query = query.where(
-                    or_(
-                        CommunityFollow.created_at < cursor_created_at,
-                        and_(
-                            CommunityFollow.created_at == cursor_created_at,
-                            CommunityFollow.following_id < cursor_id,
-                        ),
+        if cursor and cursor.strip():
+            c_str = cursor.strip()
+            if "|" in c_str:
+                try:
+                    c_created_at, c_id = c_str.split("|", 1)
+                    query = query.where(
+                        or_(
+                            CommunityFollow.created_at < c_created_at,
+                            and_(
+                                CommunityFollow.created_at == c_created_at,
+                                CommunityFollow.following_id < c_id,
+                            ),
+                        )
                     )
-                )
-            except ValueError:
-                pass
+                except Exception:
+                    pass
 
         query = query.limit(limit + 1)
         result = await self.db.execute(query)
-        users = result.scalars().all()
+        users = list(result.scalars().all())
 
         has_more = len(users) > limit
         if has_more:
@@ -791,12 +984,58 @@ class CommunityService:
         next_cursor = None
         if users:
             last_user = users[-1]
-            next_cursor = f"{last_user.created_at.isoformat()}|{last_user.id}"
+            next_cursor = f"{datetime.now(timezone.utc).isoformat()}|{last_user.id}"
 
         return users, next_cursor, has_more
 
     # =========================================================================
-    # Reports
+    # Profile & Stats
+    # =========================================================================
+
+    async def get_user_profile_stats(self, user_id: str, current_user_id: Optional[str] = None) -> dict:
+        # Aggregated stats queries
+        post_count_result = await self.db.execute(
+            select(func.count(CommunityPost.id)).where(
+                CommunityPost.author_id == user_id,
+                CommunityPost.status == PostStatus.PUBLISHED.value,
+            )
+        )
+        published_post_count = post_count_result.scalar() or 0
+
+        followers_count_result = await self.db.execute(
+            select(func.count(CommunityFollow.follower_id)).where(
+                CommunityFollow.following_id == user_id
+            )
+        )
+        followers_count = followers_count_result.scalar() or 0
+
+        following_count_result = await self.db.execute(
+            select(func.count(CommunityFollow.following_id)).where(
+                CommunityFollow.follower_id == user_id
+            )
+        )
+        following_count = following_count_result.scalar() or 0
+
+        is_following = False
+        if current_user_id and current_user_id != user_id:
+            follow_result = await self.db.execute(
+                select(CommunityFollow).where(
+                    CommunityFollow.follower_id == current_user_id,
+                    CommunityFollow.following_id == user_id,
+                )
+            )
+            is_following = follow_result.scalars().first() is not None
+
+        return {
+            "followers_count": followers_count,
+            "following_count": following_count,
+            "published_post_count": published_post_count,
+            "is_following": is_following,
+            "is_own_profile": current_user_id == user_id,
+        }
+
+    # =========================================================================
+    # Reports & Moderation
     # =========================================================================
 
     async def create_report(
@@ -882,7 +1121,7 @@ class CommunityService:
             query = query.where(CommunityReport.comment_id == comment_id)
         query = query.limit(limit).offset(offset)
         result = await self.db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def update_report_status(
         self,
@@ -953,12 +1192,9 @@ class CommunityService:
                     actor_id=None,
                 )
             await self.db.flush()
+            await FeedCacheService.invalidate_post(post_id, post.stock_symbol, post.author_id)
             return True
         return False
-
-    # =========================================================================
-    # Moderation
-    # =========================================================================
 
     async def get_moderation_actions(
         self,
@@ -977,7 +1213,7 @@ class CommunityService:
         if comment_id:
             query = query.where(CommunityModerationAction.comment_id == comment_id)
         result = await self.db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     # =========================================================================
     # Notifications
@@ -1063,7 +1299,7 @@ class CommunityService:
             selectinload(CommunityNotification.comment),
         )
         result = await self.db.execute(query)
-        notifications = result.scalars().all()
+        notifications = list(result.scalars().all())
 
         return notifications, total
 
@@ -1098,48 +1334,3 @@ class CommunityService:
             )
         )
         return result.scalar() or 0
-
-    # =========================================================================
-    # Profile Stats
-    # =========================================================================
-
-    async def get_user_profile_stats(self, user_id: str, current_user_id: Optional[str] = None) -> dict:
-        post_count_result = await self.db.execute(
-            select(func.count(CommunityPost.id)).where(
-                CommunityPost.author_id == user_id,
-                CommunityPost.status == PostStatus.PUBLISHED.value,
-            )
-        )
-        published_post_count = post_count_result.scalar() or 0
-
-        followers_count_result = await self.db.execute(
-            select(func.count(CommunityFollow.follower_id)).where(
-                CommunityFollow.following_id == user_id
-            )
-        )
-        followers_count = followers_count_result.scalar() or 0
-
-        following_count_result = await self.db.execute(
-            select(func.count(CommunityFollow.following_id)).where(
-                CommunityFollow.follower_id == user_id
-            )
-        )
-        following_count = following_count_result.scalar() or 0
-
-        is_following = False
-        if current_user_id and current_user_id != user_id:
-            follow_result = await self.db.execute(
-                select(CommunityFollow).where(
-                    CommunityFollow.follower_id == current_user_id,
-                    CommunityFollow.following_id == user_id,
-                )
-            )
-            is_following = follow_result.scalars().first() is not None
-
-        return {
-            "followers_count": followers_count,
-            "following_count": following_count,
-            "published_post_count": published_post_count,
-            "is_following": is_following,
-            "is_own_profile": current_user_id == user_id,
-        }

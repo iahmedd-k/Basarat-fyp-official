@@ -10,7 +10,11 @@ settings = get_settings()
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    rounds = max(4, min(int(getattr(settings, "BCRYPT_ROUNDS", 10)), 12))
+    return bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt(rounds=rounds),
+    ).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -27,10 +31,17 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 
 def create_refresh_token(data: dict) -> str:
+    token, _, _ = create_refresh_token_with_meta(data)
+    return token
+
+
+def create_refresh_token_with_meta(data: dict) -> tuple[str, str, datetime]:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh", "jti": uuid4().hex})
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    jti = uuid4().hex
+    to_encode.update({"exp": expire, "type": "refresh", "jti": jti})
+    token = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return token, jti, expire
 
 
 def decode_token(token: str) -> dict | None:

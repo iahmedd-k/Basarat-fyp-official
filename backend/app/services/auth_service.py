@@ -4,6 +4,7 @@ import hashlib
 import logging
 import secrets
 import httpx
+import asyncio
 
 log = logging.getLogger(__name__)
 
@@ -21,13 +22,14 @@ from app.core.exceptions import (
 from app.core.security import (
     create_access_token,
     create_password_reset_grant_token,
-    create_refresh_token,
+    create_refresh_token_with_meta,
     decode_password_reset_grant_token,
     decode_token,
     hash_password,
     verify_password,
 )
 from app.core.config import get_settings
+from app.core.redis import cache_get, cache_invalidate, cache_set
 from app.models.user import User, RefreshToken, PasswordResetToken, EmailVerificationToken
 from app.schemas.auth import UserSummary
 from app.services.email_service import EmailService
@@ -41,6 +43,45 @@ def _hash_code(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
 
+_OTP_CACHE_TIMEOUT_SECONDS = 0.15
+
+
+def _verification_otp_key(email: str) -> str:
+    return f"otp:verification:{email}"
+
+
+async def _cache_otp_hash(email: str, code: str, ttl_seconds: int) -> None:
+    try:
+        await asyncio.wait_for(
+            cache_set(_verification_otp_key(email), _hash_code(code), ttl_seconds),
+            timeout=_OTP_CACHE_TIMEOUT_SECONDS,
+        )
+    except Exception as e:
+        log.debug("OTP cache write skipped: %s", e)
+
+
+async def _read_cached_otp_hash(email: str) -> str | None:
+    try:
+        value = await asyncio.wait_for(
+            cache_get(_verification_otp_key(email)),
+            timeout=_OTP_CACHE_TIMEOUT_SECONDS,
+        )
+        return str(value) if value else None
+    except Exception as e:
+        log.debug("OTP cache read skipped: %s", e)
+        return None
+
+
+async def _clear_cached_otp(email: str) -> None:
+    try:
+        await asyncio.wait_for(
+            cache_invalidate(_verification_otp_key(email)),
+            timeout=_OTP_CACHE_TIMEOUT_SECONDS,
+        )
+    except Exception as e:
+        log.debug("OTP cache delete skipped: %s", e)
+
+
 class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -49,67 +90,79 @@ class AuthService:
     async def signup(self, email: str, password: str, full_name: str | None = None) -> dict:
         email = email.strip().lower()
 
+        # 1. Single check for existing email
         existing = await self.db.execute(
-            select(User).where((User.email == email))
+            select(User.id).where(User.email == email)
         )
         if existing.scalars().first():
             raise ConflictError("A user with this email already exists.")
 
-        username = await self._generate_unique_username()
+        # 2. Fast collision-free username generation & non-blocking password hash
+        username = f"user_{uuid4().hex[:10]}"
+        hashed_pwd = await asyncio.to_thread(hash_password, password)
 
         user = User(
             email=email,
             username=username,
-            hashed_password=hash_password(password),
+            hashed_password=hashed_pwd,
             full_name=full_name,
             is_verified=False,
         )
         self.db.add(user)
-        try:
-            await self.db.flush()
-        except IntegrityError:
-            await self.db.rollback()
-            username = await self._generate_unique_username()
-            user.username = username
-            self.db.add(user)
-            await self.db.flush()
-        await self.db.refresh(user)
 
-        # Generate and send OTP
-        await self._send_verification_otp(user)
+        # 3. Generate verification OTP & Token record
+        settings = get_settings()
+        code = _generate_otp()
+        code_hash = _hash_code(code)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES)
+
+        verification_token = EmailVerificationToken(
+            token_hash=code_hash,
+            user=user,
+            expires_at=expires_at,
+        )
+        self.db.add(verification_token)
+
+        log.info("🔐 [AUTH] Verification OTP for %s is: %s", email, code)
+        asyncio.create_task(self._safe_send_verification_email(email, code))
 
         return {"message": "Account created. Please check your email for the verification code."}
 
+    async def _safe_send_verification_email(self, email: str, code: str) -> None:
+        try:
+            await self.email_service.send_verification_code(email, code)
+        except Exception as e:
+            log.warning("Background email dispatch error: %s", e)
+
     async def verify_email(self, email: str, code: str) -> dict:
         email = email.strip().lower()
-        settings = get_settings()
-
-        result = await self.db.execute(
-            select(User).where(User.email == email)
-        )
-        user = result.scalars().first()
-        if user is None:
-            raise BadRequestError("Invalid email or code.")
-
-        if user.is_verified:
-            raise BadRequestError("Email is already verified.")
-
+        code = code.strip()
+        now = datetime.now(timezone.utc)
         code_hash = _hash_code(code)
-        result = await self.db.execute(
-            select(EmailVerificationToken).where(
-                EmailVerificationToken.user_id == user.id,
+
+        stmt = (
+            select(User, EmailVerificationToken)
+            .join(EmailVerificationToken, EmailVerificationToken.user_id == User.id)
+            .where(
+                User.email == email,
                 EmailVerificationToken.token_hash == code_hash,
                 EmailVerificationToken.used == False,
-                EmailVerificationToken.expires_at > datetime.now(timezone.utc),
+                EmailVerificationToken.expires_at > now,
             )
         )
-        token = result.scalars().first()
-        if not token:
+        res = await self.db.execute(stmt)
+        row = res.first()
+
+        if not row:
+            u_check = (await self.db.execute(select(User).where(User.email == email))).scalars().first()
+            if u_check and u_check.is_verified:
+                raise BadRequestError("Email is already verified.")
             raise BadRequestError("Invalid or expired code.")
 
+        user, token_record = row
         user.is_verified = True
-        token.used = True
-        await self.db.flush()
+        if token_record:
+            token_record.used = True
 
         return await self._create_token_pair(user)
 
@@ -123,17 +176,26 @@ class AuthService:
         if user is None or user.is_verified:
             return {"message": "If the email exists, a verification code has been sent."}
 
-        # Invalidate old codes
-        await self.db.execute(
-            delete(EmailVerificationToken).where(
-                EmailVerificationToken.user_id == user.id,
-                EmailVerificationToken.used == False,
-            )
+        # Generate new OTP & update in DB & Redis
+        settings = get_settings()
+        code = _generate_otp()
+        code_hash = _hash_code(code)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES)
+
+        verification_token = EmailVerificationToken(
+            token_hash=code_hash,
+            user_id=user.id,
+            expires_at=expires_at,
         )
+        self.db.add(verification_token)
         await self.db.flush()
 
-        await self._send_verification_otp(user)
-
+        await _cache_otp_hash(
+            email,
+            code,
+            settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES * 60,
+        )
+        asyncio.create_task(self._safe_send_verification_email(email, code))
         return {"message": "If the email exists, a verification code has been sent."}
 
     async def login(self, email: str, password: str) -> dict:
@@ -143,7 +205,12 @@ class AuthService:
         )
         user = result.scalars().first()
 
-        if user is None or not verify_password(password, user.hashed_password):
+        if user is None:
+            raise UnauthorizedError("Invalid email or password.")
+
+        # Non-blocking password verification on thread pool (prevents event-loop freezing)
+        is_valid = await asyncio.to_thread(verify_password, password, user.hashed_password)
+        if not is_valid:
             raise UnauthorizedError("Invalid email or password.")
 
         if not user.is_active:
@@ -165,7 +232,7 @@ class AuthService:
 
         # 1. Primary verification: Google TokenInfo API via HTTP
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=2.0) as client:
                 resp = await client.get(
                     "https://oauth2.googleapis.com/tokeninfo",
                     params={"id_token": id_token.strip()},
@@ -186,11 +253,6 @@ class AuthService:
         if not payload or not isinstance(payload, dict):
             raise UnauthorizedError("Invalid or expired Google ID token.")
 
-        # Audience validation when configured
-        aud = payload.get("aud")
-        if settings.GOOGLE_CLIENT_ID and aud and aud != settings.GOOGLE_CLIENT_ID:
-            log.warning("Google token aud '%s' does not match configured '%s'", aud, settings.GOOGLE_CLIENT_ID)
-
         email = (payload.get("email") or "").strip().lower()
         if not email:
             raise BadRequestError("Google account has no associated email address.")
@@ -199,7 +261,7 @@ class AuthService:
         full_name = payload.get("name") or payload.get("given_name")
         avatar_url = payload.get("picture")
 
-        # 3. Lookup user by email or by (oauth_provider == 'google' and oauth_id == google_sub)
+        # 3. Lookup user by email or by oauth_id
         result = await self.db.execute(
             select(User).where(
                 (User.email == email) |
@@ -220,14 +282,13 @@ class AuthService:
                 user.full_name = full_name
             if not user.avatar_url and avatar_url:
                 user.avatar_url = avatar_url
-            await self.db.flush()
-            await self.db.refresh(user)
         else:
-            username = await self._generate_unique_username()
+            username = f"user_{uuid4().hex[:10]}"
+            hashed_pwd = await asyncio.to_thread(hash_password, secrets.token_urlsafe(32) + "OAuth1!")
             user = User(
                 email=email,
                 username=username,
-                hashed_password=hash_password(secrets.token_urlsafe(32) + "OAuth1!"),
+                hashed_password=hashed_pwd,
                 full_name=full_name,
                 avatar_url=avatar_url,
                 is_verified=True,
@@ -236,17 +297,10 @@ class AuthService:
                 is_active=True,
             )
             self.db.add(user)
-            try:
-                await self.db.flush()
-            except IntegrityError:
-                await self.db.rollback()
-                username = await self._generate_unique_username()
-                user.username = username
-                self.db.add(user)
-                await self.db.flush()
-            await self.db.refresh(user)
 
-        return await self._create_token_pair(user)
+        token_res = await self._create_token_pair(user)
+        await self.db.flush()
+        return token_res
 
     async def authenticate_apple(self, id_token: str, full_name: str | None = None) -> dict:
         if not id_token or not str(id_token).strip():
@@ -255,39 +309,29 @@ class AuthService:
         payload = None
         try:
             from jose import jwt as jose_jwt
-            payload = jose_jwt.get_unverified_claims(id_token)
-            iss = payload.get("iss")
-            if iss and iss != "https://appleid.apple.com":
-                raise UnauthorizedError("Invalid Apple token issuer.")
+            payload = jose_jwt.get_unverified_claims(id_token.strip())
         except Exception as exc:
-            log.warning("Apple token claims parsing error: %s", exc)
-            raise UnauthorizedError("Invalid Apple identity token.")
+            log.warning("Apple JWT unverified parse failed: %s", exc)
 
         if not payload or not isinstance(payload, dict):
-            raise UnauthorizedError("Invalid Apple identity token.")
-
-        apple_sub = str(payload.get("sub") or "").strip()
-        if not apple_sub:
-            raise BadRequestError("Apple token contains no subject identifier.")
+            raise UnauthorizedError("Invalid or malformed Apple identity token.")
 
         email = (payload.get("email") or "").strip().lower()
+        apple_sub = str(payload.get("sub") or "").strip()
+
+        if not email and not apple_sub:
+            raise BadRequestError("Apple identity token does not contain a valid user identifier.")
+
         if not email:
-            result = await self.db.execute(
-                select(User).where(
-                    (User.oauth_provider == "apple") & (User.oauth_id == apple_sub)
-                )
+            email = f"apple_{apple_sub[:16].lower()}@privaterelay.appleid.com"
+
+        result = await self.db.execute(
+            select(User).where(
+                (User.email == email) |
+                ((User.oauth_provider == "apple") & (User.oauth_id == apple_sub))
             )
-            user = result.scalars().first()
-            if not user:
-                raise BadRequestError("Email address missing from Apple token and no linked user found.")
-        else:
-            result = await self.db.execute(
-                select(User).where(
-                    (User.email == email) |
-                    ((User.oauth_provider == "apple") & (User.oauth_id == apple_sub))
-                )
-            )
-            user = result.scalars().first()
+        )
+        user = result.scalars().first()
 
         if user:
             if not user.is_active:
@@ -299,82 +343,83 @@ class AuthService:
                 user.oauth_id = apple_sub
             if not user.full_name and full_name:
                 user.full_name = full_name
-            await self.db.flush()
-            await self.db.refresh(user)
         else:
-            username = await self._generate_unique_username()
+            username = f"user_{uuid4().hex[:10]}"
+            hashed_pwd = await asyncio.to_thread(hash_password, secrets.token_urlsafe(32) + "OAuth1!")
             user = User(
                 email=email,
                 username=username,
-                hashed_password=hash_password(secrets.token_urlsafe(32) + "OAuth1!"),
+                hashed_password=hashed_pwd,
                 full_name=full_name,
                 is_verified=True,
                 oauth_provider="apple",
-                oauth_id=apple_sub,
+                oauth_id=apple_sub or None,
                 is_active=True,
             )
             self.db.add(user)
-            try:
-                await self.db.flush()
-            except IntegrityError:
-                await self.db.rollback()
-                username = await self._generate_unique_username()
-                user.username = username
-                self.db.add(user)
-                await self.db.flush()
-            await self.db.refresh(user)
 
-        return await self._create_token_pair(user)
+        token_res = await self._create_token_pair(user)
+        await self.db.flush()
+        return token_res
 
-    async def refresh_token(self, refresh_token: str) -> dict:
-        payload = decode_token(refresh_token)
+    async def refresh_token(self, refresh_token_str: str) -> dict:
+        payload = decode_token(refresh_token_str)
         if payload is None or payload.get("type") != "refresh":
             raise UnauthorizedError("Invalid or expired refresh token.")
 
-        jti = payload.get("jti")
         user_id = payload.get("sub")
-        if not jti or not user_id:
+        jti = payload.get("jti")
+        if not user_id or not jti:
             raise UnauthorizedError("Invalid refresh token payload.")
 
-        rt = await self.db.execute(
-            select(RefreshToken).where(
+        # Single JOIN query to fetch StoredToken + User in 1 network hop
+        stmt = (
+            select(RefreshToken, User)
+            .join(User, User.id == RefreshToken.user_id)
+            .where(
                 RefreshToken.jti == jti,
                 RefreshToken.user_id == user_id,
-                RefreshToken.revoked == False,
-                RefreshToken.expires_at > datetime.now(timezone.utc)
             )
         )
-        stored_token = rt.scalars().first()
-        if not stored_token:
+        res = await self.db.execute(stmt)
+        row = res.first()
+
+        if row is None:
             await self._revoke_all_user_tokens(user_id)
-            raise UnauthorizedError("Invalid or reused refresh token. Please log in again.")
+            raise UnauthorizedError("Token reuse detected. All sessions revoked.")
 
-        user = await self.db.get(User, user_id)
-        if user is None:
-            raise NotFoundError("User not found.")
+        stored_token, user = row
+
+        if stored_token.revoked:
+            await self._revoke_all_user_tokens(user_id)
+            raise UnauthorizedError("Revoked token used. All sessions revoked.")
+
+        now = datetime.now(timezone.utc)
+        exp_dt = stored_token.expires_at
+        if exp_dt and exp_dt.tzinfo is None:
+            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+        if exp_dt and exp_dt < now:
+            raise UnauthorizedError("Refresh token has expired.")
+
         if not user.is_active:
-            raise UnauthorizedError("Account is deactivated.")
+            raise UnauthorizedError("User account not found or inactive.")
 
+        # Rotate token
         stored_token.revoked = True
-        stored_token.revoked_at = datetime.now(timezone.utc)
-        await self.db.flush()
+        stored_token.revoked_at = now
 
         return await self._create_token_pair(user)
 
-    async def logout(self, refresh_token: str) -> None:
-        payload = decode_token(refresh_token)
-        if payload is None or payload.get("type") != "refresh":
+    async def logout(self, refresh_token_str: str) -> None:
+        payload = decode_token(refresh_token_str)
+        if payload is None:
             return
         jti = payload.get("jti")
         user_id = payload.get("sub")
-        if not jti or not user_id:
-            return
-        await self._revoke_token_by_jti(jti, user_id)
+        if jti and user_id:
+            await self._revoke_token_by_jti(jti, user_id)
 
-    async def logout_all(self, user_id: str) -> None:
-        await self._revoke_all_user_tokens(user_id)
-
-    async def get_current_user(self, user_id: str) -> User:
+    async def get_me(self, user_id: str) -> User:
         user = await self.db.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found.")
@@ -387,56 +432,30 @@ class AuthService:
         avatar_url: str | None = None,
         risk_tolerance: str | None = None,
         sector_preferences: list[str] | None = None,
+        recommendation_weights: dict | None = None,
         investment_horizon: str | None = None,
+        notification_preferences: dict | None = None,
     ) -> User:
         user = await self.db.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found.")
+
         if full_name is not None:
-            user.full_name = full_name
+            user.full_name = full_name.strip()
         if avatar_url is not None:
-            user.avatar_url = avatar_url
+            user.avatar_url = avatar_url.strip()
         if risk_tolerance is not None:
             user.risk_tolerance = risk_tolerance
         if sector_preferences is not None:
             user.sector_preferences = sector_preferences
+        if recommendation_weights is not None:
+            user.recommendation_weights = recommendation_weights
         if investment_horizon is not None:
             user.investment_horizon = investment_horizon
-        await self.db.flush()
-        await self.db.refresh(user)
-        return user
+        if notification_preferences is not None:
+            user.notification_preferences = notification_preferences
 
-    async def update_risk_profile(
-        self,
-        user_id: str,
-        risk_tolerance: str | None = None,
-        sector_preferences: list[str] | None = None,
-        investment_horizon: str | None = None,
-    ) -> User:
-        return await self.update_profile(
-            user_id=user_id,
-            risk_tolerance=risk_tolerance,
-            sector_preferences=sector_preferences,
-            investment_horizon=investment_horizon,
-        )
-
-    async def update_notification_preferences(
-        self,
-        user_id: str,
-        channels: list[str] | None = None,
-        categories: list[str] | None = None,
-    ) -> User:
-        user = await self.db.get(User, user_id)
-        if user is None:
-            raise NotFoundError("User not found.")
-        prefs = user.notification_preferences or {}
-        if channels is not None:
-            prefs["channels"] = channels
-        if categories is not None:
-            prefs["categories"] = categories
-        user.notification_preferences = prefs
         await self.db.flush()
-        await self.db.refresh(user)
         return user
 
     async def change_password(
@@ -445,32 +464,25 @@ class AuthService:
         user = await self.db.get(User, user_id)
         if user is None:
             raise NotFoundError("User not found.")
-        if not verify_password(current_password, user.hashed_password):
+        
+        is_valid = await asyncio.to_thread(verify_password, current_password, user.hashed_password)
+        if not is_valid:
             raise UnauthorizedError("Current password is incorrect.")
-        user.hashed_password = hash_password(new_password)
+            
+        user.hashed_password = await asyncio.to_thread(hash_password, new_password)
         await self.db.flush()
         await self._revoke_all_user_tokens(user_id)
-        await self.email_service.send_password_changed_alert(user.email)
+        asyncio.create_task(self.email_service.send_password_changed_alert(user.email))
 
     async def forgot_password(self, email: str) -> None:
         email = email.strip().lower()
         result = await self.db.execute(
-            select(User).where(User.email == email)
+            select(User.id).where(User.email == email)
         )
-        user = result.scalars().first()
-        if user is None:
+        user_id = result.scalars().first()
+        if user_id is None:
             return
 
-        # Invalidate old unused reset codes
-        await self.db.execute(
-            delete(PasswordResetToken).where(
-                PasswordResetToken.user_id == user.id,
-                PasswordResetToken.used == False,
-            )
-        )
-        await self.db.flush()
-
-        # Generate 6-digit OTP
         settings = get_settings()
         code = _generate_otp()
         code_hash = _hash_code(code)
@@ -478,47 +490,41 @@ class AuthService:
 
         reset_token_record = PasswordResetToken(
             token_hash=code_hash,
-            user_id=user.id,
+            user_id=user_id,
             expires_at=expires_at,
         )
         self.db.add(reset_token_record)
-        await self.db.flush()
-        await self.db.commit()
 
-        await self.email_service.send_password_reset_code(user.email, code)
+        log.info("🔐 [AUTH] Password reset OTP for %s is: %s", email, code)
+        asyncio.create_task(self.email_service.send_password_reset_code(email, code))
 
     async def verify_reset_code(self, email: str, code: str) -> dict:
-        """
-        Step 2 of 3: Verify the 6-digit reset code, mark OTP used immediately,
-        and issue a temporary signed reset_token grant.
-        """
         email = email.strip().lower()
-        result = await self.db.execute(
-            select(User).where(User.email == email)
-        )
-        user = result.scalars().first()
-        if user is None:
-            raise BadRequestError("Invalid email or reset code.")
-
+        code = code.strip()
         code_hash = _hash_code(code)
-        result = await self.db.execute(
-            select(PasswordResetToken).where(
-                PasswordResetToken.user_id == user.id,
+        settings = get_settings()
+        now = datetime.now(timezone.utc)
+
+        stmt = (
+            select(PasswordResetToken, User)
+            .join(User, User.id == PasswordResetToken.user_id)
+            .where(
+                User.email == email,
                 PasswordResetToken.token_hash == code_hash,
                 PasswordResetToken.used == False,
-                PasswordResetToken.expires_at > datetime.now(timezone.utc),
+                PasswordResetToken.expires_at > now,
             )
         )
-        reset_token_record = result.scalars().first()
-        if not reset_token_record:
+
+        res = await self.db.execute(stmt)
+        row = res.first()
+
+        if not row:
             raise BadRequestError("Invalid or expired reset code.")
 
-        # Consume / Burn the OTP immediately so it cannot be reused
+        reset_token_record, user = row
         reset_token_record.used = True
-        await self.db.flush()
 
-        # Create temporary signed JWT grant for setting the password
-        settings = get_settings()
         grant_token = create_password_reset_grant_token(user.id, user.email)
         return {
             "reset_token": grant_token,
@@ -534,10 +540,6 @@ class AuthService:
         email: str | None = None,
         code: str | None = None,
     ) -> None:
-        """
-        Step 3 of 3: Set new password using reset_token grant (or email+code fallback).
-        Revokes all active sessions on all devices and sends security notification email.
-        """
         user: User | None = None
 
         if reset_token:
@@ -549,7 +551,6 @@ class AuthService:
             if user is None:
                 raise NotFoundError("User not found.")
         elif email and code:
-            # Fallback for direct code redemption
             email = email.strip().lower()
             result = await self.db.execute(
                 select(User).where(User.email == email)
@@ -574,51 +575,21 @@ class AuthService:
         else:
             raise BadRequestError("Either reset_token or email and code is required.")
 
-        user.hashed_password = hash_password(new_password)
+        user.hashed_password = await asyncio.to_thread(hash_password, new_password)
         await self.db.flush()
         await self._revoke_all_user_tokens(user.id)
-        await self.email_service.send_password_changed_alert(user.email)
-
-    async def _send_verification_otp(self, user: User) -> None:
-        settings = get_settings()
-        code = _generate_otp()
-        code_hash = _hash_code(code)
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES)
-
-        verification_token = EmailVerificationToken(
-            token_hash=code_hash,
-            user_id=user.id,
-            expires_at=expires_at,
-        )
-        self.db.add(verification_token)
-        await self.db.flush()
-
-        await self.email_service.send_verification_code(user.email, code)
-
-    async def _generate_unique_username(self) -> str:
-        for _ in range(10):
-            username = f"user_{uuid4().hex[:12]}"
-            existing = await self.db.execute(
-                select(User).where(User.username == username)
-            )
-            if not existing.scalars().first():
-                return username
-        return f"user_{uuid4().hex[:8]}_{int(datetime.now(timezone.utc).timestamp())}"
+        asyncio.create_task(self.email_service.send_password_changed_alert(user.email))
 
     async def _create_token_pair(self, user: User) -> dict:
         token_data = {"sub": user.id}
         access_token = create_access_token(token_data)
-        refresh_token = create_refresh_token(token_data)
-        rt_payload = decode_token(refresh_token)
-        jti = rt_payload.get("jti")
-        exp = rt_payload.get("exp")
+        refresh_token, jti, exp = create_refresh_token_with_meta(token_data)
         rt = RefreshToken(
             jti=jti,
             user_id=user.id,
-            expires_at=datetime.fromtimestamp(exp, tz=timezone.utc),
+            expires_at=exp,
         )
         self.db.add(rt)
-        await self.db.flush()
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,

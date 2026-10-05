@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -58,11 +58,24 @@ class NotificationType(str, Enum):
     POST_MODERATION_DELETED = "POST_MODERATION_DELETED"
 
 
+class CommunityAuthorSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str = ""
+    username: str = ""
+    full_name: str = ""
+    avatar_url: str = ""
+    is_verified: bool = False
+
+
 # Request/Response schemas
 class CommunityPostCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=5000)
     post_type: PostType
     stock_symbol: Optional[str] = Field(None, max_length=20)
+    image_url: Optional[str] = Field(None, max_length=500)
+    image_public_id: Optional[str] = Field(None, max_length=255)
+    media_metadata: Optional[str] = None  # JSON string with width, height
 
     @model_validator(mode="after")
     def validate_content_not_blank(self) -> "CommunityPostCreate":
@@ -101,17 +114,33 @@ class CommunityPostResponse(BaseModel):
     author_username: str = ""
     author_full_name: str = ""
     author_avatar_url: str = ""
+    author_verified: bool = False
+    author: Optional[CommunityAuthorSummary] = None
+
     post_type: PostType = PostType.GENERAL_MARKET
     stock_symbol: str = ""
     stock_name: str = ""
+    tickers: List[str] = Field(default_factory=list)
+    price_at_post: Optional[float] = None
+    price_snapshot: Optional[float] = None
+
     content: str = ""
     image_url: str = ""
+    media_metadata: Optional[Dict[str, Any]] = None
+
     like_count: int = 0
     comment_count: int = 0
     report_count: int = 0
+    view_count: int = 0
+    bookmark_count: int = 0
+
+    is_edited: bool = False
+    edited_at: Optional[datetime] = None
+
     status: PostStatus = PostStatus.PUBLISHED
     removed_reason: str = ""
     liked_by_me: bool = False
+    bookmarked_by_me: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -124,12 +153,12 @@ class CommunityPostResponse(BaseModel):
             return str(v.value)
         return str(v)
 
-    @field_validator("like_count", "comment_count", "report_count", mode="before")
+    @field_validator("like_count", "comment_count", "report_count", "view_count", "bookmark_count", mode="before")
     @classmethod
     def _clean_post_int(cls, v):
         return 0 if v is None else int(v)
 
-    @field_validator("liked_by_me", mode="before")
+    @field_validator("liked_by_me", "bookmarked_by_me", "is_edited", "author_verified", mode="before")
     @classmethod
     def _clean_post_bool(cls, v):
         return False if v is None else bool(v)
@@ -137,7 +166,8 @@ class CommunityPostResponse(BaseModel):
 
 class CommunityPostListResponse(BaseModel):
     posts: List[CommunityPostResponse] = Field(default_factory=list)
-    cursor: str = ""
+    cursor: Optional[str] = ""
+    next_cursor: Optional[str] = ""
     has_more: bool = False
 
 
@@ -173,6 +203,9 @@ class CommunityCommentResponse(BaseModel):
     author_username: str = ""
     author_full_name: str = ""
     author_avatar_url: str = ""
+    author_verified: bool = False
+    author: Optional[CommunityAuthorSummary] = None
+
     parent_comment_id: str = ""
     content: str = ""
     status: CommentStatus = CommentStatus.PUBLISHED
@@ -192,9 +225,20 @@ class CommunityCommentResponse(BaseModel):
 
 
 class CommunityCommentListResponse(BaseModel):
-    comments: List[CommunityCommentResponse]
+    comments: List[CommunityCommentResponse] = Field(default_factory=list)
     cursor: Optional[str] = None
-    has_more: bool
+    next_cursor: Optional[str] = None
+    has_more: bool = False
+
+
+class CommunityPostDetailResponse(BaseModel):
+    """Fully hydrated post detail response with author, counts, flags, and first page of comments."""
+    model_config = ConfigDict(from_attributes=True)
+
+    post: CommunityPostResponse
+    comments: List[CommunityCommentResponse] = Field(default_factory=list)
+    comments_cursor: Optional[str] = None
+    comments_has_more: bool = False
 
 
 class CommunityFollowResponse(BaseModel):
@@ -291,6 +335,7 @@ class CommunityUserSummary(BaseModel):
     username: str
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    is_verified: bool = False
 
 
 class CommunityProfileResponse(BaseModel):
@@ -300,11 +345,22 @@ class CommunityProfileResponse(BaseModel):
     username: str
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    is_verified: bool = False
     followers_count: int
     following_count: int
     published_post_count: int
     is_following: bool = False
     is_own_profile: bool = False
+
+
+class CommunityUnifiedProfileResponse(BaseModel):
+    """Unified profile screen response: profile info + follow stats + first page of posts."""
+    model_config = ConfigDict(from_attributes=True)
+
+    profile: CommunityProfileResponse
+    posts: List[CommunityPostResponse] = Field(default_factory=list)
+    posts_cursor: Optional[str] = None
+    posts_has_more: bool = False
 
 
 class CommunityNotificationResponse(BaseModel):
@@ -332,12 +388,35 @@ class CommunityNotificationsListResponse(BaseModel):
 
 
 class FeedQueryParams(BaseModel):
+    tab: Optional[str] = Field("for_you", description="Feed tab: for_you, following, or ticker")
+    ticker: Optional[str] = None
     stock_symbol: Optional[str] = None
     post_type: Optional[PostType] = None
+    search: Optional[str] = None
+    q: Optional[str] = None
     mine: bool = False
     following: bool = False
     cursor: Optional[str] = None
     limit: int = Field(20, ge=1, le=50)
+
+
+class CommunityTrendingResponse(BaseModel):
+    trending_tickers: List[Dict[str, Any]] = Field(default_factory=list)
+    trending_posts: List[CommunityPostResponse] = Field(default_factory=list)
+
+
+class MediaUploadUrlRequest(BaseModel):
+    filename: str
+    content_type: str = Field(..., pattern=r"^(image/jpeg|image/png|image/webp|image/gif)$")
+    file_size_bytes: int = Field(..., le=10 * 1024 * 1024)  # Max 10MB
+
+
+class MediaUploadUrlResponse(BaseModel):
+    upload_url: str
+    public_id: str
+    media_url: str
+    fields: Dict[str, str] = Field(default_factory=dict)
+    headers: Dict[str, str] = Field(default_factory=dict)
 
 
 class CommunityStatsResponse(BaseModel):

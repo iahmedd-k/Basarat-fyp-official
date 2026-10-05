@@ -1,3 +1,4 @@
+from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
@@ -11,11 +12,13 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.community import (
     CommunityProfileResponse,
+    CommunityUnifiedProfileResponse,
     CommunityPostListResponse,
     CommunityPostResponse,
     PostType,
 )
 from app.services.community_service import CommunityService
+from app.api.v1.community.posts import _build_post_response
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -41,24 +44,90 @@ async def get_my_profile(
             username=user.username,
             full_name=user.full_name,
             avatar_url=user.avatar_url,
+            is_verified=getattr(user, "is_verified", False),
             followers_count=stats["followers_count"],
             following_count=stats["following_count"],
             published_post_count=stats["published_post_count"],
             is_following=False,
             is_own_profile=True,
         )
-    except Exception as e:
+    except Exception:
         log.exception("Get my profile failed")
         raise ServiceUnavailableError("Failed to get profile")
 
 
 @router.get(
+    "/community/users/{user_id}/profile",
+    response_model=CommunityUnifiedProfileResponse,
+    summary="Unified profile screen endpoint (profile + follow stats + first page of posts in 1 API call)",
+)
+async def get_unified_user_profile(
+    user_id: str,
+    cursor: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    service: CommunityService = Depends(_get_service),
+):
+    """Single-call endpoint to fully hydrate a profile screen."""
+    try:
+        target_user = await service.db.get(User, user_id)
+        if not target_user:
+            raise NotFoundError("User not found")
+
+        stats = await service.get_user_profile_stats(user_id, user.id)
+        profile_res = CommunityProfileResponse(
+            id=target_user.id,
+            username=target_user.username,
+            full_name=target_user.full_name,
+            avatar_url=target_user.avatar_url,
+            is_verified=getattr(target_user, "is_verified", False),
+            followers_count=stats["followers_count"],
+            following_count=stats["following_count"],
+            published_post_count=stats["published_post_count"],
+            is_following=stats["is_following"],
+            is_own_profile=stats["is_own_profile"],
+        )
+
+        posts, next_cursor, has_more = await service.get_user_posts(
+            user_id=user_id,
+            current_user_id=user.id,
+            cursor=cursor,
+            limit=limit,
+        )
+
+        post_ids = [p.id for p in posts]
+        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
+        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+
+        post_responses = [
+            _build_post_response(
+                p,
+                liked_by_me=p.id in liked_set,
+                bookmarked_by_me=p.id in bookmarked_set,
+            )
+            for p in posts
+        ]
+
+        return CommunityUnifiedProfileResponse(
+            profile=profile_res,
+            posts=post_responses,
+            posts_cursor=next_cursor,
+            posts_has_more=has_more,
+        )
+    except NotFoundError:
+        raise
+    except Exception:
+        log.exception("Get unified profile failed")
+        raise ServiceUnavailableError("Failed to get unified profile")
+
+
+@router.get(
     "/community/me/posts",
     response_model=CommunityPostListResponse,
-    summary="Get current user's posts",
+    summary="Get current user's posts with batched likes hydration",
 )
 async def get_my_posts(
-    cursor: str | None = Query(None),
+    cursor: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=50),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
@@ -71,38 +140,26 @@ async def get_my_posts(
             limit=limit,
         )
 
-        post_responses = []
-        for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(
-                CommunityPostResponse(
-                    id=post.id,
-                    author_id=post.author_id,
-                    author_username=post.author.username if post.author else None,
-                    author_full_name=post.author.full_name if post.author else None,
-                    author_avatar_url=post.author.avatar_url if post.author else None,
-                    post_type=PostType(post.post_type),
-                    stock_symbol=post.stock_symbol,
-                    stock_name=post.stock.name if post.stock else None,
-                    content=post.content,
-                    image_url=post.image_url,
-                    like_count=post.like_count,
-                    comment_count=post.comment_count,
-                    report_count=post.report_count,
-                    status=post.status,
-                    removed_reason=post.removed_reason,
-                    liked_by_me=liked_by_me,
-                    created_at=post.created_at,
-                    updated_at=post.updated_at,
-                )
+        post_ids = [p.id for p in posts]
+        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
+        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+
+        post_responses = [
+            _build_post_response(
+                p,
+                liked_by_me=p.id in liked_set,
+                bookmarked_by_me=p.id in bookmarked_set,
             )
+            for p in posts
+        ]
 
         return CommunityPostListResponse(
             posts=post_responses,
-            cursor=next_cursor,
+            cursor=next_cursor or "",
+            next_cursor=next_cursor or "",
             has_more=has_more,
         )
-    except Exception as e:
+    except Exception:
         log.exception("Get my posts failed")
         raise ServiceUnavailableError("Failed to get posts")
 
@@ -129,15 +186,16 @@ async def get_user_profile(
             username=target_user.username,
             full_name=target_user.full_name,
             avatar_url=target_user.avatar_url,
+            is_verified=getattr(target_user, "is_verified", False),
             followers_count=stats["followers_count"],
             following_count=stats["following_count"],
             published_post_count=stats["published_post_count"],
             is_following=stats["is_following"],
-            is_own_profile=False,
+            is_own_profile=stats["is_own_profile"],
         )
     except NotFoundError:
         raise
-    except Exception as e:
+    except Exception:
         log.exception("Get user profile failed")
         raise ServiceUnavailableError("Failed to get user profile")
 
@@ -149,7 +207,7 @@ async def get_user_profile(
 )
 async def get_user_posts(
     user_id: str,
-    cursor: str | None = Query(None),
+    cursor: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=50),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
@@ -166,39 +224,27 @@ async def get_user_posts(
             limit=limit,
         )
 
-        post_responses = []
-        for post in posts:
-            liked_by_me = await service.has_liked(post.id, user.id)
-            post_responses.append(
-                CommunityPostResponse(
-                    id=post.id,
-                    author_id=post.author_id,
-                    author_username=post.author.username if post.author else None,
-                    author_full_name=post.author.full_name if post.author else None,
-                    author_avatar_url=post.author.avatar_url if post.author else None,
-                    post_type=PostType(post.post_type),
-                    stock_symbol=post.stock_symbol,
-                    stock_name=post.stock.name if post.stock else None,
-                    content=post.content,
-                    image_url=post.image_url,
-                    like_count=post.like_count,
-                    comment_count=post.comment_count,
-                    report_count=post.report_count,
-                    status=post.status,
-                    removed_reason=post.removed_reason,
-                    liked_by_me=liked_by_me,
-                    created_at=post.created_at,
-                    updated_at=post.updated_at,
-                )
+        post_ids = [p.id for p in posts]
+        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
+        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+
+        post_responses = [
+            _build_post_response(
+                p,
+                liked_by_me=p.id in liked_set,
+                bookmarked_by_me=p.id in bookmarked_set,
             )
+            for p in posts
+        ]
 
         return CommunityPostListResponse(
             posts=post_responses,
-            cursor=next_cursor,
+            cursor=next_cursor or "",
+            next_cursor=next_cursor or "",
             has_more=has_more,
         )
     except NotFoundError:
         raise
-    except Exception as e:
+    except Exception:
         log.exception("Get user posts failed")
         raise ServiceUnavailableError("Failed to get user posts")

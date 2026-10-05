@@ -35,12 +35,12 @@ class Watchlist(Base):
         nullable=False,
     )
 
-    user = relationship("User", back_populates="watchlists", lazy="selectin")
+    user = relationship("User", back_populates="watchlists", lazy="select")
     items = relationship(
         "WatchlistItem",
         back_populates="watchlist",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="select",
         order_by="WatchlistItem.created_at.desc()",
     )
 
@@ -89,7 +89,7 @@ class WatchlistItem(Base):
         nullable=False,
     )
 
-    watchlist = relationship("Watchlist", back_populates="items", lazy="selectin")
+    watchlist = relationship("Watchlist", back_populates="items", lazy="select")
 
     __table_args__ = (
         UniqueConstraint("watchlist_id", "symbol", name="uq_watchlist_symbol"),

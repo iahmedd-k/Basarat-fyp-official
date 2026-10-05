@@ -111,18 +111,13 @@ async def create_watchlist(
         ))
         data = data.model_copy(update={"symbols": stock_references})
         wl = await service.create_watchlist(db, user.id, data)
-        item_count = await db.scalar(
-            select(func.count(WatchlistItem.id)).where(
-                WatchlistItem.watchlist_id == wl.id
-            )
-        )
         return WatchlistSummaryResponse(
             id=wl.id,
             user_id=wl.user_id,
             name=wl.name,
             description=wl.description,
             is_default=wl.is_default,
-            item_count=item_count or 0,
+            item_count=getattr(wl, "item_count", len(stock_references)),
             created_at=wl.created_at.isoformat() if wl.created_at else "",
             updated_at=wl.updated_at.isoformat() if wl.updated_at else "",
         )
@@ -136,6 +131,9 @@ async def create_watchlist(
 
 
 # ── Special Watchlist Endpoints (Placed before parameterized {watchlist_id}) ─
+
+
+from app.core.redis import cache_get, cache_set
 
 
 @router.get(
@@ -154,8 +152,15 @@ async def get_default_watchlist(
 
     If the user does not have a default watchlist, one is automatically provisioned.
     """
+    cached_default_id = await cache_get(f"watchlist:default_id:{user.id}")
+    if cached_default_id:
+        cached_detail = await cache_get(f"watchlist:detail:{cached_default_id}")
+        if cached_detail is not None and cached_detail.get("user_id") == user.id:
+            return WatchlistDetailResponse(**cached_detail)
+
     try:
         wl = await service.get_or_create_default_watchlist(db, user.id)
+        await cache_set(f"watchlist:default_id:{user.id}", wl.id, ttl_seconds=120)
         return await service.build_detail_response(db, wl)
     except Exception as exc:
         log.exception("Error getting default watchlist: %s", exc)
@@ -206,6 +211,10 @@ async def get_watchlist_detail(
     service: WatchlistService = Depends(WatchlistService),
 ):
     """Get watchlist by ID with all tracked stocks enriched with real-time PSX market prices."""
+    cached_detail = await cache_get(f"watchlist:detail:{watchlist_id}")
+    if cached_detail is not None and cached_detail.get("user_id") == user.id:
+        return WatchlistDetailResponse(**cached_detail)
+
     wl = await service.get_watchlist(db, watchlist_id, user.id)
     if not wl:
         raise NotFoundError(f"Watchlist with ID '{watchlist_id}' not found")

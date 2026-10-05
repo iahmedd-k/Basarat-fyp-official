@@ -8,6 +8,12 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
+from app.core.redis import (
+    cache_get,
+    cache_set,
+    cache_invalidate,
+    cache_invalidate_pattern,
+)
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.stock import Stock
 from app.models.watchlist import Watchlist, WatchlistItem
@@ -28,6 +34,24 @@ log = logging.getLogger(__name__)
 class WatchlistService:
     def __init__(self, stock_service: StockService = Depends(StockService)):
         self.stock_service = stock_service
+
+    async def _invalidate_watchlist_cache(
+        self,
+        user_id: str,
+        watchlist_id: str | None = None,
+        symbol: str | None = None,
+    ) -> None:
+        """Invalidate user watchlist summaries, details, and symbol checks."""
+        try:
+            await cache_invalidate(f"watchlist:user:{user_id}")
+            await cache_invalidate(f"watchlist:default_id:{user_id}")
+            if watchlist_id:
+                await cache_invalidate(f"watchlist:detail:{watchlist_id}")
+            if symbol:
+                await cache_invalidate(f"watchlist:check:{user_id}:{symbol.upper()}")
+            await cache_invalidate_pattern(f"watchlist:check:{user_id}:*")
+        except Exception as exc:
+            log.warning("Error invalidating watchlist cache for user %s: %s", user_id, exc)
 
     @staticmethod
     async def _resolve_stock_reference(db: AsyncSession, value: str) -> Stock:
@@ -59,7 +83,12 @@ class WatchlistService:
     async def get_user_watchlists(
         self, db: AsyncSession, user_id: str
     ) -> list[WatchlistSummaryResponse]:
-        """Fetch all watchlists for a user with their item counts."""
+        """Fetch all watchlists for a user with their item counts, utilizing Redis cache."""
+        cache_key = f"watchlist:user:{user_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return [WatchlistSummaryResponse(**item) for item in cached]
+
         stmt = (
             select(
                 Watchlist,
@@ -73,7 +102,7 @@ class WatchlistService:
         result = await db.execute(stmt)
         rows = result.all()
 
-        return [
+        response = [
             WatchlistSummaryResponse(
                 id=wl.id,
                 user_id=wl.user_id,
@@ -86,6 +115,8 @@ class WatchlistService:
             )
             for wl, count in rows
         ]
+        await cache_set(cache_key, [item.model_dump() for item in response], ttl_seconds=120)
+        return response
 
     async def get_watchlist(
         self, db: AsyncSession, watchlist_id: str, user_id: str
@@ -124,6 +155,7 @@ class WatchlistService:
             existing.is_default = True
             await db.commit()
             await db.refresh(existing)
+            await self._invalidate_watchlist_cache(user_id, existing.id)
             return existing
 
         # Create a new default watchlist
@@ -149,6 +181,7 @@ class WatchlistService:
                 raise
             return winner
         await db.refresh(new_wl)
+        await self._invalidate_watchlist_cache(user_id, new_wl.id)
         return new_wl
 
     async def create_watchlist(
@@ -180,6 +213,7 @@ class WatchlistService:
         db.add(watchlist)
         await db.flush()
 
+        item_count = 0
         if data.symbols:
             seen_symbols = set()
             try:
@@ -194,12 +228,15 @@ class WatchlistService:
                                 symbol=stock.symbol,
                             )
                         )
+                item_count = len(seen_symbols)
             except Exception:
                 await db.rollback()
                 raise
 
         await db.commit()
         await db.refresh(watchlist)
+        setattr(watchlist, "item_count", item_count)
+        await self._invalidate_watchlist_cache(user_id, watchlist.id)
         return watchlist
 
     async def update_watchlist(
@@ -224,12 +261,14 @@ class WatchlistService:
 
         await db.commit()
         await db.refresh(watchlist)
+        await self._invalidate_watchlist_cache(watchlist.user_id, watchlist.id)
         return watchlist
 
     async def delete_watchlist(self, db: AsyncSession, watchlist: Watchlist) -> None:
         """Delete a watchlist."""
         was_default = watchlist.is_default
         user_id = watchlist.user_id
+        wl_id = watchlist.id
         await db.delete(watchlist)
         await db.commit()
 
@@ -245,6 +284,8 @@ class WatchlistService:
             if next_default:
                 next_default.is_default = True
                 await db.commit()
+
+        await self._invalidate_watchlist_cache(user_id, wl_id)
 
     async def add_item(
         self,
@@ -275,6 +316,7 @@ class WatchlistService:
         db.add(item)
         await db.commit()
         await db.refresh(item)
+        await self._invalidate_watchlist_cache(watchlist.user_id, watchlist.id, symbol)
         return item
 
     async def get_item(
@@ -302,18 +344,33 @@ class WatchlistService:
 
         await db.commit()
         await db.refresh(item)
+        
+        # Invalidate cache for this watchlist
+        wl = await db.get(Watchlist, item.watchlist_id)
+        if wl:
+            await self._invalidate_watchlist_cache(wl.user_id, wl.id, item.symbol)
         return item
 
     async def delete_item(self, db: AsyncSession, item: WatchlistItem) -> None:
         """Remove an item from a watchlist."""
+        wl_id = item.watchlist_id
+        symbol = item.symbol
+        wl = await db.get(Watchlist, wl_id)
         await db.delete(item)
         await db.commit()
+        if wl:
+            await self._invalidate_watchlist_cache(wl.user_id, wl_id, symbol)
 
     async def check_symbol(
         self, db: AsyncSession, user_id: str, symbol: str
     ) -> tuple[bool, list[str]]:
-        """Check if a symbol is present in any of the user's watchlists."""
+        """Check if a symbol is present in any of the user's watchlists with Redis caching."""
         symbol = symbol.strip().upper()
+        cache_key = f"watchlist:check:{user_id}:{symbol}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached.get("is_in", False), cached.get("watchlist_ids", [])
+
         stmt = (
             select(WatchlistItem.watchlist_id)
             .join(Watchlist, Watchlist.id == WatchlistItem.watchlist_id)
@@ -324,7 +381,9 @@ class WatchlistService:
         )
         res = await db.execute(stmt)
         watchlist_ids = [row[0] for row in res.all()]
-        return bool(watchlist_ids), watchlist_ids
+        is_in = bool(watchlist_ids)
+        await cache_set(cache_key, {"is_in": is_in, "watchlist_ids": watchlist_ids}, ttl_seconds=120)
+        return is_in, watchlist_ids
 
     async def enrich_items(
         self, db: AsyncSession, items: Sequence[WatchlistItem]
@@ -344,7 +403,8 @@ class WatchlistService:
         quotes_map = {}
         try:
             quotes = await asyncio.to_thread(self.stock_service.get_quote_batch, symbols)
-            for q in quotes:
+            quote_list = list(quotes.values()) if isinstance(quotes, dict) else (quotes or [])
+            for q in quote_list:
                 if isinstance(q, dict) and "symbol" in q:
                     quotes_map[q["symbol"]] = q
         except Exception as exc:
@@ -400,17 +460,79 @@ class WatchlistService:
     async def build_detail_response(
         self, db: AsyncSession, watchlist: Watchlist
     ) -> WatchlistDetailResponse:
-        """Construct full watchlist detail response with enriched items."""
-        items_stmt = (
-            select(WatchlistItem)
+        """Construct full watchlist detail response with joined items and live stock quotes."""
+        cache_key = f"watchlist:detail:{watchlist.id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return WatchlistDetailResponse(**cached)
+
+        # Execute 1 single joined query for items and stocks
+        stmt = (
+            select(WatchlistItem, Stock)
+            .outerjoin(Stock, WatchlistItem.stock_id == Stock.id)
             .where(WatchlistItem.watchlist_id == watchlist.id)
             .order_by(WatchlistItem.created_at.desc())
         )
-        items_res = await db.execute(items_stmt)
-        items = items_res.scalars().all()
+        items_res = await db.execute(stmt)
+        item_stock_rows = items_res.all()
 
-        enriched_items = await self.enrich_items(db, items)
-        return WatchlistDetailResponse(
+        symbols = [item.symbol for item, _ in item_stock_rows]
+        quotes_map = {}
+        if symbols:
+            try:
+                quotes = await asyncio.to_thread(self.stock_service.get_quote_batch, symbols)
+                quote_list = list(quotes.values()) if isinstance(quotes, dict) else (quotes or [])
+                for q in quote_list:
+                    if isinstance(q, dict) and "symbol" in q:
+                        quotes_map[q["symbol"]] = q
+            except Exception as exc:
+                log.warning("Could not fetch live quotes for watchlist items: %s", exc)
+
+        enriched_items = []
+        for item, db_stock in item_stock_rows:
+            sym = item.symbol
+            quote = quotes_map.get(sym, {})
+
+            company_name = (
+                (db_stock.name if db_stock and db_stock.name else None)
+                or (quote.get("name") if quote.get("name") != sym else None)
+                or sym
+            )
+            sector = (
+                (db_stock.sector if db_stock and db_stock.sector else None)
+                or quote.get("sector")
+            )
+
+            current_price = quote.get("current")
+            change = quote.get("change")
+            change_pct = quote.get("change_pct")
+            high = quote.get("high")
+            low = quote.get("low")
+            volume = quote.get("volume")
+
+            enriched_items.append(
+                WatchlistItemResponse(
+                    id=item.id,
+                    watchlist_id=item.watchlist_id,
+                    stock_id=item.stock_id,
+                    symbol=item.symbol,
+                    name=company_name,
+                    sector=sector,
+                    target_price=float(item.target_price) if item.target_price is not None else None,
+                    notes=item.notes,
+                    current_price=float(current_price) if current_price is not None else None,
+                    change=float(change) if change is not None else None,
+                    change_pct=float(change_pct) if change_pct is not None else None,
+                    high=float(high) if high is not None else None,
+                    low=float(low) if low is not None else None,
+                    volume=int(volume) if volume is not None else None,
+                    is_stale=False,
+                    created_at=item.created_at.isoformat() if item.created_at else "",
+                    updated_at=item.updated_at.isoformat() if item.updated_at else "",
+                )
+            )
+
+        resp = WatchlistDetailResponse(
             id=watchlist.id,
             user_id=watchlist.user_id,
             name=watchlist.name,
@@ -420,3 +542,5 @@ class WatchlistService:
             created_at=watchlist.created_at.isoformat() if watchlist.created_at else "",
             updated_at=watchlist.updated_at.isoformat() if watchlist.updated_at else "",
         )
+        await cache_set(cache_key, resp.model_dump(), ttl_seconds=30)
+        return resp

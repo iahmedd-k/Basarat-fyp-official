@@ -1,8 +1,9 @@
 {
   "last_successful_ingestion": "2026-09-16T10:30:00+00:00",
-  "updated_at": "2026-10-03T10:53:34.711420+00:00",
+  "updated_at": "2026-10-05T20:33:36.564060+00:00",
   "total_runs": 14,
-  "status": "queued",
+  "status": "failed",
   "last_run_started_at": "2026-10-01T11:30:05.258491+00:00",
-  "new_articles": 7
+  "new_articles": 7,
+  "last_error": "Cannot run the event loop while another loop is running"
 }

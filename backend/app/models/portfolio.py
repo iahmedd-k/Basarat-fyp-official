@@ -28,8 +28,8 @@ class PortfolioTransaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    user = relationship("User", back_populates="portfolio_transactions", lazy="selectin")
-    stock = relationship("Stock", lazy="selectin")
+    user = relationship("User", back_populates="portfolio_transactions", lazy="select")
+    stock = relationship("Stock", lazy="select")
 
     __table_args__ = (
         Index("ix_portfolio_transactions_user_symbol", "user_id", "symbol"),

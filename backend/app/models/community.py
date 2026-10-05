@@ -1,11 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum as PyEnum
-from uuid import uuid4
+from typing import List, Optional
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -16,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.id_generator import generate_time_id
 from app.db.base import Base
 
 
@@ -75,7 +77,7 @@ class NotificationType(PyEnum):
 class CommunityPost(Base):
     __tablename__ = "community_posts"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: uuid4().hex)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_time_id)
     author_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -84,19 +86,27 @@ class CommunityPost(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     image_public_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    media_metadata: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: width, height, mime, etc.
+
+    price_at_post: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     like_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     comment_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     report_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    bookmark_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    is_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     status: Mapped[str] = mapped_column(String(30), default=PostStatus.PUBLISHED.value, nullable=False)
     removed_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(datetime.utcnow().astimezone().tzinfo)
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(datetime.utcnow().astimezone().tzinfo)
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
     author = relationship("User", back_populates="community_posts", lazy="selectin")
@@ -105,6 +115,8 @@ class CommunityPost(Base):
     comments = relationship("CommunityComment", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
     reports = relationship("CommunityReport", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
     moderation_actions = relationship("CommunityModerationAction", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
+    tickers = relationship("CommunityPostTicker", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
+    bookmarks = relationship("CommunityBookmark", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint(
@@ -115,10 +127,57 @@ class CommunityPost(Base):
         CheckConstraint("removed_reason IS NULL OR removed_reason IN ('USER_DELETED', 'MODERATION')", name="ck_community_posts_removed_reason"),
         CheckConstraint("post_type IN ('STOCK', 'GENERAL_MARKET')", name="ck_community_posts_post_type"),
         Index("ix_community_posts_author_created", "author_id", "created_at"),
+        Index("ix_community_posts_author_status_created", "author_id", "status", "created_at"),
         Index("ix_community_posts_stock_created", "stock_symbol", "created_at"),
         Index("ix_community_posts_status_created", "status", "created_at"),
         Index("ix_community_posts_type_created", "post_type", "created_at"),
         Index("ix_community_posts_created_id", "created_at", "id"),
+        Index("ix_community_posts_status_created_id", "status", "created_at", "id"),
+    )
+
+
+class CommunityPostTicker(Base):
+    """Junction table for fast O(1) indexed ticker feeds and multi-cashtag queries."""
+    __tablename__ = "community_post_tickers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_time_id)
+    post_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
+    )
+
+    post = relationship("CommunityPost", back_populates="tickers", lazy="selectin")
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "ticker", name="uq_community_post_tickers_post_ticker"),
+        Index("ix_community_post_tickers_ticker_created", "ticker", "created_at"),
+        Index("ix_community_post_tickers_ticker_id", "ticker", "post_id"),
+    )
+
+
+class CommunityBookmark(Base):
+    __tablename__ = "community_bookmarks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_time_id)
+    post_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
+    )
+
+    post = relationship("CommunityPost", back_populates="bookmarks", lazy="selectin")
+    user = relationship("User", lazy="selectin")
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_community_bookmarks_post_user"),
+        Index("ix_community_bookmarks_user_created", "user_id", "created_at"),
     )
 
 
@@ -132,7 +191,7 @@ class CommunityPostLike(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(datetime.utcnow().astimezone().tzinfo)
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
     post = relationship("CommunityPost", back_populates="likes", lazy="selectin")
@@ -140,13 +199,14 @@ class CommunityPostLike(Base):
 
     __table_args__ = (
         UniqueConstraint("post_id", "user_id", name="uq_community_post_likes_post_user"),
+        Index("ix_community_post_likes_user_created", "user_id", "created_at"),
     )
 
 
 class CommunityComment(Base):
     __tablename__ = "community_comments"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: uuid4().hex)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_time_id)
     post_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -157,12 +217,13 @@ class CommunityComment(Base):
         String(36), ForeignKey("community_comments.id", ondelete="CASCADE"), nullable=True, index=True
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    reply_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default=CommentStatus.PUBLISHED.value, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(datetime.utcnow().astimezone().tzinfo)
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(datetime.utcnow().astimezone().tzinfo)
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
     post = relationship("CommunityPost", back_populates="comments", lazy="selectin")
@@ -174,6 +235,7 @@ class CommunityComment(Base):
     __table_args__ = (
         CheckConstraint("status IN ('PUBLISHED', 'DELETED')", name="ck_community_comments_status"),
         Index("ix_community_comments_post_created", "post_id", "created_at"),
+        Index("ix_community_comments_post_parent_created", "post_id", "parent_comment_id", "created_at", "id"),
         Index("ix_community_comments_author_created", "author_id", "created_at"),
     )
 
@@ -188,7 +250,7 @@ class CommunityFollow(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(datetime.utcnow().astimezone().tzinfo)
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
     follower = relationship("User", foreign_keys=[follower_id], lazy="selectin")
@@ -205,7 +267,7 @@ class CommunityFollow(Base):
 class CommunityReport(Base):
     __tablename__ = "community_reports"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: uuid4().hex)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_time_id)
     reporter_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -220,7 +282,7 @@ class CommunityReport(Base):
     reviewed_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(datetime.utcnow().astimezone().tzinfo)
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
     reporter = relationship("User", foreign_keys=[reporter_id], lazy="selectin")
@@ -241,7 +303,7 @@ class CommunityReport(Base):
 class CommunityModerationAction(Base):
     __tablename__ = "community_moderation_actions"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: uuid4().hex)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_time_id)
     moderator_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )
@@ -254,7 +316,7 @@ class CommunityModerationAction(Base):
     action: Mapped[str] = mapped_column(String(30), nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(datetime.utcnow().astimezone().tzinfo)
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
     moderator = relationship("User", foreign_keys=[moderator_id], lazy="selectin")
@@ -273,7 +335,7 @@ class CommunityModerationAction(Base):
 class CommunityNotification(Base):
     __tablename__ = "community_notifications"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: uuid4().hex)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_time_id)
     recipient_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -291,7 +353,7 @@ class CommunityNotification(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(datetime.utcnow().astimezone().tzinfo)
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
     recipient = relationship("User", foreign_keys=[recipient_id], lazy="selectin")
@@ -306,4 +368,25 @@ class CommunityNotification(Base):
         ),
         Index("ix_community_notifications_recipient_created", "recipient_id", "created_at"),
         Index("ix_community_notifications_recipient_unread", "recipient_id", "is_read"),
+        Index("ix_community_notifications_recipient_unread_created", "recipient_id", "is_read", "created_at"),
+    )
+
+
+class CommunityIdempotencyKey(Base):
+    __tablename__ = "community_idempotency_keys"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_time_id)
+    key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    endpoint: Mapped[str] = mapped_column(String(100), nullable=False)
+    response_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "key", name="uq_community_idempotency_user_key"),
+        Index("ix_community_idempotency_expires", "expires_at"),
     )

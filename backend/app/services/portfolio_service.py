@@ -1,5 +1,4 @@
-"""Portfolio Service - Business logic for portfolio operations."""
-
+import asyncio
 import logging
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -9,6 +8,12 @@ from typing import Literal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.redis import (
+    cache_get,
+    cache_set,
+    cache_invalidate,
+    cache_invalidate_pattern,
+)
 from app.core.exceptions import (
     BadRequestError,
     NotFoundError,
@@ -49,6 +54,18 @@ class PortfolioService:
         self.repo = repo or PortfolioRepository(db)
         self.stock_service = stock_service or StockService()
         self.market_service = market_service or MarketService()
+
+    async def _invalidate_portfolio_cache(self, user_id: str) -> None:
+        """Invalidate all cached portfolio data for a user."""
+        try:
+            await cache_invalidate(f"portfolio:summary:{user_id}")
+            await cache_invalidate(f"portfolio:pnl:{user_id}")
+            await cache_invalidate(f"portfolio:allocation:{user_id}")
+            await cache_invalidate_pattern(f"portfolio:holding_detail:{user_id}:*")
+            await cache_invalidate_pattern(f"portfolio:performance:{user_id}:*")
+            await cache_invalidate_pattern(f"portfolio:txns:{user_id}:*")
+        except Exception as exc:
+            logger.warning("Error invalidating portfolio cache for user %s: %s", user_id, exc)
 
     # ── Transaction Operations ────────────────────────────────────────────────
 
@@ -91,7 +108,7 @@ class PortfolioService:
             raise InsufficientHoldingError(str(e))
 
         # Create the transaction
-        return await self.repo.create_transaction(
+        txn = await self.repo.create_transaction(
             user_id=user_id,
             symbol=symbol,
             transaction_type=transaction_type,
@@ -100,6 +117,8 @@ class PortfolioService:
             fee=fee,
             transaction_date=transaction_date,
         )
+        await self._invalidate_portfolio_cache(user_id)
+        return txn
 
     async def create_completed_trade(
         self,
@@ -173,6 +192,8 @@ class PortfolioService:
             fee=sell_fee,
             transaction_date=sell_date,
         )
+
+        await self._invalidate_portfolio_cache(user_id)
 
         total_invested = (quantity * buy_price) + buy_fee
         total_proceeds = (quantity * sell_price) - sell_fee
@@ -275,6 +296,7 @@ class PortfolioService:
         )
         if not updated:
             raise NotFoundError("Transaction not found after update")
+        await self._invalidate_portfolio_cache(user_id)
         return updated
 
     async def delete_transaction(self, transaction_id: str, user_id: str) -> None:
@@ -299,26 +321,36 @@ class PortfolioService:
         deleted = await self.repo.delete_transaction(transaction_id, user_id)
         if not deleted:
             raise NotFoundError("Transaction not found")
+        await self._invalidate_portfolio_cache(user_id)
 
     # ── Portfolio Calculations ────────────────────────────────────────────────
 
     async def get_portfolio(self, user_id: str) -> dict:
-        """Get complete portfolio with summary and holdings."""
-        # Get all transactions for the user
-        all_txns, _ = await self.repo.get_transactions(user_id, limit=10000)
+        """Get complete portfolio with summary and holdings, utilizing Redis caching."""
+        cache_key = f"portfolio:summary:{user_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        # Get all transactions for the user in a single query
+        all_txns = await self.repo.get_all_user_transactions(user_id)
         
         if not all_txns:
-            return {
+            empty_res = {
                 "summary": {
                     "total_invested": Decimal("0"),
                     "current_value": Decimal("0"),
                     "total_pnl": Decimal("0"),
                     "total_pnl_percent": 0.0,
                     "today_pnl": Decimal("0"),
+                    "realized_pnl": Decimal("0"),
+                    "unrealized_pnl": Decimal("0"),
                 },
                 "holdings": [],
-                "updated_at": datetime.utcnow(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
+            await cache_set(cache_key, empty_res, ttl_seconds=60)
+            return empty_res
 
         # Group by symbol
         txns_by_symbol: dict[str, list[PortfolioTransaction]] = defaultdict(list)
@@ -333,11 +365,11 @@ class PortfolioService:
         # Get active symbols
         active_symbols = [s for s, p in positions.items() if p.is_active]
 
-        # Fetch current prices for all active symbols
+        # Fetch current prices for all active symbols in thread
         current_prices = {}
         price_dates = {}
         if active_symbols:
-            quotes = self.stock_service.get_quote_batch(active_symbols)
+            quotes = await asyncio.to_thread(self.stock_service.get_quote_batch, active_symbols)
             quote_list = list(quotes.values()) if isinstance(quotes, dict) else (quotes or [])
             for q in quote_list:
                 if isinstance(q, dict):
@@ -352,18 +384,21 @@ class PortfolioService:
         )
 
         # Enrich holdings with stock metadata
-        stock_info = await self.repo.get_stock_info(list(holdings.keys()))
-        for symbol, holding in holdings.items():
-            stock = stock_info.get(symbol)
-            if stock:
-                holding["company_name"] = stock.name
-                holding["sector"] = stock.sector
+        if holdings:
+            stock_info = await self.repo.get_stock_info(list(holdings.keys()))
+            for symbol, holding in holdings.items():
+                stock = stock_info.get(symbol)
+                if stock:
+                    holding["company_name"] = stock.name
+                    holding["sector"] = stock.sector
 
-        return {
+        result = {
             "summary": summary,
             "holdings": list(holdings.values()),
-            "updated_at": datetime.utcnow(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+        await cache_set(cache_key, result, ttl_seconds=30)
+        return result
 
     async def get_holdings(self, user_id: str) -> list[dict]:
         """Get active holdings only."""
@@ -373,6 +408,10 @@ class PortfolioService:
     async def get_holding_detail(self, user_id: str, symbol: str) -> dict:
         """Get detailed view of a single holding including transactions."""
         symbol = symbol.upper()
+        cache_key = f"portfolio:holding_detail:{user_id}:{symbol}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
 
         # Get all transactions for this symbol
         txns = await self.repo.get_user_transactions_for_symbol(user_id, symbol)
@@ -385,7 +424,7 @@ class PortfolioService:
         # Get current price
         current_price = None
         price_updated_at = None
-        quote = self.stock_service.get_quote(symbol)
+        quote = await asyncio.to_thread(self.stock_service.get_quote, symbol)
         if quote and quote.get("current") is not None:
             current_price = Decimal(str(quote["current"]))
             price_updated_at = datetime.utcnow()
@@ -396,7 +435,7 @@ class PortfolioService:
 
         # Get all portfolio for total value (for weight calculation)
         portfolio = await self.get_portfolio(user_id)
-        total_portfolio_value = portfolio["summary"]["current_value"]
+        total_portfolio_value = Decimal(str(portfolio["summary"]["current_value"]))
 
         # Build holding detail
         price_info = calculate_holding_from_position(
@@ -418,7 +457,7 @@ class PortfolioService:
                 "updated_at": t.updated_at,
             })
 
-        return {
+        result = {
             "symbol": symbol,
             "company_name": stock.name if stock else None,
             "sector": stock.sector if stock else None,
@@ -435,41 +474,46 @@ class PortfolioService:
             "price_updated_at": price_updated_at,
             "price_status": price_info["price_status"],
         }
+        await cache_set(cache_key, result, ttl_seconds=30)
+        return result
 
     async def get_pnl(self, user_id: str) -> dict:
         """Get portfolio P&L breakdown."""
+        cache_key = f"portfolio:pnl:{user_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         portfolio = await self.get_portfolio(user_id)
         summary = portfolio["summary"]
         
-        # Calculate realized P&L from all positions
-        all_txns, _ = await self.repo.get_transactions(user_id, limit=10000)
-        txns_by_symbol: dict[str, list[PortfolioTransaction]] = defaultdict(list)
-        for txn in all_txns:
-            txns_by_symbol[txn.symbol].append(txn)
-        
-        total_realized = Decimal("0")
-        for symbol, txns in txns_by_symbol.items():
-            pos = calculate_position(txns)
-            total_realized += pos.realized_pnl
-        
-        return {
-            "realized_pnl": total_realized,
-            "unrealized_pnl": summary["total_pnl"] - total_realized,
-            "total_pnl": summary["total_pnl"],
-            "total_pnl_percent": summary["total_pnl_percent"],
-            "today_pnl": summary["today_pnl"],
+        realized = Decimal(str(summary.get("realized_pnl", "0")))
+        total_pnl = Decimal(str(summary.get("total_pnl", "0")))
+        unrealized = Decimal(str(summary.get("unrealized_pnl", total_pnl - realized)))
+
+        result = {
+            "realized_pnl": realized,
+            "unrealized_pnl": unrealized,
+            "total_pnl": total_pnl,
+            "total_pnl_percent": summary.get("total_pnl_percent", 0.0),
+            "today_pnl": Decimal(str(summary.get("today_pnl", "0"))),
         }
+        await cache_set(cache_key, result, ttl_seconds=30)
+        return result
 
     async def get_allocation(self, user_id: str) -> dict:
         """Get portfolio allocation by stock and sector."""
+        cache_key = f"portfolio:allocation:{user_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         portfolio = await self.get_portfolio(user_id)
         holdings = portfolio["holdings"]
         
-        # Get stock info for sector mapping
-        symbols = [h["symbol"] for h in holdings]
-        stock_info = await self.repo.get_stock_info(symbols)
-        
-        return calculate_allocation({h["symbol"]: h for h in holdings}, stock_info)
+        result = calculate_allocation({h["symbol"]: h for h in holdings})
+        await cache_set(cache_key, result, ttl_seconds=60)
+        return result
 
     async def get_performance(
         self,
@@ -477,6 +521,11 @@ class PortfolioService:
         period: Literal["1D", "1W", "1M", "3M", "6M", "1Y", "ALL"] = "1M",
     ) -> dict:
         """Get historical market value from persisted transaction and OHLC data."""
+        cache_key = f"portfolio:performance:{user_id}:{period}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         period_days = {
             "1D": 1,
             "1W": 7,
@@ -490,12 +539,12 @@ class PortfolioService:
         days = period_days.get(period, 30)
         cutoff = date.today() - timedelta(days=days)
         
-        # Positions purchased before the selected period still contribute to
-        # performance, so load complete transaction history.
-        txns, _ = await self.repo.get_transactions(user_id, limit=10000)
+        txns = await self.repo.get_all_user_transactions(user_id)
         
         if not txns:
-            return {"period": period, "data": []}
+            empty_perf = {"period": period, "data": []}
+            await cache_set(cache_key, empty_perf, ttl_seconds=120)
+            return empty_perf
         
         symbols = sorted({transaction.symbol for transaction in txns})
         prices_result = await self.db.execute(
@@ -508,10 +557,14 @@ class PortfolioService:
         for symbol, price_date, adjusted_close in prices_result.all():
             if adjusted_close is not None:
                 historical_prices[symbol][price_date] = Decimal(str(adjusted_close))
-        return {
+        
+        data_series = calculate_performance_time_series(txns, historical_prices, period)
+        result = {
             "period": period,
-            "data": calculate_performance_time_series(txns, historical_prices, period),
+            "data": data_series,
         }
+        await cache_set(cache_key, result, ttl_seconds=120)
+        return result
 
     # ── Helper Methods ────────────────────────────────────────────────────────
 

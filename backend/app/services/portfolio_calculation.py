@@ -238,10 +238,12 @@ def calculate_portfolio_summary(
         symbol: pos for symbol, pos in positions.items() if pos.is_active
     }
     
-    # First pass: calculate total portfolio value
+    # Calculate total realized PnL across ALL positions (active and closed)
+    total_realized_pnl = sum((pos.realized_pnl for pos in positions.values()), Decimal("0"))
+
+    # First pass: calculate total portfolio value and active position stats
     for symbol, position in active_positions.items():
         total_invested += position.total_cost_basis
-        total_realized_pnl += position.realized_pnl
         
         current_price = current_prices.get(symbol)
         if current_price is not None:
@@ -290,6 +292,8 @@ def calculate_portfolio_summary(
         "total_pnl": _round_decimal(total_pnl),
         "total_pnl_percent": total_pnl_pct,
         "today_pnl": _round_decimal(today_pnl),
+        "realized_pnl": _round_decimal(total_realized_pnl),
+        "unrealized_pnl": _round_decimal(total_unrealized_pnl),
     }
     
     return summary, holdings
@@ -297,16 +301,17 @@ def calculate_portfolio_summary(
 
 def calculate_allocation(
     holdings: dict[str, dict],
-    stock_info: dict[str, Stock],
+    stock_info: dict[str, Stock] | None = None,
 ) -> dict[str, list[dict]]:
     """Calculate allocation by stock and by sector."""
     by_stock = []
     by_sector_dict = defaultdict(lambda: {"market_value": Decimal("0")})
     
     for symbol, holding in holdings.items():
-        market_value = holding.get("market_value")
-        if market_value is None:
+        raw_mv = holding.get("market_value")
+        if raw_mv is None:
             continue
+        market_value = Decimal(str(raw_mv))
             
         # By stock
         by_stock.append({
@@ -316,11 +321,17 @@ def calculate_allocation(
         })
         
         # By sector
-        stock = stock_info.get(symbol)
-        sector = stock.sector if stock and stock.sector else "Unknown"
+        sector = holding.get("sector")
+        if not sector and stock_info:
+            stock = stock_info.get(symbol)
+            sector = stock.sector if stock and stock.sector else "Unknown"
+        sector = sector or "Unknown"
         by_sector_dict[sector]["market_value"] += market_value
     
-    total_value = sum(h.get("market_value", Decimal("0")) for h in holdings.values() if h.get("market_value") is not None)
+    total_value = sum(
+        (Decimal(str(h["market_value"])) for h in holdings.values() if h.get("market_value") is not None),
+        Decimal("0")
+    )
     
     by_sector = []
     for sector, data in by_sector_dict.items():

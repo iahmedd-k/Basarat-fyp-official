@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -48,6 +49,7 @@ from app.api.v1.community import (
     follows_router as community_follows_router,
     profile_router as community_profile_router,
     notifications_router as community_notifications_router,
+    media_router as community_media_router,
 )
 from app.api.v1.admin import community_router as admin_community_router
 from app.api.v1.assistant import chat_router as assistant_chat_router
@@ -162,6 +164,7 @@ app = FastAPI(
 
 register_error_handlers(app)
 add_rate_limiting(app)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(RequestContextMiddleware)
 
 # Allow any host when wildcard or configured
@@ -218,6 +221,7 @@ app.include_router(community_comments_router, prefix=settings.API_V1_PREFIX, tag
 app.include_router(community_follows_router, prefix=settings.API_V1_PREFIX, tags=["Community"])
 app.include_router(community_profile_router, prefix=settings.API_V1_PREFIX, tags=["Community"])
 app.include_router(community_notifications_router, prefix=settings.API_V1_PREFIX, tags=["Community"])
+app.include_router(community_media_router, prefix=settings.API_V1_PREFIX, tags=["Community"])
 
 # Module 12 — Assistant
 app.include_router(assistant_chat_router, prefix=settings.API_V1_PREFIX, tags=["Assistant"])

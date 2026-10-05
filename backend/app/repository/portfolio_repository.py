@@ -176,3 +176,13 @@ class PortfolioRepository:
             .order_by(PortfolioTransaction.transaction_date.asc(), PortfolioTransaction.created_at.asc())
         )
         return list(result.scalars().all())
+
+    async def get_all_user_transactions(self, user_id: str) -> list[PortfolioTransaction]:
+        """Fetch all transactions for a user ordered by transaction date and created_at."""
+        stmt = (
+            select(PortfolioTransaction)
+            .where(PortfolioTransaction.user_id == user_id)
+            .order_by(PortfolioTransaction.transaction_date.asc(), PortfolioTransaction.created_at.asc())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())

@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime, timezone
+from typing import List
 
 from celery import shared_task
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.celery_app import celery
@@ -10,6 +11,7 @@ from app.db.session import async_session_factory
 from app.models.community import (
     CommunityPost,
     CommunityReport,
+    CommunityFollow,
     CommunityModerationAction,
     CommunityNotification,
     PostStatus,
@@ -17,10 +19,14 @@ from app.models.community import (
     ModerationActionType,
     NotificationType,
 )
+from app.services.counter_service import CounterService
+from app.services.trending_service import TrendingService
+from app.services.feed_cache_service import FeedCacheService
 
 log = logging.getLogger(__name__)
 
 REPORT_THRESHOLD = 10
+CELEBRITY_FOLLOWER_THRESHOLD = 10000
 
 
 @shared_task(
@@ -32,100 +38,59 @@ REPORT_THRESHOLD = 10
     name="app.tasks.community_tasks.process_post_report_threshold",
 )
 def process_post_report_threshold(self, post_id: str) -> dict:
-    return _process_post_report_threshold_sync(post_id)
+    return _run_async(_process_report_threshold(post_id))
 
 
-def _process_post_report_threshold_sync(post_id: str) -> dict:
-    import asyncio
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_kwargs={"max_retries": 3},
+    name="app.tasks.community_tasks.flush_counter_deltas",
+)
+def flush_counter_deltas(self) -> dict:
+    """Flush write-behind counter buffers (likes, comments, views) to PostgreSQL."""
+    return _run_async(_flush_counters())
 
-    async def _run():
-        async with async_session_factory() as session:
-            return await _process_report_threshold(session, post_id)
 
-    try:
-        return asyncio.run(_run())
-    except Exception as e:
-        log.exception("Failed to process report threshold for post %s: %s", post_id, e)
-        raise
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_kwargs={"max_retries": 3},
+    name="app.tasks.community_tasks.reconcile_community_counters",
+)
+def reconcile_community_counters(self, batch_size: int = 100) -> dict:
+    """Periodic job to reconcile any drift between denormalized count columns and actual rows."""
+    return _run_async(_reconcile_counters(batch_size))
 
 
-async def _process_report_threshold(session: AsyncSession, post_id: str) -> dict:
-    post = await session.get(CommunityPost, post_id)
-    if not post:
-        log.warning("Post %s not found for report threshold processing", post_id)
-        return {"post_id": post_id, "action": "post_not_found"}
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_kwargs={"max_retries": 3},
+    name="app.tasks.community_tasks.recompute_trending_feeds",
+)
+def recompute_trending_feeds(self) -> dict:
+    """Precompute trending cashtags and ranked viral discussions into Redis."""
+    return _run_async(_recompute_trending())
 
-    if post.status != PostStatus.PUBLISHED.value:
-        log.info("Post %s is not PUBLISHED (status=%s), skipping threshold check", post_id, post.status)
-        return {"post_id": post_id, "action": "skipped", "reason": f"status_{post.status}"}
 
-    pending_count_result = await session.execute(
-        select(func.count(CommunityReport.id)).where(
-            CommunityReport.post_id == post_id,
-            CommunityReport.status == ReportStatus.PENDING.value,
-        )
-    )
-    pending_count = pending_count_result.scalar() or 0
-
-    log.info("Post %s has %d pending reports (threshold: %d)", post_id, pending_count, REPORT_THRESHOLD)
-
-    if pending_count >= REPORT_THRESHOLD:
-        existing_action = await session.execute(
-            select(CommunityModerationAction).where(
-                CommunityModerationAction.post_id == post_id,
-                CommunityModerationAction.action == ModerationActionType.AUTO_HIDDEN.value,
-            )
-        )
-        if existing_action.scalars().first():
-            log.info("Post %s already auto-hidden, skipping", post_id)
-            return {"post_id": post_id, "action": "already_hidden"}
-
-        post.status = PostStatus.TEMPORARILY_HIDDEN.value
-        post.updated_at = datetime.now(timezone.utc)
-
-        action = CommunityModerationAction(
-            moderator_id=None,
-            post_id=post_id,
-            action=ModerationActionType.AUTO_HIDDEN.value,
-            note=f"Auto-hidden after {pending_count} pending reports",
-        )
-        session.add(action)
-
-        notification = CommunityNotification(
-            recipient_id=post.author_id,
-            actor_id=None,
-            post_id=post_id,
-            comment_id=None,
-            type=NotificationType.POST_AUTO_HIDDEN.value,
-            title="Post Temporarily Hidden",
-            message="Your post has been temporarily hidden for review due to multiple reports.",
-            is_read=False,
-        )
-        session.add(notification)
-        await session.flush()
-
-        try:
-            from app.core.task_runner import dispatch_task
-            from app.tasks.push_notifications import send_to_user
-
-            dispatch_task(
-                send_to_user,
-                post.author_id,
-                "Post Temporarily Hidden",
-                "Your post has been temporarily hidden for review due to multiple reports.",
-                {
-                    "type": "community_notification",
-                    "notification_type": NotificationType.POST_AUTO_HIDDEN.value,
-                    "post_id": str(post_id),
-                },
-            )
-        except Exception as push_err:
-            log.warning("Could not dispatch auto-hidden push notification: %s", push_err)
-
-        log.info("Post %s auto-hidden due to %d pending reports", post_id, pending_count)
-        return {"post_id": post_id, "action": "auto_hidden", "pending_count": pending_count}
-
-    return {"post_id": post_id, "action": "threshold_not_met", "pending_count": pending_count}
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_kwargs={"max_retries": 3},
+    name="app.tasks.community_tasks.fanout_post_to_followers",
+)
+def fanout_post_to_followers(self, post_id: str, author_id: str, created_at_ts: float) -> dict:
+    """Hybrid timeline fan-out: fan-out to followers' Redis timelines for standard authors."""
+    return _run_async(_fanout_post(post_id, author_id, created_at_ts))
 
 
 @shared_task(
@@ -137,57 +102,152 @@ async def _process_report_threshold(session: AsyncSession, post_id: str) -> dict
     name="app.tasks.community_tasks.cleanup_orphaned_reports",
 )
 def cleanup_orphaned_reports(self) -> dict:
+    return _run_async(_cleanup_reports())
+
+
+def _run_async(coro):
     import asyncio
-
-    async def _run():
-        async with async_session_factory() as session:
-            deleted_posts_result = await session.execute(
-                select(CommunityReport.post_id)
-                .where(CommunityReport.post_id.is_not(None))
-                .distinct()
-            )
-            report_post_ids = {row[0] for row in deleted_posts_result.all()}
-
-            existing_posts_result = await session.execute(
-                select(CommunityPost.id).where(CommunityPost.id.in_(report_post_ids))
-            )
-            existing_post_ids = {row[0] for row in existing_posts_result.all()}
-
-            orphaned_post_ids = report_post_ids - existing_post_ids
-            deleted_count = 0
-
-            for post_id in orphaned_post_ids:
-                result = await session.execute(
-                    delete(CommunityReport).where(CommunityReport.post_id == post_id)
-                )
-                deleted_count += result.rowcount
-
-            deleted_comments_result = await session.execute(
-                select(CommunityReport.comment_id)
-                .where(CommunityReport.comment_id.is_not(None))
-                .distinct()
-            )
-            report_comment_ids = {row[0] for row in deleted_comments_result.all()}
-
-            existing_comments_result = await session.execute(
-                select(CommunityComment.id).where(CommunityComment.id.in_(report_comment_ids))
-            )
-            existing_comment_ids = {row[0] for row in existing_comments_result.all()}
-
-            orphaned_comment_ids = report_comment_ids - existing_comment_ids
-
-            for comment_id in orphaned_comment_ids:
-                result = await session.execute(
-                    delete(CommunityReport).where(CommunityReport.comment_id == comment_id)
-                )
-                deleted_count += result.rowcount
-
-            await session.flush()
-            log.info("Cleaned up %d orphaned reports", deleted_count)
-            return {"deleted_reports": deleted_count}
-
     try:
-        return asyncio.run(_run())
-    except Exception as e:
-        log.exception("Failed to cleanup orphaned reports: %s", e)
-        raise
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import nest_asyncio
+            nest_asyncio.apply()
+            return loop.run_until_complete(coro)
+        return loop.run_until_complete(coro)
+    except RuntimeError:
+        return asyncio.run(coro)
+
+
+async def _process_report_threshold(post_id: str) -> dict:
+    async with async_session_factory() as session:
+        post = await session.get(CommunityPost, post_id)
+        if not post or post.status != PostStatus.PUBLISHED.value:
+            return {"post_id": post_id, "action": "skipped"}
+
+        pending_count_result = await session.execute(
+            select(func.count(CommunityReport.id)).where(
+                CommunityReport.post_id == post_id,
+                CommunityReport.status == ReportStatus.PENDING.value,
+            )
+        )
+        pending_count = pending_count_result.scalar() or 0
+
+        if pending_count >= REPORT_THRESHOLD:
+            post.status = PostStatus.TEMPORARILY_HIDDEN.value
+            post.updated_at = datetime.now(timezone.utc)
+
+            action = CommunityModerationAction(
+                moderator_id=None,
+                post_id=post_id,
+                action=ModerationActionType.AUTO_HIDDEN.value,
+                note=f"Auto-hidden after {pending_count} pending reports",
+            )
+            session.add(action)
+
+            notification = CommunityNotification(
+                recipient_id=post.author_id,
+                actor_id=None,
+                post_id=post_id,
+                comment_id=None,
+                type=NotificationType.POST_AUTO_HIDDEN.value,
+                title="Post Temporarily Hidden",
+                message="Your post has been temporarily hidden for review due to multiple reports.",
+                is_read=False,
+            )
+            session.add(notification)
+            await session.commit()
+
+            await FeedCacheService.invalidate_post(post_id, post.stock_symbol, post.author_id)
+            return {"post_id": post_id, "action": "auto_hidden", "pending_count": pending_count}
+
+        return {"post_id": post_id, "action": "threshold_not_met", "pending_count": pending_count}
+
+
+async def _flush_counters() -> dict:
+    async with async_session_factory() as session:
+        flushed = await CounterService.flush_buffered_counters_to_db(session)
+        await session.commit()
+        return flushed
+
+
+async def _reconcile_counters(batch_size: int) -> dict:
+    async with async_session_factory() as session:
+        # Reconcile recent active posts
+        stmt = select(CommunityPost.id).order_by(CommunityPost.updated_at.desc()).limit(batch_size)
+        res = await session.execute(stmt)
+        post_ids = [row[0] for row in res.all()]
+
+        for pid in post_ids:
+            await CounterService.reconcile_counters_for_post(session, pid)
+
+        await session.commit()
+        return {"reconciled_posts": len(post_ids)}
+
+
+async def _recompute_trending() -> dict:
+    async with async_session_factory() as session:
+        tickers = await TrendingService.get_trending_tickers(session, limit=15)
+        posts = await TrendingService.get_trending_posts(session, limit=20)
+        return {"trending_tickers_count": len(tickers), "trending_posts_count": len(posts)}
+
+
+async def _fanout_post(post_id: str, author_id: str, created_at_ts: float) -> dict:
+    async with async_session_factory() as session:
+        # Check author follower count
+        res = await session.execute(
+            select(func.count(CommunityFollow.follower_id)).where(CommunityFollow.following_id == author_id)
+        )
+        follower_count = res.scalar() or 0
+
+        if follower_count > CELEBRITY_FOLLOWER_THRESHOLD:
+            # For celebrity accounts, merge on read to avoid massive fan-out writes
+            return {"post_id": post_id, "strategy": "fanout_on_read", "followers": follower_count}
+
+        # Fan-out in chunks to follower timeline Redis sorted sets
+        offset = 0
+        chunk_size = 500
+        fanned_out = 0
+
+        while True:
+            stmt = (
+                select(CommunityFollow.follower_id)
+                .where(CommunityFollow.following_id == author_id)
+                .offset(offset)
+                .limit(chunk_size)
+            )
+            rows = (await session.execute(stmt)).all()
+            if not rows:
+                break
+
+            for row in rows:
+                follower_id = row[0]
+                await FeedCacheService.push_post_to_feed(
+                    f"feed:following:{follower_id}", post_id, created_at_ts
+                )
+                fanned_out += 1
+
+            offset += chunk_size
+
+        return {"post_id": post_id, "strategy": "fanout_on_write", "fanned_out_followers": fanned_out}
+
+
+async def _cleanup_reports() -> dict:
+    async with async_session_factory() as session:
+        deleted_posts_result = await session.execute(
+            select(CommunityReport.post_id).where(CommunityReport.post_id.is_not(None)).distinct()
+        )
+        report_post_ids = {row[0] for row in deleted_posts_result.all()}
+
+        existing_posts_result = await session.execute(
+            select(CommunityPost.id).where(CommunityPost.id.in_(report_post_ids))
+        )
+        existing_post_ids = {row[0] for row in existing_posts_result.all()}
+        orphaned_post_ids = report_post_ids - existing_post_ids
+
+        deleted_count = 0
+        for post_id in orphaned_post_ids:
+            res = await session.execute(delete(CommunityReport).where(CommunityReport.post_id == post_id))
+            deleted_count += res.rowcount
+
+        await session.commit()
+        return {"deleted_orphaned_reports": deleted_count}

@@ -30,7 +30,7 @@ class EmailService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=3.0) as client:
                 resp = await client.post(
                     SENDGRID_API_URL,
                     json=payload,

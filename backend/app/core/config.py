@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    BCRYPT_ROUNDS: int = 10
 
     # CORS
     CORS_ORIGINS: list[str] = [
