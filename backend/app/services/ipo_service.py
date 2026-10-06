@@ -256,12 +256,12 @@ class IPOService:
 
 
     async def get_ipo_by_id_or_symbol(self, identifier: str) -> IPOResponse:
-        await self.ensure_seed_data()
         cache_key = f"ipo:detail:v1:{identifier.upper()}"
         cached = await cache_get(cache_key)
         if cached:
             return IPOResponse(**cached)
 
+        await self.ensure_seed_data()
         query = select(IPO).where(
             or_(IPO.id == identifier, IPO.symbol == identifier.upper())
         )
@@ -275,12 +275,12 @@ class IPOService:
         return response
 
     async def get_calendar(self) -> IPOCalendarResponse:
-        await self.ensure_seed_data()
         cache_key = "ipo:calendar:v1"
         cached = await cache_get(cache_key)
         if cached:
             return IPOCalendarResponse(**cached)
 
+        await self.ensure_seed_data()
         query = select(IPO).where(
             IPO.status.in_(["UPCOMING", "OPEN_FOR_BOOK_BUILDING", "OPEN_FOR_PUBLIC_SUBSCRIPTION"])
         ).order_by(IPO.book_building_start.asc(), IPO.public_subscription_start.asc())
@@ -360,12 +360,12 @@ class IPOService:
         return response
 
     async def get_performance(self) -> IPOPerformanceResponse:
-        await self.ensure_seed_data()
         cache_key = "ipo:performance:v1"
         cached = await cache_get(cache_key)
         if cached:
             return IPOPerformanceResponse(**cached)
 
+        await self.ensure_seed_data()
         query = select(IPO).where(IPO.status == "LISTED").order_by(desc(IPO.listing_date))
         res = await self.db.execute(query)
         listed_ipos = res.scalars().all()
