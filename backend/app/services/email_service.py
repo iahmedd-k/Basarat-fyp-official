@@ -77,6 +77,19 @@ class EmailService:
         """
         return await self._send(recipient, "Verify your Basarat account", html)
 
+    async def send_email_change_code(self, recipient: str, code: str) -> dict:
+        settings = get_settings()
+        expiry_min = settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 32px 24px; color: #1a202c;">
+            <h1>Confirm your new Basarat email</h1>
+            <p>Enter this code in your profile to confirm the email address change:</p>
+            <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px;">{code}</p>
+            <p>This code expires in {expiry_min} minutes. If you did not request this change, ignore this email.</p>
+        </div>
+        """
+        return await self._send(recipient, "Confirm your new Basarat email", html)
+
     async def send_password_reset_code(self, recipient: str, code: str) -> dict:
         settings = get_settings()
         expiry_min = settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES

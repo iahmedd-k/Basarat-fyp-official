@@ -30,15 +30,15 @@ def generate_time_id() -> str:
     
     with _lock:
         now_ms = int(time.time() * 1000)
-        if now_ms == _last_timestamp_ms:
+        if now_ms <= _last_timestamp_ms:
+            now_ms = _last_timestamp_ms
             _sequence = (_sequence + 1) & 0xFFF
             if _sequence == 0:
-                # Sequence exhausted in same millisecond, increment millisecond artificially
                 now_ms += 1
                 _last_timestamp_ms = now_ms
         else:
             _last_timestamp_ms = now_ms
-            _sequence = int.from_bytes(os.urandom(2), "big") & 0xFFF
+            _sequence = 0
 
     time_hex = f"{now_ms:012x}"
     ver_seq_hex = f"7{_sequence:03x}"

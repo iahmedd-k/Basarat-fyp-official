@@ -111,12 +111,12 @@ class CommunityPost(Base):
 
     author = relationship("User", back_populates="community_posts", lazy="selectin")
     stock = relationship("Stock", lazy="selectin")
-    likes = relationship("CommunityPostLike", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
-    comments = relationship("CommunityComment", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
-    reports = relationship("CommunityReport", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
-    moderation_actions = relationship("CommunityModerationAction", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
+    likes = relationship("CommunityPostLike", back_populates="post", lazy="select", cascade="all, delete-orphan")
+    comments = relationship("CommunityComment", back_populates="post", lazy="select", cascade="all, delete-orphan")
+    reports = relationship("CommunityReport", back_populates="post", lazy="select", cascade="all, delete-orphan")
+    moderation_actions = relationship("CommunityModerationAction", back_populates="post", lazy="select", cascade="all, delete-orphan")
     tickers = relationship("CommunityPostTicker", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
-    bookmarks = relationship("CommunityBookmark", back_populates="post", lazy="selectin", cascade="all, delete-orphan")
+    bookmarks = relationship("CommunityBookmark", back_populates="post", lazy="select", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint(
@@ -149,7 +149,7 @@ class CommunityPostTicker(Base):
         DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
-    post = relationship("CommunityPost", back_populates="tickers", lazy="selectin")
+    post = relationship("CommunityPost", back_populates="tickers", lazy="select")
 
     __table_args__ = (
         UniqueConstraint("post_id", "ticker", name="uq_community_post_tickers_post_ticker"),
@@ -172,8 +172,8 @@ class CommunityBookmark(Base):
         DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
-    post = relationship("CommunityPost", back_populates="bookmarks", lazy="selectin")
-    user = relationship("User", lazy="selectin")
+    post = relationship("CommunityPost", back_populates="bookmarks", lazy="select")
+    user = relationship("User", lazy="select")
 
     __table_args__ = (
         UniqueConstraint("post_id", "user_id", name="uq_community_bookmarks_post_user"),
@@ -194,8 +194,8 @@ class CommunityPostLike(Base):
         DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
-    post = relationship("CommunityPost", back_populates="likes", lazy="selectin")
-    user = relationship("User", lazy="selectin")
+    post = relationship("CommunityPost", back_populates="likes", lazy="select")
+    user = relationship("User", lazy="select")
 
     __table_args__ = (
         UniqueConstraint("post_id", "user_id", name="uq_community_post_likes_post_user"),
@@ -226,11 +226,11 @@ class CommunityComment(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
-    post = relationship("CommunityPost", back_populates="comments", lazy="selectin")
+    post = relationship("CommunityPost", back_populates="comments", lazy="select")
     author = relationship("User", lazy="selectin")
-    parent = relationship("CommunityComment", remote_side=[id], backref="replies", lazy="selectin")
-    reports = relationship("CommunityReport", back_populates="comment", lazy="selectin", cascade="all, delete-orphan")
-    moderation_actions = relationship("CommunityModerationAction", back_populates="comment", lazy="selectin", cascade="all, delete-orphan")
+    parent = relationship("CommunityComment", remote_side=[id], backref="replies", lazy="select")
+    reports = relationship("CommunityReport", back_populates="comment", lazy="select", cascade="all, delete-orphan")
+    moderation_actions = relationship("CommunityModerationAction", back_populates="comment", lazy="select", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint("status IN ('PUBLISHED', 'DELETED')", name="ck_community_comments_status"),
@@ -285,10 +285,10 @@ class CommunityReport(Base):
         DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
-    reporter = relationship("User", foreign_keys=[reporter_id], lazy="selectin")
-    post = relationship("CommunityPost", back_populates="reports", lazy="selectin")
-    comment = relationship("CommunityComment", back_populates="reports", lazy="selectin")
-    reviewer = relationship("User", foreign_keys=[reviewed_by], lazy="selectin")
+    reporter = relationship("User", foreign_keys=[reporter_id], lazy="select")
+    post = relationship("CommunityPost", back_populates="reports", lazy="select")
+    comment = relationship("CommunityComment", back_populates="reports", lazy="select")
+    reviewer = relationship("User", foreign_keys=[reviewed_by], lazy="select")
 
     __table_args__ = (
         CheckConstraint("(post_id IS NOT NULL AND comment_id IS NULL) OR (post_id IS NULL AND comment_id IS NOT NULL)", name="ck_community_reports_single_target"),
@@ -319,9 +319,9 @@ class CommunityModerationAction(Base):
         DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
-    moderator = relationship("User", foreign_keys=[moderator_id], lazy="selectin")
-    post = relationship("CommunityPost", back_populates="moderation_actions", lazy="selectin")
-    comment = relationship("CommunityComment", back_populates="moderation_actions", lazy="selectin")
+    moderator = relationship("User", foreign_keys=[moderator_id], lazy="select")
+    post = relationship("CommunityPost", back_populates="moderation_actions", lazy="select")
+    comment = relationship("CommunityComment", back_populates="moderation_actions", lazy="select")
 
     __table_args__ = (
         CheckConstraint("action IN ('AUTO_HIDDEN', 'RESTORED', 'POST_DELETED', 'COMMENT_DELETED', 'DIRECT_REMOVAL')", name="ck_community_moderation_actions_action"),
@@ -356,10 +356,10 @@ class CommunityNotification(Base):
         DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
     )
 
-    recipient = relationship("User", foreign_keys=[recipient_id], lazy="selectin")
+    recipient = relationship("User", foreign_keys=[recipient_id], lazy="select")
     actor = relationship("User", foreign_keys=[actor_id], lazy="selectin")
-    post = relationship("CommunityPost", lazy="selectin")
-    comment = relationship("CommunityComment", lazy="selectin")
+    post = relationship("CommunityPost", lazy="select")
+    comment = relationship("CommunityComment", lazy="select")
 
     __table_args__ = (
         CheckConstraint(

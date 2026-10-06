@@ -33,26 +33,26 @@ async def _get_service(db: AsyncSession = Depends(get_db)) -> CommunityService:
     return CommunityService(db)
 
 
-def _build_comment_response(comment, reply_count: int = 0) -> CommunityCommentResponse:
-    author = comment.author
+def _build_comment_response(comment, reply_count: int = 0, author=None) -> CommunityCommentResponse:
+    author_user = author if author is not None else getattr(comment, "author", None)
     author_obj = None
-    if author:
+    if author_user:
         author_obj = CommunityAuthorSummary(
-            id=author.id,
-            username=author.username,
-            full_name=author.full_name or "",
-            avatar_url=author.avatar_url or "",
-            is_verified=getattr(author, "is_verified", False),
+            id=author_user.id,
+            username=author_user.username,
+            full_name=author_user.full_name or "",
+            avatar_url=author_user.avatar_url or "",
+            is_verified=getattr(author_user, "is_verified", False),
         )
 
     return CommunityCommentResponse(
         id=comment.id,
         post_id=comment.post_id,
         author_id=comment.author_id,
-        author_username=author.username if author else "",
-        author_full_name=author.full_name if author else "",
-        author_avatar_url=author.avatar_url if author else "",
-        author_verified=getattr(author, "is_verified", False) if author else False,
+        author_username=author_user.username if author_user else "",
+        author_full_name=author_user.full_name if author_user else "",
+        author_avatar_url=author_user.avatar_url if author_user else "",
+        author_verified=getattr(author_user, "is_verified", False) if author_user else False,
         author=author_obj,
         parent_comment_id=comment.parent_comment_id or "",
         content=comment.content,
@@ -92,7 +92,7 @@ async def create_comment(
             parent_comment_id=data.parent_comment_id,
         )
 
-        res = _build_comment_response(comment, reply_count=0)
+        res = _build_comment_response(comment, reply_count=0, author=user)
 
         if idempotency_key:
             await IdempotencyService.record_response(

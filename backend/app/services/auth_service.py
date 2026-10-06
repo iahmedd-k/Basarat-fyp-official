@@ -430,6 +430,7 @@ class AuthService:
         self,
         user_id: str,
         full_name: str | None = None,
+        phone: str | None = None,
         avatar_url: str | None = None,
         risk_tolerance: str | None = None,
         sector_preferences: list[str] | None = None,
@@ -443,6 +444,8 @@ class AuthService:
 
         if full_name is not None:
             user.full_name = full_name.strip()
+        if phone is not None:
+            user.phone = phone
         if avatar_url is not None:
             user.avatar_url = avatar_url.strip()
         if risk_tolerance is not None:
@@ -459,6 +462,85 @@ class AuthService:
         await self.db.flush()
         await cache_invalidate(f"auth:user:{user_id}")
         await cache_invalidate(f"recommendations:user:{user_id}:*")
+        return user
+
+    async def request_email_change(self, user_id: str, new_email: str) -> dict:
+        new_email = new_email.strip().lower()
+        user = await self.db.get(User, user_id)
+        if user is None:
+            raise NotFoundError("User not found.")
+        if user.email.lower() == new_email:
+            raise BadRequestError("The new email address is already in use by this account.")
+
+        existing = (await self.db.execute(select(User).where(User.email == new_email))).scalars().first()
+        if existing is not None:
+            raise ConflictError("That email address is already associated with an account.")
+
+        settings = get_settings()
+        code = _generate_otp()
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES
+        )
+        await self.db.execute(
+            delete(EmailVerificationToken).where(
+                EmailVerificationToken.user_id == user_id,
+                EmailVerificationToken.pending_email.is_not(None),
+            )
+        )
+        self.db.add(
+            EmailVerificationToken(
+                token_hash=_hash_code(code),
+                user_id=user_id,
+                pending_email=new_email,
+                expires_at=expires_at,
+            )
+        )
+        await self.db.flush()
+
+        result = await self.email_service.send_email_change_code(new_email, code)
+        if result.get("status") != "sent":
+            raise ServiceUnavailableError("Could not send the verification code to the new email address.")
+        return {
+            "message": "A verification code has been sent to the new email address.",
+            "email": new_email,
+            "expires_in_minutes": settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES,
+        }
+
+    async def verify_email_change(self, user_id: str, code: str) -> User:
+        now = datetime.now(timezone.utc)
+        result = await self.db.execute(
+            select(EmailVerificationToken)
+            .where(
+                EmailVerificationToken.user_id == user_id,
+                EmailVerificationToken.pending_email.is_not(None),
+                EmailVerificationToken.token_hash == _hash_code(code.strip()),
+                EmailVerificationToken.used.is_(False),
+                EmailVerificationToken.expires_at > now,
+            )
+            .with_for_update()
+        )
+        token = result.scalars().first()
+        if token is None or token.pending_email is None:
+            raise BadRequestError("Invalid or expired email verification code.")
+
+        user = await self.db.get(User, user_id)
+        if user is None:
+            raise NotFoundError("User not found.")
+        new_email = token.pending_email
+        existing = (await self.db.execute(select(User).where(User.email == new_email))).scalars().first()
+        if existing is not None and existing.id != user_id:
+            raise ConflictError("That email address is already associated with an account.")
+
+        user.email = new_email
+        user.is_verified = True
+        token.used = True
+        token.pending_email = None
+        try:
+            await self.db.flush()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise ConflictError("That email address is already associated with an account.") from exc
+        await cache_invalidate(f"auth:user:{user_id}")
         return user
 
     async def update_notification_preferences(

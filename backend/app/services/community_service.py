@@ -866,29 +866,24 @@ class CommunityService:
         follower_id: str,
         following_id: str,
     ) -> Tuple[bool, int, int]:
-        is_following_result = await self.db.execute(
-            select(CommunityFollow).where(
-                CommunityFollow.follower_id == follower_id,
-                CommunityFollow.following_id == following_id,
-            )
-        )
-        is_following = is_following_result.scalars().first() is not None
+        is_following_subq = select(func.count(CommunityFollow.follower_id)).where(
+            CommunityFollow.follower_id == follower_id,
+            CommunityFollow.following_id == following_id,
+        ).scalar_subquery()
 
-        followers_count_result = await self.db.execute(
-            select(func.count(CommunityFollow.follower_id)).where(
-                CommunityFollow.following_id == following_id
-            )
-        )
-        followers_count = followers_count_result.scalar() or 0
+        followers_subq = select(func.count(CommunityFollow.follower_id)).where(
+            CommunityFollow.following_id == following_id
+        ).scalar_subquery()
 
-        following_count_result = await self.db.execute(
-            select(func.count(CommunityFollow.following_id)).where(
-                CommunityFollow.follower_id == following_id
-            )
-        )
-        following_count = following_count_result.scalar() or 0
+        following_subq = select(func.count(CommunityFollow.following_id)).where(
+            CommunityFollow.follower_id == following_id
+        ).scalar_subquery()
 
-        return is_following, followers_count, following_count
+        stmt = select(is_following_subq, followers_subq, following_subq)
+        res = await self.db.execute(stmt)
+        row = res.first()
+        is_f_count, f_count, ing_count = row if row else (0, 0, 0)
+        return bool(is_f_count and is_f_count > 0), f_count or 0, ing_count or 0
 
     async def get_followers(
         self,
@@ -993,43 +988,41 @@ class CommunityService:
     # =========================================================================
 
     async def get_user_profile_stats(self, user_id: str, current_user_id: Optional[str] = None) -> dict:
-        # Aggregated stats queries
-        post_count_result = await self.db.execute(
-            select(func.count(CommunityPost.id)).where(
-                CommunityPost.author_id == user_id,
-                CommunityPost.status == PostStatus.PUBLISHED.value,
-            )
-        )
-        published_post_count = post_count_result.scalar() or 0
+        # Single aggregated query for all stats in 1 roundtrip
+        post_subq = select(func.count(CommunityPost.id)).where(
+            CommunityPost.author_id == user_id,
+            CommunityPost.status == PostStatus.PUBLISHED.value,
+        ).scalar_subquery()
 
-        followers_count_result = await self.db.execute(
-            select(func.count(CommunityFollow.follower_id)).where(
-                CommunityFollow.following_id == user_id
-            )
-        )
-        followers_count = followers_count_result.scalar() or 0
+        followers_subq = select(func.count(CommunityFollow.follower_id)).where(
+            CommunityFollow.following_id == user_id
+        ).scalar_subquery()
 
-        following_count_result = await self.db.execute(
-            select(func.count(CommunityFollow.following_id)).where(
-                CommunityFollow.follower_id == user_id
-            )
-        )
-        following_count = following_count_result.scalar() or 0
+        following_subq = select(func.count(CommunityFollow.following_id)).where(
+            CommunityFollow.follower_id == user_id
+        ).scalar_subquery()
 
-        is_following = False
         if current_user_id and current_user_id != user_id:
-            follow_result = await self.db.execute(
-                select(CommunityFollow).where(
-                    CommunityFollow.follower_id == current_user_id,
-                    CommunityFollow.following_id == user_id,
-                )
-            )
-            is_following = follow_result.scalars().first() is not None
+            is_following_subq = select(func.count(CommunityFollow.follower_id)).where(
+                CommunityFollow.follower_id == current_user_id,
+                CommunityFollow.following_id == user_id,
+            ).scalar_subquery()
+            stmt = select(post_subq, followers_subq, following_subq, is_following_subq)
+            res = await self.db.execute(stmt)
+            row = res.first()
+            p_count, f_count, ing_count, is_f_count = row if row else (0, 0, 0, 0)
+            is_following = bool(is_f_count and is_f_count > 0)
+        else:
+            stmt = select(post_subq, followers_subq, following_subq)
+            res = await self.db.execute(stmt)
+            row = res.first()
+            p_count, f_count, ing_count = row if row else (0, 0, 0)
+            is_following = False
 
         return {
-            "followers_count": followers_count,
-            "following_count": following_count,
-            "published_post_count": published_post_count,
+            "followers_count": f_count or 0,
+            "following_count": ing_count or 0,
+            "published_post_count": p_count or 0,
             "is_following": is_following,
             "is_own_profile": current_user_id == user_id,
         }

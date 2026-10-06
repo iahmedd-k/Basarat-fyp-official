@@ -9,6 +9,15 @@ REMOTE_HOST = "193.123.84.223"
 LOCAL_BACKEND = Path(__file__).resolve().parent.parent
 
 FILES_TO_SYNC = [
+    ("app/core/id_generator.py", "/app/app/core/id_generator.py"),
+    ("app/models/community.py", "/app/app/models/community.py"),
+    ("app/services/trending_service.py", "/app/app/services/trending_service.py"),
+    ("app/services/community_service.py", "/app/app/services/community_service.py"),
+    ("app/api/v1/community/posts.py", "/app/app/api/v1/community/posts.py"),
+    ("app/api/v1/community/comments.py", "/app/app/api/v1/community/comments.py"),
+    ("app/api/v1/community/follows.py", "/app/app/api/v1/community/follows.py"),
+    ("app/api/v1/community/profile.py", "/app/app/api/v1/community/profile.py"),
+    ("app/api/v1/community/notifications.py", "/app/app/api/v1/community/notifications.py"),
     ("app/services/stock_service.py", "/app/app/services/stock_service.py"),
     ("app/tasks/refresh_fundamentals.py", "/app/app/tasks/refresh_fundamentals.py"),
     ("app/schemas/stock.py", "/app/app/schemas/stock.py"),

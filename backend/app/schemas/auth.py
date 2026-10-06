@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from typing import Literal
 
 from datetime import datetime
@@ -221,6 +222,7 @@ class UserProfileResponse(BaseModel):
     email: str = ""
     username: str = ""
     full_name: str = ""
+    phone: str = ""
     avatar_url: str = ""
     is_active: bool = True
     is_verified: bool = True
@@ -231,7 +233,7 @@ class UserProfileResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_validator("id", "email", "username", "full_name", "avatar_url", mode="before")
+    @field_validator("id", "email", "username", "full_name", "phone", "avatar_url", mode="before")
     @classmethod
     def _clean_user_str(cls, v):
         return "" if v is None else str(v)
@@ -264,10 +266,34 @@ class UserProfileResponse(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     full_name: str | None = Field(None, max_length=255)
+    phone: str | None = Field(None, max_length=32)
     avatar_url: str | None = Field(None, max_length=500)
     risk_tolerance: RiskTolerance | None = None
     sector_preferences: list[SectorPreference] | None = Field(None, max_length=50)
     investment_horizon: InvestmentHorizon | None = None
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = " ".join(unicodedata.normalize("NFC", value).split())
+        if not value or any(not (char.isalpha() or char in " '-.\u2019") for char in value):
+            raise ValueError("full_name must contain only letters, spaces, apostrophes, periods, or hyphens.")
+        return value
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not re.fullmatch(r"\+?[0-9().\-\s]+", value):
+            raise ValueError("phone must contain only digits and common phone-number separators.")
+        digits = re.sub(r"\D", "", value)
+        if not 7 <= len(digits) <= 15:
+            raise ValueError("phone must contain between 7 and 15 digits.")
+        return f"+{digits}" if value.startswith("+") else digits
 
     @field_validator("avatar_url")
     @classmethod
@@ -296,6 +322,14 @@ class UpdateProfileRequest(BaseModel):
                 seen.add(sector)
                 unique_sectors.append(sector)
         return unique_sectors
+
+
+class RequestEmailChangeRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyEmailChangeRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
 UpdateRiskProfileRequest = UpdateProfileRequest

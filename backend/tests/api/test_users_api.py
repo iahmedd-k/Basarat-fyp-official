@@ -1,9 +1,13 @@
 """API tests for user profile and investment profile preferences."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 from httpx import AsyncClient
 
+from app.models.user import User
 from app.schemas.auth import InvestmentHorizon, RiskTolerance, SectorPreference
+from app.services.email_service import EmailService
 
 
 @pytest.mark.api
@@ -51,6 +55,91 @@ class TestUsersInvestmentProfile:
         inv_resp = await client.get("/api/v1/users/me/investment-profile", headers=auth_headers)
         assert inv_resp.status_code == 200
         assert inv_resp.json()["full_name"] == "Investment Trader"
+
+    async def test_profile_updates_name_and_phone_and_returns_username(
+        self, client: AsyncClient, auth_headers, test_user: User
+    ):
+        response = await client.patch(
+            "/api/v1/users/me",
+            headers=auth_headers,
+            json={"full_name": "  Ada   O'Neil ", "phone": "+1 (415) 555-0132"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["full_name"] == "Ada O'Neil"
+        assert response.json()["phone"] == "+14155550132"
+        assert response.json()["username"] == test_user.username
+
+    async def test_profile_rejects_invalid_name_and_phone(self, client: AsyncClient, auth_headers):
+        invalid_name = await client.patch(
+            "/api/v1/users/me",
+            headers=auth_headers,
+            json={"full_name": "Ada 123"},
+        )
+        invalid_phone = await client.patch(
+            "/api/v1/users/me",
+            headers=auth_headers,
+            json={"phone": "not-a-phone"},
+        )
+
+        assert invalid_name.status_code == 422
+        assert invalid_phone.status_code == 422
+
+    async def test_email_change_only_updates_after_verification(
+        self, client: AsyncClient, auth_headers, test_user: User, monkeypatch
+    ):
+        sent_codes: list[str] = []
+
+        async def capture_code(recipient: str, code: str):
+            assert recipient == "new-address@example.com"
+            sent_codes.append(code)
+            return {"status": "sent"}
+
+        monkeypatch.setattr(EmailService, "send_email_change_code", AsyncMock(side_effect=capture_code))
+        request_response = await client.post(
+            "/api/v1/users/me/email-change",
+            headers=auth_headers,
+            json={"email": "new-address@example.com"},
+        )
+        assert request_response.status_code == 200
+        assert sent_codes
+        assert test_user.email != "new-address@example.com"
+
+        verify_response = await client.post(
+            "/api/v1/users/me/email-change/verify",
+            headers=auth_headers,
+            json={"code": sent_codes[0]},
+        )
+        assert verify_response.status_code == 200
+        assert verify_response.json()["email"] == "new-address@example.com"
+        assert verify_response.json()["username"] == test_user.username
+
+    async def test_email_change_rejects_invalid_code(self, client: AsyncClient, auth_headers):
+        response = await client.post(
+            "/api/v1/users/me/email-change/verify",
+            headers=auth_headers,
+            json={"code": "000000"},
+        )
+        assert response.status_code == 400
+
+    async def test_avatar_upload_updates_profile_url(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        from app.api.v1.users import firebase_storage_service
+
+        monkeypatch.setattr(
+            firebase_storage_service,
+            "upload_avatar",
+            AsyncMock(return_value="https://firebasestorage.googleapis.com/avatar"),
+        )
+        response = await client.post(
+            "/api/v1/users/me/avatar",
+            headers=auth_headers,
+            files={"image": ("avatar.png", b"png-content", "image/png")},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["avatar_url"] == "https://firebasestorage.googleapis.com/avatar"
 
     async def test_update_investment_profile_patch_success(self, client: AsyncClient, auth_headers):
         payload = {

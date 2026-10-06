@@ -50,6 +50,7 @@ def _build_post_response(
     post,
     liked_by_me: bool = False,
     bookmarked_by_me: bool = False,
+    author=None,
 ) -> CommunityPostResponse:
     # Extract ticker symbols
     tickers = []
@@ -66,23 +67,24 @@ def _build_post_response(
         except Exception:
             pass
 
+    author_user = author if author is not None else getattr(post, "author", None)
     author_obj = None
-    if post.author:
+    if author_user:
         author_obj = CommunityAuthorSummary(
-            id=post.author.id,
-            username=post.author.username,
-            full_name=post.author.full_name or "",
-            avatar_url=post.author.avatar_url or "",
-            is_verified=getattr(post.author, "is_verified", False),
+            id=author_user.id,
+            username=author_user.username,
+            full_name=author_user.full_name or "",
+            avatar_url=author_user.avatar_url or "",
+            is_verified=getattr(author_user, "is_verified", False),
         )
 
     return CommunityPostResponse(
         id=post.id,
         author_id=post.author_id,
-        author_username=post.author.username if post.author else "",
-        author_full_name=post.author.full_name if post.author else "",
-        author_avatar_url=post.author.avatar_url if post.author else "",
-        author_verified=getattr(post.author, "is_verified", False) if post.author else False,
+        author_username=author_user.username if author_user else "",
+        author_full_name=author_user.full_name if author_user else "",
+        author_avatar_url=author_user.avatar_url if author_user else "",
+        author_verified=getattr(author_user, "is_verified", False) if author_user else False,
         author=author_obj,
         post_type=PostType(post.post_type),
         stock_symbol=post.stock_symbol or "",
@@ -118,17 +120,44 @@ def _build_post_response(
 @limiter.limit("10/minute")
 async def create_post(
     request: Request,
-    content: str = Form(..., min_length=1, max_length=5000),
-    post_type: PostType = Form(...),
-    stock_symbol: str | None = Form(None),
-    image_url: str | None = Form(None),
-    image_public_id: str | None = Form(None),
-    media_metadata: str | None = Form(None),
-    image: UploadFile | None = File(None),
+    content: Optional[str] = Form(None),
+    post_type: Optional[PostType] = Form(None),
+    stock_symbol: Optional[str] = Form(None),
+    image_url: Optional[str] = Form(None),
+    image_public_id: Optional[str] = Form(None),
+    media_metadata: Optional[str] = Form(None),
+    image: Optional[UploadFile] = File(None),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: User = Depends(get_current_user),
     service: CommunityService = Depends(_get_service),
 ):
+    # Check if request is JSON body
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body_json = await request.json()
+            if body_json and isinstance(body_json, dict):
+                content = body_json.get("content", content)
+                raw_pt = body_json.get("post_type")
+                if raw_pt:
+                    try:
+                        post_type = PostType(str(raw_pt).upper())
+                    except Exception:
+                        post_type = PostType(raw_pt)
+                stock_symbol = body_json.get("stock_symbol", stock_symbol)
+                image_url = body_json.get("image_url", image_url)
+                image_public_id = body_json.get("image_public_id", image_public_id)
+                mm = body_json.get("media_metadata")
+                if mm is not None:
+                    media_metadata = json.dumps(mm) if isinstance(mm, (dict, list)) else str(mm)
+        except Exception:
+            pass
+
+    if not content or len(content.strip()) == 0:
+        raise ValidationFailedError("content is required")
+    if not post_type:
+        raise ValidationFailedError("post_type is required")
+
     # Check Idempotency Key
     if idempotency_key:
         cached_res = await IdempotencyService.get_stored_response(
@@ -193,6 +222,11 @@ async def create_post(
 
 from app.core.redis import cache_get, cache_set, cache_invalidate
 
+@router.get(
+    "/community/posts",
+    response_model=CommunityPostListResponse,
+    summary="Get community posts / feed alias",
+)
 @router.get(
     "/community/feed",
     response_model=CommunityPostListResponse,
@@ -519,6 +553,11 @@ async def get_post(
     "/community/posts/{post_id}",
     response_model=CommunityPostResponse,
     summary="Update own post",
+)
+@router.put(
+    "/community/posts/{post_id}",
+    response_model=CommunityPostResponse,
+    summary="Update own post (PUT alias)",
 )
 async def update_post(
     post_id: str,

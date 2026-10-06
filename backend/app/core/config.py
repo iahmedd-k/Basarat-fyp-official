@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     FIREBASE_ENABLED: bool = False
     FIREBASE_CREDENTIALS_PATH: str = ""
     FIREBASE_PROJECT_ID: str = ""
+    FIREBASE_STORAGE_BUCKET: str = ""
 
     # Transactional email (SMTP)
     SMTP_HOST: str = ""

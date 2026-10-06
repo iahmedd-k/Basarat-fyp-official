@@ -1,21 +1,24 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
-from app.core.exceptions import NotFoundError, ServiceUnavailableError
+from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import (
     InvestmentHorizon,
     NO_PREFERENCE,
     RiskTolerance,
+    RequestEmailChangeRequest,
     SectorPreference,
     UpdateNotificationPrefsRequest,
     UpdateProfileRequest,
     UserProfileResponse,
     VALID_SECTORS,
+    VerifyEmailChangeRequest,
 )
 from app.services.auth_service import AuthService
+from app.services.firebase_storage_service import firebase_storage_service
 
 router = APIRouter()
 
@@ -98,16 +101,60 @@ async def update_profile(
         updated = await service.update_profile(
             user_id=user.id,
             full_name=data.full_name,
+            phone=data.phone,
             avatar_url=data.avatar_url,
             risk_tolerance=risk_tol,
-            sector_preferences=data.sector_preferences,
+            sector_preferences=(
+                [sector.value for sector in data.sector_preferences]
+                if data.sector_preferences is not None
+                else None
+            ),
             investment_horizon=inv_horiz,
         )
         return updated
-    except NotFoundError:
+    except AppError:
         raise
-    except Exception as exc:
+    except Exception:
         raise ServiceUnavailableError("Failed to update profile")
+
+
+@router.post(
+    "/users/me/email-change",
+    summary="Send a verification code to a new email address",
+)
+async def request_email_change(
+    data: RequestEmailChangeRequest,
+    user: User = Depends(get_current_user),
+    service: AuthService = Depends(_get_service),
+):
+    return await service.request_email_change(user.id, str(data.email))
+
+
+@router.post(
+    "/users/me/email-change/verify",
+    response_model=UserProfileResponse,
+    summary="Verify and update the current user's email address",
+)
+async def verify_email_change(
+    data: VerifyEmailChangeRequest,
+    user: User = Depends(get_current_user),
+    service: AuthService = Depends(_get_service),
+):
+    return await service.verify_email_change(user.id, data.code)
+
+
+@router.post(
+    "/users/me/avatar",
+    response_model=UserProfileResponse,
+    summary="Upload the current user's profile image to Firebase Storage",
+)
+async def upload_profile_image(
+    image: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    service: AuthService = Depends(_get_service),
+):
+    avatar_url = await firebase_storage_service.upload_avatar(user.id, image)
+    return await service.update_profile(user_id=user.id, avatar_url=avatar_url)
 
 
 @router.patch(

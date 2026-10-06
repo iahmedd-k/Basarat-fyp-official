@@ -44,8 +44,9 @@ def _mock_email_service(monkeypatch):
         return {"status": "sent"}
 
     with patch("app.services.email_service.EmailService.send_verification_code", new_callable=AsyncMock, side_effect=_noop):
-        with patch("app.services.email_service.EmailService.send_password_reset_code", new_callable=AsyncMock, side_effect=_noop):
-            yield
+        with patch("app.services.email_service.EmailService.send_email_change_code", new_callable=AsyncMock, side_effect=_noop):
+            with patch("app.services.email_service.EmailService.send_password_reset_code", new_callable=AsyncMock, side_effect=_noop):
+                yield
 
 
 # ---------------------------------------------------------------------------

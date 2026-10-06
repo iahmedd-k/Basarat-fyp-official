@@ -127,7 +127,14 @@ class TrendingService:
 
         since = datetime.now(timezone.utc) - timedelta(days=7)
         stmt = (
-            select(CommunityPost)
+            select(
+                CommunityPost.id,
+                CommunityPost.like_count,
+                CommunityPost.comment_count,
+                CommunityPost.view_count,
+                CommunityPost.bookmark_count,
+                CommunityPost.created_at,
+            )
             .where(
                 CommunityPost.created_at >= since,
                 CommunityPost.status == PostStatus.PUBLISHED.value,
@@ -136,14 +143,14 @@ class TrendingService:
             .limit(100)
         )
         res = await session.execute(stmt)
-        posts = res.scalars().all()
+        rows = res.all()
 
         scored_posts = []
-        for p in posts:
+        for r in rows:
             score = cls.calculate_post_rank_score(
-                p.like_count, p.comment_count, p.view_count, p.bookmark_count, p.created_at
+                r.like_count, r.comment_count, r.view_count, r.bookmark_count, r.created_at
             )
-            scored_posts.append((p.id, score))
+            scored_posts.append((r.id, score))
 
         scored_posts.sort(key=lambda x: x[1], reverse=True)
         top_ids = [p_id for p_id, _ in scored_posts[:limit]]
