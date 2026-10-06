@@ -841,6 +841,17 @@ class StockService:
         start = end - lookback
         df = self._get_ohlcv(symbol, start, end)
         if df is None or df.empty:
+            full_df = self._get_ohlcv_from_file(symbol, end=end)
+            if full_df is not None and not full_df.empty:
+                latest_date = full_df.index[-1].date()
+                adj_start = latest_date - lookback
+                df = full_df.loc[full_df.index >= pd.to_datetime(adj_start)]
+                if df.empty:
+                    df = full_df.iloc[-1:] if label == "1D" else full_df.iloc[-min(len(full_df), 5):]
+            else:
+                return {"symbol": symbol, "range": label, "bars": [], "as_of_date": None, "data_age_days": None, "is_stale": True}
+
+        if df is None or df.empty:
             return {"symbol": symbol, "range": label, "bars": [], "as_of_date": None, "data_age_days": None, "is_stale": True}
 
         bars = []

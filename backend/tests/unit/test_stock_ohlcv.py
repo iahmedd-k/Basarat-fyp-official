@@ -54,6 +54,33 @@ def test_ohlcv_history_tolerates_missing_optional_columns(monkeypatch):
     }
 
 
+def test_price_history_falls_back_to_latest_available_bars_for_older_data(monkeypatch):
+    service = StockService()
+    symbol = "TESTOLDER"
+    older_date = date.today() - timedelta(days=20)
+    dates = pd.to_datetime([older_date - timedelta(days=2), older_date - timedelta(days=1), older_date])
+    frame = pd.DataFrame(
+        {"OPEN": [10.0, 10.5, 11.0], "HIGH": [11.0, 11.5, 12.0], "LOW": [9.5, 10.0, 10.5], "CLOSE": [10.5, 11.0, 11.5], "VOLUME": [100, 200, 300]},
+        index=dates,
+    )
+    # _get_ohlcv returns empty when filtered with date.today() - lookback (e.g. 8 days)
+    monkeypatch.setattr(service, "_get_ohlcv", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(service, "_get_ohlcv_from_file", lambda *_args, **_kwargs: frame.copy())
+    monkeypatch.setattr(stock_module, "cache_get_sync", lambda _key: None)
+    monkeypatch.setattr(stock_module, "cache_set_sync", lambda *_args: None)
+
+    history_1d = service.get_price_history(symbol, "1D")
+    assert len(history_1d["bars"]) > 0
+    assert history_1d["bars"][-1]["close"] == 11.5
+    assert history_1d["as_of_date"] == older_date.isoformat()
+    assert history_1d["is_stale"] is True
+
+    history_1w = service.get_price_history(symbol, "1W")
+    assert len(history_1w["bars"]) > 0
+    assert history_1w["bars"][-1]["close"] == 11.5
+
+
+
 def test_technical_indicators_use_full_local_history_without_scraping(tmp_path, monkeypatch):
     symbol = "TESTTECH"
     dates = pd.bdate_range(
