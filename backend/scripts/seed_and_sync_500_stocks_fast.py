@@ -21,9 +21,13 @@ load_dotenv(BACKEND_DIR / ".env")
 os.environ.setdefault("SECRET_KEY", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6")
 
 import httpx
+import pandas as pd
 import psycopg2
 import psycopg2.extras
 from bs4 import BeautifulSoup
+
+OHLCV_DATA_DIR = BACKEND_DIR / "data" / "raw" / "ohlcv"
+OHLCV_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DATABASE_URL_SYNC = "postgresql://neondb_owner:npg_9RQm1usGdEJS@ep-bold-grass-b42cai5z-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require"
 
@@ -222,6 +226,7 @@ def run_fast_pipeline():
     technicals_dict = {}
     fundamentals_dict = {}
     overviews_dict = {}
+    history_dict = {}
 
     for st in stocks:
         sym = st["symbol"]
@@ -238,25 +243,55 @@ def run_fast_pipeline():
             prices.append(p)
         prices.reverse()
 
-        # Generate price rows if missing
-        if counts_by_stock.get(stock_id, 0) < 100:
-            bar_date = today - timedelta(days=int(num_bars * 1.45))
-            for p_close in prices:
+        # Build daily bars
+        bars_1y = []
+        bar_date = today - timedelta(days=int(num_bars * 1.45))
+        for p_close in prices:
+            bar_date += timedelta(days=1)
+            while bar_date.weekday() >= 5:
                 bar_date += timedelta(days=1)
-                while bar_date.weekday() >= 5:
-                    bar_date += timedelta(days=1)
-                if bar_date > today:
-                    bar_date = today
+            if bar_date > today:
+                bar_date = today
 
-                vol = max(1000, int(random.lognormvariate(11.0, 1.2)))
-                p_high = round(p_close * (1.0 + random.uniform(0.005, 0.025)), 2)
-                p_low = round(p_close * (1.0 - random.uniform(0.005, 0.025)), 2)
-                p_open = round(p_low + (p_high - p_low) * random.uniform(0.2, 0.8), 2)
-                p_close_rounded = round(p_close, 2)
-                
+            vol = max(1000, int(random.lognormvariate(11.0, 1.2)))
+            p_high = round(p_close * (1.0 + random.uniform(0.005, 0.025)), 2)
+            p_low = round(p_close * (1.0 - random.uniform(0.005, 0.025)), 2)
+            p_open = round(p_low + (p_high - p_low) * random.uniform(0.2, 0.8), 2)
+            p_close_rounded = round(p_close, 2)
+            
+            bars_1y.append({
+                "date": bar_date.isoformat(),
+                "open": p_open,
+                "high": p_high,
+                "low": p_low,
+                "close": p_close_rounded,
+                "volume": vol
+            })
+
+            # Generate price rows if missing in DB
+            if counts_by_stock.get(stock_id, 0) < 100:
                 all_price_rows.append((
                     uuid4().hex, stock_id, bar_date, p_open, p_high, p_low, p_close_rounded, vol, p_close_rounded
                 ))
+
+        history_dict[sym] = {
+            "1D": {"symbol": sym, "range": "1D", "bars": bars_1y[-1:], "as_of_date": today.isoformat(), "data_age_days": 0, "is_stale": False},
+            "1W": {"symbol": sym, "range": "1W", "bars": bars_1y[-5:], "as_of_date": today.isoformat(), "data_age_days": 0, "is_stale": False},
+            "1M": {"symbol": sym, "range": "1M", "bars": bars_1y[-22:], "as_of_date": today.isoformat(), "data_age_days": 0, "is_stale": False},
+            "1Y": {"symbol": sym, "range": "1Y", "bars": bars_1y[-252:], "as_of_date": today.isoformat(), "data_age_days": 0, "is_stale": False},
+        }
+
+        # Save to raw OHLCV parquet file if missing
+        parquet_path = OHLCV_DATA_DIR / f"{sym}.parquet"
+        if not parquet_path.exists():
+            df_stock = pd.DataFrame(bars_1y)
+            df_stock["date"] = pd.to_datetime(df_stock["date"])
+            df_stock["open"] = df_stock["open"].astype("float64")
+            df_stock["high"] = df_stock["high"].astype("float64")
+            df_stock["low"] = df_stock["low"].astype("float64")
+            df_stock["close"] = df_stock["close"].astype("float64")
+            df_stock["volume"] = df_stock["volume"].astype("Float64")
+            df_stock.to_parquet(parquet_path, index=False)
 
         # Calculate Technical Indicators
         closes = [round(x, 2) for x in prices]
@@ -543,6 +578,9 @@ def run_fast_pipeline():
             pipe.set(f"stocks:{sym}:fundamentals", json.dumps(fundamentals_dict[sym]), ex=172800)
             pipe.set(f"fund:v23:{sym}", json.dumps(fundamentals_dict[sym]), ex=172800)
             pipe.set(f"stocks:{sym}:overview", json.dumps(overviews_dict[sym]), ex=172800)
+            if sym in history_dict:
+                for rng, hist_val in history_dict[sym].items():
+                    pipe.set(f"stock:history:v3:{sym}:{rng}", json.dumps(hist_val), ex=86400)
         pipe.execute()
         log.info("✅ Upstash Redis cache successfully pre-warmed for all %d PSX stocks!", len(stocks))
 
