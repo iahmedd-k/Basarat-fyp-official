@@ -164,6 +164,12 @@ async def get_stock_price_history(
     response_model=TechnicalIndicatorsResponse,
     summary="Technical indicator series with overall signal summary",
 )
+@router.get(
+    "/stocks/{symbol}/technicals",
+    response_model=TechnicalIndicatorsResponse,
+    summary="Technical indicator series with overall signal summary (alias)",
+    include_in_schema=True,
+)
 @limiter.limit("20/minute")
 async def get_stock_technical_indicators(
     request: Request,

@@ -368,24 +368,58 @@ def calculate_performance_time_series(
     """
     if not transactions or not historical_prices:
         return []
+
     all_dates = sorted({price_date for prices in historical_prices.values() for price_date in prices})
+    transactions_by_date = sorted(
+        transactions,
+        key=lambda transaction: transaction.transaction_date,
+    )
+    prices_by_symbol = {
+        symbol: sorted(prices.items())
+        for symbol, prices in historical_prices.items()
+    }
+    price_indexes = {symbol: 0 for symbol in prices_by_symbol}
+    quantities: dict[str, Decimal] = defaultdict(Decimal)
+    latest_prices: dict[str, Decimal] = {}
+    market_values: dict[str, Decimal] = {}
+    total_value = Decimal("0")
+    transaction_index = 0
+
     points: list[dict] = []
     for point_date in all_dates:
-        value = Decimal("0")
-        quantities: dict[str, Decimal] = {}
-        for transaction in transactions:
-            if transaction.transaction_date > point_date:
-                continue
+        while (
+            transaction_index < len(transactions_by_date)
+            and transactions_by_date[transaction_index].transaction_date <= point_date
+        ):
+            transaction = transactions_by_date[transaction_index]
             direction = Decimal("1") if transaction.transaction_type == TransactionType.BUY else Decimal("-1")
             quantities[transaction.symbol] = quantities.get(transaction.symbol, Decimal("0")) + direction * transaction.quantity
-        for symbol, quantity in quantities.items():
-            if quantity <= 0:
-                continue
-            prices = historical_prices.get(symbol, {})
-            available_dates = [d for d in prices if d <= point_date]
-            if available_dates:
-                value += quantity * prices[max(available_dates)]
-        points.append({"date": point_date.isoformat(), "value": _round_decimal(value, 2)})
+            symbol = transaction.symbol
+            if symbol in latest_prices:
+                old_value = market_values.get(symbol, Decimal("0"))
+                quantity = quantities[symbol]
+                new_value = quantity * latest_prices[symbol] if quantity > 0 else Decimal("0")
+                market_values[symbol] = new_value
+                total_value += new_value - old_value
+            transaction_index += 1
+
+        for symbol, prices in prices_by_symbol.items():
+            price_index = price_indexes[symbol]
+            changed = False
+            while price_index < len(prices) and prices[price_index][0] <= point_date:
+                latest_prices[symbol] = prices[price_index][1]
+                price_index += 1
+                changed = True
+            price_indexes[symbol] = price_index
+            if changed:
+                old_value = market_values.get(symbol, Decimal("0"))
+                quantity = quantities.get(symbol, Decimal("0"))
+                new_value = quantity * latest_prices[symbol] if quantity > 0 else Decimal("0")
+                market_values[symbol] = new_value
+                total_value += new_value - old_value
+
+        points.append({"date": point_date.isoformat(), "value": _round_decimal(total_value, 2)})
+
     return points
 
 

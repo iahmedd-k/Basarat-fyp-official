@@ -123,20 +123,34 @@ class IndicatorSeries(BaseModel):
 
 class IndicatorSummaryItem(BaseModel):
     value: float = 0.0
-    signal: str = "neutral"
+    signal: str = "NEUTRAL"
     description: str = ""
     signal_line: float = 0.0
     lower: float = 0.0
     mid: float = 0.0
+    middle: float = 0.0
     upper: float = 0.0
-    trend_strength: str = "moderate"
+    trend_strength: str = "MODERATE"
+    histogram: float = 0.0
+    crossover: str = "NEUTRAL"
+    current_price: float = 0.0
+    bandwidth_pct: float = 0.0
+    percent_b: float = 0.0
+    position: str = "MID_BAND"
+    plus_di: float = 0.0
+    minus_di: float = 0.0
+    trend_direction: str = "NEUTRAL"
 
-    @field_validator("signal", "description", "trend_strength", mode="before")
+    @field_validator("signal", "description", "trend_strength", "crossover", "position", "trend_direction", mode="before")
     @classmethod
     def _clean_str(cls, v):
         return "" if v is None else str(v)
 
-    @field_validator("value", "signal_line", "lower", "mid", "upper", mode="before")
+    @field_validator(
+        "value", "signal_line", "lower", "mid", "middle", "upper",
+        "histogram", "current_price", "bandwidth_pct", "percent_b",
+        "plus_di", "minus_di", mode="before"
+    )
     @classmethod
     def _clean_float(cls, v):
         return 0.0 if v is None else float(v)
@@ -161,6 +175,13 @@ class TechnicalSummary(BaseModel):
     adx: IndicatorSummaryItem = Field(default_factory=IndicatorSummaryItem)
 
 
+class TechnicalDataQuality(BaseModel):
+    status: str = "complete"
+    source: str = "PSX"
+    missing_indicators: list[str] = Field(default_factory=list)
+    calculated_indicators: list[str] = Field(default_factory=list)
+
+
 class TechnicalIndicatorsResponse(BaseModel):
     symbol: str = ""
     period: int = 14
@@ -172,6 +193,7 @@ class TechnicalIndicatorsResponse(BaseModel):
     signals_breakdown: SignalsBreakdown = Field(default_factory=SignalsBreakdown)
     summary: TechnicalSummary = Field(default_factory=TechnicalSummary)
     indicators: dict[str, list[IndicatorSeries]] = Field(default_factory=dict)
+    data_quality: TechnicalDataQuality = Field(default_factory=TechnicalDataQuality)
 
 
 class FundamentalMetric(BaseModel):
@@ -461,7 +483,7 @@ class GrowthMetrics(BaseModel):
 class FinancialStatementItem(BaseModel):
     period: str = ""
     fiscal_year: Optional[Any] = None
-    quarter: Optional[int] = None
+    quarter: int = 0
     revenue: Optional[float] = None
     cost_of_revenue: Optional[float] = None
     gross_profit: Optional[float] = None
@@ -470,7 +492,7 @@ class FinancialStatementItem(BaseModel):
     tax_expense: Optional[float] = None
     profit_after_tax: Optional[float] = None
     eps: Optional[float] = None
-    dividend_per_share: Optional[float] = None
+    dividend_per_share: float = 0.0
     sales: Optional[float] = None
     net_profit: Optional[float] = None
     ebitda: Optional[float] = None
@@ -494,10 +516,23 @@ class FinancialStatementItem(BaseModel):
         gp = _to_f("gross_profit")
         op = _to_f("operating_profit")
         cost = _to_f("cost_of_revenue") or ((round(rev - gp, 2)) if (rev and gp) else None)
+        
+        q = res.get("quarter")
+        if q is None:
+            if "Q1" in period: q = 1
+            elif "Q2" in period: q = 2
+            elif "Q3" in period: q = 3
+            elif "Q4" in period: q = 4
+            else: q = 0
+            
+        div_ps = _to_f("dividend_per_share")
+        if div_ps is None:
+            div_ps = 0.0
+
         return {
             "period": period,
             "fiscal_year": fy,
-            "quarter": res.get("quarter"),
+            "quarter": int(q),
             "revenue": rev,
             "cost_of_revenue": cost,
             "gross_profit": gp,
@@ -506,7 +541,7 @@ class FinancialStatementItem(BaseModel):
             "tax_expense": _to_f("tax_expense"),
             "profit_after_tax": pat,
             "eps": _to_f("eps"),
-            "dividend_per_share": _to_f("dividend_per_share"),
+            "dividend_per_share": div_ps,
             "sales": rev,
             "net_profit": pat,
             "ebitda": _to_f("ebitda") or (round(op * 1.18, 2) if op else None),
@@ -536,16 +571,16 @@ class BalanceSheetItem(BaseModel):
     total_assets: Optional[float] = None
     total_liabilities: Optional[float] = None
     total_equity: Optional[float] = None
-    cash_and_cash_equivalents: Optional[float] = None
-    accounts_receivable: Optional[float] = None
-    inventory: Optional[float] = None
-    short_term_debt: Optional[float] = None
-    long_term_debt: Optional[float] = None
+    cash_and_cash_equivalents: float = 0.0
+    accounts_receivable: float = 0.0
+    inventory: float = 0.0
+    short_term_debt: float = 0.0
+    long_term_debt: float = 0.0
     net_fixed_assets: Optional[float] = None
     retained_earnings: Optional[float] = None
-    receivables: Optional[float] = None
-    total_debt: Optional[float] = None
-    working_capital: Optional[float] = None
+    receivables: float = 0.0
+    total_debt: float = 0.0
+    working_capital: float = 0.0
 
     @model_validator(mode="before")
     @classmethod
@@ -559,25 +594,28 @@ class BalanceSheetItem(BaseModel):
             try: return float(str(val).replace(",", "").strip())
             except (ValueError, TypeError): return None
 
-        rec = _to_f("accounts_receivable", "receivables")
-        st_debt = _to_f("short_term_debt")
-        lt_debt = _to_f("long_term_debt")
-        tot_debt = _to_f("total_debt") or ((round(st_debt + lt_debt, 2)) if (st_debt is not None and lt_debt is not None) else None)
+        rec = _to_f("accounts_receivable", "receivables") or 0.0
+        st_debt = _to_f("short_term_debt") or 0.0
+        lt_debt = _to_f("long_term_debt") or 0.0
+        tot_debt = _to_f("total_debt") or round(st_debt + lt_debt, 2)
+        inv = _to_f("inventory") or 0.0
+        cash = _to_f("cash_and_cash_equivalents") or 0.0
+        wc = _to_f("working_capital") or round((rec + inv + cash) - st_debt, 2)
         return {
             "period": str(res.get("period") or ""),
             "total_assets": _to_f("total_assets"),
             "total_liabilities": _to_f("total_liabilities"),
             "total_equity": _to_f("total_equity"),
-            "cash_and_cash_equivalents": _to_f("cash_and_cash_equivalents"),
+            "cash_and_cash_equivalents": cash,
             "accounts_receivable": rec,
             "receivables": rec,
-            "inventory": _to_f("inventory"),
+            "inventory": inv,
             "short_term_debt": st_debt,
             "long_term_debt": lt_debt,
             "total_debt": tot_debt,
             "net_fixed_assets": _to_f("net_fixed_assets"),
             "retained_earnings": _to_f("retained_earnings"),
-            "working_capital": _to_f("working_capital"),
+            "working_capital": wc,
         }
 
 
@@ -607,12 +645,12 @@ class BalanceSheetOverview(BaseModel):
 
 class CashFlowItem(BaseModel):
     period: str = ""
-    operating_cash_flow: Optional[float] = None
-    investing_cash_flow: Optional[float] = None
-    financing_cash_flow: Optional[float] = None
-    capital_expenditure: Optional[float] = None
-    free_cash_flow: Optional[float] = None
-    net_change_in_cash: Optional[float] = None
+    operating_cash_flow: float = 0.0
+    investing_cash_flow: float = 0.0
+    financing_cash_flow: float = 0.0
+    capital_expenditure: float = 0.0
+    free_cash_flow: float = 0.0
+    net_change_in_cash: float = 0.0
 
     @model_validator(mode="before")
     @classmethod
@@ -626,14 +664,20 @@ class CashFlowItem(BaseModel):
             try: return float(str(val).replace(",", "").strip())
             except (ValueError, TypeError): return None
 
+        ocf = _to_f("operating_cash_flow") or 0.0
+        icf = _to_f("investing_cash_flow") or 0.0
+        fcf = _to_f("financing_cash_flow") or 0.0
+        capex = _to_f("capital_expenditure") or 0.0
+        free_cf = _to_f("free_cash_flow") or round(ocf - capex, 2)
+        net_cash = _to_f("net_change_in_cash") or round(ocf + icf + fcf, 2)
         return {
             "period": str(res.get("period") or ""),
-            "operating_cash_flow": _to_f("operating_cash_flow"),
-            "investing_cash_flow": _to_f("investing_cash_flow"),
-            "financing_cash_flow": _to_f("financing_cash_flow"),
-            "capital_expenditure": _to_f("capital_expenditure"),
-            "free_cash_flow": _to_f("free_cash_flow"),
-            "net_change_in_cash": _to_f("net_change_in_cash"),
+            "operating_cash_flow": ocf,
+            "investing_cash_flow": icf,
+            "financing_cash_flow": fcf,
+            "capital_expenditure": capex,
+            "free_cash_flow": free_cf,
+            "net_change_in_cash": net_cash,
         }
 
 
@@ -752,14 +796,14 @@ class TradingLimits(BaseModel):
 
 
 class DividendHistoryEntry(BaseModel):
-    ex_date: Optional[str] = None
-    record_date: Optional[str] = None
-    pay_date: Optional[str] = None
-    cash_dividend_per_share: Optional[str] = None
-    bonus_ratio: Optional[str] = None
-    right_issue_ratio: Optional[str] = None
-    cash_amount: Optional[str] = None
-    bonus_pct: Optional[float] = None
+    ex_date: str = ""
+    record_date: str = ""
+    pay_date: str = ""
+    cash_dividend_per_share: str = "0.00 PKR"
+    bonus_ratio: str = "0%"
+    right_issue_ratio: str = "0%"
+    cash_amount: str = "0.00 PKR"
+    bonus_pct: float = 0.0
 
     @model_validator(mode="before")
     @classmethod
@@ -772,13 +816,18 @@ class DividendHistoryEntry(BaseModel):
         pay = res.get("pay_date") or res.get("PAY DATE")
         amt = res.get("cash_dividend_per_share") or res.get("cash_amount") or res.get("CASH AMOUNT")
         bonus = res.get("bonus_pct") or res.get("BONUS")
-        bonus_f = float(str(bonus).replace("%", "").strip()) if bonus is not None and str(bonus).replace(".", "", 1).isdigit() else None
+        bonus_f = 0.0
+        if bonus is not None:
+            try:
+                bonus_f = float(str(bonus).replace("%", "").strip())
+            except (ValueError, TypeError):
+                bonus_f = 0.0
         return {
-            "ex_date": str(ex) if ex is not None else None,
-            "record_date": str(rec) if rec is not None else None,
-            "pay_date": str(pay) if pay is not None else None,
-            "cash_dividend_per_share": str(amt) if amt is not None else None,
-            "cash_amount": str(amt) if amt is not None else None,
+            "ex_date": str(ex) if ex is not None else "",
+            "record_date": str(rec) if rec is not None else "",
+            "pay_date": str(pay) if pay is not None else "",
+            "cash_dividend_per_share": str(amt) if amt is not None else "0.00 PKR",
+            "cash_amount": str(amt) if amt is not None else "0.00 PKR",
             "bonus_ratio": str(res.get("bonus_ratio") or "0%"),
             "right_issue_ratio": str(res.get("right_issue_ratio") or "0%"),
             "bonus_pct": bonus_f,

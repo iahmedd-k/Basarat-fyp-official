@@ -59,25 +59,40 @@ class PortfolioRepository:
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> tuple[list[PortfolioTransaction], int]:
-        stmt = select(PortfolioTransaction).where(PortfolioTransaction.user_id == user_id)
+        filters = [PortfolioTransaction.user_id == user_id]
 
         if symbol:
-            stmt = stmt.where(PortfolioTransaction.symbol == symbol.upper())
+            filters.append(PortfolioTransaction.symbol == symbol.upper())
         if transaction_type:
-            stmt = stmt.where(PortfolioTransaction.transaction_type == transaction_type)
+            filters.append(PortfolioTransaction.transaction_type == transaction_type)
         if from_date:
-            stmt = stmt.where(PortfolioTransaction.transaction_date >= from_date)
+            filters.append(PortfolioTransaction.transaction_date >= from_date)
         if to_date:
-            stmt = stmt.where(PortfolioTransaction.transaction_date <= to_date)
+            filters.append(PortfolioTransaction.transaction_date <= to_date)
 
-        stmt = stmt.order_by(PortfolioTransaction.transaction_date.desc(), PortfolioTransaction.created_at.desc())
-
-        count_stmt = select(func.count()).select_from(stmt.subquery())
-        total = await self.db.scalar(count_stmt) or 0
-
-        stmt = stmt.offset((page - 1) * limit).limit(limit)
+        stmt = (
+            select(PortfolioTransaction, func.count().over().label("total"))
+            .where(*filters)
+            .order_by(
+                PortfolioTransaction.transaction_date.desc(),
+                PortfolioTransaction.created_at.desc(),
+            )
+            .offset((page - 1) * limit)
+            .limit(limit)
+        )
         result = await self.db.execute(stmt)
-        return list(result.scalars().all()), total
+        rows = result.all()
+        if rows:
+            return [row[0] for row in rows], int(rows[0].total)
+
+        # A page-one miss proves there are no matching rows. For an out-of-range
+        # page, retain the total-count contract with a count-only fallback.
+        if page == 1:
+            return [], 0
+
+        count_stmt = select(func.count()).select_from(PortfolioTransaction).where(*filters)
+        total = await self.db.scalar(count_stmt) or 0
+        return [], total
 
     async def update_transaction(
         self,

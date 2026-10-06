@@ -193,6 +193,14 @@ class TestPortfolioTransactions:
         data = response.json()
         assert "items" in data
         assert len(data["items"]) >= 1
+        assert data["total"] >= len(data["items"])
+
+        next_page = await client.get(
+            "/api/v1/portfolio/transactions?page=2&limit=1",
+            headers=headers,
+        )
+        assert next_page.status_code == 200
+        assert next_page.json()["total"] == data["total"]
 
     async def test_get_transaction_by_id(self, client: AsyncClient, portfolio_test_context):
         headers, _ = portfolio_test_context
@@ -308,6 +316,14 @@ class TestPortfolioSummary:
         data = response.json()
         assert "period" in data
         assert "data" in data
+
+    async def test_empty_transaction_history(self, client: AsyncClient, portfolio_test_context):
+        headers, _ = portfolio_test_context
+        response = await client.get("/api/v1/portfolio/transactions", headers=headers)
+
+        assert response.status_code == 200
+        assert response.json()["items"] == []
+        assert response.json()["total"] == 0
 
 
 @pytest.mark.api
