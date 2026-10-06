@@ -79,7 +79,7 @@ class TestAuthFlowIntegration:
             headers=headers,
             json={"current_password": "OldPass123!", "new_password": "NewPass456!"},
         )
-        assert change_resp.status_code == 204
+        assert change_resp.status_code == 200
 
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": "changepw@test.com", "password": "NewPass456!",

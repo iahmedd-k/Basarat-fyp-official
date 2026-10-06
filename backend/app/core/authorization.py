@@ -45,6 +45,7 @@ async def get_current_user(
             email=cached_data.get("email"),
             username=cached_data.get("username"),
             full_name=cached_data.get("full_name"),
+            avatar_url=cached_data.get("avatar_url"),
             is_active=cached_data.get("is_active", True),
             is_verified=cached_data.get("is_verified", False),
             is_admin=cached_data.get("is_admin", False),
@@ -67,11 +68,14 @@ async def get_current_user(
     if not user.is_active:
         raise ForbiddenError("Inactive user")
 
+    c_at = user.__dict__.get("created_at")
+    u_at = user.__dict__.get("updated_at")
     user_dict = {
         "id": user.id,
         "email": user.email,
         "username": user.username,
         "full_name": user.full_name,
+        "avatar_url": getattr(user, "avatar_url", None),
         "is_active": user.is_active,
         "is_verified": user.is_verified,
         "is_admin": user.is_admin,
@@ -81,8 +85,8 @@ async def get_current_user(
         "sector_preferences": getattr(user, "sector_preferences", None),
         "notification_preferences": getattr(user, "notification_preferences", None),
         "recommendation_weights": getattr(user, "recommendation_weights", None),
-        "created_at": user.created_at.isoformat() if user.created_at else None,
-        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+        "created_at": c_at.isoformat() if isinstance(c_at, datetime) else None,
+        "updated_at": u_at.isoformat() if isinstance(u_at, datetime) else None,
     }
     await cache_set(cache_key, user_dict, ttl_seconds=120)
     return user

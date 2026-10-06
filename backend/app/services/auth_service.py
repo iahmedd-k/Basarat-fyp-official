@@ -163,6 +163,7 @@ class AuthService:
         user.is_verified = True
         if token_record:
             token_record.used = True
+        await cache_invalidate(f"auth:user:{user.id}")
 
         return await self._create_token_pair(user)
 
@@ -456,6 +457,29 @@ class AuthService:
             user.notification_preferences = notification_preferences
 
         await self.db.flush()
+        await cache_invalidate(f"auth:user:{user_id}")
+        await cache_invalidate(f"recommendations:user:{user_id}:*")
+        return user
+
+    async def update_notification_preferences(
+        self,
+        user_id: str,
+        channels: list[str] | None = None,
+        categories: list[str] | None = None,
+    ) -> User:
+        user = await self.db.get(User, user_id)
+        if user is None:
+            raise NotFoundError("User not found.")
+
+        current_prefs = dict(user.notification_preferences or {})
+        if channels is not None:
+            current_prefs["channels"] = channels
+        if categories is not None:
+            current_prefs["categories"] = categories
+
+        user.notification_preferences = current_prefs
+        await self.db.flush()
+        await cache_invalidate(f"auth:user:{user_id}")
         return user
 
     async def change_password(
@@ -472,6 +496,7 @@ class AuthService:
         user.hashed_password = await asyncio.to_thread(hash_password, new_password)
         await self.db.flush()
         await self._revoke_all_user_tokens(user_id)
+        await cache_invalidate(f"auth:user:{user_id}")
         asyncio.create_task(self.email_service.send_password_changed_alert(user.email))
 
     async def forgot_password(self, email: str) -> None:
@@ -578,6 +603,7 @@ class AuthService:
         user.hashed_password = await asyncio.to_thread(hash_password, new_password)
         await self.db.flush()
         await self._revoke_all_user_tokens(user.id)
+        await cache_invalidate(f"auth:user:{user.id}")
         asyncio.create_task(self.email_service.send_password_changed_alert(user.email))
 
     async def _create_token_pair(self, user: User) -> dict:
@@ -590,6 +616,33 @@ class AuthService:
             expires_at=exp,
         )
         self.db.add(rt)
+
+        # Pre-warm user cache for immediate subsequent sub-millisecond lookups
+        try:
+            c_at = user.__dict__.get("created_at")
+            u_at = user.__dict__.get("updated_at")
+            user_dict = {
+                "id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "full_name": user.full_name,
+                "avatar_url": getattr(user, "avatar_url", None),
+                "is_active": user.is_active,
+                "is_verified": user.is_verified,
+                "is_admin": user.is_admin,
+                "hashed_password": user.hashed_password,
+                "risk_tolerance": getattr(user, "risk_tolerance", None),
+                "investment_horizon": getattr(user, "investment_horizon", None),
+                "sector_preferences": getattr(user, "sector_preferences", None),
+                "notification_preferences": getattr(user, "notification_preferences", None),
+                "recommendation_weights": getattr(user, "recommendation_weights", None),
+                "created_at": c_at.isoformat() if isinstance(c_at, datetime) else None,
+                "updated_at": u_at.isoformat() if isinstance(u_at, datetime) else None,
+            }
+            await cache_set(f"auth:user:{user.id}", user_dict, ttl_seconds=120)
+        except Exception as e:
+            log.debug("User cache pre-warm skipped: %s", e)
+
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,

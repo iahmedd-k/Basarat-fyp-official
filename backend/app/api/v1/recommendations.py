@@ -134,9 +134,10 @@ def _market_data_freshness(data_as_of: str | None, *, today: date | None = None)
 def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
     """Retain computed ATR levels, targets, stops, and signals with accurate data freshness metadata."""
     result = dict(rec)
-    freshness = _market_data_freshness(result.get("data_as_of"), today=today)
+    data_as_of = result.get("data_as_of")
+    freshness = _market_data_freshness(data_as_of, today=today)
     result.update(freshness)
-    stale = freshness["data_freshness"] == "stale"
+    stale = (freshness["data_freshness"] == "stale") or (not data_as_of)
     original_signal = str(result.get("signal", "hold")).upper()
     result["signal_suppressed"] = False
     result["suppression_reason"] = None
@@ -238,7 +239,7 @@ def _decision_payload(rec: dict) -> dict:
 
 def _risk_payload(rec: dict) -> dict:
     curr_price = float(rec.get("current_price") or 0.0)
-    atr = float(rec["atr_14"]) if rec.get("atr_14") is not None else None
+    atr = float(rec["atr_14"]) if rec.get("atr_14") is not None else 0.0
     tp = rec.get("target_price")
     sl = rec.get("stop_loss")
     exp_range = rec.get("expected_range")
@@ -246,12 +247,15 @@ def _risk_payload(rec: dict) -> dict:
     tp_val = float(tp) if tp is not None else None
     sl_val = float(sl) if sl is not None else None
 
-    if not exp_range and tp_val is not None and sl_val is not None:
-        exp_range = {"low": min(sl_val, tp_val), "high": max(sl_val, tp_val), "method": "atr_band"}
+    if not exp_range:
+        if tp_val is not None and sl_val is not None:
+            exp_range = {"low": min(sl_val, tp_val), "high": max(sl_val, tp_val), "method": "atr_band"}
+        else:
+            exp_range = {"low": curr_price, "high": curr_price, "method": "default"}
 
-    upside = float(rec["upside_pct"]) if rec.get("upside_pct") is not None else (round(((tp_val - curr_price) / curr_price * 100), 2) if (tp_val is not None and curr_price > 0) else None)
-    downside = float(rec["downside_pct"]) if rec.get("downside_pct") is not None else (round(((curr_price - sl_val) / curr_price * 100), 2) if (sl_val is not None and curr_price > 0) else None)
-    rrr = float(rec["risk_reward_ratio"]) if rec.get("risk_reward_ratio") is not None else (round(abs(upside / downside), 2) if (upside is not None and downside is not None and downside > 0) else None)
+    upside = float(rec["upside_pct"]) if rec.get("upside_pct") is not None else (round(((tp_val - curr_price) / curr_price * 100), 2) if (tp_val is not None and curr_price > 0) else 0.0)
+    downside = float(rec["downside_pct"]) if rec.get("downside_pct") is not None else (round(((curr_price - sl_val) / curr_price * 100), 2) if (sl_val is not None and curr_price > 0) else 0.0)
+    rrr = float(rec["risk_reward_ratio"]) if rec.get("risk_reward_ratio") is not None else (round(abs(upside / downside), 2) if (upside is not None and downside is not None and downside > 0) else 0.0)
 
     return {
         "target_price": tp_val,
