@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 class ShariahCriterion(BaseModel):
     name: str
     threshold: float
-    value: float = 0.0
-    passed: bool = True
+    value: float | None = None
+    passed: bool | None = None
     description: str = ""
     exception: str = "None (Standard PSX KMI-30 screening)"
 
@@ -15,8 +15,8 @@ class ShariahCriterion(BaseModel):
 class ShariahScreeningResponse(BaseModel):
     symbol: str
     screening_available: bool = True
-    is_shariah_compliant: bool = True
-    overall_score: float = 100.0
+    is_shariah_compliant: bool | None = True
+    overall_score: float | None = 100.0
     screening_method: str = "PSX KMI-30 / Meezan Screening Standard"
     screened_at: datetime | None = None
     data_as_of: datetime | None = None
@@ -34,11 +34,12 @@ class ShariahScreeningResponse(BaseModel):
 class ShariahCriteriaResponse(BaseModel):
     symbol: str
     screening_available: bool = True
-    is_shariah_compliant: bool = True
+    is_shariah_compliant: bool | None = True
     criteria: list[ShariahCriterion] = Field(default_factory=list)
     data_as_of: datetime | None = None
     data_is_stale: bool = False
     source_url: str = "https://www.psx.com.pk"
+
 
 
 class ShariahPurificationResponse(BaseModel):

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError, ValidationFailedError
 from app.core.rate_limiter import limiter
+from app.core.redis import cache_get, cache_set
 from app.db.session import get_db
 from app.schemas.shariah import (
     ShariahCriteriaResponse,
@@ -36,11 +37,16 @@ async def get_kmi30_shariah(
 ):
     """Retrieve all constituent companies of the PSX KMI-30 Shariah Index."""
     try:
+        cache_key = "shariah:kmi30:constituents"
+        cached = await cache_get(cache_key)
+        if cached:
+            return ShariahKMI30Response(**cached)
+
         constituents = await service.get_kmi30_constituents()
         if not constituents:
             raise ServiceUnavailableError("KMI-30 constituent data is temporarily unavailable.")
         snapshot = service.screening_snapshot_freshness()
-        return ShariahKMI30Response(
+        res = ShariahKMI30Response(
             index="KMI-30",
             total_constituents=len(constituents),
             as_of=f"{PSX_KMI30_SCREENING['accounts_as_of']}T00:00:00+00:00",
@@ -49,6 +55,8 @@ async def get_kmi30_shariah(
             source_url=snapshot["source_url"],
             constituents=constituents,
         )
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=3600)
+        return res
     except Exception:
         logger.exception("Failed to fetch KMI-30 constituents")
         raise ServiceUnavailableError("KMI-30 constituents temporarily unavailable.")
@@ -68,14 +76,19 @@ async def get_shariah_screening(
     """Screen an individual PSX stock against Shariah compliance guidelines."""
     try:
         sym_upper = symbol.upper().strip()
+        cache_key = f"shariah:screening:{sym_upper}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return ShariahScreeningResponse(**cached)
+
         screening = await service.get_screening(sym_upper)
 
         if screening is None:
             return ShariahScreeningResponse(
                 symbol=sym_upper,
                 screening_available=False,
-                is_shariah_compliant=False,
-                overall_score=0.0,
+                is_shariah_compliant=None,
+                overall_score=None,
                 screening_method="PSX KMI-30 / Meezan Screening Standard",
                 screened_at=datetime.utcnow(),
                 compliance_summary=f"No Shariah screening data is available for {sym_upper}; compliance is unverified.",
@@ -94,7 +107,6 @@ async def get_shariah_screening(
                           "source_exception", "purification_rate_provisional")
         }
         if not source_fields.get("data_as_of"):
-            from datetime import timezone
             source_fields["data_as_of"] = datetime.now(timezone.utc)
         source_fields["data_is_stale"] = bool(source_fields.get("data_is_stale") or False)
         if not source_fields.get("effective_from"):
@@ -133,7 +145,7 @@ async def get_shariah_screening(
         else:
             resolved_sector = MarketService._normalize_sector_code_or_name(resolved_sector)
 
-        return ShariahScreeningResponse(
+        res = ShariahScreeningResponse(
             symbol=sym_upper,
             is_shariah_compliant=bool(screening.is_shariah_compliant),
             overall_score=100.0 if screening.is_shariah_compliant else 0.0,
@@ -145,6 +157,8 @@ async def get_shariah_screening(
             criteria=criteria,
             compliance_summary=summary,
         )
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=3600)
+        return res
     except AppError:
         raise
     except Exception:
@@ -165,15 +179,19 @@ async def get_shariah_criteria(
 ):
     """Retrieve the breakdown of all 6 Shariah screening criteria for a given stock."""
     try:
-        from datetime import timezone
         sym_upper = symbol.upper().strip()
+        cache_key = f"shariah:criteria:{sym_upper}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return ShariahCriteriaResponse(**cached)
+
         screening = await service.get_screening(sym_upper)
         criteria = service.build_criteria(screening, symbol=sym_upper)
 
-        is_compliant = bool(screening.is_shariah_compliant) if screening else False
+        is_compliant = bool(screening.is_shariah_compliant) if screening else None
         now_dt = datetime.now(timezone.utc)
 
-        return ShariahCriteriaResponse(
+        res = ShariahCriteriaResponse(
             symbol=sym_upper,
             screening_available=screening is not None,
             is_shariah_compliant=is_compliant,
@@ -182,6 +200,8 @@ async def get_shariah_criteria(
             data_is_stale=bool(getattr(screening, "data_is_stale", False)),
             source_url=getattr(screening, "source_url", None) or "https://www.psx.com.pk",
         )
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=3600)
+        return res
     except AppError:
         raise
     except Exception:
@@ -204,6 +224,11 @@ async def get_shariah_purification(
     """Calculate the Shariah purification (charitable deduction) required for a holding."""
     try:
         sym_upper = symbol.upper().strip()
+        cache_key = f"shariah:purif:{sym_upper}:{dividend_income}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return ShariahPurificationResponse(**cached)
+
         screening = await service.get_screening(sym_upper)
         if screening is None:
             raise NotFoundError(f"No Shariah screening data is available for {sym_upper}.")
@@ -211,13 +236,16 @@ async def get_shariah_purification(
             raise ValidationFailedError(
                 f"Purification is unavailable for {sym_upper} because it is screened as non-compliant."
             )
+        if screening.interest_income_ratio is None:
+            raise ValidationFailedError(
+                f"No verified purification rate is published for {sym_upper} by PSX screening."
+            )
 
         custom_rate = 0.0
-        if screening.interest_income_ratio is not None:
-            try:
-                custom_rate = float(screening.interest_income_ratio)
-            except (ValueError, TypeError):
-                custom_rate = 0.0
+        try:
+            custom_rate = float(screening.interest_income_ratio)
+        except (ValueError, TypeError):
+            custom_rate = 0.0
 
         purification_amount, purification_rate = service.calculate_purification(
             dividend_income=dividend_income,
@@ -232,7 +260,7 @@ async def get_shariah_purification(
                  f"calculate PKR {purification_amount:,.2f} ({purification_rate * 100:.2f}% of dividend income). "
                  + ("PSX marks this rate provisional and subject to adjustment." if is_provisional else ""))
 
-        return ShariahPurificationResponse(
+        res = ShariahPurificationResponse(
             symbol=sym_upper,
             dividend_income=dividend_income,
             purification_amount=purification_amount,
@@ -243,8 +271,12 @@ async def get_shariah_purification(
             source_url=getattr(screening, "source_url", None) or "https://www.psx.com.pk",
             rate_is_provisional=is_provisional,
         )
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=3600)
+        return res
+
     except AppError:
         raise
     except Exception:
         logger.exception("Failed to calculate purification for %s", symbol)
         raise ServiceUnavailableError("Purification calculation temporarily unavailable.")
+

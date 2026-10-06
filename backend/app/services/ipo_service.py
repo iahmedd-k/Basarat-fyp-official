@@ -141,7 +141,7 @@ class IPOService:
         """Seed initial PSX IPO records if the table is empty."""
         try:
             count_res = await self.db.execute(select(func.count(IPO.id)))
-            if count_res.scalar() == 0:
+            if (count_res.scalar() or 0) == 0:
                 for item in INITIAL_PSX_IPOS:
                     self.db.add(IPO(**item))
                 await self.db.commit()
@@ -149,6 +149,7 @@ class IPOService:
         except Exception as exc:
             log.warning("Could not verify/seed IPO initial data: %s", exc)
             await self.db.rollback()
+
 
     def _format_ipo_response(self, ipo: IPO) -> IPOResponse:
         listing_gain_pct = 0.0
@@ -201,12 +202,12 @@ class IPOService:
         limit: int = 50,
         offset: int = 0,
     ) -> IPOListResponse:
-        await self.ensure_seed_data()
         cache_key = f"ipo:list:v1:{status}:{sector}:{is_shariah_compliant}:{search}:{limit}:{offset}"
         cached = await cache_get(cache_key)
         if cached:
             return IPOListResponse(**cached)
 
+        await self.ensure_seed_data()
         query = select(IPO)
         if status:
             st_upper = status.strip().upper()
@@ -234,26 +235,25 @@ class IPOService:
         result = await self.db.execute(query)
         ipos = result.scalars().all()
 
-        # Counts by status
-        total_res = await self.db.execute(select(func.count(IPO.id)))
-        upcoming_res = await self.db.execute(select(func.count(IPO.id)).where(IPO.status == "UPCOMING"))
-        active_res = await self.db.execute(
-            select(func.count(IPO.id)).where(
-                IPO.status.in_(["OPEN_FOR_BOOK_BUILDING", "OPEN_FOR_PUBLIC_SUBSCRIPTION"])
-            )
-        )
-        listed_res = await self.db.execute(select(func.count(IPO.id)).where(IPO.status == "LISTED"))
+        # Consolidated counts in a single query
+        counts_res = await self.db.execute(select(IPO.status, func.count(IPO.id)).group_by(IPO.status))
+        counts_map = {row[0]: row[1] for row in counts_res.all()}
+        total_count = sum(counts_map.values())
+        upcoming_count = counts_map.get("UPCOMING", 0)
+        active_count = counts_map.get("OPEN_FOR_BOOK_BUILDING", 0) + counts_map.get("OPEN_FOR_PUBLIC_SUBSCRIPTION", 0)
+        listed_count = counts_map.get("LISTED", 0)
 
         response = IPOListResponse(
-            total=total_res.scalar() or len(ipos),
-            upcoming_count=upcoming_res.scalar() or 0,
-            active_count=active_res.scalar() or 0,
-            listed_count=listed_res.scalar() or 0,
+            total=total_count or len(ipos),
+            upcoming_count=upcoming_count,
+            active_count=active_count,
+            listed_count=listed_count,
             ipos=[self._format_ipo_response(item) for item in ipos],
         )
 
         await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
         return response
+
 
     async def get_ipo_by_id_or_symbol(self, identifier: str) -> IPOResponse:
         await self.ensure_seed_data()

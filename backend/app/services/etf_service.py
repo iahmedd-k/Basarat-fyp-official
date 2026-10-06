@@ -122,7 +122,7 @@ class ETFService:
         """Seed initial active PSX ETF directory if the table is empty."""
         try:
             count_res = await self.db.execute(select(func.count(ETF.id)))
-            if count_res.scalar() == 0:
+            if (count_res.scalar() or 0) == 0:
                 for item in INITIAL_PSX_ETFS:
                     self.db.add(ETF(**item))
                 await self.db.commit()
@@ -144,42 +144,32 @@ class ETFService:
             return ETFQuote(**cached)
 
         quote_data = None
+        # Try reading from shared live quotes cache if available
         try:
-            import pypsx_toolkit
-            import asyncio
-            frame = await asyncio.wait_for(
-                asyncio.to_thread(pypsx_toolkit.get_quote, sym),
-                timeout=2.0,
-            )
-            if hasattr(frame, "iloc") and len(frame) > 0:
-                row = frame.iloc[-1]
-                close = float(row.get("CURRENT") or row.get("CLOSE") or row.get("PRICE") or row.get("LDCP") or 0.0)
-                if close <= 0.0:
-                    fb = DEFAULT_ETF_PRICES.get(sym, {"price": 25.0})
-                    close = fb["price"]
-                open_p = float(row.get("OPEN") or close)
-                high_p = float(row.get("HIGH") or close)
-                low_p = float(row.get("LOW") or close)
-                vol = int(row.get("VOLUME") or 0)
-                change = float(row.get("CHANGE") or (close - open_p))
-                change_pct = float(row.get("CHANGE_PERCENT") or (change / open_p * 100 if open_p > 0 else 0.0))
+            live_quotes = await cache_get("market:quotes:live")
+            if live_quotes and isinstance(live_quotes, dict) and sym in live_quotes:
+                row = live_quotes[sym]
+                close = float(row.get("current") or row.get("close") or row.get("price") or 0.0)
+                if close > 0:
+                    open_p = float(row.get("open") or close)
+                    change = float(row.get("change") or (close - open_p))
+                    quote_data = {
+                        "current_price": round(close, 2),
+                        "change": round(change, 2),
+                        "change_percent": round(float(row.get("change_percent") or 0.0), 2),
+                        "open_price": round(open_p, 2),
+                        "high_price": round(float(row.get("high") or close), 2),
+                        "low_price": round(float(row.get("low") or close), 2),
+                        "close_price": round(close, 2),
+                        "volume": int(row.get("volume") or 0),
+                        "bid_price": round(close, 2),
+                        "ask_price": round(close, 2),
+                        "data_as_of": datetime.utcnow().isoformat(),
+                        "quote_source": "redis_live_bus",
+                    }
+        except Exception:
+            pass
 
-                quote_data = {
-                    "current_price": round(close, 2),
-                    "change": round(change, 2),
-                    "change_percent": round(change_pct, 2),
-                    "open_price": round(open_p, 2),
-                    "high_price": round(high_p, 2),
-                    "low_price": round(low_p, 2),
-                    "close_price": round(close, 2),
-                    "volume": vol,
-                    "bid_price": float(row.get("BID_PRICE") or close),
-                    "ask_price": float(row.get("ASK_PRICE") or close),
-                    "data_as_of": datetime.utcnow().isoformat(),
-                    "quote_source": "psx_live",
-                }
-        except Exception as exc:
-            log.debug("Live scraper quote fetch timed out/failed for ETF %s: %s", sym, exc)
 
         if not quote_data:
             fallback = DEFAULT_ETF_PRICES.get(sym, {"price": 25.0, "change": 0.0, "change_pct": 0.0, "open": 25.0, "high": 25.0, "low": 25.0, "volume": 10000})
@@ -198,8 +188,8 @@ class ETFService:
                 "quote_source": "cached_fallback",
             }
 
-        # Cache live quote for 60 seconds
-        await cache_set(cache_key, quote_data, ttl_seconds=60)
+        # Cache live quote for 120 seconds
+        await cache_set(cache_key, quote_data, ttl_seconds=120)
         return ETFQuote(**quote_data)
 
     async def _format_etf_response(self, etf: ETF) -> ETFResponse:
@@ -236,12 +226,12 @@ class ETFService:
         is_shariah_compliant: Optional[bool] = None,
         search: Optional[str] = None,
     ) -> ETFListResponse:
-        await self.ensure_seed_data()
         cache_key = f"etf:list:v1:{category}:{is_shariah_compliant}:{search}"
         cached = await cache_get(cache_key)
         if cached:
             return ETFListResponse(**cached)
 
+        await self.ensure_seed_data()
         query = select(ETF).where(ETF.is_active == True)
         if category and category.strip():
             query = query.where(ETF.category.ilike(f"%{category.strip()}%"))
@@ -262,7 +252,8 @@ class ETFService:
         res = await self.db.execute(query)
         etfs = res.scalars().all()
 
-        formatted = [await self._format_etf_response(e) for e in etfs]
+        import asyncio
+        formatted = await asyncio.gather(*[self._format_etf_response(e) for e in etfs])
         shariah_count = sum(1 for e in formatted if e.is_shariah_compliant)
         conventional_count = len(formatted) - shariah_count
 
@@ -270,20 +261,28 @@ class ETFService:
             total=len(formatted),
             shariah_count=shariah_count,
             conventional_count=conventional_count,
-            etfs=formatted,
+            etfs=list(formatted),
         )
-        # Cache list response for 60 seconds
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=60)
+        # Cache list response for 120 seconds
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
         return response
 
     async def get_etf_by_symbol(self, symbol: str) -> ETFResponse:
-        await self.ensure_seed_data()
         sym = symbol.strip().upper()
+        cache_key = f"etf:detail:v1:{sym}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return ETFResponse(**cached)
+
+        await self.ensure_seed_data()
         res = await self.db.execute(select(ETF).where(ETF.symbol == sym))
         etf = res.scalars().first()
         if not etf:
             raise NotFoundError(f"ETF '{sym}' not found.")
-        return await self._format_etf_response(etf)
+        response = await self._format_etf_response(etf)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+        return response
+
 
     async def get_history(self, symbol: str, timeframe: str = "1M") -> ETFHistoryResponse:
         """Read historical timeseries from the maintained OHLCV data files.
@@ -355,6 +354,12 @@ class ETFService:
 
     async def get_performance(self, symbol: str) -> ETFPerformanceResponse:
         """Calculate returns across standard holding periods."""
+        sym = symbol.strip().upper()
+        cache_key = f"etf:perf:v1:{sym}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return ETFPerformanceResponse(**cached)
+
         etf = await self.get_etf_by_symbol(symbol)
         sym = etf.symbol
 
@@ -371,7 +376,7 @@ class ETFService:
         ret = perf_map.get(sym, {"1D": 0.5, "1W": 1.2, "1M": 3.5, "3M": 8.0, "1Y": 25.0, "YTD": 15.0})
         bench_ret = {k: round(v * 0.98, 2) for k, v in ret.items()}
 
-        return ETFPerformanceResponse(
+        response = ETFPerformanceResponse(
             symbol=sym,
             name=etf.name,
             benchmark_index=etf.benchmark_index,
@@ -380,3 +385,6 @@ class ETFService:
             tracking_difference_1m=round(ret["1M"] - bench_ret["1M"], 2),
             volatility_annualized=18.4,
         )
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        return response
+

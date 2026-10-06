@@ -174,7 +174,7 @@ class ShariahService:
         """Build the comprehensive 6-point PSX/Meezan Shariah screening breakdown."""
         if screening is None:
             return [
-                {"name": name, "threshold": threshold, "value": 0.0, "passed": False,
+                {"name": name, "threshold": threshold, "value": None, "passed": None,
                  "description": "No screening data is available for this symbol.", "exception": "None"}
                 for name, threshold in (
                     ("Core Business Permissibility", 1.0),
@@ -188,17 +188,15 @@ class ShariahService:
         sym_upper = symbol.upper()
         is_non_compliant = sym_upper in NON_COMPLIANT_SYMBOLS
 
-        debt_ratio = float(screening.debt_ratio) if screening and screening.debt_ratio is not None else 0.12
-        interest_ratio = float(screening.interest_income_ratio) if screening and screening.interest_income_ratio is not None else 0.015
-        non_compliant_inv = getattr(screening, "non_compliant_investment_ratio", None) or 0.08
-        illiquid_ratio = getattr(screening, "illiquid_assets_ratio", None) or 0.45
-        nla = getattr(screening, "net_liquid_assets_per_share", None) or 15.0
+        debt_ratio = float(screening.debt_ratio) if screening and screening.debt_ratio is not None else None
+        interest_ratio = float(screening.interest_income_ratio) if screening and screening.interest_income_ratio is not None else None
+        non_compliant_inv = getattr(screening, "non_compliant_investment_ratio", None)
+        illiquid_ratio = getattr(screening, "illiquid_assets_ratio", None)
+        nla = getattr(screening, "net_liquid_assets_per_share", None)
         share_price = getattr(screening, "reference_share_price", None) or 120.0
         source_exception = getattr(screening, "source_exception", None)
-        has_ratio_exception = bool(source_exception)
 
         is_core_halal = not is_non_compliant and (screening.is_shariah_compliant if screening else True)
-
         default_exemption = source_exception or "None (Fully compliant with PSX standard)"
 
         return [
@@ -213,44 +211,45 @@ class ShariahService:
             {
                 "name": "Debt to Total Assets Ratio",
                 "threshold": 37.0,
-                "value": round(debt_ratio * 100, 2),
-                "passed": debt_ratio < 0.37 and is_core_halal,
+                "value": round(debt_ratio * 100, 2) if debt_ratio is not None else None,
+                "passed": (debt_ratio < 0.37 and is_core_halal) if debt_ratio is not None else None,
                 "description": "Total interest-bearing debt / Total Assets must be less than 37%.",
                 "exception": default_exemption,
             },
             {
                 "name": "Non-Compliant Investments Ratio",
                 "threshold": 33.0,
-                "value": round(non_compliant_inv * 100, 2),
-                "passed": non_compliant_inv < 0.33 and is_core_halal,
+                "value": round(non_compliant_inv * 100, 2) if non_compliant_inv is not None else None,
+                "passed": (non_compliant_inv < 0.33 and is_core_halal) if non_compliant_inv is not None else None,
                 "description": "Interest-bearing deposits and non-compliant investments / Total Assets must be under 33%.",
                 "exception": source_exception if (source_exception and "investment" in source_exception.lower()) else default_exemption,
             },
             {
                 "name": "Non-Permissible / Interest Income Ratio",
                 "threshold": 5.0,
-                "value": round(interest_ratio * 100, 2),
-                "passed": interest_ratio < 0.05 and is_core_halal,
+                "value": round(interest_ratio * 100, 2) if interest_ratio is not None else None,
+                "passed": (interest_ratio < 0.05 and is_core_halal) if interest_ratio is not None else None,
                 "description": "Interest and non-permissible income / Gross Revenue must be under 5%.",
                 "exception": source_exception or default_exemption,
             },
             {
                 "name": "Illiquid Assets to Total Assets Ratio",
                 "threshold": 25.0,
-                "value": round(illiquid_ratio * 100, 2),
-                "passed": illiquid_ratio >= 0.25 and is_core_halal,
+                "value": round(illiquid_ratio * 100, 2) if illiquid_ratio is not None else None,
+                "passed": (illiquid_ratio >= 0.25 and is_core_halal) if illiquid_ratio is not None else None,
                 "description": "Illiquid physical assets / Total Assets must be at least 25%.",
                 "exception": default_exemption,
             },
             {
                 "name": "Net Liquid Assets vs Market Price",
                 "threshold": share_price if share_price is not None else 1.0,
-                "value": nla,
-                "passed": nla < share_price if is_core_halal else False,
+                "value": nla if nla is not None else None,
+                "passed": (nla < share_price if is_core_halal else False) if nla is not None else None,
                 "description": "Net liquid assets per share must be less than the reference share price reported for the screening date.",
                 "exception": default_exemption,
             },
         ]
+
 
     def calculate_purification(self, dividend_income: float, symbol: str = "", rate: float | None = None) -> tuple[float, float]:
         """Calculate purification amount and return (purification_amount, purification_rate)."""
