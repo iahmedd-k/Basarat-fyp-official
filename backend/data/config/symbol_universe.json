@@ -88,6 +88,13 @@
     "frozen_date": "2026-09-15"
   },
   {
+    "symbol": "BML",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
     "symbol": "BNWM",
     "indices": [
       "KSE100"
@@ -335,6 +342,13 @@
     "frozen_date": "2026-09-15"
   },
   {
+    "symbol": "IMAGE",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
     "symbol": "INDU",
     "indices": [
       "KSE100"
@@ -490,6 +504,13 @@
     "indices": [
       "KSE100",
       "KSE30"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "NCPL",
+    "indices": [
+      "KSE100"
     ],
     "frozen_date": "2026-09-15"
   },
@@ -735,6 +756,13 @@
   },
   {
     "symbol": "THALL",
+    "indices": [
+      "KSE100"
+    ],
+    "frozen_date": "2026-09-15"
+  },
+  {
+    "symbol": "THCCL",
     "indices": [
       "KSE100"
     ],

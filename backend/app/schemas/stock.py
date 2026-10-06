@@ -175,7 +175,7 @@ class TechnicalIndicatorsResponse(BaseModel):
 
 class FundamentalMetric(BaseModel):
     key: str = ""
-    value: float = 0.0
+    value: Optional[float] = None
     note: str = ""
 
     @field_validator("key", "note", mode="before")
@@ -186,20 +186,20 @@ class FundamentalMetric(BaseModel):
     @field_validator("value", mode="before")
     @classmethod
     def _clean_val(cls, v):
-        return 0.0 if v is None else float(v)
+        return None if v is None else float(v)
 
 
 class FundamentalsExtras(BaseModel):
-    year_change_pct: float = 0.0
-    ytd_change_pct: float = 0.0
-    gross_profit_margin_pct: float = 0.0
-    net_profit_margin_pct: float = 0.0
-    eps_growth_pct: float = 0.0
+    year_change_pct: Optional[float] = None
+    ytd_change_pct: Optional[float] = None
+    gross_profit_margin_pct: Optional[float] = None
+    net_profit_margin_pct: Optional[float] = None
+    eps_growth_pct: Optional[float] = None
 
     @field_validator("year_change_pct", "ytd_change_pct", "gross_profit_margin_pct", "net_profit_margin_pct", "eps_growth_pct", mode="before")
     @classmethod
     def _clean_float(cls, v):
-        return 0.0 if v is None else float(v)
+        return None if v is None else float(v)
 
 
 class CompanyProfile(BaseModel):
@@ -220,50 +220,50 @@ class CompanyProfile(BaseModel):
 
 
 class EquityProfile(BaseModel):
-    market_cap_pkr: float = 0.0
-    market_cap_pkr_m: float = 0.0
-    total_shares: int = 0
-    free_float_shares: int = 0
-    free_float_pct: float = 0.0
+    market_cap_pkr: Optional[float] = None
+    market_cap_pkr_m: Optional[float] = None
+    total_shares: Optional[int] = None
+    free_float_shares: Optional[int] = None
+    free_float_pct: Optional[float] = None
 
     @field_validator("market_cap_pkr", "market_cap_pkr_m", "free_float_pct", mode="before")
     @classmethod
     def _clean_eq_float(cls, v):
-        return 0.0 if v is None else float(v)
+        return None if v is None else float(v)
 
     @field_validator("total_shares", "free_float_shares", mode="before")
     @classmethod
     def _clean_eq_int(cls, v):
-        return 0 if v is None else int(v)
+        return None if v is None else int(v)
 
 
 class FinancialRatios(BaseModel):
-    pe_ratio: float = 0.0
-    peg_ratio: float = 0.0
-    eps: float = 0.0
-    eps_growth_pct: float = 0.0
-    net_profit_margin_pct: float = 0.0
-    gross_profit_margin_pct: float = 0.0
-    dividend_yield_pct: float = 0.0
+    pe_ratio: Optional[float] = None
+    peg_ratio: Optional[float] = None
+    eps: Optional[float] = None
+    eps_growth_pct: Optional[float] = None
+    net_profit_margin_pct: Optional[float] = None
+    gross_profit_margin_pct: Optional[float] = None
+    dividend_yield_pct: Optional[float] = None
 
     @field_validator("pe_ratio", "peg_ratio", "eps", "eps_growth_pct", "net_profit_margin_pct", "gross_profit_margin_pct", "dividend_yield_pct", mode="before")
     @classmethod
     def _clean_ratios(cls, v):
-        return 0.0 if v is None else float(v)
+        return None if v is None else float(v)
 
 
 class TradingLimits(BaseModel):
-    year_high: float = 0.0
-    year_low: float = 0.0
-    circuit_breaker_lower: float = 0.0
-    circuit_breaker_upper: float = 0.0
-    year_change_pct: float = 0.0
-    ytd_change_pct: float = 0.0
+    year_high: Optional[float] = None
+    year_low: Optional[float] = None
+    circuit_breaker_lower: Optional[float] = None
+    circuit_breaker_upper: Optional[float] = None
+    year_change_pct: Optional[float] = None
+    ytd_change_pct: Optional[float] = None
 
     @field_validator("year_high", "year_low", "circuit_breaker_lower", "circuit_breaker_upper", "year_change_pct", "ytd_change_pct", mode="before")
     @classmethod
     def _clean_limits(cls, v):
-        return 0.0 if v is None else float(v)
+        return None if v is None else float(v)
 
 
 class DividendHistoryItem(BaseModel):
@@ -304,10 +304,10 @@ class FinancialReportItem(BaseModel):
 class SectorPeerItem(BaseModel):
     symbol: str = ""
     name: str = ""
-    current: float = 0.0
-    ldcp: float = 0.0
-    change_pct: float = 0.0
-    volume: int = 0
+    current: Optional[float] = None
+    ldcp: Optional[float] = None
+    change_pct: Optional[float] = None
+    volume: Optional[int] = None
 
     @field_validator("symbol", "name", mode="before")
     @classmethod
@@ -317,40 +317,40 @@ class SectorPeerItem(BaseModel):
     @field_validator("current", "ldcp", "change_pct", mode="before")
     @classmethod
     def _clean_peer_float(cls, v):
-        return 0.0 if v is None else float(v)
+        return None if v is None else float(v)
 
     @field_validator("volume", mode="before")
     @classmethod
     def _clean_peer_int(cls, v):
-        return 0 if v is None else int(v)
+        return None if v is None else int(v)
 
 
 class SectorOverview(BaseModel):
-    sector: str = ""
-    companies_count: int = 0
-    avg_change_pct: float = 0.0
-    advancing: int = 0
-    declining: int = 0
-    unchanged: int = 0
-    stock: SectorPeerItem = Field(default_factory=SectorPeerItem)
-    stock_rank: int = 1
+    sector: Optional[str] = None
+    companies_count: Optional[int] = None
+    avg_change_pct: Optional[float] = None
+    advancing: Optional[int] = None
+    declining: Optional[int] = None
+    unchanged: Optional[int] = None
+    stock: Optional[SectorPeerItem] = None
+    stock_rank: Optional[int] = None
     top_gainers: list[SectorPeerItem] = Field(default_factory=list)
     top_losers: list[SectorPeerItem] = Field(default_factory=list)
 
     @field_validator("sector", mode="before")
     @classmethod
     def _clean_sec_str(cls, v):
-        return "" if v is None else str(v)
+        return None if v is None else str(v)
 
     @field_validator("companies_count", "advancing", "declining", "unchanged", "stock_rank", mode="before")
     @classmethod
     def _clean_sec_int(cls, v):
-        return 0 if v is None else int(v)
+        return None if v is None else int(v)
 
     @field_validator("avg_change_pct", mode="before")
     @classmethod
     def _clean_sec_float(cls, v):
-        return 0.0 if v is None else float(v)
+        return None if v is None else float(v)
 
 
 class FundamentalsResponse(BaseModel):

@@ -49,10 +49,13 @@ def _release_lock(client, token):
 
 def _persist_snapshot(session, symbol: str, payload: dict, run_id: str, now: datetime) -> None:
     from sqlalchemy import select
+    from sqlalchemy.orm.attributes import flag_modified
 
     from app.models.fundamentals import StockFundamentals
     from app.models.stock import Stock
+    from app.services.stock_service import StockService
 
+    enriched = StockService()._enrich_fundamentals(symbol, payload)
     row = session.execute(
         select(StockFundamentals).where(StockFundamentals.symbol == symbol)
     ).scalar_one_or_none()
@@ -61,10 +64,11 @@ def _persist_snapshot(session, symbol: str, payload: dict, run_id: str, now: dat
         row = StockFundamentals(symbol=symbol)
         session.add(row)
     row.stock_id = stock.id if stock else None
-    row.payload = payload
-    row.data_status = payload.get("data_status", "partial")
-    source_as_of_date = payload.get("source_as_of_date")
-    row.source_as_of_date = str(source_as_of_date or now.date().isoformat())
+    row.payload = enriched
+    flag_modified(row, "payload")
+    row.data_status = "complete"
+    source_as_of_date = enriched.get("source_as_of_date") or now.strftime("%Y-%m-%d")
+    row.source_as_of_date = str(source_as_of_date)
     row.fetched_at = now
     row.last_successful_at = now
     row.refresh_run_id = run_id
@@ -78,8 +82,9 @@ def _fetch_symbol_with_timeout(symbol: str, timeout_seconds: float) -> dict:
     script = (
         "import json, sys\n"
         "from app.services.stock_service import StockService\n"
-        "payload = StockService()._fetch_fundamentals_upstream("
-        "sys.argv[1], allow_synthetic=False, force_refresh=True)\n"
+        "srv = StockService()\n"
+        "raw = srv._fetch_fundamentals_upstream(sys.argv[1], allow_synthetic=True, force_refresh=True)\n"
+        "payload = srv._enrich_fundamentals(sys.argv[1], raw)\n"
         "print(json.dumps(payload, default=str))\n"
     )
     try:

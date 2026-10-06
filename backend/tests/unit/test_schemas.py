@@ -15,7 +15,7 @@ from app.schemas.auth import (
     UpdateProfileRequest,
     UpdateRiskProfileRequest,
 )
-from app.schemas.stock import StockSearchResult
+from app.schemas.stock import FundamentalsResponse, StockSearchResult
 from app.schemas.community import (
     CommunityPostCreate,
     CommunityPostUpdate,
@@ -177,6 +177,24 @@ class TestStockSearchResult:
     def test_valid_result(self):
         s = StockSearchResult(symbol="HBL", name="Habib Bank")
         assert s.symbol == "HBL"
+
+
+class TestFundamentalsResponse:
+    def test_unknown_values_remain_null(self):
+        response = FundamentalsResponse(
+            ratios={"pe_ratio": None, "dividend_yield_pct": None},
+            metrics=[{"key": "ROE", "value": None}],
+            equity_profile={"market_cap_pkr": None, "total_shares": None},
+            sector_overview={"stock": None},
+        )
+
+        payload = response.model_dump()
+        assert payload["ratios"]["pe_ratio"] is None
+        assert payload["ratios"]["dividend_yield_pct"] is None
+        assert payload["metrics"][0]["value"] is None
+        assert payload["equity_profile"]["market_cap_pkr"] is None
+        assert payload["equity_profile"]["total_shares"] is None
+        assert payload["sector_overview"]["stock"] is None
 
 
 # ── Community schemas ───────────────────────────────────────────────────────
