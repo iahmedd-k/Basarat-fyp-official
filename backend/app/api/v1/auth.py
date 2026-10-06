@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Request, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
-from app.core.authorization import get_current_user
+from app.core.authorization import bearer_scheme, get_current_user
 from app.core.exceptions import (
     BadRequestError,
     ConflictError,
@@ -258,10 +259,11 @@ async def refresh_token(
 @router.post(
     "/auth/logout",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Logout single session (Revoke refresh token)",
+    summary="Logout single session (Revoke refresh & access tokens)",
     description=(
         "**Logout:**\n\n"
-        "- Invalides the provided `refresh_token` in the database.\n"
+        "- Invalidates the provided `refresh_token` in the database.\n"
+        "- Blacklists the JWT tokens in Redis with their remaining expiration time.\n"
         "- Returns HTTP 204 No Content."
     ),
 )
@@ -269,9 +271,11 @@ async def refresh_token(
 async def logout(
     request: Request,
     data: LogoutRequest,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     service: AuthService = Depends(_get_service),
 ):
-    await service.logout(data.refresh_token)
+    access_token_str = credentials.credentials if credentials else None
+    await service.logout(data.refresh_token, access_token_str=access_token_str)
 
 
 # ============================================================================

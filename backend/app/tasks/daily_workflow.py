@@ -206,7 +206,7 @@ def generate_predictions_task(self):
                 as_of_dates.add(as_of_date.isoformat())
 
                 gru_result = _run_gru(sym, sym_df)
-                horizon_trading_days = [("1W", 5), ("2W", 10), ("1M", 22)]
+                horizon_trading_days = [("1D", 1), ("1W", 5), ("2W", 10), ("1M", 22)]
                 
                 for h_code, t_days in horizon_trading_days:
                     xgb_result = _run_xgb(sym, as_of_date, horizon=h_code)
@@ -223,6 +223,33 @@ def generate_predictions_task(self):
                         xgb_result=xgb_result,
                     )
                     upsert_prediction_sync(session, payload)
+
+                    # Pre-warm forecast in Redis with 24h TTL for instant sub-20ms responses
+                    try:
+                        from app.core.redis import cache_set_sync
+                        from app.api.v1.forecast import _build_forecast_response
+                        from app.services.recommendation_engine import RecommendationEngine
+
+                        engine = RecommendationEngine()
+                        target_stop = engine.compute_target_stop(sym, sym_df, ml_direction=ensemble.get("direction"), horizon=h_code)
+                        inf_dict = {
+                            "symbol": sym,
+                            "horizon": h_code,
+                            "direction": ensemble["direction"],
+                            "bullish_pct": ensemble["bullish_pct"],
+                            "bearish_pct": ensemble["bearish_pct"],
+                            "sideways_pct": ensemble["sideways_pct"],
+                            "top_class_probability": ensemble["top_class_probability"],
+                            "as_of_date": as_of_date.isoformat(),
+                            "predicted_for_date": target_date.isoformat(),
+                            "model_version": ensemble.get("model_version", "ensemble"),
+                            "gate_reason": ensemble.get("gate_reason", ""),
+                            "model_details": payload.get("model_details"),
+                        }
+                        fc_resp = _build_forecast_response(inf_dict, h_code, target_stop)
+                        cache_set_sync(f"forecast:stock:v2:{sym}:{h_code}", fc_resp.model_dump(mode="json"), ttl_seconds=86400)
+                    except Exception:
+                        pass
                 
                 session.commit()
                 success += 1

@@ -74,7 +74,24 @@ async def get_stock_forecast(
         symbol_upper = symbol.strip().upper()
         cache_key = f"forecast:stock:v2:{symbol_upper}:{horizon}"
         cached = await cache_get(cache_key)
-        if cached:
+        if cached and isinstance(cached, dict):
+            # Real-time market price overlay over pre-computed forecast
+            try:
+                from app.services.stock_service import StockService
+                stock_svc = StockService()
+                quote = stock_svc.get_quote(symbol_upper)
+                if quote and (quote.get("current") or quote.get("ldcp")):
+                    curr_p = float(quote.get("current") or quote.get("ldcp"))
+                    if curr_p > 0:
+                        cached["current_price"] = round(curr_p, 2)
+                        tp = cached.get("target_price")
+                        sl = cached.get("stop_loss")
+                        if tp:
+                            cached["upside_pct"] = round((tp - curr_p) / curr_p * 100, 2)
+                        if sl:
+                            cached["downside_pct"] = round((sl - curr_p) / curr_p * 100, 2)
+            except Exception:
+                pass
             return ForecastResponse(**cached)
 
         if not artifacts.model_ready:
@@ -170,7 +187,7 @@ async def get_stock_forecast(
                 )
 
         response = _build_forecast_response(result, horizon, target_stop)
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
         return response
 
     except SymbolNotFoundError as exc:

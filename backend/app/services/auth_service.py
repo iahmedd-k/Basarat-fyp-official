@@ -411,14 +411,31 @@ class AuthService:
 
         return await self._create_token_pair(user)
 
-    async def logout(self, refresh_token_str: str) -> None:
-        payload = decode_token(refresh_token_str)
-        if payload is None:
-            return
-        jti = payload.get("jti")
-        user_id = payload.get("sub")
-        if jti and user_id:
-            await self._revoke_token_by_jti(jti, user_id)
+    async def logout(self, refresh_token_str: str, access_token_str: str | None = None) -> None:
+        import time
+
+        # 1. Blacklist & revoke refresh token
+        rt_payload = decode_token(refresh_token_str)
+        if rt_payload:
+            rt_jti = rt_payload.get("jti")
+            user_id = rt_payload.get("sub")
+            rt_exp = rt_payload.get("exp")
+            if rt_jti:
+                ttl = max(1, int(rt_exp - time.time())) if rt_exp else 86400 * 30
+                await cache_set(f"auth:blacklist:{rt_jti}", "1", ttl_seconds=ttl)
+            if rt_jti and user_id:
+                await self._revoke_token_by_jti(rt_jti, user_id)
+                await cache_invalidate(f"auth:user:{user_id}")
+
+        # 2. Blacklist access token if provided
+        if access_token_str:
+            at_payload = decode_token(access_token_str)
+            if at_payload:
+                at_jti = at_payload.get("jti")
+                at_exp = at_payload.get("exp")
+                if at_jti:
+                    ttl = max(1, int(at_exp - time.time())) if at_exp else 3600
+                    await cache_set(f"auth:blacklist:{at_jti}", "1", ttl_seconds=ttl)
 
     async def get_me(self, user_id: str) -> User:
         user = await self.db.get(User, user_id)

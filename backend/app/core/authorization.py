@@ -9,6 +9,8 @@ from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
 
+from app.core.redis import cache_get, cache_set
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -17,9 +19,15 @@ async def get_token_payload(
 ) -> dict:
     if credentials is None:
         raise UnauthorizedError()
-    payload = decode_token(credentials.credentials)
+    token_str = credentials.credentials
+    payload = decode_token(token_str)
     if payload is None or payload.get("type") != "access":
         raise UnauthorizedError("Invalid or expired token")
+    jti = payload.get("jti")
+    if jti:
+        is_revoked = await cache_get(f"auth:blacklist:{jti}")
+        if is_revoked:
+            raise UnauthorizedError("Token has been revoked")
     return payload
 
 

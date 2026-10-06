@@ -255,19 +255,105 @@ class StockService:
                     return val
         return default
 
+    def _fallback_quote(self, symbol: str) -> dict:
+        symbol = str(symbol).upper()
+        # 1. Try single quote frame (DPS API)
+        try:
+            q_frame = self._get_quote_frame(symbol)
+            if q_frame is not None and isinstance(q_frame, dict):
+                curr = self._num(q_frame.get("current") or q_frame.get("price") or q_frame.get("Current"))
+                ldcp = self._num(q_frame.get("ldcp") or q_frame.get("close") or q_frame.get("LDCP"))
+                if curr or ldcp:
+                    change = round(curr - ldcp, 4) if curr and ldcp else 0.0
+                    ch_pct = round(change / ldcp * 100, 2) if ldcp else 0.0
+                    return {
+                        "symbol": symbol,
+                        "name": symbol,
+                        "sector": self._sector_of(symbol),
+                        "ldcp": ldcp or curr or 0.0,
+                        "open": self._num(q_frame.get("open") or q_frame.get("Open") or curr or 0.0),
+                        "high": self._num(q_frame.get("high") or q_frame.get("High") or curr or 0.0),
+                        "low": self._num(q_frame.get("low") or q_frame.get("Low") or curr or 0.0),
+                        "current": curr or ldcp or 0.0,
+                        "change": change,
+                        "change_pct": ch_pct,
+                        "volume": self._safe_int(q_frame.get("volume") or q_frame.get("Volume") or 0),
+                    }
+        except Exception:
+            pass
+
+        # 2. Try Redis last known stale snapshot
+        try:
+            last_known = cache_get_sync("market:quotes:last_known")
+            if isinstance(last_known, list):
+                for row in last_known:
+                    if str(row.get("symbol", "")).upper() == symbol:
+                        curr = self._num(row.get("current"))
+                        ldcp = self._num(row.get("ldcp"))
+                        if curr or ldcp:
+                            return {
+                                "symbol": symbol,
+                                "name": row.get("name") or symbol,
+                                "sector": row.get("sector") or self._sector_of(symbol),
+                                "ldcp": ldcp or curr or 0.0,
+                                "open": self._num(row.get("open")) or curr or 0.0,
+                                "high": self._num(row.get("high")) or curr or 0.0,
+                                "low": self._num(row.get("low")) or curr or 0.0,
+                                "current": curr or ldcp or 0.0,
+                                "change": row.get("change") or 0.0,
+                                "change_pct": row.get("change_pct") or 0.0,
+                                "volume": self._safe_int(row.get("volume") or 0),
+                            }
+        except Exception:
+            pass
+
+        # 3. Try persisted Parquet OHLCV last close
+        try:
+            path = OHLCV_DATA_DIR / f"{symbol}.parquet"
+            if path.is_file():
+                df = pd.read_parquet(path)
+                if not df.empty:
+                    df.columns = [str(c).upper() for c in df.columns]
+                    last_row = df.iloc[-1]
+                    close_val = self._num(last_row.get("CLOSE") or last_row.get("ADJUSTED_CLOSE") or 0.0)
+                    if close_val and close_val > 0:
+                        prev_close = self._num(df.iloc[-2].get("CLOSE")) if len(df) > 1 else close_val
+                        change = round(close_val - prev_close, 4) if prev_close else 0.0
+                        ch_pct = round(change / prev_close * 100, 2) if prev_close else 0.0
+                        return {
+                            "symbol": symbol,
+                            "name": symbol,
+                            "sector": self._sector_of(symbol),
+                            "ldcp": prev_close or close_val,
+                            "open": self._num(last_row.get("OPEN") or close_val),
+                            "high": self._num(last_row.get("HIGH") or close_val),
+                            "low": self._num(last_row.get("LOW") or close_val),
+                            "current": close_val,
+                            "change": change,
+                            "change_pct": ch_pct,
+                            "volume": self._safe_int(last_row.get("VOLUME") or 0),
+                        }
+        except Exception:
+            pass
+
+        return self._empty_quote(symbol)
+
     def get_quote_batch(self, symbols):
-        frame = self._get_market_frame()
-        if frame is None or len(symbols) == 0:
+        if not symbols:
             return []
+        frame = self._get_market_frame()
         rows = []
         for symbol in symbols:
             symbol = str(symbol).upper()
-            if symbol not in frame.index:
-                rows.append(self._empty_quote(symbol))
+            if frame is None or symbol not in frame.index:
+                rows.append(self._fallback_quote(symbol))
                 continue
             row = frame.loc[symbol]
             ldcp = self._num(self._get_field(row, "LDCP", "ldcp", "close", "Close", default=0.0))
             current = self._num(self._get_field(row, "Current", "current", "price", "Price", default=0.0))
+            if (current is None or current <= 0) and (ldcp is None or ldcp <= 0):
+                rows.append(self._fallback_quote(symbol))
+                continue
             reported_change = self._num(self._get_field(row, "Change", "change", default=0.0))
             change = round(current - ldcp, 4) if current is not None and current > 0 and ldcp is not None and ldcp > 0 else reported_change
             change_pct = round(change / ldcp * 100, 2) if change is not None and ldcp else None
