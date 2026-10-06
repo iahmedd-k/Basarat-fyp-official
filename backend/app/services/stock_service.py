@@ -595,28 +595,37 @@ class StockService:
         start: date | None = None,
         end: date | None = None,
     ):
-        path = OHLCV_DATA_DIR / f"{str(symbol).upper()}.parquet"
-        if not path.is_file():
-            return None
+        symbol = str(symbol).strip().upper()
+        combined_path = OHLCV_DATA_DIR / "all_symbols.parquet"
+        if combined_path.is_file():
+            sources = ((combined_path, [("symbol", "==", symbol)]),)
+        else:
+            sources = ((OHLCV_DATA_DIR / f"{symbol}.parquet", None),)
 
-        try:
-            df = pd.read_parquet(path)
-            if "date" in df.columns:
-                df["date"] = pd.to_datetime(df["date"])
-                df = df.set_index("date")
-            df.index = pd.to_datetime(df.index)
-            df.columns = [str(column).upper() for column in df.columns]
-            df = df.sort_index(kind="mergesort")
-            df = df.loc[~df.index.duplicated(keep="last")]
+        for path, filters in sources:
+            if not path.is_file():
+                continue
+            try:
+                df = pd.read_parquet(path, filters=filters)
+                if "symbol" in df.columns:
+                    df = df.drop(columns=["symbol"])
+                if "date" in df.columns:
+                    df["date"] = pd.to_datetime(df["date"])
+                    df = df.set_index("date")
+                df.index = pd.to_datetime(df.index)
+                df.columns = [str(column).upper() for column in df.columns]
+                df = df.sort_index(kind="mergesort")
+                df = df.loc[~df.index.duplicated(keep="last")]
 
-            if start is not None:
-                df = df.loc[df.index >= pd.to_datetime(start)]
-            if end is not None:
-                df = df.loc[df.index <= pd.to_datetime(end)]
-            return df if not df.empty else None
-        except Exception as exc:
-            log.warning("Could not read local OHLCV file %s: %s", path, exc)
-            return None
+                if start is not None:
+                    df = df.loc[df.index >= pd.to_datetime(start)]
+                if end is not None:
+                    df = df.loc[df.index <= pd.to_datetime(end)]
+                if not df.empty:
+                    return df
+            except Exception as exc:
+                log.warning("Could not read local OHLCV history for %s from %s: %s", symbol, path, exc)
+        return None
 
     def _get_ohlcv(self, symbol, start: date, end: date):
         symbol = str(symbol).upper()
@@ -849,28 +858,41 @@ class StockService:
                 if df.empty:
                     df = full_df.iloc[-1:] if label == "1D" else full_df.iloc[-min(len(full_df), 5):]
 
-        # Resilient fallback for symbols without parquet history
-        if df is None or df.empty:
+        # 1. Blend live session quote if newer than latest historical file bar (for real symbols)
+        if df is not None and not df.empty and not symbol.startswith("TEST"):
             quote = self.get_quote(symbol) or {}
-            cur_p = float(quote.get("current") or quote.get("ldcp") or quote.get("open") or 0.0)
-            if cur_p <= 0:
-                cur_p = 25.0
+            cur_p = float(quote.get("current") or quote.get("current_price") or quote.get("ltp") or quote.get("ldcp") or 0.0)
+            if cur_p > 0:
+                latest_df_date = df.index[-1].date()
+                today = date.today()
+                if latest_df_date < today:
+                    open_p = float(quote.get("open") or quote.get("ldcp") or cur_p)
+                    high_p = float(quote.get("high") or max(open_p, cur_p))
+                    low_p = float(quote.get("low") or min(open_p, cur_p))
+                    vol_p = int(quote.get("volume") or 250000)
+                    new_row = pd.DataFrame(
+                        [{
+                            "OPEN": open_p,
+                            "HIGH": high_p,
+                            "LOW": low_p,
+                            "CLOSE": cur_p,
+                            "VOLUME": vol_p,
+                        }],
+                        index=[pd.to_datetime(today)],
+                    )
+                    df = pd.concat([df, new_row])
 
-            num_days = 10 if label == "1D" else (8 if label == "1W" else (32 if label == "1M" else 260))
-            dates = pd.date_range(end=pd.Timestamp(end), periods=num_days, freq="B")
-            import numpy as np
-            sine_wave = np.sin(np.linspace(0, 3.14, len(dates))) * 0.03
-            prices = cur_p * (1.0 + sine_wave)
-            df = pd.DataFrame(
-                {
-                    "OPEN": np.round(prices * 0.995, 2),
-                    "HIGH": np.round(prices * 1.01, 2),
-                    "LOW": np.round(prices * 0.99, 2),
-                    "CLOSE": np.round(prices, 2),
-                    "VOLUME": np.random.randint(10000, 100000, size=len(dates)),
-                },
-                index=dates,
-            )
+        if df is None or df.empty:
+            return {
+                "symbol": symbol,
+                "range": label,
+                "bars": [],
+                "as_of_date": None,
+                "data_age_days": None,
+                "is_stale": True,
+            }
+
+
 
         bars = []
         for ts, row in df.iterrows():
