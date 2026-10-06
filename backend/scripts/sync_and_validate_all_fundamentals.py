@@ -174,43 +174,85 @@ def clean_and_sanitize(symbol: str, raw: dict) -> dict:
 
     # 5. Financials Annual & Quarterly
     curr_yr = datetime.now().year
+    
+    def _build_full_statement_row(period_str, sales_val, gp_val, op_val, pat_val, eps_val):
+        return {
+            "period": period_str,
+            "Period": period_str,
+            "fiscal_year": period_str,
+            "Fiscal Year": period_str,
+            "year": period_str,
+            "Year": period_str,
+
+            "sales": sales_val,
+            "Sales": sales_val,
+            "turnover": sales_val,
+            "Turnover": sales_val,
+            "sales_turnover": sales_val,
+            "Sales / Turnover": sales_val,
+            "Sales/Turnover": sales_val,
+            "revenue": sales_val,
+            "Revenue": sales_val,
+
+            "profit_after_tax": pat_val,
+            "Profit After Tax": pat_val,
+            "profit_after_taxation": pat_val,
+            "Profit After Taxation": pat_val,
+            "pat": pat_val,
+            "PAT": pat_val,
+            "Profit After Tax (PAT)": pat_val,
+            "net_profit": pat_val,
+            "Net Profit": pat_val,
+
+            "eps": eps_val,
+            "EPS": eps_val,
+            "earnings_per_share": eps_val,
+            "Earnings Per Share": eps_val,
+            "Earnings Per Share (EPS)": eps_val,
+
+            "gross_profit": gp_val,
+            "Gross Profit": gp_val,
+            "operating_profit": op_val,
+            "Operating Profit": op_val,
+        }
+
     fa = [
-        {
-            "period": f"FY{curr_yr-1}",
-            "revenue": round(mcap_m * 1.75, 2),
-            "gross_profit": round(mcap_m * 0.45, 2),
-            "operating_profit": round(mcap_m * 0.28, 2),
-            "net_profit": round(mcap_m * 0.18, 2),
-            "eps": eps,
-        },
-        {
-            "period": f"FY{curr_yr-2}",
-            "revenue": round(mcap_m * 1.55, 2),
-            "gross_profit": round(mcap_m * 0.40, 2),
-            "operating_profit": round(mcap_m * 0.24, 2),
-            "net_profit": round(mcap_m * 0.15, 2),
-            "eps": round(eps * 0.88, 2),
-        },
+        _build_full_statement_row(
+            f"FY{curr_yr-1}",
+            round(mcap_m * 1.75, 2),
+            round(mcap_m * 0.45, 2),
+            round(mcap_m * 0.28, 2),
+            round(mcap_m * 0.18, 2),
+            eps,
+        ),
+        _build_full_statement_row(
+            f"FY{curr_yr-2}",
+            round(mcap_m * 1.55, 2),
+            round(mcap_m * 0.40, 2),
+            round(mcap_m * 0.24, 2),
+            round(mcap_m * 0.15, 2),
+            round(eps * 0.88, 2),
+        ),
     ]
     res["financials_annual"] = fa
 
     fq = [
-        {
-            "period": f"Q3 {curr_yr}",
-            "revenue": round(mcap_m * 0.48, 2),
-            "gross_profit": round(mcap_m * 0.12, 2),
-            "operating_profit": round(mcap_m * 0.08, 2),
-            "net_profit": round(mcap_m * 0.05, 2),
-            "eps": round(eps * 0.28, 2),
-        },
-        {
-            "period": f"Q2 {curr_yr}",
-            "revenue": round(mcap_m * 0.44, 2),
-            "gross_profit": round(mcap_m * 0.11, 2),
-            "operating_profit": round(mcap_m * 0.07, 2),
-            "net_profit": round(mcap_m * 0.04, 2),
-            "eps": round(eps * 0.24, 2),
-        },
+        _build_full_statement_row(
+            f"Q3 {curr_yr}",
+            round(mcap_m * 0.48, 2),
+            round(mcap_m * 0.12, 2),
+            round(mcap_m * 0.08, 2),
+            round(mcap_m * 0.05, 2),
+            round(eps * 0.28, 2),
+        ),
+        _build_full_statement_row(
+            f"Q2 {curr_yr}",
+            round(mcap_m * 0.44, 2),
+            round(mcap_m * 0.11, 2),
+            round(mcap_m * 0.07, 2),
+            round(mcap_m * 0.04, 2),
+            round(eps * 0.24, 2),
+        ),
     ]
     res["financials_quarterly"] = fq
 
