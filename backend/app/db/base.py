@@ -10,18 +10,22 @@ settings = get_settings()
 # Supabase free databases have tight connection limits. Keep a small bounded
 # pool; transaction-pooler-specific asyncpg options are applied automatically.
 async_url, async_connect_args = async_database_url(settings.DATABASE_URL)
-engine = create_async_engine(
-    async_url,
-    echo=settings.DEBUG,
-    future=True,
-    pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=20,
-    pool_timeout=15,
-    pool_recycle=1200,
-    connect_args=async_connect_args,
-)
+_engine_kwargs = {
+    "echo": settings.DEBUG,
+    "future": True,
+    "pool_pre_ping": True,
+    "pool_recycle": 1200,
+    "connect_args": async_connect_args,
+}
+if not str(async_url).startswith("sqlite"):
+    _engine_kwargs.update({
+        "pool_size": 20,
+        "max_overflow": 20,
+        "pool_timeout": 15,
+    })
+engine = create_async_engine(async_url, **_engine_kwargs)
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
 
 # Sync engine (for Celery tasks) — lazy initialization
 _sync_engine = None
