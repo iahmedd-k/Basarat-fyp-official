@@ -24,6 +24,7 @@ from app.schemas.assistant import (
     AssistantQuickPromptsResponse,
     AssistantQuickPrompt,
 )
+from app.core.redis import cache_get, cache_set, cache_invalidate, cache_invalidate_pattern
 from app.services.assistant_service import AssistantService
 
 router = APIRouter()
@@ -58,6 +59,10 @@ async def chat(
             message=chat_request.message,
             conversation_id=chat_request.conversation_id,
         )
+        conv_id = result.get("conversation_id")
+        if conv_id:
+            await cache_invalidate(f"assistant:conv:{user.id}:{conv_id}")
+        await cache_invalidate_pattern(f"assistant:convs:{user.id}:*")
         return AssistantChatResponse(
             message=result["response"],
             conversation_id=result["conversation_id"],
@@ -83,9 +88,16 @@ async def quick_prompts(
 ):
     """Return chip suggestions for Android / web chat UIs."""
     _ = user
-    return AssistantQuickPromptsResponse(
+    cache_key = "assistant:quick_prompts"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return AssistantQuickPromptsResponse(**cached)
+
+    res = AssistantQuickPromptsResponse(
         prompts=[AssistantQuickPrompt(**p) for p in AssistantService.quick_prompts()]
     )
+    await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=3600)
+    return res
 
 
 @router.post(
@@ -126,8 +138,6 @@ async def chat_stream(
         },
     )
 
-
-from app.core.redis import cache_get, cache_set, cache_invalidate
 
 @router.get(
     "/assistant/conversations",
@@ -176,7 +186,7 @@ async def create_conversation(
         user_id=user.id,
         title=data.title,
     )
-    await cache_invalidate(f"assistant:convs:{user.id}:*")
+    await cache_invalidate_pattern(f"assistant:convs:{user.id}:*")
     return AssistantConversationResponse.model_validate(conversation)
 
 
@@ -191,13 +201,20 @@ async def get_conversation(
     service: AssistantService = Depends(get_assistant_service),
 ):
     """Get a conversation with its message history."""
+    cache_key = f"assistant:conv:{user.id}:{conversation_id}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return AssistantConversationMessagesResponse(**cached)
+
     conversation = await service.get_conversation(conversation_id, user.id)
     messages = await service.get_conversation_messages(conversation_id, user.id)
 
-    return AssistantConversationMessagesResponse(
+    res = AssistantConversationMessagesResponse(
         conversation=AssistantConversationResponse.model_validate(conversation),
         messages=[AssistantMessageResponse.model_validate(m) for m in messages],
     )
+    await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=60)
+    return res
 
 
 @router.patch(
@@ -217,6 +234,8 @@ async def update_conversation(
         user_id=user.id,
         title=data.title or "",
     )
+    await cache_invalidate(f"assistant:conv:{user.id}:{conversation_id}")
+    await cache_invalidate_pattern(f"assistant:convs:{user.id}:*")
     return AssistantConversationResponse.model_validate(conversation)
 
 
@@ -232,6 +251,8 @@ async def delete_conversation(
 ):
     """Delete a conversation and all its messages."""
     await service.delete_conversation(conversation_id, user.id)
+    await cache_invalidate(f"assistant:conv:{user.id}:{conversation_id}")
+    await cache_invalidate_pattern(f"assistant:convs:{user.id}:*")
 
 
 @router.post(
@@ -247,6 +268,8 @@ async def regenerate_response(
     """Regenerate the last assistant response for a conversation."""
     try:
         result = await service.regenerate_response(conversation_id, user.id)
+        await cache_invalidate(f"assistant:conv:{user.id}:{conversation_id}")
+        await cache_invalidate_pattern(f"assistant:convs:{user.id}:*")
         return AssistantChatResponse(
             message=result["response"],
             conversation_id=result["conversation_id"],

@@ -443,8 +443,10 @@ async def set_engine_weights(
         db.add(user)
         await db.commit()
         await db.refresh(user)
-        from app.core.redis import cache_invalidate
+        from app.core.redis import cache_invalidate, cache_invalidate_pattern
         await cache_invalidate(f"auth:user:{user.id}")
+        await cache_invalidate_pattern(f"rec:list:v3:{user.id}:*")
+        await cache_invalidate_pattern(f"rec:detail:v3:{user.id}:*")
         return EngineWeightsResponse(
             weights={
                 "ml": data.gru_weight,

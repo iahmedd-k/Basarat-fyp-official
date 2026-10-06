@@ -19,6 +19,7 @@ from app.schemas.auth import (
 )
 from app.services.auth_service import AuthService
 from app.services.firebase_storage_service import firebase_storage_service
+from app.core.redis import cache_invalidate, cache_invalidate_pattern
 
 router = APIRouter()
 
@@ -111,6 +112,9 @@ async def update_profile(
             ),
             investment_horizon=inv_horiz,
         )
+        await cache_invalidate(f"auth:user:{user.id}")
+        await cache_invalidate_pattern(f"community:profile:{user.id}*")
+        await cache_invalidate_pattern(f"rec:list:v3:{user.id}:*")
         return updated
     except AppError:
         raise
@@ -140,7 +144,9 @@ async def verify_email_change(
     user: User = Depends(get_current_user),
     service: AuthService = Depends(_get_service),
 ):
-    return await service.verify_email_change(user.id, data.code)
+    res = await service.verify_email_change(user.id, data.code)
+    await cache_invalidate(f"auth:user:{user.id}")
+    return res
 
 
 @router.post(
@@ -154,7 +160,10 @@ async def upload_profile_image(
     service: AuthService = Depends(_get_service),
 ):
     avatar_url = await firebase_storage_service.upload_avatar(user.id, image)
-    return await service.update_profile(user_id=user.id, avatar_url=avatar_url)
+    res = await service.update_profile(user_id=user.id, avatar_url=avatar_url)
+    await cache_invalidate(f"auth:user:{user.id}")
+    await cache_invalidate_pattern(f"community:profile:{user.id}*")
+    return res
 
 
 @router.patch(
@@ -173,6 +182,7 @@ async def update_notification_preferences(
             channels=data.channels,
             categories=data.categories,
         )
+        await cache_invalidate(f"auth:user:{user.id}")
         prefs = updated.notification_preferences or {}
         return {
             "message": "Notification preferences updated",

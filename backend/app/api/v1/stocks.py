@@ -41,6 +41,9 @@ def _validate_symbol(symbol: str) -> str:
     return symbol
 
 
+from app.core.redis import cache_get, cache_set
+
+
 @router.get(
     "/stocks/search",
     response_model=StockSearchResponse,
@@ -57,6 +60,11 @@ async def search_stocks(
     clean_q = q.strip()
     if not clean_q:
         return {"results": []}
+
+    cache_key = f"stocks:search:{clean_q.lower()}:{limit}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
 
     # 1. Database-first search (matches symbol prefix, substring, or full company name)
     try:
@@ -81,7 +89,7 @@ async def search_stocks(
         )
         db_results = (await db.execute(stmt)).scalars().all()
         if db_results:
-            return {
+            results = {
                 "results": [
                     {
                         "symbol": s.symbol,
@@ -91,15 +99,20 @@ async def search_stocks(
                     for s in db_results
                 ]
             }
+            await cache_set(cache_key, results, ttl_seconds=300)
+            return results
     except Exception as exc:
         log.debug("Database stock search error, falling back to cache: %s", exc)
 
     # 2. Seamless fallback to Redis / PSX market cache
     try:
         results = await asyncio.to_thread(service.search_symbols, clean_q, limit)
-        return {"results": results}
+        response_obj = {"results": results}
+        await cache_set(cache_key, response_obj, ttl_seconds=300)
+        return response_obj
     except Exception:
         raise ServiceUnavailableError("Stock search temporarily unavailable")
+
 
 
 @router.get(
