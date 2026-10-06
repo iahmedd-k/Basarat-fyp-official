@@ -297,6 +297,43 @@ def evaluate_pending_predictions_task(self):
         raise self.retry(exc=exc)
 
 
+@celery.task(
+    name="app.tasks.daily_workflow.warm_technical_indicators",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=60,
+    acks_late=True,
+)
+def warm_technical_indicators_task(self):
+    """Pre-calculate and populate technical indicators, price history, and overview in Redis."""
+    log.info("[TECH-WARMER] Starting background pre-calculation of technical indicators and price history")
+    try:
+        from app.data.scraper.symbol_universe import get_active_symbols
+        from app.services.stock_service import StockService
+
+        symbols = get_active_symbols() or []
+        service = StockService()
+        warmed = 0
+        for sym in symbols:
+            try:
+                # 1. Warm technical indicators for default settings (24h TTL)
+                service.technical_indicators(sym, indicators="RSI,MACD,BB,SMA,ADX", period=14, limit=30)
+                # 2. Warm price history for standard ranges (24h TTL)
+                for r in ("1M", "1W", "1Y"):
+                    service.get_price_history(sym, range=r)
+                # 3. Warm stock overview (120s TTL)
+                service.get_overview(sym)
+                warmed += 1
+            except Exception as e:
+                log.debug("[TECH-WARMER] Could not warm %s: %s", sym, e)
+
+        log.info("[TECH-WARMER] Technical indicators pre-calculation complete: %d symbols warmed", warmed)
+        return {"status": "success", "warmed": warmed, "timestamp": datetime.utcnow().isoformat()}
+    except Exception as exc:
+        log.exception("[TECH-WARMER] Technical indicators warming failed")
+        return {"status": "error", "error": str(exc)}
+
+
 # ---------------------------------------------------------------------------
 # Chain: Daily Workflow
 # ---------------------------------------------------------------------------
@@ -305,9 +342,7 @@ def evaluate_pending_predictions_task(self):
 def run_daily_pipeline():
     """Orchestrate the full daily workflow as a chain.
 
-    Chain: update_data → generate_features → generate_predictions → evaluate_pending
-
-    If any step fails, subsequent steps are skipped (Celery chain behavior).
+    Chain: update_data → warm_technical_indicators → generate_features → generate_predictions → evaluate_pending → sentiment → recs
     """
     from app.core.redis import get_sync_redis_client
 
@@ -346,6 +381,7 @@ def run_daily_pipeline():
 
     workflow = chain(
         update_market_data_task.si(),
+        warm_technical_indicators_task.si(),
         generate_features_task.si(),
         generate_predictions_task.si(),
         evaluate_pending_predictions_task.si(),

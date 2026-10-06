@@ -611,13 +611,25 @@ class StockService:
 
     def get_overview(self, symbol: str):
         symbol = str(symbol).upper()
+        cache_key = f"stock:overview:v4:{symbol}"
+        cached = cache_get_sync(cache_key)
+        if cached is not None:
+            return cached
+
         batch = self.get_quote_batch([symbol])
         if not batch:
             return {"symbol": symbol, "message": "no data"}
         q = batch[0]
         # Validate that we got real data (not an empty/default quote)
         if q.get("current") in (None, 0.0) and q.get("volume") == 0:
-            return {"symbol": symbol, "message": "no data"}
+            df = self._get_ohlcv_from_file(symbol)
+            if df is not None and not df.empty and "CLOSE" in df.columns:
+                last_c = self._num(df["CLOSE"].dropna().iloc[-1])
+                if last_c and last_c > 0:
+                    q["current"] = last_c
+                    q["ldcp"] = last_c
+            if q.get("current") in (None, 0.0) and q.get("volume") == 0:
+                return {"symbol": symbol, "message": "no data"}
         curr_p = self._num(q.get("current")) or self._num(q.get("ldcp")) or 0.0
         high = q["high"] or self._quote_field(q, "HIGH")
         low = q["low"] or self._quote_field(q, "LOW")
@@ -641,7 +653,7 @@ class StockService:
         if year_change_pct is None:
             year_change_pct = ytd_change_pct
 
-        return {
+        result = {
             "symbol": symbol,
             "name": self._company_name(symbol),
             "sector": q["sector"] or "General Market",
@@ -660,6 +672,8 @@ class StockService:
             "quote_as_of": quote_freshness["as_of"],
             "quote_is_stale": quote_freshness["is_stale"],
         }
+        cache_set_sync(cache_key, result, 120)
+        return result
 
     @staticmethod
     def _company_name(symbol: str) -> str:
@@ -723,6 +737,11 @@ class StockService:
     def get_price_history(self, symbol: str, range: str = "1M"):
         symbol = str(symbol).upper()
         label, lookback = self.RANGE_MAP.get(range.upper(), self.RANGE_MAP["1M"])
+        cache_key = f"stock:history:v3:{symbol}:{label}"
+        cached = cache_get_sync(cache_key)
+        if cached is not None:
+            return cached
+
         end = date.today()
         start = end - lookback
         df = self._get_ohlcv(symbol, start, end)
@@ -743,7 +762,9 @@ class StockService:
             )
         as_of = df.index[-1].date()
         age_days = max(0, (date.today() - as_of).days)
-        return {"symbol": symbol, "range": label, "bars": bars, "as_of_date": as_of.isoformat(), "data_age_days": age_days, "is_stale": age_days > 3}
+        result = {"symbol": symbol, "range": label, "bars": bars, "as_of_date": as_of.isoformat(), "data_age_days": age_days, "is_stale": age_days > 3}
+        cache_set_sync(cache_key, result, 86400)
+        return result
 
     def technical_indicators(
         self,
@@ -1087,8 +1108,8 @@ class StockService:
             "indicators": ind_series,
         }
 
-        # Cache in Redis (300s TTL)
-        cache_set_sync(cache_key, result, 300)
+        # Cache in Redis (86400s / 24h TTL)
+        cache_set_sync(cache_key, result, 86400)
         return result
 
     @staticmethod
@@ -1183,21 +1204,19 @@ class StockService:
         to fetch upstream data.
         """
         symbol = str(symbol).upper()
-        cache_key = f"fund:v22:{symbol}"
+        cache_key = f"fund:v23:{symbol}"
         cached = cache_get_sync(cache_key)
-        if cached is not None:
-            return self._enrich_fundamentals(symbol, cached)
+        if cached is not None and not refresh:
+            return cached
         if not refresh:
             persisted = self._get_persisted_fundamentals(symbol)
             if persisted is not None:
                 enriched = self._enrich_fundamentals(symbol, persisted)
                 cache_set_sync(cache_key, enriched, 172800)
                 return enriched
-            return {
-                "symbol": symbol,
-                "data_status": "unavailable",
-                "data_message": "Fundamentals have not been loaded by the scheduled refresh yet.",
-            }
+            safe_default = self._enrich_fundamentals(symbol, {"symbol": symbol, "data_status": "partial"})
+            cache_set_sync(cache_key, safe_default, 86400)
+            return safe_default
         fresh = self._fetch_fundamentals_upstream(symbol, allow_synthetic=False)
         enriched = self._enrich_fundamentals(symbol, fresh)
         cache_set_sync(cache_key, enriched, 172800)
