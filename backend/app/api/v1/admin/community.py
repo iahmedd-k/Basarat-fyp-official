@@ -30,6 +30,10 @@ async def _get_service(db: AsyncSession = Depends(get_db)) -> CommunityService:
     return CommunityService(db)
 
 
+from app.core.redis import cache_get, cache_set, cache_invalidate_pattern
+from app.services.community_cache_service import CommunityCacheService
+
+
 @router.get(
     "/reports",
     summary="Get reports for admin review",
@@ -44,6 +48,11 @@ async def get_reports(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = f"community:admin:reports:{status.value if status else 'all'}:{post_id or 'none'}:{comment_id or 'none'}:{limit}:{offset}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         reports = await service.get_reports_for_admin(
             status=status,
             post_id=post_id,
@@ -89,10 +98,12 @@ async def get_reports(
                     reviewed_by=r.reviewed_by,
                     reviewed_at=r.reviewed_at,
                     created_at=r.created_at,
-                )
+                ).model_dump(mode="json")
             )
 
-        return {"reports": report_responses}
+        resp = {"reports": report_responses}
+        await cache_set(cache_key, resp, ttl_seconds=30)
+        return resp
     except Exception as e:
         log.exception("Get admin reports failed")
         raise ServiceUnavailableError("Failed to get reports")
@@ -110,6 +121,7 @@ async def update_report_status(
 ):
     try:
         await service.update_report_status(report_id, data.status, admin.id)
+        await cache_invalidate_pattern("community:admin:reports:*")
         return {"message": "Report status updated"}
     except (NotFoundError, ConflictError):
         raise
@@ -175,6 +187,8 @@ async def restore_post(
 ):
     try:
         await service.admin_restore_post(post_id, admin.id)
+        await CommunityCacheService.invalidate_post_mutations(post_id)
+        await cache_invalidate_pattern("community:admin:*")
     except (NotFoundError, ConflictError):
         raise
     except Exception as e:
@@ -194,6 +208,8 @@ async def admin_delete_post(
 ):
     try:
         await service.admin_delete_post(post_id, admin.id)
+        await CommunityCacheService.invalidate_post_mutations(post_id)
+        await cache_invalidate_pattern("community:admin:*")
     except NotFoundError:
         raise
     except Exception as e:
@@ -213,6 +229,8 @@ async def direct_remove_post(
 ):
     try:
         await service.admin_direct_remove_post(post_id, admin.id)
+        await CommunityCacheService.invalidate_post_mutations(post_id)
+        await cache_invalidate_pattern("community:admin:*")
     except NotFoundError:
         raise
     except Exception as e:
@@ -232,6 +250,8 @@ async def admin_delete_comment(
 ):
     try:
         await service.admin_delete_comment(comment_id, admin.id)
+        await cache_invalidate_pattern("community:comments:*")
+        await cache_invalidate_pattern("community:admin:*")
     except NotFoundError:
         raise
     except Exception as e:
@@ -251,6 +271,11 @@ async def get_moderation_actions(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = f"community:admin:actions:{post_id or 'none'}:{comment_id or 'none'}:{limit}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         actions = await service.get_moderation_actions(post_id, comment_id, limit)
 
         action_responses = []
@@ -265,10 +290,12 @@ async def get_moderation_actions(
                     action=ModerationActionType(a.action),
                     note=a.note,
                     created_at=a.created_at,
-                )
+                ).model_dump(mode="json")
             )
 
-        return {"actions": action_responses}
+        resp = {"actions": action_responses}
+        await cache_set(cache_key, resp, ttl_seconds=30)
+        return resp
     except Exception as e:
         log.exception("Get moderation actions failed")
-        raise ServiceUnavailableError("Failed to get moderation actions")
+        raise ServiceUnavailableError("Failed to get moderation actions")

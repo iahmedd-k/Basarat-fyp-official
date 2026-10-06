@@ -28,6 +28,10 @@ async def _get_service(db: AsyncSession = Depends(get_db)) -> CommunityService:
     return CommunityService(db)
 
 
+from app.core.redis import cache_get, cache_set
+from app.services.community_cache_service import CommunityCacheService
+
+
 @router.get(
     "/community/me",
     response_model=CommunityProfileResponse,
@@ -38,8 +42,13 @@ async def get_my_profile(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.user_profile_key(user.id, user.id)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityProfileResponse(**cached)
+
         stats = await service.get_user_profile_stats(user.id, user.id)
-        return CommunityProfileResponse(
+        resp = CommunityProfileResponse(
             id=user.id,
             username=user.username,
             full_name=user.full_name,
@@ -51,6 +60,8 @@ async def get_my_profile(
             is_following=False,
             is_own_profile=True,
         )
+        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=60)
+        return resp
     except Exception:
         log.exception("Get my profile failed")
         raise ServiceUnavailableError("Failed to get profile")
@@ -70,6 +81,11 @@ async def get_unified_user_profile(
 ):
     """Single-call endpoint to fully hydrate a profile screen."""
     try:
+        cache_key = CommunityCacheService.unified_profile_key(user_id, cursor, limit, user.id)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityUnifiedProfileResponse(**cached)
+
         target_user, stats = await service.get_user_profile_with_stats(user_id, user.id)
         profile_res = CommunityProfileResponse(
             id=target_user.id,
@@ -103,12 +119,14 @@ async def get_unified_user_profile(
             for p in posts
         ]
 
-        return CommunityUnifiedProfileResponse(
+        resp = CommunityUnifiedProfileResponse(
             profile=profile_res,
             posts=post_responses,
             posts_cursor=next_cursor,
             posts_has_more=has_more,
         )
+        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=30)
+        return resp
     except NotFoundError:
         raise
     except Exception:
@@ -128,6 +146,11 @@ async def get_my_posts(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.user_posts_key(user.id, cursor, limit, user.id)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityPostListResponse(**cached)
+
         posts, next_cursor, has_more = await service.get_user_posts(
             user_id=user.id,
             current_user_id=user.id,
@@ -147,12 +170,14 @@ async def get_my_posts(
             for p in posts
         ]
 
-        return CommunityPostListResponse(
+        result = CommunityPostListResponse(
             posts=post_responses,
             cursor=next_cursor or "",
             next_cursor=next_cursor or "",
             has_more=has_more,
         )
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
+        return result
     except Exception:
         log.exception("Get my posts failed")
         raise ServiceUnavailableError("Failed to get posts")
@@ -169,9 +194,14 @@ async def get_user_profile(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.user_profile_key(user_id, user.id)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityProfileResponse(**cached)
+
         target_user, stats = await service.get_user_profile_with_stats(user_id, user.id)
 
-        return CommunityProfileResponse(
+        resp = CommunityProfileResponse(
             id=target_user.id,
             username=target_user.username,
             full_name=target_user.full_name,
@@ -183,6 +213,8 @@ async def get_user_profile(
             is_following=stats["is_following"],
             is_own_profile=stats["is_own_profile"],
         )
+        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=60)
+        return resp
     except NotFoundError:
         raise
     except Exception:
@@ -203,6 +235,11 @@ async def get_user_posts(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.user_posts_key(user_id, cursor, limit, user.id)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityPostListResponse(**cached)
+
         target_user = await service.db.get(User, user_id)
         if not target_user:
             raise NotFoundError("User not found")
@@ -226,12 +263,14 @@ async def get_user_posts(
             for p in posts
         ]
 
-        return CommunityPostListResponse(
+        result = CommunityPostListResponse(
             posts=post_responses,
             cursor=next_cursor or "",
             next_cursor=next_cursor or "",
             has_more=has_more,
         )
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
+        return result
     except NotFoundError:
         raise
     except Exception:

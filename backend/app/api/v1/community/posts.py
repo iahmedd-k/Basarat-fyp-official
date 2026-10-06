@@ -221,6 +221,7 @@ async def create_post(
 
 
 from app.core.redis import cache_get, cache_set, cache_invalidate
+from app.services.community_cache_service import CommunityCacheService
 
 @router.get(
     "/community/posts",
@@ -388,6 +389,19 @@ async def search_posts(
 ):
     try:
         search_query = q or search
+        cache_key = CommunityCacheService.search_posts_key(
+            search_query or "",
+            stock_symbol,
+            post_type.value if post_type else None,
+            author_username,
+            cursor,
+            limit,
+            user.id,
+        )
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityPostListResponse(**cached)
+
         posts, next_cursor, has_more = await service.get_feed(
             current_user_id=user.id,
             stock_symbol=stock_symbol,
@@ -410,12 +424,14 @@ async def search_posts(
             for p in posts
         ]
 
-        return CommunityPostListResponse(
+        result = CommunityPostListResponse(
             posts=post_responses,
             cursor=next_cursor or "",
             next_cursor=next_cursor or "",
             has_more=has_more,
         )
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
+        return result
     except Exception:
         log.exception("Search posts failed")
         raise ServiceUnavailableError("Failed to search community posts")
@@ -434,6 +450,11 @@ async def get_market_posts(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.market_posts_key(cursor, limit, user.id, query=q)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityPostListResponse(**cached)
+
         posts, next_cursor, has_more = await service.get_feed(
             current_user_id=user.id,
             post_type=PostType.GENERAL_MARKET,
@@ -454,12 +475,14 @@ async def get_market_posts(
             for p in posts
         ]
 
-        return CommunityPostListResponse(
+        result = CommunityPostListResponse(
             posts=post_responses,
             cursor=next_cursor or "",
             next_cursor=next_cursor or "",
             has_more=has_more,
         )
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
+        return result
     except Exception:
         log.exception("Get market posts failed")
         raise ServiceUnavailableError("Failed to get market posts")
@@ -479,6 +502,11 @@ async def get_stock_posts(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.stock_posts_key(symbol, cursor, limit, user.id, query=q)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityPostListResponse(**cached)
+
         posts, next_cursor, has_more = await service.get_feed(
             current_user_id=user.id,
             stock_symbol=symbol,
@@ -499,12 +527,14 @@ async def get_stock_posts(
             for p in posts
         ]
 
-        return CommunityPostListResponse(
+        result = CommunityPostListResponse(
             posts=post_responses,
             cursor=next_cursor or "",
             next_cursor=next_cursor or "",
             has_more=has_more,
         )
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
+        return result
     except Exception:
         log.exception("Get stock posts failed for symbol %s", symbol)
         raise ServiceUnavailableError(f"Failed to get posts for stock {symbol}")
@@ -522,6 +552,11 @@ async def get_post(
 ):
     try:
         is_admin = getattr(user, "is_admin", False)
+        cache_key = CommunityCacheService.post_detail_key(post_id, user.id)
+        cached = await cache_get(cache_key)
+        if cached is not None and not is_admin:
+            return CommunityPostResponse(**cached)
+
         post_data = await service.get_post_with_details(
             post_id,
             current_user_id=user.id,
@@ -532,11 +567,13 @@ async def get_post(
         if post.status != PostStatus.PUBLISHED.value and post.author_id != user.id and not is_admin:
             raise NotFoundError("Post not found")
 
-        return _build_post_response(
+        resp = _build_post_response(
             post,
             liked_by_me=post_data["liked_by_me"],
             bookmarked_by_me=post_data["bookmarked_by_me"],
         )
+        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=60)
+        return resp
     except NotFoundError:
         raise
     except Exception:
@@ -563,11 +600,13 @@ async def update_post(
     try:
         post = await service.update_post(post_id, user.id, data.content)
         post_data = await service.get_post_with_details(post.id, current_user_id=user.id)
-        return _build_post_response(
+        resp = _build_post_response(
             post_data["post"],
             liked_by_me=post_data["liked_by_me"],
             bookmarked_by_me=post_data["bookmarked_by_me"],
         )
+        await CommunityCacheService.invalidate_post_mutations(post_id, user.id, getattr(post, "stock_symbol", None))
+        return resp
     except (NotFoundError, ForbiddenError, ConflictError, ValidationFailedError):
         raise
     except Exception:
@@ -586,7 +625,9 @@ async def delete_post(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        post = await service.get_post_by_id(post_id, include_hidden=True)
         await service.delete_post(post_id, user.id)
+        await CommunityCacheService.invalidate_post_mutations(post_id, user.id, getattr(post, "stock_symbol", None))
     except (NotFoundError, ForbiddenError):
         raise
     except Exception:
@@ -607,6 +648,7 @@ async def like_post(
 ):
     try:
         await service.like_post(post_id, user.id)
+        await CommunityCacheService.invalidate_post_mutations(post_id, user.id)
     except (NotFoundError, ConflictError):
         raise
     except Exception:
@@ -626,6 +668,7 @@ async def unlike_post(
 ):
     try:
         await service.unlike_post(post_id, user.id)
+        await CommunityCacheService.invalidate_post_mutations(post_id, user.id)
     except NotFoundError:
         raise
     except Exception:
@@ -645,6 +688,7 @@ async def bookmark_post(
 ):
     try:
         await service.bookmark_post(post_id, user.id)
+        await CommunityCacheService.invalidate_post_mutations(post_id, user.id)
     except (NotFoundError, ConflictError):
         raise
     except Exception:
@@ -664,6 +708,7 @@ async def unbookmark_post(
 ):
     try:
         await service.unbookmark_post(post_id, user.id)
+        await CommunityCacheService.invalidate_post_mutations(post_id, user.id)
     except NotFoundError:
         raise
     except Exception:
@@ -693,6 +738,7 @@ async def report_post(
         from app.tasks.community_tasks import process_post_report_threshold
         from app.core.task_runner import dispatch_task
         dispatch_task(process_post_report_threshold, post_id)
+        await CommunityCacheService.invalidate_post_mutations(post_id)
     except (NotFoundError, ConflictError, ValidationFailedError):
         raise
     except ValueError as e:
@@ -700,3 +746,4 @@ async def report_post(
     except Exception:
         log.exception("Report post failed")
         raise ServiceUnavailableError("Failed to report post")
+

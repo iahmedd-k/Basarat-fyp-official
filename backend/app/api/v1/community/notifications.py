@@ -25,6 +25,10 @@ async def _get_service(db: AsyncSession = Depends(get_db)) -> CommunityService:
     return CommunityService(db)
 
 
+from app.core.redis import cache_get, cache_set
+from app.services.community_cache_service import CommunityCacheService
+
+
 @router.get(
     "/community/notifications",
     response_model=CommunityNotificationsListResponse,
@@ -38,6 +42,11 @@ async def get_notifications(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.notifications_key(user.id, page, limit, unread_only)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityNotificationsListResponse(**cached)
+
         notifications, total = await service.get_notifications(
             user_id=user.id,
             page=page,
@@ -63,13 +72,15 @@ async def get_notifications(
                 )
             )
 
-        return CommunityNotificationsListResponse(
+        resp = CommunityNotificationsListResponse(
             notifications=notification_responses,
             total=total,
             page=page,
             limit=limit,
             has_more=(page * limit) < total,
         )
+        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=15)
+        return resp
     except Exception as e:
         log.exception("Get notifications failed")
         raise ServiceUnavailableError("Failed to get notifications")
@@ -84,8 +95,15 @@ async def get_unread_count(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.unread_count_key(user.id)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         count = await service.get_unread_count(user.id)
-        return {"unread_count": count}
+        result = {"unread_count": count}
+        await cache_set(cache_key, result, ttl_seconds=15)
+        return result
     except Exception as e:
         log.exception("Get unread count failed")
         raise ServiceUnavailableError("Failed to get unread count")
@@ -103,6 +121,7 @@ async def mark_notification_read(
 ):
     try:
         await service.mark_notification_read(notification_id, user.id)
+        await CommunityCacheService.invalidate_notification_mutations(user.id)
     except (NotFoundError, ForbiddenError):
         raise
     except Exception as e:
@@ -121,6 +140,7 @@ async def mark_all_notifications_read(
 ):
     try:
         await service.mark_all_notifications_read(user.id)
+        await CommunityCacheService.invalidate_notification_mutations(user.id)
     except Exception as e:
         log.exception("Mark all notifications read failed")
-        raise ServiceUnavailableError("Failed to mark all notifications as read")
+        raise ServiceUnavailableError("Failed to mark all notifications as read")

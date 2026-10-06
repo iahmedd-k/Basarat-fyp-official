@@ -27,50 +27,33 @@ from app.core.redis import cache_get, cache_set
 
 from datetime import datetime, timezone
 
-async def get_current_user(
-    payload: dict = Depends(get_token_payload),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    user_id = payload.get("sub")
-    if not user_id:
-        raise UnauthorizedError("Invalid token payload")
+def _user_from_dict(cached_data: dict) -> User:
+    created_at_val = cached_data.get("created_at")
+    updated_at_val = cached_data.get("updated_at")
+    return User(
+        id=cached_data.get("id"),
+        email=cached_data.get("email"),
+        username=cached_data.get("username"),
+        full_name=cached_data.get("full_name"),
+        avatar_url=cached_data.get("avatar_url"),
+        is_active=cached_data.get("is_active", True),
+        is_verified=cached_data.get("is_verified", False),
+        is_admin=cached_data.get("is_admin", False),
+        hashed_password=cached_data.get("hashed_password", ""),
+        risk_tolerance=cached_data.get("risk_tolerance"),
+        investment_horizon=cached_data.get("investment_horizon"),
+        sector_preferences=cached_data.get("sector_preferences"),
+        notification_preferences=cached_data.get("notification_preferences"),
+        recommendation_weights=cached_data.get("recommendation_weights"),
+        created_at=datetime.fromisoformat(created_at_val) if created_at_val else datetime.now(timezone.utc),
+        updated_at=datetime.fromisoformat(updated_at_val) if updated_at_val else None,
+    )
 
-    cache_key = f"auth:user:{user_id}"
-    cached_data = await cache_get(cache_key)
-    if cached_data is not None:
-        created_at_val = cached_data.get("created_at")
-        updated_at_val = cached_data.get("updated_at")
-        user = User(
-            id=cached_data.get("id"),
-            email=cached_data.get("email"),
-            username=cached_data.get("username"),
-            full_name=cached_data.get("full_name"),
-            avatar_url=cached_data.get("avatar_url"),
-            is_active=cached_data.get("is_active", True),
-            is_verified=cached_data.get("is_verified", False),
-            is_admin=cached_data.get("is_admin", False),
-            hashed_password=cached_data.get("hashed_password", ""),
-            risk_tolerance=cached_data.get("risk_tolerance"),
-            investment_horizon=cached_data.get("investment_horizon"),
-            sector_preferences=cached_data.get("sector_preferences"),
-            notification_preferences=cached_data.get("notification_preferences"),
-            recommendation_weights=cached_data.get("recommendation_weights"),
-            created_at=datetime.fromisoformat(created_at_val) if created_at_val else datetime.now(timezone.utc),
-            updated_at=datetime.fromisoformat(updated_at_val) if updated_at_val else None,
-        )
-        if not user.is_active:
-            raise ForbiddenError("Inactive user")
-        return user
 
-    user = await db.get(User, user_id)
-    if user is None:
-        raise UnauthorizedError("User not found")
-    if not user.is_active:
-        raise ForbiddenError("Inactive user")
-
+def _user_to_dict(user: User) -> dict:
     c_at = user.__dict__.get("created_at")
     u_at = user.__dict__.get("updated_at")
-    user_dict = {
+    return {
         "id": user.id,
         "email": user.email,
         "username": user.username,
@@ -88,7 +71,31 @@ async def get_current_user(
         "created_at": c_at.isoformat() if isinstance(c_at, datetime) else None,
         "updated_at": u_at.isoformat() if isinstance(u_at, datetime) else None,
     }
-    await cache_set(cache_key, user_dict, ttl_seconds=120)
+
+
+async def get_current_user(
+    payload: dict = Depends(get_token_payload),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    user_id = payload.get("sub")
+    if not user_id:
+        raise UnauthorizedError("Invalid token payload")
+
+    cache_key = f"auth:user:{user_id}"
+    cached_data = await cache_get(cache_key)
+    if cached_data is not None:
+        user = _user_from_dict(cached_data)
+        if not user.is_active:
+            raise ForbiddenError("Inactive user")
+        return user
+
+    user = await db.get(User, user_id)
+    if user is None:
+        raise UnauthorizedError("User not found")
+    if not user.is_active:
+        raise ForbiddenError("Inactive user")
+
+    await cache_set(cache_key, _user_to_dict(user), ttl_seconds=300)
     return user
 
 
@@ -106,12 +113,24 @@ async def get_optional_current_user(
         user_id = payload.get("sub")
         if not user_id:
             return None
+
+        cache_key = f"auth:user:{user_id}"
+        cached_data = await cache_get(cache_key)
+        if cached_data is not None:
+            user = _user_from_dict(cached_data)
+            if not user.is_active:
+                return None
+            return user
+
         user = await db.get(User, user_id)
         if user is None or not user.is_active:
             return None
+
+        await cache_set(cache_key, _user_to_dict(user), ttl_seconds=300)
         return user
     except Exception:
         return None
+
 
 
 async def get_current_admin(

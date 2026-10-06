@@ -63,6 +63,10 @@ def _build_comment_response(comment, reply_count: int = 0, author=None) -> Commu
     )
 
 
+from app.core.redis import cache_get, cache_set
+from app.services.community_cache_service import CommunityCacheService
+
+
 @router.post(
     "/community/posts/{post_id}/comments",
     response_model=CommunityCommentResponse,
@@ -93,6 +97,7 @@ async def create_comment(
         )
 
         res = _build_comment_response(comment, reply_count=0, author=user)
+        await CommunityCacheService.invalidate_comment_mutations(post_id, data.parent_comment_id)
 
         if idempotency_key:
             await IdempotencyService.record_response(
@@ -125,6 +130,11 @@ async def get_comments(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.post_comments_key(post_id, cursor, limit)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityCommentListResponse(**cached)
+
         post = await service.get_post_by_id(post_id)
         if post.status != "PUBLISHED" and post.author_id != user.id and not getattr(user, "is_admin", False):
             raise NotFoundError("Post not found")
@@ -143,12 +153,14 @@ async def get_comments(
             for c in comments
         ]
 
-        return CommunityCommentListResponse(
+        result = CommunityCommentListResponse(
             comments=comment_responses,
             cursor=next_cursor,
             next_cursor=next_cursor,
             has_more=has_more,
         )
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
+        return result
     except NotFoundError:
         raise
     except Exception:
@@ -168,13 +180,20 @@ async def get_comment_replies(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        cache_key = CommunityCacheService.comment_replies_key(comment_id, limit)
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityCommentListResponse(**cached)
+
         replies = await service.get_replies(comment_id, limit=limit)
-        return CommunityCommentListResponse(
+        result = CommunityCommentListResponse(
             comments=[_build_comment_response(r, reply_count=0) for r in replies],
             cursor=None,
             next_cursor=None,
             has_more=len(replies) >= limit,
         )
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
+        return result
     except Exception:
         log.exception("Get replies failed")
         raise ServiceUnavailableError("Failed to get replies")
@@ -191,12 +210,17 @@ async def delete_comment(
     service: CommunityService = Depends(_get_service),
 ):
     try:
+        comment = await service.get_comment_by_id(comment_id)
+        post_id = getattr(comment, "post_id", None)
         await service.delete_comment(comment_id, user.id)
+        if post_id:
+            await CommunityCacheService.invalidate_comment_mutations(post_id, comment_id)
     except (NotFoundError, ForbiddenError):
         raise
     except Exception:
         log.exception("Delete comment failed")
         raise ServiceUnavailableError("Failed to delete comment")
+
 
 
 @router.post(
