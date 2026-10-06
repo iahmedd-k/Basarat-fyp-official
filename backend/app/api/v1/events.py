@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+from app.core.redis import cache_get, cache_set
+
 @router.get(
     "/events/calendar",
     response_model=EventsCalendarResponse,
@@ -34,6 +36,11 @@ async def get_events_calendar(
 ):
     """Retrieve financial events calendar with multi-criteria filtering."""
     try:
+        cache_key = f"events:calendar:{from_date}:{to_date}:{event_type}:{symbol}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return EventsCalendarResponse(**cached)
+
         fd = None
         if from_date:
             try:
@@ -68,7 +75,9 @@ async def get_events_calendar(
             for e in events
         ]
 
-        return EventsCalendarResponse(items=items, total=len(items))
+        res = EventsCalendarResponse(items=items, total=len(items))
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=120)
+        return res
     except AppError:
         raise
     except Exception as exc:

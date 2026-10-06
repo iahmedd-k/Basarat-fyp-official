@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing
+import json
 import random
+import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -71,55 +73,37 @@ def _persist_snapshot(session, symbol: str, payload: dict, run_id: str, now: dat
     session.flush()
 
 
-def _fetch_symbol_worker(symbol: str, result_queue) -> None:
-    try:
-        from app.services.stock_service import StockService
-
-        payload = StockService()._fetch_fundamentals_upstream(
-            symbol,
-            allow_synthetic=False,
-            force_refresh=True,
-        )
-        result_queue.put(("success", payload))
-    except Exception as exc:
-        result_queue.put(("error", f"{type(exc).__name__}: {exc}"))
-
-
 def _fetch_symbol_with_timeout(symbol: str, timeout_seconds: float) -> dict:
-    """Run an upstream fetch in a killable process with a hard deadline."""
-    context = multiprocessing.get_context("spawn")
-    result_queue = context.Queue()
-    process = context.Process(
-        target=_fetch_symbol_worker,
-        args=(symbol, result_queue),
-        name=f"fundamentals-fetch-{symbol}",
+    """Run a scraper in a killable subprocess with a hard deadline."""
+    script = (
+        "import json, sys\n"
+        "from app.services.stock_service import StockService\n"
+        "payload = StockService()._fetch_fundamentals_upstream("
+        "sys.argv[1], allow_synthetic=False, force_refresh=True)\n"
+        "print(json.dumps(payload, default=str))\n"
     )
-    process.start()
     try:
-        process.join(timeout=max(0.1, timeout_seconds))
-        if process.is_alive():
-            process.terminate()
-            process.join(timeout=5)
-            raise TimeoutError(
-                f"Fundamentals source timed out for {symbol} after {timeout_seconds:.1f}s"
-            )
-        if result_queue.empty():
-            raise RuntimeError(
-                f"Fundamentals source exited without a result for {symbol} "
-                f"(exit_code={process.exitcode})"
-            )
-        status, value = result_queue.get()
-        if status == "error":
-            raise RuntimeError(value)
-        if not isinstance(value, dict):
-            raise RuntimeError(f"Fundamentals source returned invalid data for {symbol}")
-        return value
-    finally:
-        if process.is_alive():
-            process.terminate()
-        process.join(timeout=5)
-        result_queue.cancel_join_thread()
-        result_queue.close()
+        completed = subprocess.run(
+            [sys.executable, "-c", script, symbol],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=max(0.1, timeout_seconds),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(
+            f"Fundamentals source timed out for {symbol} after {timeout_seconds:.1f}s"
+        ) from exc
+    if completed.returncode:
+        detail = completed.stderr.strip() or f"exit code {completed.returncode}"
+        raise RuntimeError(f"Fundamentals source failed for {symbol}: {detail[-2000:]}")
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Fundamentals source returned invalid JSON for {symbol}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Fundamentals source returned invalid data for {symbol}")
+    return payload
 
 
 @celery.task(
@@ -170,10 +154,12 @@ def refresh_fundamentals(self, symbols: list[str] | None = None):
         "run_id": run_id,
         "expected": len(configured),
         "success": 0,
+        "partial": 0,
         "failed": 0,
         "timed_out": 0,
         "rate_limited": False,
     }
+    failure_messages = []
     try:
         for index, symbol in enumerate(configured):
             if index:
@@ -197,7 +183,18 @@ def refresh_fundamentals(self, symbols: list[str] | None = None):
                     payload,
                     int(settings.FUNDAMENTALS_REDIS_TTL_SECONDS),
                 )
+                cache_client = None
+                try:
+                    from app.core.redis import get_sync_redis_client
+
+                    cache_client = get_sync_redis_client()
+                    if cache_client is not None:
+                        cache_client.delete(f"fund:v23:{symbol}")
+                except Exception:
+                    log.warning("Could not invalidate API fundamentals cache for %s", symbol, exc_info=True)
                 result["success"] += 1
+                if payload.get("data_status") != "complete":
+                    result["partial"] += 1
                 log.info(
                     "Fundamentals refreshed for %s in %.1fs",
                     symbol,
@@ -206,7 +203,18 @@ def refresh_fundamentals(self, symbols: list[str] | None = None):
             except Exception as exc:
                 session.rollback()
                 result["failed"] += 1
+                failure = f"{symbol}: {type(exc).__name__}: {exc}"
+                failure_messages.append(failure)
                 log.warning("Fundamentals refresh failed for %s: %s", symbol, exc)
+                from sqlalchemy import select
+                from app.models.fundamentals import StockFundamentals
+
+                existing = session.execute(
+                    select(StockFundamentals).where(StockFundamentals.symbol == symbol)
+                ).scalar_one_or_none()
+                if existing is not None:
+                    existing.last_error = failure[:2000]
+                    session.commit()
                 if isinstance(exc, TimeoutError):
                     result["timed_out"] += 1
                     log.error("Skipping timed-out symbol and continuing refresh")
@@ -217,7 +225,9 @@ def refresh_fundamentals(self, symbols: list[str] | None = None):
 
         run.status = "completed" if result["failed"] == 0 else "partial"
         run.success_count = result["success"]
+        run.partial_count = result["partial"]
         run.failed_count = result["failed"]
+        run.error = "\n".join(failure_messages)[:2000] or None
         run.finished_at = datetime.now(timezone.utc)
         session.commit()
         result["status"] = run.status

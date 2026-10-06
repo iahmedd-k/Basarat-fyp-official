@@ -338,7 +338,7 @@ async def get_market_quotes(
             filtered=filtered,
             recommended_poll_seconds=get_settings().MARKET_REST_POLL_SECONDS,
             transport_hint="websocket_preferred_rest_fallback",
-            **MarketService.quote_freshness(),
+            **service.quote_freshness(),
         )
     except Exception:
         raise ServiceUnavailableError("Failed to fetch market quotes")

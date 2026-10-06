@@ -127,6 +127,8 @@ async def chat_stream(
     )
 
 
+from app.core.redis import cache_get, cache_set, cache_invalidate
+
 @router.get(
     "/assistant/conversations",
     response_model=AssistantConversationListResponse,
@@ -139,16 +141,23 @@ async def list_conversations(
     service: AssistantService = Depends(get_assistant_service),
 ):
     """List the authenticated user's conversations."""
+    cache_key = f"assistant:convs:{user.id}:{limit}:{offset}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return AssistantConversationListResponse(**cached)
+
     conversations = await service.list_conversations(
         user_id=user.id,
         limit=limit,
         offset=offset,
     )
-    return AssistantConversationListResponse(
+    res = AssistantConversationListResponse(
         conversations=[
             AssistantConversationResponse.model_validate(c) for c in conversations
         ]
     )
+    await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=60)
+    return res
 
 
 @router.post(
@@ -167,6 +176,7 @@ async def create_conversation(
         user_id=user.id,
         title=data.title,
     )
+    await cache_invalidate(f"assistant:convs:{user.id}:*")
     return AssistantConversationResponse.model_validate(conversation)
 
 

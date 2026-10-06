@@ -351,9 +351,9 @@ class AlertRuleUpdate(BaseModel):
 class AlertRuleResponse(BaseModel):
     id: str
     user_id: str
-    stock_id: str = ""
-    symbol: str = ""
-    stock_name: str = ""
+    stock_id: str | None = None
+    symbol: str | None = None
+    stock_name: str | None = None
     condition: str
     threshold: float
     is_active: bool

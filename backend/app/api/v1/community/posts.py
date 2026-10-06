@@ -3,6 +3,8 @@ import json
 import logging
 from typing import Optional, List
 from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Request, Header, Response, status
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
@@ -17,6 +19,7 @@ from app.core.exceptions import (
 )
 from app.db.session import get_db
 from app.models.user import User
+from app.models.community import CommunityPost
 from app.schemas.community import (
     CommunityPostCreate,
     CommunityPostUpdate,
@@ -188,6 +191,8 @@ async def create_post(
         raise ServiceUnavailableError("Failed to create post")
 
 
+from app.core.redis import cache_get, cache_set, cache_invalidate
+
 @router.get(
     "/community/feed",
     response_model=CommunityPostListResponse,
@@ -212,10 +217,14 @@ async def get_feed(
     service: CommunityService = Depends(_get_service),
 ):
     try:
-        # Normalize tab parameters
         effective_stock = ticker or stock_symbol
         is_following_tab = following or (tab == "following")
         search_query = q or search
+
+        cache_key = f"community:feed:{user.id}:{tab}:{effective_stock}:{post_type}:{search_query}:{author_username}:{mine}:{is_following_tab}:{cursor}:{limit}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityPostListResponse(**cached)
 
         posts, next_cursor, has_more = await service.get_feed(
             current_user_id=user.id,
@@ -249,6 +258,7 @@ async def get_feed(
             next_cursor=next_cursor or "",
             has_more=has_more,
         )
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
 
         # ETag calculation for caching / 304 Not Modified support
         if posts:
@@ -279,6 +289,11 @@ async def get_trending(
 ):
     """Fetch trending cashtags and ranked viral discussions."""
     try:
+        cache_key = f"community:trending_full:{user.id}:{limit}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return CommunityTrendingResponse(**cached)
+
         trending_tickers = await TrendingService.get_trending_tickers(service.db, limit=limit)
         trending_post_ids = await TrendingService.get_trending_posts(service.db, limit=limit)
 
@@ -286,23 +301,38 @@ async def get_trending(
         if trending_post_ids:
             liked_set = await service.batch_fetch_liked_post_ids(trending_post_ids, user.id)
             bookmarked_set = await service.batch_fetch_bookmarked_post_ids(trending_post_ids, user.id)
+            
+            stmt = (
+                select(CommunityPost)
+                .options(
+                    selectinload(CommunityPost.author),
+                    selectinload(CommunityPost.stock),
+                    selectinload(CommunityPost.tickers),
+                )
+                .where(
+                    CommunityPost.id.in_(trending_post_ids),
+                    CommunityPost.status == PostStatus.PUBLISHED.value,
+                )
+            )
+            result = await service.db.execute(stmt)
+            db_posts_map = {p.id: p for p in result.scalars().all()}
+
             for pid in trending_post_ids:
-                try:
-                    p = await service.get_post_by_id(pid)
+                if pid in db_posts_map:
                     posts.append(
                         _build_post_response(
-                            p,
+                            db_posts_map[pid],
                             liked_by_me=pid in liked_set,
                             bookmarked_by_me=pid in bookmarked_set,
                         )
                     )
-                except Exception:
-                    pass
 
-        return CommunityTrendingResponse(
+        res = CommunityTrendingResponse(
             trending_tickers=trending_tickers,
             trending_posts=posts,
         )
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=60)
+        return res
     except Exception:
         log.exception("Get trending failed")
         raise ServiceUnavailableError("Failed to get trending data")

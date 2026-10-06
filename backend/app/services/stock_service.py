@@ -308,19 +308,20 @@ class StockService:
             "volume": 0,
         }
 
-    def _get_quote_frame(self, symbol):
+    def _get_quote_frame(self, symbol, *, force_refresh: bool = False):
         symbol = str(symbol).upper()
         now = _now()
         cache_key = f"quote:{symbol}"
         shared_key = f"stock:raw_quote:{symbol}"
         cached_at = _cache_ttl.get(cache_key, 0.0)
-        if cache_key in _cache and now - cached_at <= QUOTE_TTL_SECONDS:
+        if not force_refresh and cache_key in _cache and now - cached_at <= QUOTE_TTL_SECONDS:
             return _cache[cache_key]
-        shared = cache_get_sync(shared_key)
-        if isinstance(shared, dict):
-            _cache[cache_key] = shared
-            _cache_ttl[cache_key] = now
-            return shared
+        if not force_refresh:
+            shared = cache_get_sync(shared_key)
+            if isinstance(shared, dict):
+                _cache[cache_key] = shared
+                _cache_ttl[cache_key] = now
+                return shared
         with distributed_lock(f"lock:stock:quote:{symbol}", QUOTE_TTL_SECONDS) as acquired:
             if not acquired:
                 shared = _wait_for_shared_value(shared_key)
@@ -352,7 +353,13 @@ class StockService:
             cache_set_sync(shared_key, frame, QUOTE_TTL_SECONDS)
         return frame
 
-    def _get_fund_frame(self, symbol, *, allow_upstream: bool = False):
+    def _get_fund_frame(
+        self,
+        symbol,
+        *,
+        allow_upstream: bool = False,
+        force_refresh: bool = False,
+    ):
         symbol = str(symbol).upper()
         now = _now()
         cache_key = f"fund:{symbol}"
@@ -360,13 +367,14 @@ class StockService:
         # were exposed by the route.
         shared_key = f"stock:raw_fundamentals:v4:{symbol}"
         cached_at = _cache_ttl.get(cache_key, 0.0)
-        if cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
+        if not force_refresh and cache_key in _cache and now - cached_at <= FUND_TTL_SECONDS:
             return _cache[cache_key]
-        shared = cache_get_sync(shared_key)
-        if isinstance(shared, dict):
-            _cache[cache_key] = shared
-            _cache_ttl[cache_key] = now
-            return shared
+        if not force_refresh:
+            shared = cache_get_sync(shared_key)
+            if isinstance(shared, dict):
+                _cache[cache_key] = shared
+                _cache_ttl[cache_key] = now
+                return shared
         if not allow_upstream:
             return None
         with distributed_lock(f"lock:stock:fundamentals:{symbol}", FUND_TTL_SECONDS) as acquired:
@@ -1348,11 +1356,11 @@ class StockService:
         # v13 forces refresh of all cached company profiles and loads full company tables
         cache_key = f"fund:v21:{symbol}"
 
-        cached = cache_get_sync(cache_key)
+        cached = None if force_refresh else cache_get_sync(cache_key)
         if cached is not None:
             return cached
 
-        quote = self._get_quote_frame(symbol)
+        quote = self._get_quote_frame(symbol, force_refresh=force_refresh)
         psx_table_data = get_psx_company_table_data(symbol, force_refresh=force_refresh)
         div = self._get_dividend_frame(symbol)
 
@@ -1379,7 +1387,7 @@ class StockService:
             _cache[f"fund:{symbol}"] = info_dict
             _cache_ttl[f"fund:{symbol}"] = _now()
         else:
-            cached_info = cache_get_sync(info_key)
+            cached_info = None if force_refresh else cache_get_sync(info_key)
             if isinstance(cached_info, dict):
                 info_dict = cached_info
             else:
@@ -1405,7 +1413,11 @@ class StockService:
 
         # Populate _fund_metric from the same page payload instead of fetching
         # that company page a second time through the toolkit.
-        fund_data = self._get_fund_frame(symbol, allow_upstream=True)
+        fund_data = self._get_fund_frame(
+            symbol,
+            allow_upstream=True,
+            force_refresh=force_refresh,
+        )
         flat_info = fund_data if isinstance(fund_data, dict) else info_dict
 
         # 1. Company Profile & Governance

@@ -625,3 +625,15 @@ class PortfolioService:
             return stock
 
         return None
+
+    async def _invalidate_portfolio_cache(self, user_id: str) -> None:
+        """Clear all portfolio caches for the user upon transaction update."""
+        try:
+            await cache_invalidate(f"portfolio:summary:{user_id}")
+            await cache_invalidate(f"portfolio:holdings:{user_id}")
+            await cache_invalidate(f"portfolio:pnl:{user_id}")
+            await cache_invalidate(f"portfolio:allocation:{user_id}")
+            await cache_invalidate(f"portfolio:performance:{user_id}:*")
+            await cache_invalidate(f"portfolio:txns:{user_id}:*")
+        except Exception:
+            pass

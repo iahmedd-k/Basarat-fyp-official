@@ -170,6 +170,7 @@ async def create_quick_alert_rule(
         await db.flush()
         for r in created_rules:
             await db.refresh(r)
+        await cache_invalidate(f"alerts:rules:{user.id}")
 
         rule_responses = [
             AlertRuleResponse(
@@ -277,9 +278,12 @@ async def delete_stock_alerts(
                 )
             )
             await db.flush()
+            await cache_invalidate(f"alerts:rules:{user.id}")
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to delete stock alerts: {exc}")
 
+
+from app.core.redis import cache_get, cache_set, cache_invalidate
 
 @router.get(
     "/alerts/rules",
@@ -296,6 +300,11 @@ async def get_alert_rules(
     threshold value, and active toggle state.
     """
     try:
+        cache_key = f"alerts:rules:{user.id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return [AlertRuleResponse(**item) for item in cached]
+
         stmt = (
             select(AlertRule, Stock)
             .outerjoin(Stock, AlertRule.stock_id == Stock.id)
@@ -304,7 +313,7 @@ async def get_alert_rules(
         )
         result = await db.execute(stmt)
         rows = result.all()
-        return [
+        rule_responses = [
             AlertRuleResponse(
                 id=r.id,
                 user_id=r.user_id,
@@ -318,6 +327,8 @@ async def get_alert_rules(
             )
             for r, s in rows
         ]
+        await cache_set(cache_key, [r.model_dump(mode="json") for r in rule_responses], ttl_seconds=60)
+        return rule_responses
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to fetch alert rules: {exc}")
 
@@ -333,14 +344,7 @@ async def create_alert_rule(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new custom alert rule for market conditions or stock triggers.
-
-    - **symbol** *(optional)*: Ticker symbol (e.g. `SYS`, `OGDC`, `LUCK`).
-    - **stock_name** *(optional)*: Company name (e.g. `Systems Limited`).
-    - **stock_id** *(optional)*: UUID of an existing stock, or `null` for general rules.
-    - **condition**: Trigger identifier (e.g. `price_above`, `price_below`, `var_threshold`).
-    - **threshold**: Target numeric trigger value (e.g. `250.0`).
-    """
+    """Create a new custom alert rule for market conditions or stock triggers."""
     try:
         stock = await _resolve_stock(db, data.stock_id, data.symbol, data.stock_name)
 
@@ -353,6 +357,7 @@ async def create_alert_rule(
         db.add(rule)
         await db.flush()
         await db.refresh(rule)
+        await cache_invalidate(f"alerts:rules:{user.id}")
 
         return AlertRuleResponse(
             id=rule.id,
@@ -410,6 +415,7 @@ async def update_alert_rule(
 
         await db.flush()
         await db.refresh(rule)
+        await cache_invalidate(f"alerts:rules:{user.id}")
 
         stock = None
         if rule.stock_id:
@@ -456,6 +462,7 @@ async def delete_alert_rule(
 
         await db.delete(rule)
         await db.flush()
+        await cache_invalidate(f"alerts:rules:{user.id}")
     except NotFoundError:
         raise
     except Exception as exc:
@@ -474,12 +481,13 @@ async def get_alerts(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Retrieve financial, portfolio, and risk alerts generated for the user.
-
-    Returns alert records with severity headers (e.g. `[HIGH] VaR Breach`), message details,
-    timestamps, and read state.
-    """
+    """Retrieve financial, portfolio, and risk alerts generated for the user."""
     try:
+        cache_key = f"alerts:list:{user.id}:{page}:{limit}:{unread_only}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return [AlertResponse(**item) for item in cached]
+
         query = select(Alert).where(Alert.user_id == user.id)
         if unread_only:
             query = query.where(Alert.is_read == False)
@@ -490,7 +498,7 @@ async def get_alerts(
         result = await db.execute(query)
         alerts = result.scalars().all()
 
-        return [
+        alert_responses = [
             AlertResponse(
                 id=a.id,
                 user_id=a.user_id,
@@ -502,6 +510,8 @@ async def get_alerts(
             )
             for a in alerts
         ]
+        await cache_set(cache_key, [r.model_dump(mode="json") for r in alert_responses], ttl_seconds=30)
+        return alert_responses
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to fetch alerts: {exc}")
 
@@ -523,6 +533,8 @@ async def mark_all_alerts_read(
             .values(is_read=True)
         )
         await db.flush()
+        await cache_invalidate(f"alerts:list:{user.id}:*")
+        await cache_invalidate(f"notifications:list:{user.id}:*")
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to mark all alerts as read: {exc}")
 
@@ -551,6 +563,8 @@ async def mark_alert_read(
 
         alert.is_read = True
         await db.flush()
+        await cache_invalidate(f"alerts:list:{user.id}:*")
+        await cache_invalidate(f"notifications:list:{user.id}:*")
     except NotFoundError:
         raise
     except Exception as exc:

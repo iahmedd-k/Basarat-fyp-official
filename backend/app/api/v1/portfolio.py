@@ -170,6 +170,8 @@ async def get_performance(
 
 # ── Transaction History ───────────────────────────────────────────────────────
 
+from app.core.redis import cache_get, cache_set, cache_invalidate
+
 @router.get(
     "/portfolio/transactions",
     response_model=TransactionListResponse,
@@ -187,6 +189,11 @@ async def get_transactions(
 ):
     """Get paginated transaction history with optional filters."""
     try:
+        cache_key = f"portfolio:txns:{user.id}:{page}:{limit}:{symbol}:{transaction_type}:{from_date}:{to_date}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return TransactionListResponse(**cached)
+
         txn_type = TransactionType(transaction_type) if transaction_type else None
         transactions, total = await service.get_transactions(
             user_id=user.id,
@@ -213,12 +220,14 @@ async def get_transactions(
             for t in transactions
         ]
         
-        return TransactionListResponse(
+        res = TransactionListResponse(
             items=items,
             total=total,
             page=page,
             limit=limit,
         )
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=60)
+        return res
     except Exception as exc:
         logger.exception("Get transactions failed")
         raise BadRequestError(f"Failed to fetch transactions: {exc}")
