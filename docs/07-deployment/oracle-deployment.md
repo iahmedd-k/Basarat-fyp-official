@@ -38,7 +38,7 @@ Create the `oracle-production` GitHub Actions environment and add these environm
 - `ORACLE_SSH_PRIVATE_KEY`: a deployment SSH private key authorized for that account. Add it through GitHub's secret UI; never commit it.
 - `ORACLE_SSH_KNOWN_HOSTS`: the verified SSH host-key line for the VM. Verify the fingerprint through a trusted channel; do not use an unverified `ssh-keyscan` result.
 - `ORACLE_GHCR_TOKEN`: a GitHub token with read-only `read:packages` access for the published package.
-- `PROMETHEUS_METRICS_USERNAME`: metrics scrape username (letters, numbers, dots, underscores, and hyphens).
+- `PROMETHEUS_METRICS_USERNAME`: metrics scrape username, 1–64 characters using only letters, numbers, dots, underscores, and hyphens (for example, `metrics_reader`; no spaces or quotes).
 - `PROMETHEUS_METRICS_PASSWORD`: randomly generated 32–128-character hexadecimal scrape password.
 - `PROMETHEUS_METRICS_HOST_HEADER`: the production API hostname or IP, without a port, and included in `ALLOWED_HOSTS`.
 - `GRAFANA_ADMIN_PASSWORD`: a separate randomly generated 32–128-character hexadecimal Grafana admin password.
@@ -85,12 +85,12 @@ docker compose --env-file .env --env-file .env.monitoring \
 curl --fail http://127.0.0.1:8000/health
 ```
 
-The production workflow starts Prometheus and Grafana using the monitoring Compose overlay. From a trusted workstation, open SSH tunnels to the Oracle VM:
+The monitoring Compose overlay temporarily exposes the metrics, Prometheus, and Grafana ports publicly for development. Open:
 
-```bash
-ssh -N -L 3000:127.0.0.1:3000 -L 9090:127.0.0.1:9090 ubuntu@<oracle-host>
-```
+- `http://193.123.84.223:8000/metrics` — unauthenticated Prometheus-format metrics; it is also listed in Swagger.
+- `http://193.123.84.223:9090` — Prometheus query UI.
+- `http://193.123.84.223:3000` — Grafana login (`admin` and `GRAFANA_ADMIN_PASSWORD`); the provisioned **Basarat API Overview** dashboard is available after sign-in.
 
-Then open Grafana at `http://localhost:3000` (user `admin`, password held in the `GRAFANA_ADMIN_PASSWORD` GitHub environment secret) or Prometheus at `http://localhost:9090`. Grafana provisions the **Basarat API Overview** dashboard automatically.
+Replace the IP if the VM address changes. Public access also requires the Oracle Cloud VCN/security-list or NSG ingress rules and host firewall to allow TCP ports 3000 and 9090. The API port 8000 is already used by the API. This is temporary development exposure only: the metrics and Prometheus UI have no authentication, and HTTP provides no TLS. Do not send sensitive traffic or use real secrets through these public HTTP pages. Before production lockdown, set metrics back to authenticated/private mode, bind the monitoring ports to loopback, and put any required external UI behind HTTPS and access control.
 
 The workflow's deploy job must complete successfully before the release is considered deployed.

@@ -63,6 +63,7 @@ class Settings(BaseSettings):
 
     # Optional HTTP metrics endpoint; enable only on a monitored deployment.
     PROMETHEUS_METRICS_ENABLED: bool = False
+    PROMETHEUS_METRICS_PUBLIC: bool = False
     PROMETHEUS_METRICS_USERNAME: str = ""
     PROMETHEUS_METRICS_PASSWORD: str = ""
 

@@ -76,6 +76,45 @@ jobs:
             -f backend/docker-compose.monitoring.yml \
             config --quiet
 
+      - name: Verify Oracle deployment secrets
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
+          ORACLE_SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_SSH_KNOWN_HOSTS }}
+          ORACLE_GHCR_TOKEN: ${{ secrets.ORACLE_GHCR_TOKEN }}
+          PROMETHEUS_METRICS_USERNAME: ${{ secrets.PROMETHEUS_METRICS_USERNAME }}
+          PROMETHEUS_METRICS_PASSWORD: ${{ secrets.PROMETHEUS_METRICS_PASSWORD }}
+          PROMETHEUS_METRICS_HOST_HEADER: ${{ secrets.PROMETHEUS_METRICS_HOST_HEADER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          for name in ORACLE_HOST ORACLE_USER ORACLE_SSH_PRIVATE_KEY ORACLE_SSH_KNOWN_HOSTS ORACLE_GHCR_TOKEN; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Configure the $name secret in the oracle-production environment."
+              exit 1
+            fi
+          done
+          for name in PROMETHEUS_METRICS_USERNAME PROMETHEUS_METRICS_PASSWORD PROMETHEUS_METRICS_HOST_HEADER GRAFANA_ADMIN_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Configure the $name secret in the oracle-production environment."
+              exit 1
+            fi
+          done
+          if [[ ! "$PROMETHEUS_METRICS_USERNAME" =~ ^[A-Za-z0-9_.-]{1,64}$ ]]; then
+            echo "::error::PROMETHEUS_METRICS_USERNAME must be 1-64 characters using only letters, numbers, dots, underscores, or hyphens (for example: metrics_reader)."
+            exit 1
+          fi
+          for name in PROMETHEUS_METRICS_PASSWORD GRAFANA_ADMIN_PASSWORD; do
+            if [[ ! "${!name}" =~ ^[A-Fa-f0-9]{32,128}$ ]]; then
+              echo "::error::$name must be 32-128 hexadecimal characters."
+              exit 1
+            fi
+          done
+          if [[ ! "$PROMETHEUS_METRICS_HOST_HEADER" =~ ^[A-Za-z0-9.-]+$ ]]; then
+            echo "::error::PROMETHEUS_METRICS_HOST_HEADER must be a hostname or IP without a port."
+            exit 1
+          fi
+
       - name: Set immutable image tag
         id: image
         run: echo "tag=${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
@@ -106,45 +145,6 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=basarat-backend-arm64
           cache-to: type=gha,mode=max,scope=basarat-backend-arm64
-
-      - name: Verify Oracle deployment secrets
-        env:
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          ORACLE_USER: ${{ secrets.ORACLE_USER }}
-          ORACLE_SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
-          ORACLE_SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_SSH_KNOWN_HOSTS }}
-          ORACLE_GHCR_TOKEN: ${{ secrets.ORACLE_GHCR_TOKEN }}
-          PROMETHEUS_METRICS_USERNAME: ${{ secrets.PROMETHEUS_METRICS_USERNAME }}
-          PROMETHEUS_METRICS_PASSWORD: ${{ secrets.PROMETHEUS_METRICS_PASSWORD }}
-          PROMETHEUS_METRICS_HOST_HEADER: ${{ secrets.PROMETHEUS_METRICS_HOST_HEADER }}
-          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-        run: |
-          for name in ORACLE_HOST ORACLE_USER ORACLE_SSH_PRIVATE_KEY ORACLE_SSH_KNOWN_HOSTS ORACLE_GHCR_TOKEN; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Configure the $name secret in the oracle-production environment."
-              exit 1
-            fi
-          done
-          for name in PROMETHEUS_METRICS_USERNAME PROMETHEUS_METRICS_PASSWORD PROMETHEUS_METRICS_HOST_HEADER GRAFANA_ADMIN_PASSWORD; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Configure the $name secret in the oracle-production environment."
-              exit 1
-            fi
-          done
-          if [[ ! "$PROMETHEUS_METRICS_USERNAME" =~ ^[A-Za-z0-9_.-]{1,64}$ ]]; then
-            echo "::error::PROMETHEUS_METRICS_USERNAME must contain only letters, numbers, dots, underscores, or hyphens."
-            exit 1
-          fi
-          for name in PROMETHEUS_METRICS_PASSWORD GRAFANA_ADMIN_PASSWORD; do
-            if [[ ! "${!name}" =~ ^[A-Fa-f0-9]{32,128}$ ]]; then
-              echo "::error::$name must be 32-128 hexadecimal characters."
-              exit 1
-            fi
-          done
-          if [[ ! "$PROMETHEUS_METRICS_HOST_HEADER" =~ ^[A-Za-z0-9.-]+$ ]]; then
-            echo "::error::PROMETHEUS_METRICS_HOST_HEADER must be a hostname or IP without a port."
-            exit 1
-          fi
 
       - name: Configure SSH
         env:

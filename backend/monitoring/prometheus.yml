@@ -9,9 +9,6 @@ scrape_configs:
       Host:
         values:
           - ${PROMETHEUS_METRICS_HOST_HEADER}
-    basic_auth:
-      username: ${PROMETHEUS_METRICS_USERNAME}
-      password: ${PROMETHEUS_METRICS_PASSWORD}
     static_configs:
       - targets:
           - app:8000

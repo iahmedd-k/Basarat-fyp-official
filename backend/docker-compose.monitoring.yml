@@ -2,6 +2,8 @@ services:
   app:
     environment:
       PROMETHEUS_METRICS_ENABLED: "true"
+      # TEMPORARY DEVELOPMENT EXPOSURE: switch to false before production lockdown.
+      PROMETHEUS_METRICS_PUBLIC: "true"
       PROMETHEUS_METRICS_USERNAME: ${PROMETHEUS_METRICS_USERNAME:?Set PROMETHEUS_METRICS_USERNAME in backend/.env}
       PROMETHEUS_METRICS_PASSWORD: ${PROMETHEUS_METRICS_PASSWORD:?Set PROMETHEUS_METRICS_PASSWORD in backend/.env}
 
@@ -13,11 +15,10 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
     environment:
-      PROMETHEUS_METRICS_USERNAME: ${PROMETHEUS_METRICS_USERNAME:?Set PROMETHEUS_METRICS_USERNAME in backend/.env}
-      PROMETHEUS_METRICS_PASSWORD: ${PROMETHEUS_METRICS_PASSWORD:?Set PROMETHEUS_METRICS_PASSWORD in backend/.env}
       PROMETHEUS_METRICS_HOST_HEADER: ${PROMETHEUS_METRICS_HOST_HEADER:-localhost}
     ports:
-      - "127.0.0.1:9090:9090"
+      # TEMPORARY DEVELOPMENT EXPOSURE: bind to loopback before production lockdown.
+      - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -33,7 +34,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in backend/.env}
       GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
-      - "127.0.0.1:3000:3000"
+      # TEMPORARY DEVELOPMENT EXPOSURE: bind to loopback before production lockdown.
+      - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

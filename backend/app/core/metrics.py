@@ -54,23 +54,37 @@ class MetricsMiddleware:
             )
 
 
-def setup_prometheus_metrics(app: FastAPI, username: str, password: str) -> None:
+def setup_prometheus_metrics(
+    app: FastAPI,
+    username: str,
+    password: str,
+    *,
+    public: bool = False,
+) -> None:
     app.add_middleware(MetricsMiddleware)
 
-    @app.get("/metrics", include_in_schema=False)
-    async def metrics_endpoint(
-        credentials: HTTPBasicCredentials = Depends(METRICS_SECURITY),
-    ) -> Response:
-        if not (
-            compare_digest(credentials.username, username)
-            and compare_digest(credentials.password, password)
-        ):
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid metrics credentials",
-                headers={"WWW-Authenticate": 'Basic realm="metrics"'},
+    if public:
+        @app.get("/metrics", tags=["Monitoring"])
+        async def metrics_endpoint() -> Response:
+            return Response(
+                content=generate_latest(),
+                media_type=CONTENT_TYPE_LATEST,
             )
-        return Response(
-            content=generate_latest(),
-            media_type=CONTENT_TYPE_LATEST,
-        )
+    else:
+        @app.get("/metrics", include_in_schema=False)
+        async def metrics_endpoint(
+            credentials: HTTPBasicCredentials = Depends(METRICS_SECURITY),
+        ) -> Response:
+            if not (
+                compare_digest(credentials.username, username)
+                and compare_digest(credentials.password, password)
+            ):
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid metrics credentials",
+                    headers={"WWW-Authenticate": 'Basic realm="metrics"'},
+                )
+            return Response(
+                content=generate_latest(),
+                media_type=CONTENT_TYPE_LATEST,
+            )

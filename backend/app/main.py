@@ -172,16 +172,23 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(RequestContextMiddleware)
 
 if settings.PROMETHEUS_METRICS_ENABLED:
-    if not settings.PROMETHEUS_METRICS_USERNAME or not settings.PROMETHEUS_METRICS_PASSWORD:
+    if (
+        not settings.PROMETHEUS_METRICS_PUBLIC
+        and (
+            not settings.PROMETHEUS_METRICS_USERNAME
+            or not settings.PROMETHEUS_METRICS_PASSWORD
+        )
+    ):
         raise RuntimeError(
             "PROMETHEUS_METRICS_USERNAME and PROMETHEUS_METRICS_PASSWORD are required "
-            "when PROMETHEUS_METRICS_ENABLED is true"
+            "when authenticated metrics are enabled"
         )
 
     setup_prometheus_metrics(
         app,
         username=settings.PROMETHEUS_METRICS_USERNAME,
         password=settings.PROMETHEUS_METRICS_PASSWORD,
+        public=settings.PROMETHEUS_METRICS_PUBLIC,
     )
 
 # Allow any host when wildcard or configured
