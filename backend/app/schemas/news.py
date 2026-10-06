@@ -120,28 +120,63 @@ class IngestResult(BaseModel):
 
 class NewsRefreshResponse(BaseModel):
     status: str = "completed"  # "completed" | "skipped_cooldown" | "skipped_outside_hours" | "started" | "cooldown" | "already_running"
-    last_updated: str = ""
+    last_updated: Optional[str] = None
     refresh_available: bool = True
-    next_refresh_at: str = ""
+    next_refresh_at: Optional[str] = None
     articles_inserted: int = 0
     market_status: dict = Field(default_factory=dict)
     retry_after_seconds: int = 0
 
+    @field_validator("last_updated", "next_refresh_at", mode="before")
+    @classmethod
+    def _clean_dt_str(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            from datetime import datetime, timezone
+            return datetime.fromtimestamp(v, tz=timezone.utc).isoformat()
+        return str(v)
+
 
 class NewsRefreshStatusResponse(BaseModel):
     state: str = "idle"  # "idle" | "running" | "done" | "failed"
-    last_success_at: str = ""
+    last_success_at: Optional[str] = None
     new_articles: int = 0
+
+    @field_validator("last_success_at", mode="before")
+    @classmethod
+    def _clean_opt_str(cls, v):
+        return None if v is None else str(v)
 
 
 class SourceHealthResponse(BaseModel):
     key: str = ""
     name: str = ""
     type: str = "news"
-    last_success_at: str = ""
-    last_error: str = ""
+    last_success_at: Optional[str] = None
+    last_error: Optional[str] = None
     consecutive_failures: int = 0
     healthy: bool = True
+
+    @field_validator("key", "name", "type", mode="before")
+    @classmethod
+    def _clean_str(cls, v):
+        return "" if v is None else str(v)
+
+    @field_validator("last_success_at", "last_error", mode="before")
+    @classmethod
+    def _clean_opt_str(cls, v):
+        return None if v is None else str(v)
+
+    @field_validator("consecutive_failures", mode="before")
+    @classmethod
+    def _clean_int(cls, v):
+        return 0 if v is None else int(v)
+
+    @field_validator("healthy", mode="before")
+    @classmethod
+    def _clean_bool(cls, v):
+        return bool(v) if v is not None else True
 
 
 class SourcesResponse(BaseModel):

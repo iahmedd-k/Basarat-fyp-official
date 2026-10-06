@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authorization import get_current_user, get_optional_current_user
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError, AppError
+from app.core.redis import cache_get, cache_set
 from app.core.rate_limiter import limiter
 from app.db.session import get_db
 from app.models.user import User
@@ -63,6 +64,11 @@ async def get_news(
             raise BadRequestError("sentiment must be 'bullish', 'bearish', or 'neutral'")
 
         user_id = user.id if (user and row == "portfolio") else None
+        cache_key = f"news:feed:{row}:{symbol or '_'}:{sentiment or '_'}:{source or '_'}:{source_type or '_'}:{event_type or '_'}:{q or '_'}:{limit}:{cursor or '_'}:{user_id or '_'}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return NewsListResponse(**cached)
+
         empty_reason = None
 
         if row == "portfolio":
@@ -79,6 +85,7 @@ async def get_news(
             psx_svc = PSXAnnouncementService(db)
             items, empty_reason = await psx_svc.get_portfolio_announcements(user_id=user_id, limit=limit)
             next_cursor = None
+            total = len(items)
         else:
             svc = NewsService(db)
             articles, total, next_cursor = await svc.get_articles(
@@ -97,29 +104,31 @@ async def get_news(
             if not items:
                 empty_reason = "no_results"
 
-        # The feed's last-updated time is the latest visible article, while
-        # /news/refresh/status continues to report the last ingestion attempt.
-        last_updated = None
-        if row == "news":
-            from app.models.news import NewsArticle
-            latest = await db.execute(select(NewsArticle.created_at).order_by(NewsArticle.created_at.desc()).limit(1))
-            last_updated = latest.scalar_one_or_none()
+        # The feed's last-updated time is the latest visible article
+        last_updated_str = ""
+        if items:
+            last_updated_str = items[0].get("created_at") or items[0].get("published_at") or ""
+        elif ingestion_state.get_last_ingestion_time():
+            last_updated_str = ingestion_state.get_last_ingestion_time().isoformat()
 
-        return NewsListResponse(
+        res = NewsListResponse(
             items=[NewsArticleResponse(**item) for item in items],
             next_cursor=next_cursor,
             has_more=next_cursor is not None,
             row=row,
-            last_updated_at=last_updated.isoformat() if last_updated else "",
+            last_updated_at=last_updated_str,
             empty_reason=empty_reason or "",
-            total=total if row == "news" else len(items),
+            total=total,
         )
+        await cache_set(cache_key, res.model_dump(), ttl_seconds=120)
+        return res
     except AppError:
         raise
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("Get news failed: %s", exc)
         raise ServiceUnavailableError(f"Failed to fetch news: {exc}")
+
 
 
 @router.post(
@@ -260,6 +269,11 @@ async def get_sources(
     db: AsyncSession = Depends(get_db),
 ):
     """Per-source health status for all configured data sources."""
+    cache_key = "news:sources:health"
+    cached = await cache_get(cache_key)
+    if cached:
+        return SourcesResponse(**cached)
+
     from app.models.news import NewsSourceState
     result = await db.execute(select(NewsSourceState).order_by(NewsSourceState.source_key))
     db_sources = {s.source_key: s for s in result.scalars().all()}
@@ -274,8 +288,8 @@ async def get_sources(
                 type=reg["type"],
                 last_success_at=s.last_success_at.isoformat() if s.last_success_at else None,
                 last_error=s.last_error,
-                consecutive_failures=s.consecutive_failures,
-                healthy=s.healthy,
+                consecutive_failures=s.consecutive_failures or 0,
+                healthy=s.healthy if s.healthy is not None else True,
             ))
         else:
             source_list.append(SourceHealthResponse(
@@ -288,7 +302,9 @@ async def get_sources(
                 healthy=False,
             ))
 
-    return SourcesResponse(sources=source_list)
+    res = SourcesResponse(sources=source_list)
+    await cache_set(cache_key, res.model_dump(), ttl_seconds=60)
+    return res
 
 
 @router.get(
@@ -303,12 +319,20 @@ async def get_news_article(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        cache_key = f"news:article:{article_id}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return NewsArticleResponse(**cached)
+
         svc = NewsService(db)
         article = await svc.get_article_by_id(article_id)
         if article is None:
             raise NotFoundError(f"News article '{article_id}' not found.")
-        return NewsArticleResponse(**svc.to_response(article))
-    except NotFoundError:
+        payload = svc.to_response(article)
+        res = NewsArticleResponse(**payload)
+        await cache_set(cache_key, res.model_dump(), ttl_seconds=300)
+        return res
+    except (NotFoundError, AppError):
         raise
     except Exception as exc:
         import logging
@@ -334,14 +358,20 @@ async def get_stock_news(
 ):
     """Stock page News tab with filtering and cursor pagination."""
     try:
+        sym_clean = symbol.strip().upper()
         if source_type and source_type not in ("official", "news"):
             raise HTTPException(status_code=400, detail="source_type must be 'official' or 'news'")
         if sentiment and sentiment not in ("bullish", "bearish", "neutral"):
             raise HTTPException(status_code=400, detail="sentiment must be 'bullish', 'bearish', or 'neutral'")
 
+        cache_key = f"news:stock:{sym_clean}:{sentiment or '_'}:{source_type or '_'}:{event_type or '_'}:{limit}:{cursor or '_'}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return NewsListResponse(**cached)
+
         svc = NewsService(db)
         articles, total, next_cursor = await svc.get_articles(
-            symbol=symbol.upper(),
+            symbol=sym_clean,
             q=None,
             sentiment=sentiment,
             event_type=event_type,
@@ -351,15 +381,23 @@ async def get_stock_news(
         )
         items = [svc.to_response(article) for article in articles]
 
-        return NewsListResponse(
+        last_updated = ""
+        if items:
+            last_updated = items[0].get("created_at") or items[0].get("published_at") or ""
+        elif ingestion_state.get_last_ingestion_time():
+            last_updated = ingestion_state.get_last_ingestion_time().isoformat()
+
+        res = NewsListResponse(
             items=[NewsArticleResponse(**item) for item in items],
             next_cursor=next_cursor,
             has_more=next_cursor is not None,
             row="news",
-            last_updated_at=ingestion_state.get_last_ingestion_time().isoformat() if ingestion_state.get_last_ingestion_time() else "",
+            last_updated_at=last_updated,
             empty_reason="no_results" if not items else "",
             total=total,
         )
+        await cache_set(cache_key, res.model_dump(), ttl_seconds=120)
+        return res
     except (AppError, HTTPException):
         raise
     except Exception as exc:

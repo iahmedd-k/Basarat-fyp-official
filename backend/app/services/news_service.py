@@ -64,8 +64,7 @@ class NewsService:
             sym_subq = select(NewsArticleSymbol.article_id).where(NewsArticleSymbol.symbol.in_(user_symbols))
             or_filters = [NewsArticle.id.in_(sym_subq)]
             for s in user_symbols:
-                or_filters.append(NewsArticle.symbols.ilike(f'%"{s}"%'))
-                or_filters.append(NewsArticle.title.ilike(f'%{s}%'))
+                or_filters.append(NewsArticle.symbols.contains(f'"{s}"'))
             conditions.append(or_(*or_filters))
         elif symbol:
             sym_clean = symbol.strip().upper()
@@ -73,11 +72,10 @@ class NewsService:
             conditions.append(
                 or_(
                     NewsArticle.id.in_(sym_subq),
-                    NewsArticle.symbols.ilike(f'%"{sym_clean}"%'),
-                    NewsArticle.symbols.ilike(f'%{sym_clean}%'),
-                    NewsArticle.title.ilike(f'%{sym_clean}%'),
+                    NewsArticle.symbols.contains(f'"{sym_clean}"'),
                 )
             )
+
 
         if q and q.strip():
             search_term = f"%{q.strip()}%"
