@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 from typing import Optional, List, Tuple, Dict, Set, Any
 from uuid import uuid4
 
-from sqlalchemy import select, func, delete, update, and_, or_, distinct
+from sqlalchemy import select, func, delete, update, and_, or_, distinct, literal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.core.exceptions import (
     BadRequestError,
@@ -90,6 +90,39 @@ class CommunityService:
         )
         res = await self.db.execute(stmt)
         return {row[0] for row in res.all()}
+
+    async def batch_fetch_post_interactions(
+        self,
+        post_ids: List[str],
+        user_id: Optional[str],
+    ) -> Tuple[Set[str], Set[str]]:
+        """Fetch liked and bookmarked post IDs in one database round trip."""
+        if not user_id or not post_ids:
+            return set(), set()
+
+        liked_stmt = select(
+            CommunityPostLike.post_id,
+            literal("like").label("interaction"),
+        ).where(
+            CommunityPostLike.user_id == user_id,
+            CommunityPostLike.post_id.in_(post_ids),
+        )
+        bookmarked_stmt = select(
+            CommunityBookmark.post_id,
+            literal("bookmark").label("interaction"),
+        ).where(
+            CommunityBookmark.user_id == user_id,
+            CommunityBookmark.post_id.in_(post_ids),
+        )
+        result = await self.db.execute(liked_stmt.union_all(bookmarked_stmt))
+        liked_ids: Set[str] = set()
+        bookmarked_ids: Set[str] = set()
+        for post_id, interaction in result.all():
+            if interaction == "like":
+                liked_ids.add(post_id)
+            else:
+                bookmarked_ids.add(post_id)
+        return liked_ids, bookmarked_ids
 
     async def batch_fetch_comment_reply_counts(self, comment_ids: List[str]) -> Dict[str, int]:
         """Fetch reply counts for a list of parent comment IDs in ONE GROUP BY query."""
@@ -200,8 +233,8 @@ class CommunityService:
         query = (
             select(CommunityPost)
             .options(
-                selectinload(CommunityPost.author),
-                selectinload(CommunityPost.stock),
+                joinedload(CommunityPost.author),
+                joinedload(CommunityPost.stock),
                 selectinload(CommunityPost.tickers),
             )
             .where(CommunityPost.id == post_id)
@@ -213,8 +246,10 @@ class CommunityService:
         if not post:
             raise NotFoundError("Post not found")
 
-        liked_set = await self.batch_fetch_liked_post_ids([post_id], current_user_id)
-        bookmarked_set = await self.batch_fetch_bookmarked_post_ids([post_id], current_user_id)
+        liked_set, bookmarked_set = await self.batch_fetch_post_interactions(
+            [post_id],
+            current_user_id,
+        )
 
         # Record sampled view
         await CounterService.increment_post_view(post_id, 1)
@@ -369,8 +404,8 @@ class CommunityService:
         query = (
             select(CommunityPost)
             .options(
-                selectinload(CommunityPost.author),
-                selectinload(CommunityPost.stock),
+                joinedload(CommunityPost.author),
+                joinedload(CommunityPost.stock),
                 selectinload(CommunityPost.tickers),
             )
         )
@@ -479,8 +514,8 @@ class CommunityService:
         query = (
             select(CommunityPost)
             .options(
-                selectinload(CommunityPost.author),
-                selectinload(CommunityPost.stock),
+                joinedload(CommunityPost.author),
+                joinedload(CommunityPost.stock),
                 selectinload(CommunityPost.tickers),
             )
             .where(CommunityPost.author_id == user_id)
@@ -701,7 +736,7 @@ class CommunityService:
 
         query = (
             select(CommunityComment)
-            .options(selectinload(CommunityComment.author))
+            .options(joinedload(CommunityComment.author))
             .where(
                 CommunityComment.post_id == post_id,
                 CommunityComment.parent_comment_id.is_(None),
@@ -751,7 +786,7 @@ class CommunityService:
     ) -> List[CommunityComment]:
         query = (
             select(CommunityComment)
-            .options(selectinload(CommunityComment.author))
+            .options(joinedload(CommunityComment.author))
             .where(
                 CommunityComment.parent_comment_id == parent_comment_id,
                 CommunityComment.status == CommentStatus.PUBLISHED.value,
@@ -987,6 +1022,47 @@ class CommunityService:
     # Profile & Stats
     # =========================================================================
 
+    async def get_user_profile_with_stats(
+        self,
+        user_id: str,
+        current_user_id: Optional[str] = None,
+    ) -> Tuple[User, dict]:
+        post_subq = select(func.count(CommunityPost.id)).where(
+            CommunityPost.author_id == user_id,
+            CommunityPost.status == PostStatus.PUBLISHED.value,
+        ).scalar_subquery()
+        followers_subq = select(func.count(CommunityFollow.follower_id)).where(
+            CommunityFollow.following_id == user_id
+        ).scalar_subquery()
+        following_subq = select(func.count(CommunityFollow.following_id)).where(
+            CommunityFollow.follower_id == user_id
+        ).scalar_subquery()
+
+        columns = [post_subq, followers_subq, following_subq]
+        if current_user_id and current_user_id != user_id:
+            is_following_subq = select(func.count(CommunityFollow.follower_id)).where(
+                CommunityFollow.follower_id == current_user_id,
+                CommunityFollow.following_id == user_id,
+            ).scalar_subquery()
+            columns.append(is_following_subq)
+
+        result = await self.db.execute(
+            select(User, *columns).where(User.id == user_id)
+        )
+        row = result.first()
+        if not row:
+            raise NotFoundError("User not found")
+
+        target_user, post_count, followers_count, following_count, *following_state = row
+        stats = {
+            "followers_count": followers_count or 0,
+            "following_count": following_count or 0,
+            "published_post_count": post_count or 0,
+            "is_following": bool(following_state and following_state[0]),
+            "is_own_profile": current_user_id == user_id,
+        }
+        return target_user, stats
+
     async def get_user_profile_stats(self, user_id: str, current_user_id: Optional[str] = None) -> dict:
         # Single aggregated query for all stats in 1 roundtrip
         post_subq = select(func.count(CommunityPost.id)).where(
@@ -1100,9 +1176,9 @@ class CommunityService:
         query = (
             select(CommunityReport)
             .options(
-                selectinload(CommunityReport.reporter),
-                selectinload(CommunityReport.post).selectinload(CommunityPost.author),
-                selectinload(CommunityReport.comment).selectinload(CommunityComment.author),
+                joinedload(CommunityReport.reporter),
+                joinedload(CommunityReport.post).joinedload(CommunityPost.author),
+                joinedload(CommunityReport.comment).joinedload(CommunityComment.author),
             )
             .order_by(CommunityReport.created_at.desc())
         )
@@ -1197,7 +1273,7 @@ class CommunityService:
     ) -> List[CommunityModerationAction]:
         query = (
             select(CommunityModerationAction)
-            .options(selectinload(CommunityModerationAction.moderator))
+            .options(joinedload(CommunityModerationAction.moderator))
             .order_by(CommunityModerationAction.created_at.desc())
             .limit(limit)
         )
@@ -1276,23 +1352,31 @@ class CommunityService:
         limit: int = 20,
         unread_only: bool = False,
     ) -> Tuple[List[CommunityNotification], int]:
-        query = select(CommunityNotification).where(CommunityNotification.recipient_id == user_id)
+        filters = [CommunityNotification.recipient_id == user_id]
         if unread_only:
-            query = query.where(CommunityNotification.is_read == False)
+            filters.append(CommunityNotification.is_read == False)
 
-        total_result = await self.db.execute(
-            select(func.count(CommunityNotification.id)).where(query.whereclause)
-        )
-        total = total_result.scalar() or 0
-
-        query = query.order_by(CommunityNotification.created_at.desc()).offset((page - 1) * limit).limit(limit)
-        query = query.options(
-            selectinload(CommunityNotification.actor),
-            selectinload(CommunityNotification.post),
-            selectinload(CommunityNotification.comment),
+        query = (
+            select(
+                CommunityNotification,
+                func.count(CommunityNotification.id).over().label("total"),
+            )
+            .where(*filters)
+            .order_by(CommunityNotification.created_at.desc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+            .options(joinedload(CommunityNotification.actor))
         )
         result = await self.db.execute(query)
-        notifications = list(result.scalars().all())
+        rows = result.all()
+        notifications = [row[0] for row in rows]
+        if rows:
+            total = rows[0][1]
+        else:
+            total_result = await self.db.execute(
+                select(func.count(CommunityNotification.id)).where(*filters)
+            )
+            total = total_result.scalar() or 0
 
         return notifications, total
 

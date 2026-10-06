@@ -70,11 +70,7 @@ async def get_unified_user_profile(
 ):
     """Single-call endpoint to fully hydrate a profile screen."""
     try:
-        target_user = await service.db.get(User, user_id)
-        if not target_user:
-            raise NotFoundError("User not found")
-
-        stats = await service.get_user_profile_stats(user_id, user.id)
+        target_user, stats = await service.get_user_profile_with_stats(user_id, user.id)
         profile_res = CommunityProfileResponse(
             id=target_user.id,
             username=target_user.username,
@@ -96,8 +92,7 @@ async def get_unified_user_profile(
         )
 
         post_ids = [p.id for p in posts]
-        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
-        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+        liked_set, bookmarked_set = await service.batch_fetch_post_interactions(post_ids, user.id)
 
         post_responses = [
             _build_post_response(
@@ -141,8 +136,7 @@ async def get_my_posts(
         )
 
         post_ids = [p.id for p in posts]
-        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
-        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+        liked_set, bookmarked_set = await service.batch_fetch_post_interactions(post_ids, user.id)
 
         post_responses = [
             _build_post_response(
@@ -175,11 +169,7 @@ async def get_user_profile(
     service: CommunityService = Depends(_get_service),
 ):
     try:
-        target_user = await service.db.get(User, user_id)
-        if not target_user:
-            raise NotFoundError("User not found")
-
-        stats = await service.get_user_profile_stats(user_id, user.id)
+        target_user, stats = await service.get_user_profile_with_stats(user_id, user.id)
 
         return CommunityProfileResponse(
             id=target_user.id,
@@ -225,8 +215,7 @@ async def get_user_posts(
         )
 
         post_ids = [p.id for p in posts]
-        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
-        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+        liked_set, bookmarked_set = await service.batch_fetch_post_interactions(post_ids, user.id)
 
         post_responses = [
             _build_post_response(

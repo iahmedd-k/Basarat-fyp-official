@@ -4,7 +4,7 @@ import logging
 from typing import Optional, List
 from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Request, Header, Response, status
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
@@ -274,8 +274,7 @@ async def get_feed(
 
         # Batch fetch all liked and bookmarked statuses in ONE query (Kills N+1 completely!)
         post_ids = [p.id for p in posts]
-        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
-        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+        liked_set, bookmarked_set = await service.batch_fetch_post_interactions(post_ids, user.id)
 
         post_responses = [
             _build_post_response(
@@ -333,14 +332,13 @@ async def get_trending(
 
         posts = []
         if trending_post_ids:
-            liked_set = await service.batch_fetch_liked_post_ids(trending_post_ids, user.id)
-            bookmarked_set = await service.batch_fetch_bookmarked_post_ids(trending_post_ids, user.id)
+            liked_set, bookmarked_set = await service.batch_fetch_post_interactions(trending_post_ids, user.id)
             
             stmt = (
                 select(CommunityPost)
                 .options(
-                    selectinload(CommunityPost.author),
-                    selectinload(CommunityPost.stock),
+                    joinedload(CommunityPost.author),
+                    joinedload(CommunityPost.stock),
                     selectinload(CommunityPost.tickers),
                 )
                 .where(
@@ -401,8 +399,7 @@ async def search_posts(
         )
 
         post_ids = [p.id for p in posts]
-        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
-        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+        liked_set, bookmarked_set = await service.batch_fetch_post_interactions(post_ids, user.id)
 
         post_responses = [
             _build_post_response(
@@ -446,8 +443,7 @@ async def get_market_posts(
         )
 
         post_ids = [p.id for p in posts]
-        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
-        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+        liked_set, bookmarked_set = await service.batch_fetch_post_interactions(post_ids, user.id)
 
         post_responses = [
             _build_post_response(
@@ -492,8 +488,7 @@ async def get_stock_posts(
         )
 
         post_ids = [p.id for p in posts]
-        liked_set = await service.batch_fetch_liked_post_ids(post_ids, user.id)
-        bookmarked_set = await service.batch_fetch_bookmarked_post_ids(post_ids, user.id)
+        liked_set, bookmarked_set = await service.batch_fetch_post_interactions(post_ids, user.id)
 
         post_responses = [
             _build_post_response(
