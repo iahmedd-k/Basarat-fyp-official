@@ -129,6 +129,9 @@ class RecommendationEngine:
             if (atr is None or float(atr) <= 0) and price and float(price) > 0:
                 if item.get("norm_atr14"):
                     atr = float(item["norm_atr14"]) * float(price)
+                elif item.get("target_price"):
+                    mult = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])["target"]
+                    atr = abs(float(item["target_price"]) - float(price)) / mult
             item["atr_14"] = round(float(atr), 4) if atr else None
             if atr and price and item.get("signal") in {"buy", "sell"}:
                 multipliers = RISK_MULTIPLIERS.get(risk_tolerance, RISK_MULTIPLIERS["moderate"])

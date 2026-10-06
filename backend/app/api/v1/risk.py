@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authorization import get_current_user
 from app.core.exceptions import AppError, NotFoundError, ServiceUnavailableError
 from app.core.rate_limiter import limiter
+from app.core.redis import cache_get, cache_set
 from app.db.session import get_db
 from app.models.portfolio import PortfolioTransaction, TransactionType
 from app.models.stock import Stock
@@ -102,11 +103,16 @@ async def get_var(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        cache_key = f"risk:var:{user.id}:{confidence}:{horizon}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return RiskVaRResponse(**cached)
+
         from app.services.risk_service import calculate_var
 
         holdings = await _get_holdings(db, user.id)
         if not holdings:
-            return RiskVaRResponse(
+            response = RiskVaRResponse(
                 confidence=confidence,
                 horizon=horizon,
                 var_value=None,
@@ -119,11 +125,13 @@ async def get_var(
                 portfolio_value=0,
                 covered_portfolio_value=0,
             )
+            await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+            return response
 
         result = await asyncio.to_thread(
             calculate_var, holdings, confidence=confidence, horizon=horizon
         )
-        return RiskVaRResponse(
+        response = RiskVaRResponse(
             confidence=result["confidence"], horizon=result["horizon"],
             var_value=result["var"], cvar_value=result["cvar"],
             method=result["method"], num_observations=result["num_observations"],
@@ -136,6 +144,8 @@ async def get_var(
             symbols_excluded=result.get("symbols_excluded", []), data_as_of=result.get("data_as_of"),
             lookback_start=result.get("lookback_start"),
         )
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        return response
     except AppError:
         raise
     except Exception:
@@ -275,11 +285,16 @@ async def run_stress_test(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        cache_key = f"risk:stresstest:{user.id}:{scenario}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return StressTestResponse(**cached)
+
         from app.services.risk_service import run_stress_test as run_stress
 
         holdings = await _get_holdings(db, user.id)
         if not holdings:
-            return StressTestResponse(
+            response = StressTestResponse(
                 scenario=scenario,
                 name=scenario,
                 description="No holdings",
@@ -294,9 +309,13 @@ async def run_stress_test(
                 status="no_holdings", method="illustrative_one_step_sector_shock",
                 worst_case_loss_value=0, assumption_note="No valued holdings to stress.",
             )
+            await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+            return response
 
         result = await asyncio.to_thread(run_stress, holdings, scenario)
-        return StressTestResponse(**result)
+        response = StressTestResponse(**result)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        return response
     except Exception:
         log.exception("Stress test failed")
         raise ServiceUnavailableError("Stress test temporarily unavailable.")

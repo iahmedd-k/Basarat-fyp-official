@@ -25,6 +25,8 @@ async def get_token_payload(
 
 from app.core.redis import cache_get, cache_set
 
+from datetime import datetime, timezone
+
 async def get_current_user(
     payload: dict = Depends(get_token_payload),
     db: AsyncSession = Depends(get_db),
@@ -36,6 +38,8 @@ async def get_current_user(
     cache_key = f"auth:user:{user_id}"
     cached_data = await cache_get(cache_key)
     if cached_data is not None:
+        created_at_val = cached_data.get("created_at")
+        updated_at_val = cached_data.get("updated_at")
         user = User(
             id=cached_data.get("id"),
             email=cached_data.get("email"),
@@ -45,6 +49,13 @@ async def get_current_user(
             is_verified=cached_data.get("is_verified", False),
             is_admin=cached_data.get("is_admin", False),
             hashed_password=cached_data.get("hashed_password", ""),
+            risk_tolerance=cached_data.get("risk_tolerance"),
+            investment_horizon=cached_data.get("investment_horizon"),
+            sector_preferences=cached_data.get("sector_preferences"),
+            notification_preferences=cached_data.get("notification_preferences"),
+            recommendation_weights=cached_data.get("recommendation_weights"),
+            created_at=datetime.fromisoformat(created_at_val) if created_at_val else datetime.now(timezone.utc),
+            updated_at=datetime.fromisoformat(updated_at_val) if updated_at_val else None,
         )
         if not user.is_active:
             raise ForbiddenError("Inactive user")
@@ -65,6 +76,13 @@ async def get_current_user(
         "is_verified": user.is_verified,
         "is_admin": user.is_admin,
         "hashed_password": user.hashed_password,
+        "risk_tolerance": getattr(user, "risk_tolerance", None),
+        "investment_horizon": getattr(user, "investment_horizon", None),
+        "sector_preferences": getattr(user, "sector_preferences", None),
+        "notification_preferences": getattr(user, "notification_preferences", None),
+        "recommendation_weights": getattr(user, "recommendation_weights", None),
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
     }
     await cache_set(cache_key, user_dict, ttl_seconds=120)
     return user

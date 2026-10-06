@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import ServiceUnavailableError
+from app.core.redis import cache_get, cache_set
 from app.db.session import get_db
 from app.models.user import User
 from app.ml.serving.schemas import (
@@ -135,7 +136,7 @@ def _apply_freshness_guard(rec: dict, *, today: date | None = None) -> dict:
     result = dict(rec)
     freshness = _market_data_freshness(result.get("data_as_of"), today=today)
     result.update(freshness)
-    stale = freshness["data_freshness"] in {"stale", "unknown"}
+    stale = freshness["data_freshness"] == "stale"
     original_signal = str(result.get("signal", "hold")).upper()
     result["signal_suppressed"] = False
     result["suppression_reason"] = None
@@ -174,11 +175,9 @@ def _component_payload(rec: dict) -> dict:
         if status not in {"available", "unavailable"}:
             status = "available" if effective.get(name, 0) > 0 else "unavailable"
         score_val = signals.get(name)
-        if score_val is None:
-            score_val = 0.0
+        if status == "unavailable":
+            score_val = None
         avail_reason = source_reason.get("reason")
-        if not avail_reason:
-            avail_reason = "Active: Signal verified and factored into decision matrix" if status == "available" else "Feature inputs not available"
         components[name] = {
             "score": score_val,
             "status": status,
@@ -198,14 +197,15 @@ def _market_data_payload(rec: dict) -> dict:
     quote_is_stale = bool(rec.get("quote_is_stale"))
     price_as_of = rec.get("data_as_of")
     quote_freshness = _market_data_freshness(quote_as_of) if quote_as_of else {
-        "data_freshness": "fresh", "data_age_calendar_days": 0, "data_age_trading_days": 0,
+        "data_freshness": "unknown", "data_age_calendar_days": 0, "data_age_trading_days": 0,
     }
     if quote_is_stale:
         quote_freshness["data_freshness"] = "stale"
     analysis_freshness = _market_data_freshness(rec.get("data_as_of"))
     curr_price = float(rec.get("current_price") or 0.0)
+    as_of_time = None if quote_is_stale else (price_as_of or quote_as_of)
     return {
-        "as_of": price_as_of or quote_as_of or datetime.now(timezone.utc).isoformat(),
+        "as_of": as_of_time,
         "quote_fetched_at": quote_as_of or datetime.now(timezone.utc).isoformat(),
         "freshness": quote_freshness["data_freshness"],
         "age_calendar_days": quote_freshness["data_age_calendar_days"] or 0,
@@ -238,20 +238,20 @@ def _decision_payload(rec: dict) -> dict:
 
 def _risk_payload(rec: dict) -> dict:
     curr_price = float(rec.get("current_price") or 0.0)
-    atr = float(rec["atr_14"]) if rec.get("atr_14") is not None else 0.0
+    atr = float(rec["atr_14"]) if rec.get("atr_14") is not None else None
     tp = rec.get("target_price")
     sl = rec.get("stop_loss")
     exp_range = rec.get("expected_range")
 
-    tp_val = float(tp) if tp is not None else round(curr_price * 1.05 if curr_price > 0 else 0.0, 2)
-    sl_val = float(sl) if sl is not None else round(curr_price * 0.95 if curr_price > 0 else 0.0, 2)
+    tp_val = float(tp) if tp is not None else None
+    sl_val = float(sl) if sl is not None else None
 
-    if not exp_range:
+    if not exp_range and tp_val is not None and sl_val is not None:
         exp_range = {"low": min(sl_val, tp_val), "high": max(sl_val, tp_val), "method": "atr_band"}
 
-    upside = float(rec["upside_pct"]) if rec.get("upside_pct") is not None else round(((tp_val - curr_price) / curr_price * 100) if curr_price > 0 else 0.0, 2)
-    downside = float(rec["downside_pct"]) if rec.get("downside_pct") is not None else round(((curr_price - sl_val) / curr_price * 100) if curr_price > 0 else 0.0, 2)
-    rrr = float(rec["risk_reward_ratio"]) if rec.get("risk_reward_ratio") is not None else round(abs(upside / downside) if downside > 0 else 1.0, 2)
+    upside = float(rec["upside_pct"]) if rec.get("upside_pct") is not None else (round(((tp_val - curr_price) / curr_price * 100), 2) if (tp_val is not None and curr_price > 0) else None)
+    downside = float(rec["downside_pct"]) if rec.get("downside_pct") is not None else (round(((curr_price - sl_val) / curr_price * 100), 2) if (sl_val is not None and curr_price > 0) else None)
+    rrr = float(rec["risk_reward_ratio"]) if rec.get("risk_reward_ratio") is not None else (round(abs(upside / downside), 2) if (upside is not None and downside is not None and downside > 0) else None)
 
     return {
         "target_price": tp_val,
@@ -320,13 +320,17 @@ async def get_recommendations(
     user: User = Depends(get_current_user),
 ):
     try:
+        effective_risk = risk_profile or _get_user_risk_profile(user)
+        cache_key = f"rec:list:v3:{user.id}:{effective_risk}:{sector}:{limit}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return RecommendationsListResponse(**cached)
+
         from app.services.recommendation_service import (
             DEFAULT_WEIGHTS,
             RecommendationEngine,
             get_cached_recommendations,
         )
-
-        effective_risk = risk_profile or _get_user_risk_profile(user)
 
         weights = _get_user_weights(user, DEFAULT_WEIGHTS)
         engine = RecommendationEngine(weights=weights)
@@ -374,13 +378,15 @@ async def get_recommendations(
             for r in recommendations
         ]
 
-        return RecommendationsListResponse(
+        response = RecommendationsListResponse(
             count=len(items),
             total_count=total_count,
             generated_at=datetime.now(timezone.utc),
             risk_profile=effective_risk,
             recommendations=items,
         )
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+        return response
 
     except ServiceUnavailableError:
         raise
@@ -431,6 +437,10 @@ async def set_engine_weights(
             "sentiment": data.sentiment_weight,
         }
         db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        from app.core.redis import cache_invalidate
+        await cache_invalidate(f"auth:user:{user.id}")
         return EngineWeightsResponse(
             weights={
                 "ml": data.gru_weight,
@@ -453,33 +463,34 @@ async def get_recommendation_detail(
     user: User = Depends(get_current_user),
 ):
     try:
-        symbol = symbol.upper()
+        symbol_upper = symbol.strip().upper()
+        cache_key = f"rec:detail:v3:{user.id}:{symbol_upper}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return RecommendationDetailResponse(**cached)
 
         from app.services.recommendation_service import (
             RecommendationEngine,
             DEFAULT_WEIGHTS,
-            get_cached_recommendations,
         )
 
         user_weights = _get_user_weights(user, DEFAULT_WEIGHTS)
         risk_profile = _get_user_risk_profile(user)
         engine = RecommendationEngine(weights=user_weights)
-        snapshot = await run_in_threadpool(get_cached_recommendations)
-        source = next((item for item in (snapshot or []) if item.get("symbol") == symbol), None)
-        if source is None:
-            raise ServiceUnavailableError("Recommendation snapshot is not available")
-        rec = (await run_in_threadpool(
-            engine.personalize_snapshot,
-            [source],
+        rec = await run_in_threadpool(
+            engine.get_recommendation,
+            symbol_upper,
             risk_profile,
-            user_weights,
-        ))[0]
+            weights=user_weights,
+        )
+        if not rec:
+            raise ServiceUnavailableError("Failed to fetch recommendation")
 
         rec = _apply_freshness_guard(rec)
 
-        return RecommendationDetailResponse(
-            symbol=symbol,
-            name=rec.get("name") or "",
+        response = RecommendationDetailResponse(
+            symbol=symbol_upper,
+            name=rec.get("name") or symbol_upper,
             sector=_normalize_sector(rec.get("sector")),
             generated_at=datetime.now(timezone.utc),
             decision=_decision_payload(rec),
@@ -489,6 +500,8 @@ async def get_recommendation_detail(
             risk_profile=risk_profile,
             summary=_summarize(rec),
         )
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+        return response
 
     except Exception as exc:
         log.exception("Failed to fetch recommendation for %s", symbol)
@@ -505,37 +518,41 @@ async def get_target_stop(
     user: User = Depends(get_current_user),
 ):
     try:
-        symbol = symbol.upper()
+        symbol_upper = symbol.strip().upper()
+        cache_key = f"rec:targetstop:v3:{user.id}:{symbol_upper}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return TargetStopResponse(**cached)
 
         from app.services.recommendation_service import (
             RecommendationEngine,
             DEFAULT_WEIGHTS,
-            get_cached_recommendations,
         )
 
         user_weights = _get_user_weights(user, DEFAULT_WEIGHTS)
         risk_profile = _get_user_risk_profile(user)
         engine = RecommendationEngine(weights=user_weights)
-        snapshot = await run_in_threadpool(get_cached_recommendations)
-        source = next((item for item in (snapshot or []) if item.get("symbol") == symbol), None)
-        if source is None:
-            raise ServiceUnavailableError("Recommendation snapshot is not available")
-        rec = (await run_in_threadpool(
-            engine.personalize_snapshot,
-            [source],
+        rec = await run_in_threadpool(
+            engine.get_recommendation,
+            symbol_upper,
             risk_profile,
-            user_weights,
-        ))[0]
+            weights=user_weights,
+        )
+        if not rec:
+            raise ServiceUnavailableError("Failed to fetch target/stop")
+
         rec = _apply_freshness_guard(rec)
 
-        return TargetStopResponse(
-            symbol=symbol,
+        response = TargetStopResponse(
+            symbol=symbol_upper,
             generated_at=datetime.now(timezone.utc),
             decision=_decision_payload(rec),
             market_data=_market_data_payload(rec),
             risk=_risk_payload(rec),
             risk_profile=risk_profile,
         )
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+        return response
 
     except Exception as exc:
         log.exception("Failed to fetch target/stop for %s", symbol)

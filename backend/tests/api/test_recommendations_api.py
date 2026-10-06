@@ -132,6 +132,7 @@ class TestRecommendationsListEndpoint:
                 "upside_pct": 7.78,
                 "downside_pct": -4.44,
                 "risk_reward_ratio": 1.75,
+                "atr_14": 11.25,
                 "reasoning": {
                     "ml": {"reason": "Bullish trend forecast"},
                     "technical": {"reason": "RSI oversold rebound"},
@@ -143,7 +144,7 @@ class TestRecommendationsListEndpoint:
                     "ml": {"status": "available"}, "technical": {"status": "available"},
                     "fundamental": {"status": "available"}, "sentiment": {"status": "available"},
                 },
-                "data_as_of": "2026-09-24",
+                "data_as_of": date.today().isoformat(),
                 "decision_reason": "Composite score 0.450 crossed the BUY threshold (0.15).",
                 "target_stop_method": "atr_band",
                 "target_stop_reason": "ATR-based volatility levels.",
@@ -168,7 +169,7 @@ class TestRecommendationsListEndpoint:
             assert "summary" in rec
             assert rec["decision"]["horizon"] == "5 trading days"
             assert rec["market_data"]["currency"] == "PKR"
-            assert rec["market_data"]["as_of"] == "2026-09-24"
+            assert rec["market_data"]["as_of"] == date.today().isoformat()
             assert rec["market_data"]["freshness"] == "unknown"
             assert rec["components"]["ml"]["score"] == 0.6
             assert rec["components"]["sentiment"]["score"] == -0.2
@@ -303,7 +304,7 @@ class TestRecommendationDetailEndpoint:
                 "fundamental": {"status": "available"},
                 "sentiment": {"status": "available"},
             },
-            "data_as_of": "2026-09-24",
+            "data_as_of": date.today().isoformat(),
             "decision_reason": "Composite score 0.380 crossed the BUY threshold (0.15).",
             "target_stop_reason": "ATR-based volatility levels.",
         }
@@ -324,7 +325,7 @@ class TestRecommendationDetailEndpoint:
             assert data["market_data"]["current_price"] == 450.0
             assert data["risk"]["risk_reward_ratio"] == 1.75
             assert data["risk_profile"] == "moderate"
-            assert data["market_data"]["as_of"] == "2026-09-24"
+            assert data["market_data"]["as_of"] == date.today().isoformat()
             assert data["market_data"]["freshness"] == "unknown"
             assert data["decision"]["horizon"] == "5 trading days"
             assert data["market_data"]["currency"] == "PKR"
@@ -375,7 +376,7 @@ class TestTargetStopEndpoint:
             "downside_pct": -3.3,
             "target_stop_method": "atr_band",
             "atr_14": 10.0,
-            "data_as_of": "2026-09-24",
+            "data_as_of": date.today().isoformat(),
             "target_stop_reason": "ATR-based volatility levels.",
         }
         with patch("app.services.recommendation_service.RecommendationEngine.get_recommendation", return_value=sample_rec):
@@ -387,7 +388,7 @@ class TestTargetStopEndpoint:
             assert data["risk"]["target_price"] == 480.0
             assert data["risk"]["stop_loss"] == 435.0
             assert data["decision"]["signal"] == "BUY"
-            assert data["market_data"]["as_of"] == "2026-09-24"
+            assert data["market_data"]["as_of"] == date.today().isoformat()
             assert data["decision"]["horizon"] == "5 trading days"
             assert data["market_data"]["currency"] == "PKR"
             assert data["risk"]["explanation"] == "ATR-based volatility levels."

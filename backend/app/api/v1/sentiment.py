@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authorization import get_current_user
 from app.core.exceptions import ServiceUnavailableError
 from app.core.rate_limiter import limiter
+from app.core.redis import cache_get, cache_set
 from app.db.session import get_db
 from app.models.user import User
 from app.ml.serving.schemas import (
@@ -41,19 +42,27 @@ async def get_market_sentiment(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        cache_key = "sentiment:market:overview:v2"
+        cached = await cache_get(cache_key)
+        if cached:
+            return MarketSentimentResponse(**cached)
+
         from app.services.sentiment_service import (
             compute_market_sentiment,
             get_cached_market_sentiment,
         )
 
-        # Try cache first
-        cached = get_cached_market_sentiment()
-        if cached is not None:
-            return MarketSentimentResponse(**cached)
+        disk_cached = get_cached_market_sentiment()
+        if disk_cached is not None:
+            resp = MarketSentimentResponse(**disk_cached)
+            await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=600)
+            return resp
 
         # Compute live
         result = await compute_market_sentiment(db)
-        return MarketSentimentResponse(**result)
+        resp = MarketSentimentResponse(**result)
+        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=600)
+        return resp
 
     except Exception as exc:
         log.exception("Market sentiment fetch failed")
@@ -76,11 +85,17 @@ async def get_sentiment_history(
 ):
     try:
         symbol = symbol.upper()
+        cache_key = f"sentiment:history:v2:{symbol}:{period}:{limit}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return SentimentHistoryResponse(**cached)
 
         from app.services.sentiment_service import get_sentiment_history
 
         result = await get_sentiment_history(db, symbol, period, limit)
-        return SentimentHistoryResponse(**result)
+        resp = SentimentHistoryResponse(**result)
+        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=600)
+        return resp
 
     except Exception as exc:
         log.exception("Sentiment history fetch failed for %s", symbol)
@@ -106,9 +121,12 @@ async def get_sentiment_news(
 ):
     try:
         symbol = symbol.upper()
+        cache_key = f"sentiment:news:v2:{symbol}:{page}:{limit}:{from_date}:{to_date}:{sentiment}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return SentimentNewsResponse(**cached)
 
         from app.services.sentiment_service import get_sentiment_news
-        from datetime import datetime
 
         from_dt = datetime.fromisoformat(from_date) if from_date else None
         to_dt = datetime.fromisoformat(to_date) if to_date else None
@@ -117,13 +135,15 @@ async def get_sentiment_news(
             db, symbol, page, limit, from_dt, to_dt, sentiment
         )
 
-        return SentimentNewsResponse(
+        resp = SentimentNewsResponse(
             symbol=symbol,
             items=items,
             total=total,
             page=page,
             limit=limit,
         )
+        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=300)
+        return resp
 
     except Exception as exc:
         log.exception("Sentiment news fetch failed for %s", symbol)
@@ -145,14 +165,16 @@ async def get_sentiment(
 ):
     try:
         symbol = symbol.upper()
+        cache_key = f"sentiment:stock:v2:{symbol}:{days}"
+        cached_redis = await cache_get(cache_key)
+        if cached_redis:
+            return SentimentResponse(**cached_redis)
 
         from app.services.sentiment_service import (
             compute_stock_sentiment,
             get_cached_sentiment,
         )
 
-        # Sentiment is a daily snapshot; refresh it at most once per day on
-        # demand rather than on every profile open.
         cached = get_cached_sentiment(symbol)
         if cached is not None:
             try:
@@ -163,8 +185,9 @@ async def get_sentiment(
                     cached = None
             except (TypeError, ValueError):
                 cached = None
+
         if cached is not None:
-            return SentimentResponse(
+            resp = SentimentResponse(
                 symbol=cached["symbol"],
                 score=float(cached.get("score") or 0.0),
                 label=str(cached.get("label") or "neutral"),
@@ -177,10 +200,12 @@ async def get_sentiment(
                 daily_scores=cached.get("daily_scores") or [],
                 updated_at=str(cached.get("updated_at") or datetime.now(timezone.utc).isoformat()),
             )
+            await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=600)
+            return resp
 
         # Compute live
         result = await compute_stock_sentiment(db, symbol, days=days)
-        return SentimentResponse(
+        resp = SentimentResponse(
             symbol=result["symbol"],
             score=float(result.get("score") or 0.0),
             label=str(result.get("label") or "neutral"),
@@ -193,6 +218,8 @@ async def get_sentiment(
             daily_scores=result.get("daily_scores") or [],
             updated_at=str(result.get("updated_at") or datetime.now(timezone.utc).isoformat()),
         )
+        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=600)
+        return resp
 
     except Exception as exc:
         log.exception("Sentiment fetch failed for %s", symbol)

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
+from app.core.redis import cache_get, cache_set
 from app.db.session import get_db
 from app.ml.serving.inference import (
     InsufficientHistoryError,
@@ -70,10 +71,16 @@ async def get_stock_forecast(
     endpoint mid-day refreshes the same unique (symbol, horizon, as_of_date) row.
     """
     try:
+        symbol_upper = symbol.strip().upper()
+        cache_key = f"forecast:stock:v2:{symbol_upper}:{horizon}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return ForecastResponse(**cached)
+
         if not artifacts.model_ready:
             raise ServiceUnavailableError("ML model is not loaded yet")
 
-        result = await run_in_threadpool(get_forecast, symbol, horizon=horizon)
+        result = await run_in_threadpool(get_forecast, symbol_upper, horizon=horizon)
 
         await log_prediction(
             db,
@@ -162,7 +169,9 @@ async def get_stock_forecast(
                     exc,
                 )
 
-        return _build_forecast_response(result, horizon, target_stop)
+        response = _build_forecast_response(result, horizon, target_stop)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        return response
 
     except SymbolNotFoundError as exc:
         raise NotFoundError(str(exc))
@@ -314,13 +323,18 @@ async def get_forecast_history(
     This endpoint is read-only — it never invents outcomes.
     """
     try:
-        symbol = symbol.upper()
+        symbol_upper = symbol.strip().upper()
+        cache_key = f"forecast:history:v2:{symbol_upper}:{horizon}:{limit}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return ForecastHistoryResponse(**cached)
+
         today = pkt_today()
 
         result = await db.execute(
             select(Prediction)
             .where(
-                Prediction.symbol == symbol,
+                Prediction.symbol == symbol_upper,
                 Prediction.horizon == horizon,
             )
             .order_by(Prediction.as_of_date.desc(), Prediction.predicted_at.desc())
@@ -330,7 +344,7 @@ async def get_forecast_history(
 
         if not rows:
             raise NotFoundError(
-                f"No forecast history found for symbol '{symbol}' horizon '{horizon}'. "
+                f"No forecast history found for symbol '{symbol_upper}' horizon '{horizon}'. "
                 "Predictions appear after GET /forecast/{symbol} or the 18:00 PKT daily job."
             )
 
@@ -415,8 +429,8 @@ async def get_forecast_history(
                 f"All {len(items)} predictions in this window are neutral/holding regimes."
             )
 
-        return ForecastHistoryResponse(
-            symbol=symbol,
+        response = ForecastHistoryResponse(
+            symbol=symbol_upper,
             horizon=horizon,
             count=len(items),
             accuracy=accuracy,
@@ -425,6 +439,8 @@ async def get_forecast_history(
             scored_count=scored_count,
             history=items,
         )
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        return response
 
     except NotFoundError:
         raise
