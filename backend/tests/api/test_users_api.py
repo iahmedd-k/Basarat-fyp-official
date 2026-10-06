@@ -125,13 +125,15 @@ class TestUsersInvestmentProfile:
     async def test_avatar_upload_updates_profile_url(
         self, client: AsyncClient, auth_headers, monkeypatch
     ):
-        from app.api.v1.users import firebase_storage_service
+        from app.api.v1.users import cloudinary_service
 
-        monkeypatch.setattr(
-            firebase_storage_service,
-            "upload_avatar",
-            AsyncMock(return_value="https://firebasestorage.googleapis.com/avatar"),
+        upload_mock = AsyncMock(
+            return_value=(
+                "https://res.cloudinary.com/example/image/upload/profile-images/avatar.png",
+                "profile-images/user/avatar",
+            )
         )
+        monkeypatch.setattr(cloudinary_service, "upload_image", upload_mock)
         response = await client.post(
             "/api/v1/users/me/avatar",
             headers=auth_headers,
@@ -139,7 +141,9 @@ class TestUsersInvestmentProfile:
         )
 
         assert response.status_code == 200
-        assert response.json()["avatar_url"] == "https://firebasestorage.googleapis.com/avatar"
+        assert response.json()["avatar_url"].startswith("https://res.cloudinary.com/")
+        upload_mock.assert_awaited_once()
+        assert upload_mock.await_args.kwargs["folder"].startswith("profile-images/")
 
     async def test_update_investment_profile_patch_success(self, client: AsyncClient, auth_headers):
         payload = {

@@ -49,9 +49,8 @@ This directory contains the essential operational, database seeding, data synchr
 | `validate_recommendation_engine.py` | `python scripts/validate_recommendation_engine.py` | Validates multi-factor quantitative stock ranking engine scoring logic. |
 | `run_crud_lifecycle_verification.py` | `python scripts/run_crud_lifecycle_verification.py` | Validates full Create $\to$ Read $\to$ Update $\to$ Delete lifecycles across domain resources. |
 | `diagnose_psx_upstream.py` | `python scripts/diagnose_psx_upstream.py` | Verifies live network connectivity and HTTP response codes from upstream PSX portals. |
-| `get_test_token.py` | `python scripts/get_test_token.py` | Generates a valid JWT test token for local manual API testing. |
 
 ---
 
 ## 5. Archived Scripts (`scripts/archive/`)
-One-off inspection scripts, scratch debug files, and temporary test utilities have been safely organized into [`scripts/archive/`](file:///d:/FYP/Basarat-fyp-official/backend/scripts/archive/).
+One-off inspection scripts, scratch debug files, and temporary test utilities are kept in [`archive/`](./archive/).

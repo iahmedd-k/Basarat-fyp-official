@@ -18,7 +18,7 @@ from app.schemas.auth import (
     VerifyEmailChangeRequest,
 )
 from app.services.auth_service import AuthService
-from app.services.firebase_storage_service import firebase_storage_service
+from app.services.cloudinary_service import cloudinary_service
 from app.core.redis import cache_invalidate, cache_invalidate_pattern
 
 router = APIRouter()
@@ -152,14 +152,17 @@ async def verify_email_change(
 @router.post(
     "/users/me/avatar",
     response_model=UserProfileResponse,
-    summary="Upload the current user's profile image to Firebase Storage",
+    summary="Upload the current user's profile image to Cloudinary",
 )
 async def upload_profile_image(
     image: UploadFile = File(...),
     user: User = Depends(get_current_user),
     service: AuthService = Depends(_get_service),
 ):
-    avatar_url = await firebase_storage_service.upload_avatar(user.id, image)
+    avatar_url, _ = await cloudinary_service.upload_image(
+        image,
+        folder=f"profile-images/{user.id}",
+    )
     res = await service.update_profile(user_id=user.id, avatar_url=avatar_url)
     await cache_invalidate(f"auth:user:{user.id}")
     await cache_invalidate_pattern(f"community:profile:{user.id}*")

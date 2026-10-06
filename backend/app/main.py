@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from pathlib import Path
 from uuid import uuid4
@@ -14,6 +15,7 @@ from app.api.v1.health import router as health_router
 from app.core.config import get_settings
 from app.core.exceptions import register_error_handlers
 from app.core.logging import setup_logging
+from app.core.metrics import setup_prometheus_metrics
 from app.core.rate_limiter import add_rate_limiting
 from app.db.base import engine
 
@@ -168,6 +170,19 @@ register_error_handlers(app)
 add_rate_limiting(app)
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(RequestContextMiddleware)
+
+if settings.PROMETHEUS_METRICS_ENABLED:
+    if not settings.PROMETHEUS_METRICS_USERNAME or not settings.PROMETHEUS_METRICS_PASSWORD:
+        raise RuntimeError(
+            "PROMETHEUS_METRICS_USERNAME and PROMETHEUS_METRICS_PASSWORD are required "
+            "when PROMETHEUS_METRICS_ENABLED is true"
+        )
+
+    setup_prometheus_metrics(
+        app,
+        username=settings.PROMETHEUS_METRICS_USERNAME,
+        password=settings.PROMETHEUS_METRICS_PASSWORD,
+    )
 
 # Allow any host when wildcard or configured
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS if settings.ALLOWED_HOSTS else ["*"])

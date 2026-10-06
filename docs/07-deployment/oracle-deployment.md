@@ -1,6 +1,6 @@
 # Oracle ARM64 deployment
 
-The `Backend CI and Oracle ARM64 deploy` workflow tests the backend, publishes an immutable `linux/arm64` image to GHCR, then deploys it to the Oracle VM over SSH when `main` is updated. The Oracle VM runs the API, Alembic migration, Celery worker, Celery Beat, and a private, persistent Redis container. PostgreSQL remains external.
+The `Backend CI and Oracle ARM64 deploy` workflow tests the backend, publishes an immutable `linux/arm64` image to GHCR, then deploys it to the Oracle VM over SSH when `main` is updated. The Oracle VM runs the API, Alembic migration, Celery worker, Celery Beat, Prometheus, Grafana, and private, persistent Redis and monitoring storage. PostgreSQL remains external.
 
 ## One-time Oracle preparation
 
@@ -27,7 +27,7 @@ Do not use or upload a development machine's `.env`. Set at least:
 - `ALLOWED_HOSTS=["193.123.84.223"]`, or the actual public API hostname.
 - `FIREBASE_PROJECT_ID` to the Firebase project ID.
 
-Compose points API and Celery at the included Redis container and explicitly disables the external Redis fallback; do not set Redis URLs to localhost or an external service. The API is published on host port 8000. Restrict Oracle ingress to the required sources and configure TLS before sending credentials or production user traffic.
+Compose points API and Celery at the included Redis container and explicitly disables the external Redis fallback; do not set Redis URLs to localhost or an external service. The API is published on host port 8000. Prometheus (9090) and Grafana (3000) bind to loopback only; access them with an SSH tunnel rather than exposing these ports publicly. Restrict Oracle ingress to the required sources and configure TLS before sending credentials or production user traffic.
 
 ## GitHub Actions configuration
 
@@ -38,8 +38,14 @@ Create the `oracle-production` GitHub Actions environment and add these environm
 - `ORACLE_SSH_PRIVATE_KEY`: a deployment SSH private key authorized for that account. Add it through GitHub's secret UI; never commit it.
 - `ORACLE_SSH_KNOWN_HOSTS`: the verified SSH host-key line for the VM. Verify the fingerprint through a trusted channel; do not use an unverified `ssh-keyscan` result.
 - `ORACLE_GHCR_TOKEN`: a GitHub token with read-only `read:packages` access for the published package.
+- `PROMETHEUS_METRICS_USERNAME`: metrics scrape username (letters, numbers, dots, underscores, and hyphens).
+- `PROMETHEUS_METRICS_PASSWORD`: randomly generated 32–128-character hexadecimal scrape password.
+- `PROMETHEUS_METRICS_HOST_HEADER`: the production API hostname or IP, without a port, and included in `ALLOWED_HOSTS`.
+- `GRAFANA_ADMIN_PASSWORD`: a separate randomly generated 32–128-character hexadecimal Grafana admin password.
 
 The workflow uses `GITHUB_TOKEN` with `packages: write` to publish the image. The Oracle host uses `ORACLE_GHCR_TOKEN` to pull the private GHCR package.
+
+Generate independent passwords with `openssl rand -hex 32` and save each as a secret in the `oracle-production` GitHub Actions environment. On each deployment, the workflow transfers them over SSH into `/home/ubuntu/basarat/.env.monitoring` with owner-only permissions. The file is not part of the image or repository. The workflow deploys the API and monitoring stack together from the versioned Compose/configuration files.
 
 ## Firebase credential delivery
 
@@ -71,9 +77,20 @@ On the VM, inspect the deployment with:
 
 ```bash
 cd ~/basarat
-docker compose --env-file .env -f docker-compose.yml ps
-docker compose --env-file .env -f docker-compose.yml logs --tail=100 app celery-worker celery-beat redis
+docker compose --env-file .env --env-file .env.monitoring \
+  -f docker-compose.yml -f docker-compose.monitoring.yml ps
+docker compose --env-file .env --env-file .env.monitoring \
+  -f docker-compose.yml -f docker-compose.monitoring.yml \
+  logs --tail=100 app celery-worker celery-beat redis prometheus grafana
 curl --fail http://127.0.0.1:8000/health
 ```
+
+The production workflow starts Prometheus and Grafana using the monitoring Compose overlay. From a trusted workstation, open SSH tunnels to the Oracle VM:
+
+```bash
+ssh -N -L 3000:127.0.0.1:3000 -L 9090:127.0.0.1:9090 ubuntu@<oracle-host>
+```
+
+Then open Grafana at `http://localhost:3000` (user `admin`, password held in the `GRAFANA_ADMIN_PASSWORD` GitHub environment secret) or Prometheus at `http://localhost:9090`. Grafana provisions the **Basarat API Overview** dashboard automatically.
 
 The workflow's deploy job must complete successfully before the release is considered deployed.

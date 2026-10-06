@@ -40,6 +40,8 @@ def test_ohlcv_history_tolerates_missing_optional_columns(monkeypatch):
     date_index = pd.to_datetime([date.today() - timedelta(days=1)])
     frame = pd.DataFrame({"CLOSE": [12.0]}, index=date_index)
     monkeypatch.setattr(service, "_get_ohlcv", lambda *_: frame)
+    monkeypatch.setattr(stock_module, "cache_get_sync", lambda _key: None)
+    monkeypatch.setattr(stock_module, "cache_set_sync", lambda *_args: None)
 
     history = service.get_price_history(symbol, "1W")
 

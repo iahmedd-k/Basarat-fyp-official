@@ -1,0 +1,48 @@
+services:
+  app:
+    environment:
+      PROMETHEUS_METRICS_ENABLED: "true"
+      PROMETHEUS_METRICS_USERNAME: ${PROMETHEUS_METRICS_USERNAME:?Set PROMETHEUS_METRICS_USERNAME in backend/.env}
+      PROMETHEUS_METRICS_PASSWORD: ${PROMETHEUS_METRICS_PASSWORD:?Set PROMETHEUS_METRICS_PASSWORD in backend/.env}
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --config.expand-env
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    environment:
+      PROMETHEUS_METRICS_USERNAME: ${PROMETHEUS_METRICS_USERNAME:?Set PROMETHEUS_METRICS_USERNAME in backend/.env}
+      PROMETHEUS_METRICS_PASSWORD: ${PROMETHEUS_METRICS_PASSWORD:?Set PROMETHEUS_METRICS_PASSWORD in backend/.env}
+      PROMETHEUS_METRICS_HOST_HEADER: ${PROMETHEUS_METRICS_HOST_HEADER:-localhost}
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - app
+    mem_limit: 512m
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in backend/.env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    mem_limit: 256m
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:

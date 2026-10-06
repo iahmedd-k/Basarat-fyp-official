@@ -65,9 +65,16 @@ jobs:
           SECRET_KEY: local-ci-only-signing-key-at-least-32-chars
           CORS_ORIGINS: '["https://app.example.com"]'
           ALLOWED_HOSTS: '["193.123.84.223"]'
+          PROMETHEUS_METRICS_USERNAME: validation-user
+          PROMETHEUS_METRICS_PASSWORD: 0123456789abcdef0123456789abcdef
+          PROMETHEUS_METRICS_HOST_HEADER: 193.123.84.223
+          GRAFANA_ADMIN_PASSWORD: 0123456789abcdef0123456789abcdef
         run: |
           touch backend/.env
-          docker compose -f backend/docker-compose.oracle.yml config --quiet
+          docker compose \
+            -f backend/docker-compose.oracle.yml \
+            -f backend/docker-compose.monitoring.yml \
+            config --quiet
 
       - name: Set immutable image tag
         id: image
@@ -107,6 +114,10 @@ jobs:
           ORACLE_SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
           ORACLE_SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_SSH_KNOWN_HOSTS }}
           ORACLE_GHCR_TOKEN: ${{ secrets.ORACLE_GHCR_TOKEN }}
+          PROMETHEUS_METRICS_USERNAME: ${{ secrets.PROMETHEUS_METRICS_USERNAME }}
+          PROMETHEUS_METRICS_PASSWORD: ${{ secrets.PROMETHEUS_METRICS_PASSWORD }}
+          PROMETHEUS_METRICS_HOST_HEADER: ${{ secrets.PROMETHEUS_METRICS_HOST_HEADER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
           for name in ORACLE_HOST ORACLE_USER ORACLE_SSH_PRIVATE_KEY ORACLE_SSH_KNOWN_HOSTS ORACLE_GHCR_TOKEN; do
             if [[ -z "${!name}" ]]; then
@@ -114,6 +125,26 @@ jobs:
               exit 1
             fi
           done
+          for name in PROMETHEUS_METRICS_USERNAME PROMETHEUS_METRICS_PASSWORD PROMETHEUS_METRICS_HOST_HEADER GRAFANA_ADMIN_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Configure the $name secret in the oracle-production environment."
+              exit 1
+            fi
+          done
+          if [[ ! "$PROMETHEUS_METRICS_USERNAME" =~ ^[A-Za-z0-9_.-]{1,64}$ ]]; then
+            echo "::error::PROMETHEUS_METRICS_USERNAME must contain only letters, numbers, dots, underscores, or hyphens."
+            exit 1
+          fi
+          for name in PROMETHEUS_METRICS_PASSWORD GRAFANA_ADMIN_PASSWORD; do
+            if [[ ! "${!name}" =~ ^[A-Fa-f0-9]{32,128}$ ]]; then
+              echo "::error::$name must be 32-128 hexadecimal characters."
+              exit 1
+            fi
+          done
+          if [[ ! "$PROMETHEUS_METRICS_HOST_HEADER" =~ ^[A-Za-z0-9.-]+$ ]]; then
+            echo "::error::PROMETHEUS_METRICS_HOST_HEADER must be a hostname or IP without a port."
+            exit 1
+          fi
 
       - name: Configure SSH
         env:
@@ -132,16 +163,46 @@ jobs:
           ORACLE_USER: ${{ secrets.ORACLE_USER }}
         run: |
           ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$ORACLE_USER@$ORACLE_HOST" \
-            'command -v docker >/dev/null && docker compose version >/dev/null && mkdir -p "$HOME/basarat/secrets" && chmod 0755 "$HOME/basarat/secrets" && (test ! -f "$HOME/basarat/secrets/firebase-admin.json" || chmod 0644 "$HOME/basarat/secrets/firebase-admin.json") && test -f "$HOME/basarat/.env"'
+            'command -v docker >/dev/null && docker compose version >/dev/null && mkdir -p "$HOME/basarat/secrets" "$HOME/basarat/monitoring/grafana/provisioning/datasources" "$HOME/basarat/monitoring/grafana/provisioning/dashboards" "$HOME/basarat/monitoring/grafana/dashboards" && chmod 0755 "$HOME/basarat/secrets" && (test ! -f "$HOME/basarat/secrets/firebase-admin.json" || chmod 0644 "$HOME/basarat/secrets/firebase-admin.json") && test -f "$HOME/basarat/.env"'
 
-      - name: Upload Oracle Compose file
+      - name: Upload Oracle application and monitoring configuration
         env:
           ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
           ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          PROMETHEUS_METRICS_USERNAME: ${{ secrets.PROMETHEUS_METRICS_USERNAME }}
+          PROMETHEUS_METRICS_PASSWORD: ${{ secrets.PROMETHEUS_METRICS_PASSWORD }}
+          PROMETHEUS_METRICS_HOST_HEADER: ${{ secrets.PROMETHEUS_METRICS_HOST_HEADER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
+          trap 'rm -f monitoring.env' EXIT
+          umask 077
+          printf '%s\n' \
+            "PROMETHEUS_METRICS_USERNAME=$PROMETHEUS_METRICS_USERNAME" \
+            "PROMETHEUS_METRICS_PASSWORD=$PROMETHEUS_METRICS_PASSWORD" \
+            "PROMETHEUS_METRICS_HOST_HEADER=$PROMETHEUS_METRICS_HOST_HEADER" \
+            "GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD" > monitoring.env
+          chmod 0600 monitoring.env
           scp -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
             backend/docker-compose.oracle.yml \
             "$ORACLE_USER@$ORACLE_HOST:basarat/docker-compose.yml"
+          scp -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+            backend/docker-compose.monitoring.yml \
+            "$ORACLE_USER@$ORACLE_HOST:basarat/docker-compose.monitoring.yml"
+          scp -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+            backend/monitoring/prometheus.yml \
+            "$ORACLE_USER@$ORACLE_HOST:basarat/monitoring/prometheus.yml"
+          scp -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+            backend/monitoring/grafana/provisioning/datasources/prometheus.yml \
+            "$ORACLE_USER@$ORACLE_HOST:basarat/monitoring/grafana/provisioning/datasources/prometheus.yml"
+          scp -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+            backend/monitoring/grafana/provisioning/dashboards/basarat.yml \
+            "$ORACLE_USER@$ORACLE_HOST:basarat/monitoring/grafana/provisioning/dashboards/basarat.yml"
+          scp -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+            backend/monitoring/grafana/dashboards/api-overview.json \
+            "$ORACLE_USER@$ORACLE_HOST:basarat/monitoring/grafana/dashboards/api-overview.json"
+          cat monitoring.env \
+            | ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$ORACLE_USER@$ORACLE_HOST" \
+                'cd "$HOME/basarat" && umask 077 && cat > .env.monitoring.next && chmod 0600 .env.monitoring.next && mv -f .env.monitoring.next .env.monitoring'
 
       - name: Pull and deploy immutable image
         env:
@@ -154,4 +215,4 @@ jobs:
             | ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$ORACLE_USER@$ORACLE_HOST" \
                 "docker login ghcr.io --username iahmedd-k --password-stdin"
           ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$ORACLE_USER@$ORACLE_HOST" \
-            "cd \"\$HOME/basarat\" && BACKEND_IMAGE='$IMAGE' docker compose --env-file .env -f docker-compose.yml pull && BACKEND_IMAGE='$IMAGE' docker compose --env-file .env -f docker-compose.yml stop app celery-worker celery-beat migrate || true && BACKEND_IMAGE='$IMAGE' docker compose --env-file .env -f docker-compose.yml rm -f -s app celery-worker celery-beat migrate || true && docker container prune -f || true && BACKEND_IMAGE='$IMAGE' docker compose --env-file .env -f docker-compose.yml up -d --remove-orphans --wait --wait-timeout 300 && docker compose --env-file .env -f docker-compose.yml ps"
+            "cd \"\$HOME/basarat\" && COMPOSE='docker compose --env-file .env --env-file .env.monitoring -f docker-compose.yml -f docker-compose.monitoring.yml' && BACKEND_IMAGE='$IMAGE' \$COMPOSE pull && BACKEND_IMAGE='$IMAGE' \$COMPOSE stop app celery-worker celery-beat migrate || true && BACKEND_IMAGE='$IMAGE' \$COMPOSE rm -f -s app celery-worker celery-beat migrate || true && docker container prune -f || true && BACKEND_IMAGE='$IMAGE' \$COMPOSE up -d --remove-orphans --wait --wait-timeout 300 && \$COMPOSE ps"

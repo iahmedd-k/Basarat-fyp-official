@@ -55,7 +55,16 @@ class Settings(BaseSettings):
     FIREBASE_ENABLED: bool = False
     FIREBASE_CREDENTIALS_PATH: str = ""
     FIREBASE_PROJECT_ID: str = ""
-    FIREBASE_STORAGE_BUCKET: str = ""
+
+    # Cloudinary image storage
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+
+    # Optional HTTP metrics endpoint; enable only on a monitored deployment.
+    PROMETHEUS_METRICS_ENABLED: bool = False
+    PROMETHEUS_METRICS_USERNAME: str = ""
+    PROMETHEUS_METRICS_PASSWORD: str = ""
 
     # Transactional email (SMTP)
     SMTP_HOST: str = ""

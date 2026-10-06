@@ -35,24 +35,61 @@
   `jobs:daily-workflow:*`, `news:ingestion:*`, queue depth, task age,
   upstream 403/429 counts, cache hit ratio, and snapshot age.
 
-## Not Currently Implemented
+## Prometheus API Metrics
+
+The API can expose authenticated Prometheus metrics at `GET /metrics` when
+`PROMETHEUS_METRICS_ENABLED=true`. The endpoint uses HTTP Basic authentication;
+set `PROMETHEUS_METRICS_USERNAME` and `PROMETHEUS_METRICS_PASSWORD` to strong,
+unique values. Metrics are disabled by default.
+
+The optional Compose overlay starts Prometheus and Grafana alongside the local
+stack. Configure the three credentials in `backend/.env` (do not commit them),
+then run from the repository root:
+
+```bash
+make monitoring-up
+```
+
+Prometheus scrapes the API every 15 seconds. The scrape request uses
+`PROMETHEUS_METRICS_HOST_HEADER` (default `localhost`) so it can pass the API's
+trusted-host check; when monitoring a deployment, set it to one of that
+deployment's configured `ALLOWED_HOSTS`. Grafana is available at
+`http://localhost:3000` (user `admin`, password from `GRAFANA_ADMIN_PASSWORD`)
+with the provisioned **Basarat API Overview** dashboard. Prometheus is bound to
+`127.0.0.1:9090`; Grafana is bound to `127.0.0.1:3000`.
+
+The dashboard reports API request rate by route and method, HTTP status
+distribution, server-side 5xx rate, and p50/p95 request latency. Labels use
+registered route templates rather than raw URLs, avoiding user IDs or query
+values as high-cardinality metric labels. The endpoint also includes the
+Prometheus client's standard Python process and runtime metrics. This does not
+yet measure database query latency, Celery queue depth, container/host
+resources, or business/ML accuracy. The same overlay is deployed to the Oracle
+production VM by the Oracle GitHub Actions workflow using credentials stored
+in its `oracle-production` environment; production access instructions are in
+[Oracle deployment](../07-deployment/oracle-deployment.md).
+
+Stop the local monitoring stack without deleting its persistent data:
+
+```bash
+make monitoring-down
+```
+
+## Additional Monitoring Gaps
 
 | Capability | Status |
 |-----------|--------|
 | External uptime monitoring | Not identified |
-| Application metrics (Prometheus) | Not implemented |
-| Dashboard (Grafana) | Not implemented |
 | Alerting (PagerDuty, Slack) | Not implemented |
 | Request tracing | Not implemented |
 | Error tracking (Sentry) | Not implemented |
 | Database monitoring | Supabase dashboard only |
 | Resource utilization monitoring | Not implemented |
 
-## Recommended Monitoring Stack
+## Additional Monitoring Recommendations
 
-> **Note:** The following is a recommendation, not current implementation.
+The following capabilities remain recommendations, not current implementation:
 
-1. **Prometheus + Grafana**: API latency, request rates, error rates
-2. **Sentry**: Error tracking with stack traces
-3. **CloudWatch**: EC2 resource monitoring
-4. **Uptime monitoring**: External health check service
+1. **Sentry**: Error tracking with stack traces
+2. **CloudWatch**: EC2 resource monitoring
+3. **Uptime monitoring**: External health check service

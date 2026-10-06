@@ -1,10 +1,8 @@
-import os
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 import cloudinary
 import cloudinary.uploader
-import cloudinary.api
 from fastapi import UploadFile
 
 from app.core.config import get_settings
@@ -26,18 +24,36 @@ class CloudinaryService:
     def _configure(self) -> None:
         try:
             cloudinary.config(
-                cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-                api_key=os.getenv("CLOUDINARY_API_KEY"),
-                api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+                cloud_name=self.settings.CLOUDINARY_CLOUD_NAME,
+                api_key=self.settings.CLOUDINARY_API_KEY,
+                api_secret=self.settings.CLOUDINARY_API_SECRET,
                 secure=True,
             )
-            self._configured = True
+            self._configured = all(
+                (
+                    self.settings.CLOUDINARY_CLOUD_NAME,
+                    self.settings.CLOUDINARY_API_KEY,
+                    self.settings.CLOUDINARY_API_SECRET,
+                )
+            )
         except Exception as e:
             log.warning("Cloudinary not configured: %s", e)
             self._configured = False
 
     def is_configured(self) -> bool:
         return self._configured
+
+    @property
+    def cloud_name(self) -> str:
+        return self.settings.CLOUDINARY_CLOUD_NAME
+
+    @property
+    def api_key(self) -> str:
+        return self.settings.CLOUDINARY_API_KEY
+
+    @property
+    def api_secret(self) -> str:
+        return self.settings.CLOUDINARY_API_SECRET
 
     def validate_image(self, file: UploadFile) -> None:
         if not file.content_type or file.content_type not in ALLOWED_MIME_TYPES:
@@ -72,7 +88,7 @@ class CloudinaryService:
                 use_filename=False,
             )
             return result["secure_url"], result["public_id"]
-        except Exception as e:
+        except Exception:
             log.exception("Cloudinary upload failed")
             raise ServiceUnavailableError("Failed to upload image")
 

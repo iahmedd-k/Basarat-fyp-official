@@ -203,6 +203,14 @@ docker compose up --build
 
 The API will be available at `http://localhost:8000`. Interactive Swagger documentation is accessible at `http://localhost:8000/docs`.
 
+### Optional API Monitoring
+
+Set strong, unique `PROMETHEUS_METRICS_USERNAME`, `PROMETHEUS_METRICS_PASSWORD`,
+and `GRAFANA_ADMIN_PASSWORD` values in `backend/.env`, then run
+`make monitoring-up` from the repository root. Grafana is available at
+`http://localhost:3000`; see [Monitoring](docs/08-operations/monitoring.md) for
+the dashboard and metrics details.
+
 ### 3. Run Manually for Local Development
 
 ```bash
