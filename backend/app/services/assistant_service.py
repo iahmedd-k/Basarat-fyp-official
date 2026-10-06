@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import select, desc
+from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
@@ -48,7 +50,6 @@ class AssistantService:
         )
         self.db.add(conversation)
         await self.db.commit()
-        await self.db.refresh(conversation)
         return conversation
 
     async def get_conversation(
@@ -60,7 +61,7 @@ class AssistantService:
             select(AssistantConversation).where(
                 AssistantConversation.id == conversation_id,
                 AssistantConversation.user_id == user_id,
-            )
+            ).options(noload(AssistantConversation.messages))
         )
         conversation = result.scalars().first()
         if not conversation:
@@ -79,6 +80,7 @@ class AssistantService:
             .order_by(desc(AssistantConversation.updated_at))
             .limit(limit)
             .offset(offset)
+            .options(noload(AssistantConversation.messages))
         )
         return list(result.scalars().all())
 
@@ -88,14 +90,42 @@ class AssistantService:
         user_id: str,
         limit: int = 100,
     ) -> list[AssistantMessage]:
-        await self.get_conversation(conversation_id, user_id)
+        cache_key = f"assistant:msgs:{conversation_id}:{limit}"
+        from app.core.redis import cache_get
+        cached = await cache_get(cache_key)
+        if isinstance(cached, list):
+            return [
+                AssistantMessage(
+                    id=m["id"],
+                    conversation_id=m["conversation_id"],
+                    role=m["role"],
+                    content=m["content"],
+                )
+                for m in cached
+            ]
+
         result = await self.db.execute(
             select(AssistantMessage)
-            .where(AssistantMessage.conversation_id == conversation_id)
-            .order_by(AssistantMessage.created_at)
+            .where(
+                AssistantMessage.conversation_id == conversation_id,
+            )
+            .order_by(desc(AssistantMessage.created_at))
             .limit(limit)
         )
-        return list(result.scalars().all())
+        messages = list(reversed(result.scalars().all()))
+        if messages:
+            from app.core.redis import cache_set
+            msg_payload = [
+                {
+                    "id": m.id,
+                    "conversation_id": m.conversation_id,
+                    "role": m.role,
+                    "content": m.content,
+                }
+                for m in messages
+            ]
+            await cache_set(cache_key, msg_payload, ttl_seconds=120)
+        return messages
 
     async def update_conversation_title(
         self,
@@ -110,8 +140,16 @@ class AssistantService:
         return conversation
 
     async def delete_conversation(self, conversation_id: str, user_id: str) -> None:
-        conversation = await self.get_conversation(conversation_id, user_id)
-        await self.db.delete(conversation)
+        result = await self.db.execute(
+            delete(AssistantConversation)
+            .where(
+                AssistantConversation.id == conversation_id,
+                AssistantConversation.user_id == user_id,
+            )
+            .returning(AssistantConversation.id)
+        )
+        if result.scalar_one_or_none() is None:
+            raise NotFoundError("Conversation not found")
         await self.db.commit()
 
     def _normalize_conversation_id(self, conversation_id: Optional[str]) -> Optional[str]:
@@ -126,24 +164,33 @@ class AssistantService:
         self,
         user_id: str,
         conversation_id: Optional[str],
-    ) -> AssistantConversation:
+    ) -> tuple[AssistantConversation, bool]:
+        """Resolve existing conversation or create a new one without blocking network flush."""
         cid = self._normalize_conversation_id(conversation_id)
         if cid:
             try:
-                return await self.get_conversation(cid, user_id)
+                conv = await self.get_conversation(cid, user_id)
+                return conv, False
             except NotFoundError:
-                return await self.create_conversation(user_id)
-        return await self.create_conversation(user_id)
+                pass
+        from uuid import uuid4
+        conversation = AssistantConversation(
+            id=uuid4().hex,
+            user_id=user_id,
+            title="New Conversation",
+        )
+        self.db.add(conversation)
+        return conversation, True
 
-    async def _load_history(self, conversation_id: str, user_id: str) -> list[dict]:
+    async def _load_history(self, conversation_id: str, user_id: str, is_new: bool = False) -> list[dict]:
+        if is_new:
+            return []
         history_messages = await self.get_conversation_messages(
             conversation_id, user_id, limit=MAX_HISTORY_MESSAGES
         )
-        # Keep only the most recent window (messages come oldest-first)
-        window = history_messages[-MAX_HISTORY_MESSAGES:]
         return [
             {"role": msg.role, "content": msg.content}
-            for msg in window
+            for msg in history_messages
             if not (msg.role == "user" and check_prompt_injection(msg.content))
         ]
 
@@ -225,9 +272,13 @@ class AssistantService:
         conversation_id: Optional[str] = None,
         *,
         skip_save_user: bool = False,
+        current_user: Optional[User] = None,
     ) -> dict:
-        conversation = await self._resolve_conversation(user_id, conversation_id)
-        history = await self._load_history(conversation.id, user_id)
+        started = time.perf_counter()
+        conversation, is_new = await self._resolve_conversation(user_id, conversation_id)
+        conversation_ready = time.perf_counter()
+        history = await self._load_history(conversation.id, user_id, is_new=is_new)
+        history_ready = time.perf_counter()
 
         if check_prompt_injection(message):
             log.warning("Prompt injection detected from user %s", user_id)
@@ -256,11 +307,15 @@ class AssistantService:
                 "blocked": True,
             }
 
-        user = await self.db.get(User, user_id)
+        user = current_user or await self.db.get(User, user_id)
+        if user is None:
+            raise NotFoundError("User not found")
         context_builder = ContextBuilder(self.db, user)
         context = await context_builder.build_context(message, intent, history)
         messages = context_builder.build_messages(context, message, history)
+        context_ready = time.perf_counter()
 
+        provider_started = time.perf_counter()
         try:
             response = await groq_client.chat_completion(
                 messages=messages,
@@ -270,6 +325,7 @@ class AssistantService:
         except Exception as e:
             log.warning("Groq unavailable (%s); using grounded fallback", e)
             response = self._grounded_fallback(message, context)
+        provider_finished = time.perf_counter()
 
         response, output_filtered, violation_type = enforce_output_safety(response)
         if output_filtered:
@@ -283,6 +339,18 @@ class AssistantService:
             conversation.title = message[:50] + ("..." if len(message) > 50 else "")
 
         await self.db.commit()
+        finished = time.perf_counter()
+        log.info(
+            "Assistant chat timing: resolve_ms=%.0f history_ms=%.0f context_ms=%.0f "
+            "provider_ms=%.0f persist_ms=%.0f total_ms=%.0f intent=%s",
+            (conversation_ready - started) * 1000,
+            (history_ready - conversation_ready) * 1000,
+            (context_ready - history_ready) * 1000,
+            (provider_finished - context_ready) * 1000,
+            (finished - provider_finished) * 1000,
+            (finished - started) * 1000,
+            intent,
+        )
         return {
             "response": response,
             "conversation_id": conversation.id,
@@ -295,12 +363,16 @@ class AssistantService:
         user_id: str,
         message: str,
         conversation_id: Optional[str] = None,
+        *,
+        current_user: Optional[User] = None,
     ) -> AsyncGenerator[str, None]:
         """
         SSE stream. Chunks may stream live for latency; `done.full_response` is always
         the safety-checked final text. If live text was replaced, `replaced` is true.
         """
-        conversation = await self._resolve_conversation(user_id, conversation_id)
+        started = time.perf_counter()
+        conversation, is_new = await self._resolve_conversation(user_id, conversation_id)
+        conversation_ready = time.perf_counter()
         yield f"data: {json.dumps({'event': 'start', 'conversation_id': conversation.id})}\n\n"
 
         if check_prompt_injection(message) or classify_intent(message) == "unsafe":
@@ -313,20 +385,28 @@ class AssistantService:
             return
 
         intent = classify_intent(message)
-        history = await self._load_history(conversation.id, user_id)
-        user = await self.db.get(User, user_id)
+        history = await self._load_history(conversation.id, user_id, is_new=is_new)
+        history_ready = time.perf_counter()
+        user = current_user or await self.db.get(User, user_id)
+        if user is None:
+            raise NotFoundError("User not found")
         context_builder = ContextBuilder(self.db, user)
         context = await context_builder.build_context(message, intent, history)
         messages = context_builder.build_messages(context, message, history)
+        context_ready = time.perf_counter()
 
         live_chunks: list[str] = []
         emitted_live = False
+        provider_started = time.perf_counter()
+        first_token_at: Optional[float] = None
         try:
             async for chunk in groq_client.stream_chat_completion(
                 messages=messages,
                 temperature=CHAT_TEMPERATURE,
                 max_tokens=STREAM_MAX_TOKENS,
             ):
+                if first_token_at is None:
+                    first_token_at = time.perf_counter()
                 live_chunks.append(chunk)
                 emitted_live = True
                 yield f"data: {json.dumps({'event': 'chunk', 'chunk': chunk, 'conversation_id': conversation.id})}\n\n"
@@ -348,14 +428,37 @@ class AssistantService:
         elif replaced:
             yield f"data: {json.dumps({'event': 'replace', 'conversation_id': conversation.id, 'full_response': full_response})}\n\n"
 
-        await self._save_message(conversation.id, "user", message)
-        await self._save_message(conversation.id, "assistant", full_response)
-
-        if conversation.title == "New Conversation":
-            conversation.title = message[:50] + ("..." if len(message) > 50 else "")
-
-        await self.db.commit()
         yield f"data: {json.dumps({'event': 'done', 'conversation_id': conversation.id, 'full_response': full_response, 'safety_filtered': output_filtered, 'replaced': replaced, 'intent': intent})}\n\n"
+
+        try:
+            await self._save_message(conversation.id, "user", message)
+            await self._save_message(conversation.id, "assistant", full_response)
+
+            if conversation.title == "New Conversation":
+                conversation.title = message[:50] + ("..." if len(message) > 50 else "")
+
+            await self.db.commit()
+            from app.core.redis import cache_invalidate, cache_invalidate_pattern
+            await cache_invalidate(f"assistant:msgs:{conversation.id}:100")
+            await cache_invalidate(f"assistant:msgs:{conversation.id}:{MAX_HISTORY_MESSAGES}")
+            await cache_invalidate(f"assistant:conv:{user_id}:{conversation.id}")
+            await cache_invalidate_pattern(f"assistant:convs:{user_id}:*")
+        except Exception as e:
+            log.warning("Stream message persistence error: %s", e)
+
+        finished = time.perf_counter()
+        log.info(
+            "Assistant stream timing: resolve_ms=%.0f history_ms=%.0f context_ms=%.0f "
+            "provider_first_token_ms=%.0f provider_total_ms=%.0f persist_ms=%.0f total_ms=%.0f intent=%s",
+            (conversation_ready - started) * 1000,
+            (history_ready - conversation_ready) * 1000,
+            (context_ready - history_ready) * 1000,
+            ((first_token_at - provider_started) * 1000) if first_token_at else -1,
+            (time.perf_counter() - provider_started) * 1000,
+            (finished - provider_started - (time.perf_counter() - provider_started)) * 1000,
+            (finished - started) * 1000,
+            intent,
+        )
 
     async def _save_message(
         self,
@@ -369,7 +472,6 @@ class AssistantService:
             content=content,
         )
         self.db.add(message)
-        await self.db.flush()
         return message
 
     async def regenerate_response(

@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
-from app.core.exceptions import ServiceUnavailableError
+from app.core.exceptions import NotFoundError, ServiceUnavailableError
 from app.core.redis import cache_get, cache_set
 from app.db.session import get_db
 from app.models.user import User
@@ -470,6 +470,20 @@ async def get_recommendation_detail(
 ):
     try:
         symbol_upper = symbol.strip().upper()
+
+        # Enforce KSE-100 universe constraint
+        from app.data.scraper.symbol_universe import get_active_symbols
+        try:
+            kse_symbols = {s["symbol"].upper() for s in get_active_symbols()}
+        except Exception:
+            kse_symbols = set()
+
+        if kse_symbols and symbol_upper not in kse_symbols:
+            raise NotFoundError(
+                f"Symbol '{symbol_upper}' is not part of the active KSE-100 universe. "
+                "Stock recommendations and multi-signal synthesis are computed exclusively for KSE-100 constituent stocks."
+            )
+
         cache_key = f"rec:detail:v3:{user.id}:{symbol_upper}"
         cached = await cache_get(cache_key)
         if cached:
@@ -509,6 +523,10 @@ async def get_recommendation_detail(
         await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
         return response
 
+    except NotFoundError:
+        raise
+    except ServiceUnavailableError:
+        raise
     except Exception as exc:
         log.exception("Failed to fetch recommendation for %s", symbol)
         raise ServiceUnavailableError("Failed to fetch recommendation")
@@ -525,6 +543,20 @@ async def get_target_stop(
 ):
     try:
         symbol_upper = symbol.strip().upper()
+
+        # Enforce KSE-100 universe constraint
+        from app.data.scraper.symbol_universe import get_active_symbols
+        try:
+            kse_symbols = {s["symbol"].upper() for s in get_active_symbols()}
+        except Exception:
+            kse_symbols = set()
+
+        if kse_symbols and symbol_upper not in kse_symbols:
+            raise NotFoundError(
+                f"Symbol '{symbol_upper}' is not part of the active KSE-100 universe. "
+                "Target price and stop loss levels are computed exclusively for KSE-100 constituent stocks."
+            )
+
         cache_key = f"rec:targetstop:v3:{user.id}:{symbol_upper}"
         cached = await cache_get(cache_key)
         if cached:
@@ -560,6 +592,10 @@ async def get_target_stop(
         await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
         return response
 
+    except NotFoundError:
+        raise
+    except ServiceUnavailableError:
+        raise
     except Exception as exc:
         log.exception("Failed to fetch target/stop for %s", symbol)
         raise ServiceUnavailableError("Failed to fetch target/stop")

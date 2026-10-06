@@ -12,6 +12,7 @@ import httpx
 from app.core.config import get_settings
 
 log = logging.getLogger(__name__)
+STREAM_CHUNK_MIN_CHARS = 1
 
 
 class GroqError(Exception):
@@ -209,7 +210,7 @@ class GroqClient:
                             continue
                         pending.append(content)
                         pending_chars += len(content)
-                        if pending_chars >= 40 or "\n" in content:
+                        if pending_chars >= STREAM_CHUNK_MIN_CHARS or "\n" in content:
                             yield _strip_markdown_noise("".join(pending))
                             pending.clear()
                             pending_chars = 0
@@ -234,7 +235,6 @@ def _strip_markdown_noise(text: str) -> str:
         .replace("### ", "")
         .replace("## ", "")
         .replace("# ", "")
-        .strip()
     )
 
 

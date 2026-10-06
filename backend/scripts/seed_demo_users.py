@@ -108,6 +108,8 @@ async def seed_all_demo_data():
             u.is_active = True
             u.is_verified = True
             u.is_admin = is_admin
+            u.subscription_tier = "pro"
+            u.subscription_expires_at = datetime.now(timezone.utc) + timedelta(days=3650)
             u.risk_tolerance = "moderate"
             u.investment_horizon = "medium_term"
             u.sector_preferences = {

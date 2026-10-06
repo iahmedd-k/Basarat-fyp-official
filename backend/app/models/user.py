@@ -32,6 +32,26 @@ class User(Base):
     # Notification preferences
     notification_preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # Subscription tier
+    subscription_tier: Mapped[str] = mapped_column(String(20), default="free")
+    subscription_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    @property
+    def is_pro(self) -> bool:
+        if self.is_admin:
+            return True
+        if (self.subscription_tier or "").lower() in ("pro", "premium"):
+            if self.subscription_expires_at is None:
+                return True
+            now = datetime.now(timezone.utc)
+            exp = self.subscription_expires_at
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            return exp > now
+        return False
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), default=lambda: datetime.now(timezone.utc))
 

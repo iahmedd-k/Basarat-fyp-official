@@ -72,6 +72,20 @@ async def get_stock_forecast(
     """
     try:
         symbol_upper = symbol.strip().upper()
+
+        # Enforce KSE-100 universe constraint
+        from app.data.scraper.symbol_universe import get_active_symbols
+        try:
+            kse_symbols = {s["symbol"].upper() for s in get_active_symbols()}
+        except Exception:
+            kse_symbols = set()
+
+        if kse_symbols and symbol_upper not in kse_symbols:
+            raise NotFoundError(
+                f"Symbol '{symbol_upper}' is not part of the active KSE-100 universe. "
+                "AI Forecasts and Ensemble ML models are trained and calibrated exclusively for KSE-100 constituent stocks."
+            )
+
         cache_key = f"forecast:stock:v2:{symbol_upper}:{horizon}"
         cached = await cache_get(cache_key)
         if cached and isinstance(cached, dict):
@@ -341,6 +355,20 @@ async def get_forecast_history(
     """
     try:
         symbol_upper = symbol.strip().upper()
+
+        # Enforce KSE-100 universe constraint
+        from app.data.scraper.symbol_universe import get_active_symbols
+        try:
+            kse_symbols = {s["symbol"].upper() for s in get_active_symbols()}
+        except Exception:
+            kse_symbols = set()
+
+        if kse_symbols and symbol_upper not in kse_symbols:
+            raise NotFoundError(
+                f"Symbol '{symbol_upper}' is not part of the active KSE-100 universe. "
+                "AI Forecast history is tracked exclusively for KSE-100 constituent stocks."
+            )
+
         cache_key = f"forecast:history:v2:{symbol_upper}:{horizon}:{limit}"
         cached = await cache_get(cache_key)
         if cached:

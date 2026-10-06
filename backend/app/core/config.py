@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     APPLE_TEAM_ID: str = ""
     APPLE_KEY_ID: str = ""
 
+    # Stripe Payments (Subscriptions)
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_MONTHLY_PKR: int = 149900  # PKR 1,499.00 in smallest unit
+    STRIPE_PRICE_ANNUAL_PKR: int = 1299900  # PKR 12,999.00 in smallest unit
+    STRIPE_PRICE_MONTHLY_USD: int = 499     # $4.99 in cents
+    STRIPE_PRICE_ANNUAL_USD: int = 4499     # $44.99 in cents
+
     # HuggingFace (FinBERT sentiment via Inference API)
     HF_API_TOKEN: str = ""
 

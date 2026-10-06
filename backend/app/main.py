@@ -37,6 +37,7 @@ from app.api.v1 import (
     sentiment,
     shariah,
     stocks,
+    subscription,
     system,
     users,
     watchlist,
@@ -149,6 +150,7 @@ TAGS_METADATA = [
     {"name": "ETFs", "description": "Exchange Traded Funds (ETFs) directory, live quotes, benchmark tracking, and historical performance."},
     {"name": "IPOs", "description": "Initial Public Offerings (IPOs) directory, calendar, book building, and post-listing performance."},
     {"name": "Admin Community", "description": "Moderator and admin actions for managing reported posts and comments."},
+    {"name": "Subscriptions", "description": "Subscription tiers (Free vs Pro), Stripe PaymentSheet checkout, webhooks, and resource usage quotas."},
     {"name": "Health", "description": "Service liveness and dependency readiness health probes."},
 ]
 
@@ -233,6 +235,9 @@ app.include_router(ws.router, prefix="", include_in_schema=False)
 # Module 14 — ETFs & IPOs (Public & Admin CRUD)
 app.include_router(etfs.router, prefix=settings.API_V1_PREFIX, tags=["ETFs"])
 app.include_router(ipos.router, prefix=settings.API_V1_PREFIX, tags=["IPOs"])
+
+# Module 15 — Subscriptions & Payments
+app.include_router(subscription.router, prefix=settings.API_V1_PREFIX, tags=["Subscriptions"])
 
 # Admin Community
 app.include_router(admin_community_router, prefix=settings.API_V1_PREFIX, tags=["Admin Community"])

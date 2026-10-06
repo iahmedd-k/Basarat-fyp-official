@@ -9,6 +9,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis import cache_get, cache_set
 from app.models.user import User
 from app.models.prediction import Prediction
 from app.services.assistant_context_cache import AssistantContextCache
@@ -158,11 +159,16 @@ class ContextBuilder:
             )
         ) or intent in ("stock_analysis", "personalized_investment_advice")
 
+        include_news = bool(
+            re.search(r"\b(news|headline|announcements?|catalysts?|story|stories|article|articles)\b", message_lower)
+        ) or intent in ("stock_analysis",)
+
         # Parallel Asynchronous Fetching: Fetch independent stock & market layers concurrently
         stock_task = self._fetch_stock(
             symbol,
             include_technical=include_technical,
             include_fundamentals=include_fundamentals,
+            include_news=include_news,
             hard_live=hard_live,
         ) if (need_stock and symbol) else None
 
@@ -224,6 +230,7 @@ class ContextBuilder:
         symbol: str,
         include_technical: bool = False,
         include_fundamentals: bool = False,
+        include_news: bool = False,
         hard_live: bool = False,
     ) -> Optional[dict]:
         try:
@@ -255,7 +262,7 @@ class ContextBuilder:
                                 14,
                                 1,
                             ),
-                            timeout=4.0,
+                            timeout=1.5,
                         )
                         return {
                             "summary": res.get("summary"),
@@ -267,11 +274,42 @@ class ContextBuilder:
                         return None
                 return None
 
-            profile, quote, fund, technicals = await asyncio.gather(
+            async def _get_news():
+                if not include_news:
+                    return []
+                cache_key = f"assistant:news:{sym_upper}"
+                cached = await cache_get(cache_key)
+                if isinstance(cached, list):
+                    return cached
+                try:
+                    articles, _, _ = await asyncio.wait_for(
+                        NewsService(self.db).get_articles(limit=MAX_NEWS_ITEMS, symbol=sym_upper),
+                        timeout=1.5,
+                    )
+                    items = [
+                        {
+                            "title": a.title,
+                            "source": a.source,
+                            "published_at": a.published_at.isoformat() if a.published_at else None,
+                        }
+                        for a in articles
+                    ]
+                    await cache_set(cache_key, items, ttl_seconds=600)
+                    return items
+                except Exception as e:
+                    log.info("News skipped for %s: %s", sym_upper, e)
+                    return []
+
+            async def _get_forecast():
+                return await self._fetch_prediction(sym_upper)
+
+            profile, quote, fund, technicals, news_items, forecast = await asyncio.gather(
                 _get_profile(),
                 _get_quote(),
                 _get_fundamentals(),
                 _get_technicals(),
+                _get_news(),
+                _get_forecast(),
             )
 
             if profile:
@@ -309,21 +347,9 @@ class ContextBuilder:
             if technicals:
                 stock["technicals"] = technicals
 
-            # Sequential DB tasks
-            try:
-                articles, _, _ = await NewsService(self.db).get_articles(limit=MAX_NEWS_ITEMS, symbol=sym_upper)
-                stock["recent_news"] = [
-                    {
-                        "title": a.title,
-                        "source": a.source,
-                        "published_at": a.published_at.isoformat() if a.published_at else None,
-                    }
-                    for a in articles
-                ]
-            except Exception as e:
-                log.info("News skipped for %s: %s", sym_upper, e)
+            if news_items:
+                stock["recent_news"] = news_items
 
-            forecast = await self._fetch_prediction(sym_upper)
             if forecast:
                 stock["forecast"] = forecast
 
@@ -339,19 +365,28 @@ class ContextBuilder:
 
     async def _fetch_prediction(self, symbol: str) -> Optional[dict]:
         """Load latest ML ensemble prediction (Prediction table), with Forecast price fallback."""
+        sym = symbol.upper().strip()
+        cache_key = f"assistant:pred:{sym}"
+        cached = await cache_get(cache_key)
+        if isinstance(cached, dict):
+            return cached
+
         try:
             from sqlalchemy import select
 
-            result = await self.db.execute(
-                select(Prediction)
-                .where(Prediction.symbol == symbol.upper())
-                .order_by(Prediction.predicted_at.desc())
-                .limit(1)
+            result = await asyncio.wait_for(
+                self.db.execute(
+                    select(Prediction)
+                    .where(Prediction.symbol == sym)
+                    .order_by(Prediction.predicted_at.desc())
+                    .limit(1)
+                ),
+                timeout=1.5,
             )
             pred = result.scalars().first()
             if pred:
-                return {
-                    "symbol": symbol.upper(),
+                pred_dict = {
+                    "symbol": sym,
                     "direction": pred.predicted_direction,
                     "bullish_pct": float(pred.bullish_pct) if pred.bullish_pct is not None else None,
                     "bearish_pct": float(pred.bearish_pct) if pred.bearish_pct is not None else None,
@@ -367,14 +402,19 @@ class ContextBuilder:
                     "as_of": pred.predicted_at.isoformat() if pred.predicted_at else None,
                     "source": "predictions_table",
                 }
+                await cache_set(cache_key, pred_dict, ttl_seconds=3600)
+                return pred_dict
         except Exception as e:
-            log.info("Prediction lookup failed for %s: %s", symbol, e)
+            log.info("Prediction lookup failed for %s: %s", sym, e)
 
         try:
-            forecast = await self.forecast_service.get_latest_forecast(symbol)
+            forecast = await asyncio.wait_for(
+                self.forecast_service.get_latest_forecast(sym),
+                timeout=1.5,
+            )
             if forecast:
-                return {
-                    "symbol": symbol.upper(),
+                fc_dict = {
+                    "symbol": sym,
                     "direction": None,
                     "predicted_close": float(forecast.predicted_close) if forecast.predicted_close is not None else None,
                     "confidence_lower": float(forecast.confidence_lower) if forecast.confidence_lower is not None else None,
@@ -383,23 +423,35 @@ class ContextBuilder:
                     "forecast_date": forecast.forecast_date.isoformat() if forecast.forecast_date else None,
                     "source": "forecasts_table",
                 }
+                await cache_set(cache_key, fc_dict, ttl_seconds=3600)
+                return fc_dict
         except Exception as e:
-            log.info("Legacy forecast lookup failed for %s: %s", symbol, e)
+            log.info("Legacy forecast lookup failed for %s: %s", sym, e)
         return None
 
     async def _fetch_market(self, hard_live: bool = False) -> Optional[dict]:
         try:
             market = await self.cache.resolve_market_snapshot(hard_live=hard_live)
             try:
-                articles, _, _ = await NewsService(self.db).get_articles(limit=MAX_NEWS_ITEMS)
-                market["recent_news"] = [
-                    {
-                        "title": a.title,
-                        "source": a.source,
-                        "published_at": a.published_at.isoformat() if a.published_at else None,
-                    }
-                    for a in articles
-                ]
+                cache_key = "assistant:market_news"
+                cached_news = await cache_get(cache_key)
+                if isinstance(cached_news, list):
+                    market["recent_news"] = cached_news
+                else:
+                    articles, _, _ = await asyncio.wait_for(
+                        NewsService(self.db).get_articles(limit=MAX_NEWS_ITEMS),
+                        timeout=1.5,
+                    )
+                    news_list = [
+                        {
+                            "title": a.title,
+                            "source": a.source,
+                            "published_at": a.published_at.isoformat() if a.published_at else None,
+                        }
+                        for a in articles
+                    ]
+                    market["recent_news"] = news_list
+                    await cache_set(cache_key, news_list, ttl_seconds=300)
             except Exception as e:
                 log.info("Market news skipped: %s", e)
             return market
@@ -541,14 +593,11 @@ class ContextBuilder:
             if candidate in _STATIC_ALIASES or candidate in universe_syms:
                 return candidate
 
-        # Probe remaining candidates via market quote cache / stock service
+        # Probe remaining candidates via market quote cache
         async def _probe(candidate: str) -> Optional[str]:
             try:
                 row = await self.cache._quote_row_from_market_cache(candidate)
-                if row and row.get("current") not in (None, 0, 0.0):
-                    return candidate
-                quote = await asyncio.to_thread(self.stock_service.get_quote, candidate)
-                if quote and quote.get("current") not in (None, 0):
+                if row and (row.get("current") not in (None, 0, 0.0) or row.get("ltp") not in (None, 0, 0.0)):
                     return candidate
             except Exception:
                 return None

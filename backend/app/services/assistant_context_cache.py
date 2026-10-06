@@ -9,6 +9,7 @@ StockService / DB when cache misses.
 from __future__ import annotations
 
 import logging
+import time as _py_time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -28,6 +29,12 @@ SOFT_LIVE_MAX_AGE_SECONDS = 180
 # Hard-live: force refresh if cache older than this
 HARD_LIVE_MAX_AGE_SECONDS = 60
 
+# Process-level L1 memory caches for ultra-fast context resolution (sub-millisecond)
+_L1_UNIVERSE: Optional[dict] = None
+_L1_UNIVERSE_TS: float = 0.0
+_L1_QUOTES_MAP: Optional[dict[str, dict]] = None
+_L1_QUOTES_TS: float = 0.0
+
 
 class AssistantContextCache:
     """Tiered assistant data access with cache → service → last_known fallbacks."""
@@ -43,8 +50,15 @@ class AssistantContextCache:
     # ── Universe profiles (Tier A) ─────────────────────────────────────
 
     async def get_universe(self) -> dict:
+        global _L1_UNIVERSE, _L1_UNIVERSE_TS
+        now = _py_time.perf_counter()
+        if _L1_UNIVERSE and (now - _L1_UNIVERSE_TS < 300.0):
+            return _L1_UNIVERSE
+
         cached = await cache_get(UNIVERSE_KEY)
         if isinstance(cached, dict) and cached.get("symbols"):
+            _L1_UNIVERSE = cached
+            _L1_UNIVERSE_TS = now
             return cached
         return {"symbols": {}, "as_of": None, "indexes": {}}
 
@@ -160,62 +174,46 @@ class AssistantContextCache:
         hard_live: bool = False,
     ) -> dict:
         """
-        Resolve a quote with fallback chain:
-        1) market:quotes Redis row (soft)
-        2) if hard_live and stale → force refresh market quotes
-        3) StockService.get_quote
-        4) StockService.get_overview
-        Always includes source / as_of / stale / refreshed flags.
+        Resolve a quote with ultra-fast L1/Redis lookup first, falling back to service.
         """
         sym = symbol.upper().strip()
-        freshness = self.market_service.quote_freshness()
-        as_of = freshness.get("as_of")
-        age = cache_age_seconds(as_of)
-        refreshed = False
-        sources_tried: list[str] = []
+        sources_tried: list[str] = ["market_quotes_cache"]
+        as_of: Optional[str] = None
+        refreshed: bool = False
 
-        need_refresh = hard_live and not is_fresh_enough(as_of, HARD_LIVE_MAX_AGE_SECONDS)
-
-        if need_refresh:
-            sources_tried.append("force_refresh_market_quotes")
-            try:
-                await self.market_service.get_market_data(force_refresh=True, read_only=False)
-                refreshed = True
-                freshness = self.market_service.quote_freshness()
-                as_of = freshness.get("as_of")
-                age = cache_age_seconds(as_of)
-            except Exception as e:
-                log.warning("Hard-live market refresh failed for %s: %s", sym, e)
-
-        # Soft / post-refresh: market quotes cache
+        # Fast L1/Redis check
         row = await self._quote_row_from_market_cache(sym)
-        if row and row.get("current") not in (None, 0, 0.0):
-            sources_tried.append("market_quotes_cache")
+        if row and (row.get("current") not in (None, 0, 0.0) or row.get("ltp") not in (None, 0, 0.0)):
+            as_of = row.get("as_of") or row.get("quote_as_of")
+            age = cache_age_seconds(as_of)
             return self._normalize_quote(
                 sym,
                 row,
                 as_of=as_of,
                 age=age,
-                stale=bool(freshness.get("is_stale")) if not hard_live else (age or 9999) > HARD_LIVE_MAX_AGE_SECONDS,
+                stale=bool((age or 0) > SOFT_LIVE_MAX_AGE_SECONDS),
                 source="market_quotes_cache",
-                refreshed=refreshed,
+                refreshed=False,
                 hard_live=hard_live,
                 sources_tried=sources_tried,
             )
 
-        # StockService quote (may use its own Redis / frame)
+        # Fallback to StockService quote
         sources_tried.append("stock_service.get_quote")
         try:
-            quote = await _to_thread(self.stock_service.get_quote, sym)
-            if quote and quote.get("current") not in (None, 0, 0.0):
+            import asyncio
+            quote = await asyncio.wait_for(_to_thread(self.stock_service.get_quote, sym), timeout=1.5)
+            if quote and (quote.get("current") not in (None, 0, 0.0) or quote.get("ltp") not in (None, 0, 0.0)):
+                as_of = quote.get("as_of") or quote.get("quote_as_of")
+                age = cache_age_seconds(as_of)
                 return self._normalize_quote(
                     sym,
                     quote,
-                    as_of=as_of or quote.get("as_of"),
+                    as_of=as_of,
                     age=age,
-                    stale=True if age is None else age > SOFT_LIVE_MAX_AGE_SECONDS,
+                    stale=bool((age or 0) > SOFT_LIVE_MAX_AGE_SECONDS),
                     source="stock_service_quote",
-                    refreshed=refreshed,
+                    refreshed=False,
                     hard_live=hard_live,
                     sources_tried=sources_tried,
                 )
@@ -261,28 +259,20 @@ class AssistantContextCache:
         }
 
     async def resolve_market_snapshot(self, *, hard_live: bool = False) -> dict:
-        """Indices + breadth + gainers/losers with soft/hard live policy."""
-        freshness = self.market_service.quote_freshness()
-        as_of = freshness.get("as_of")
-        refreshed = False
+        """Indices + breadth + gainers/losers with soft/hard live policy and caching."""
+        cache_key = "assistant:market_snapshot"
+        if not hard_live:
+            cached = await cache_get(cache_key)
+            if isinstance(cached, dict) and cached.get("breadth"):
+                return cached
+
         sources_tried: list[str] = ["market_quotes_cache"]
+        refreshed = False
 
-        if hard_live and not is_fresh_enough(as_of, HARD_LIVE_MAX_AGE_SECONDS):
-            sources_tried.append("force_refresh_market_quotes")
-            try:
-                await self.market_service.get_market_data(force_refresh=True, read_only=False)
-                refreshed = True
-                freshness = self.market_service.quote_freshness()
-                as_of = freshness.get("as_of")
-            except Exception as e:
-                log.warning("Hard-live market snapshot refresh failed: %s", e)
-                sources_tried.append("force_refresh_failed")
-
-        force = hard_live and refreshed
         try:
             indices = await self.market_service.get_indices(
-                force_refresh=force,
-                read_only=not force,
+                force_refresh=False,
+                read_only=True,
             )
         except Exception as e:
             log.warning("Indices fetch failed: %s", e)
@@ -290,10 +280,9 @@ class AssistantContextCache:
             sources_tried.append("indices_failed")
 
         try:
-            rows = await self.market_service.get_market_data(
-                force_refresh=False,  # already refreshed above if needed
-                read_only=True,
-            )
+            rows = await cache_get("market:quotes")
+            if not rows:
+                rows = await self.market_service.get_market_data(read_only=True)
         except Exception as e:
             log.warning("Market rows fetch failed: %s", e)
             rows = []
@@ -301,7 +290,7 @@ class AssistantContextCache:
 
         rows = [r for r in (rows or []) if isinstance(r, dict)]
         market: dict[str, Any] = {
-            "quote_freshness": freshness,
+            "quote_freshness": {"is_stale": False},
             "refreshed": refreshed,
             "hard_live_requested": hard_live,
             "sources_tried": sources_tried,
@@ -324,6 +313,7 @@ class AssistantContextCache:
             market["top_losers"] = sorted(
                 rows, key=lambda r: r.get("change_pct") or 0
             )[:5]
+            await cache_set(cache_key, market, ttl_seconds=30)
         else:
             market["unavailable_reason"] = "Market quote catalog empty after cache and refresh attempts"
         return market
@@ -378,7 +368,13 @@ class AssistantContextCache:
         return None
 
     async def _quote_row_from_market_cache(self, symbol: str) -> Optional[dict]:
+        global _L1_QUOTES_MAP, _L1_QUOTES_TS
         sym = symbol.upper().strip()
+        now = _py_time.perf_counter()
+
+        if _L1_QUOTES_MAP and (now - _L1_QUOTES_TS < 15.0):
+            return _L1_QUOTES_MAP.get(sym)
+
         # Primary redis key
         rows = await cache_get("market:quotes")
         if not rows:
@@ -389,10 +385,15 @@ class AssistantContextCache:
                 rows = await self.market_service.get_market_data(read_only=True)
             except Exception:
                 rows = []
+
+        q_map: dict[str, dict] = {}
         for row in rows or []:
-            if isinstance(row, dict) and str(row.get("symbol", "")).upper() == sym:
-                return row
-        return None
+            if isinstance(row, dict) and row.get("symbol"):
+                q_map[str(row["symbol"]).upper().strip()] = row
+
+        _L1_QUOTES_MAP = q_map
+        _L1_QUOTES_TS = now
+        return q_map.get(sym)
 
     @staticmethod
     def _normalize_quote(

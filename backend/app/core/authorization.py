@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 def _user_from_dict(cached_data: dict) -> User:
     created_at_val = cached_data.get("created_at")
     updated_at_val = cached_data.get("updated_at")
+    sub_exp_val = cached_data.get("subscription_expires_at")
     return User(
         id=cached_data.get("id"),
         email=cached_data.get("email"),
@@ -53,6 +54,10 @@ def _user_from_dict(cached_data: dict) -> User:
         sector_preferences=cached_data.get("sector_preferences"),
         notification_preferences=cached_data.get("notification_preferences"),
         recommendation_weights=cached_data.get("recommendation_weights"),
+        subscription_tier=cached_data.get("subscription_tier", "free"),
+        subscription_expires_at=datetime.fromisoformat(sub_exp_val) if sub_exp_val else None,
+        stripe_customer_id=cached_data.get("stripe_customer_id"),
+        stripe_subscription_id=cached_data.get("stripe_subscription_id"),
         created_at=datetime.fromisoformat(created_at_val) if created_at_val else datetime.now(timezone.utc),
         updated_at=datetime.fromisoformat(updated_at_val) if updated_at_val else None,
     )
@@ -61,6 +66,7 @@ def _user_from_dict(cached_data: dict) -> User:
 def _user_to_dict(user: User) -> dict:
     c_at = user.__dict__.get("created_at")
     u_at = user.__dict__.get("updated_at")
+    s_exp = getattr(user, "subscription_expires_at", None)
     return {
         "id": user.id,
         "email": user.email,
@@ -76,6 +82,10 @@ def _user_to_dict(user: User) -> dict:
         "sector_preferences": getattr(user, "sector_preferences", None),
         "notification_preferences": getattr(user, "notification_preferences", None),
         "recommendation_weights": getattr(user, "recommendation_weights", None),
+        "subscription_tier": getattr(user, "subscription_tier", "free"),
+        "subscription_expires_at": s_exp.isoformat() if isinstance(s_exp, datetime) else None,
+        "stripe_customer_id": getattr(user, "stripe_customer_id", None),
+        "stripe_subscription_id": getattr(user, "stripe_subscription_id", None),
         "created_at": c_at.isoformat() if isinstance(c_at, datetime) else None,
         "updated_at": u_at.isoformat() if isinstance(u_at, datetime) else None,
     }

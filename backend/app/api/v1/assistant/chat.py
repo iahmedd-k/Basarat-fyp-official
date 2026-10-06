@@ -54,6 +54,10 @@ async def chat(
     model forecasts, and portfolio holdings.
     """
     try:
+        from app.services.subscription_service import SubscriptionService
+        sub_service = SubscriptionService(service.db)
+        await sub_service.check_and_increment_ai_quota(user)
+
         result = await service.process_chat(
             user_id=user.id,
             message=chat_request.message,
@@ -69,13 +73,47 @@ async def chat(
             intent=result.get("intent"),
             safety_filtered=bool(result.get("safety_filtered")),
         )
-    except ServiceUnavailableError:
-        raise
-    except HTTPException:
+    except (ServiceUnavailableError, HTTPException):
         raise
     except Exception as e:
         log.exception("Chat failed for user %s", user.id)
         raise ServiceUnavailableError("Failed to process chat message")
+
+
+@router.post(
+    "/assistant/chat/stream",
+    summary="Stream tokens from the AI assistant via Server-Sent Events (SSE)",
+    description=(
+        "**Real-time AI Chat Streaming:**\n\n"
+        "- Returns chunk-by-chunk SSE tokens (`text/event-stream`).\n"
+        "- Sub-300ms initial token latency for fluid mobile chat UX.\n"
+        "- Emits `event: chunk`, `event: done`, and `event: error`."
+    ),
+)
+@limiter.limit("30/minute")
+async def chat_stream(
+    request: Request,
+    chat_request: AssistantChatRequest,
+    user: User = Depends(get_current_user),
+    service: AssistantService = Depends(get_assistant_service),
+):
+    from app.services.subscription_service import SubscriptionService
+    sub_service = SubscriptionService(service.db)
+    await sub_service.check_and_increment_ai_quota(user)
+
+    return StreamingResponse(
+        service.process_chat_stream(
+            user_id=user.id,
+            message=chat_request.message,
+            conversation_id=chat_request.conversation_id,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get(
@@ -100,43 +138,6 @@ async def quick_prompts(
     return res
 
 
-@router.post(
-    "/assistant/chat/stream",
-    summary="Stream assistant response (Server-Sent Events)",
-)
-@limiter.limit("30/minute")
-async def chat_stream(
-    request: Request,
-    chat_request: AssistantChatRequest,
-    user: User = Depends(get_current_user),
-    service: AssistantService = Depends(get_assistant_service),
-):
-    """
-    Stream a response from the Stock AI Assistant using SSE (text/event-stream).
-
-    Events:
-    - start: conversation_id
-    - chunk: progressive text (may stream live for low latency)
-    - replace: optional; final safety-adjusted text if live chunks differed
-    - done: full_response (always the text to persist/display), safety_filtered, intent
-    - error: rare transport failures
-
-    Android clients should treat `done.full_response` (or `replace`) as the source of truth.
-    """
-    stream_generator = service.process_chat_stream(
-        user_id=user.id,
-        message=chat_request.message,
-        conversation_id=chat_request.conversation_id,
-    )
-    return StreamingResponse(
-        stream_generator,
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @router.get(
