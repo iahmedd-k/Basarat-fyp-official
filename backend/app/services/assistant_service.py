@@ -47,7 +47,7 @@ class AssistantService:
             title=title or "New Conversation",
         )
         self.db.add(conversation)
-        await self.db.flush()
+        await self.db.commit()
         await self.db.refresh(conversation)
         return conversation
 

@@ -1078,6 +1078,17 @@ class FundamentalsResponse(BaseModel):
                 "source_authenticity": "PSX DPS Direct & Financials Ingestion",
                 "psx_official_url": res.get("psx_official_url") or f"https://dps.psx.com.pk/company/{symbol}",
             }
+        fin_reports = res.get("financial_reports")
+        if isinstance(fin_reports, dict):
+            flat = []
+            for val in fin_reports.values():
+                if isinstance(val, list):
+                    flat.extend(val)
+                elif isinstance(val, dict):
+                    flat.append(val)
+            res["financial_reports"] = flat
+        elif not isinstance(fin_reports, list):
+            res["financial_reports"] = []
         return res
 
     @field_validator("symbol", "data_status", "data_message", "psx_official_url", "financials_unit", mode="before")
