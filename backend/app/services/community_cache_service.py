@@ -70,8 +70,13 @@ class CommunityCacheService:
     # =========================================================================
 
     @staticmethod
-    def post_comments_key(post_id: str, cursor: Optional[str], limit: int) -> str:
-        return f"community:comments:{post_id}:{cursor or 'first'}:{limit}"
+    def post_comments_key(
+        post_id: str,
+        cursor: Optional[str],
+        limit: int,
+        viewer_id: Optional[str] = None,
+    ) -> str:
+        return f"community:comments:{post_id}:{cursor or 'first'}:{limit}:{viewer_id or 'public'}"
 
     @staticmethod
     def comment_replies_key(comment_id: str, limit: int) -> str:

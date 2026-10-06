@@ -71,7 +71,7 @@ class PortfolioRepository:
             filters.append(PortfolioTransaction.transaction_date <= to_date)
 
         stmt = (
-            select(PortfolioTransaction, func.count().over().label("total"))
+            select(PortfolioTransaction)
             .where(*filters)
             .order_by(
                 PortfolioTransaction.transaction_date.desc(),
@@ -81,18 +81,15 @@ class PortfolioRepository:
             .limit(limit)
         )
         result = await self.db.execute(stmt)
-        rows = result.all()
-        if rows:
-            return [row[0] for row in rows], int(rows[0].total)
+        items = list(result.scalars().all())
 
-        # A page-one miss proves there are no matching rows. For an out-of-range
-        # page, retain the total-count contract with a count-only fallback.
-        if page == 1:
-            return [], 0
+        # Page-one shortcut: if returned rows are fewer than page limit, total is known directly
+        if page == 1 and len(items) < limit:
+            return items, len(items)
 
         count_stmt = select(func.count()).select_from(PortfolioTransaction).where(*filters)
         total = await self.db.scalar(count_stmt) or 0
-        return [], total
+        return items, int(total)
 
     async def update_transaction(
         self,

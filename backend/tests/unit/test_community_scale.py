@@ -2,9 +2,11 @@
 
 import pytest
 import time
+from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timedelta, timezone
 
 from app.core.id_generator import generate_time_id, extract_timestamp_from_id
+from app.services import feed_cache_service
 from app.services.cashtag_service import CashtagService
 from app.services.feed_cache_service import FeedCacheService
 from app.services.trending_service import TrendingService
@@ -71,6 +73,26 @@ class TestFeedCacheService:
         jittered = FeedCacheService._jitter(base)
         assert jittered >= base
         assert jittered <= base + int(base * 0.15) + 5
+
+    @pytest.mark.asyncio
+    async def test_push_post_to_feeds_uses_one_pipeline_for_all_feeds(self, monkeypatch):
+        redis = MagicMock()
+        pipe = MagicMock()
+        pipe.execute = AsyncMock()
+        redis.pipeline.return_value = pipe
+        monkeypatch.setattr(feed_cache_service, "get_redis_client", lambda: redis)
+
+        await FeedCacheService.push_post_to_feeds(
+            ["feed:ticker:OGDC", "feed:global", "feed:user:user-1"],
+            "post-1",
+            123.0,
+        )
+
+        redis.pipeline.assert_called_once_with()
+        pipe.execute.assert_awaited_once()
+        assert pipe.zadd.call_count == 3
+        assert pipe.zremrangebyrank.call_count == 3
+        assert pipe.expire.call_count == 3
 
 
 class TestTrendingService:

@@ -168,19 +168,25 @@ class FeedCacheService:
     @classmethod
     async def push_post_to_feed(cls, feed_key: str, post_id: str, score: float) -> None:
         """Add post ID to a Redis sorted set feed, scored by timestamp."""
+        await cls.push_post_to_feeds([feed_key], post_id, score)
+
+    @classmethod
+    async def push_post_to_feeds(cls, feed_keys: List[str], post_id: str, score: float) -> None:
+        """Add a post to multiple Redis feeds in one pipeline."""
         redis = get_redis_client()
-        if not redis:
+        if not redis or not feed_keys:
             return
         try:
             pipe = redis.pipeline()
-            pipe.zadd(feed_key, {post_id: score})
-            # Trim feed to max capacity
-            pipe.zremrangebyrank(feed_key, 0, -(cls.FEED_MAX_ITEMS + 1))
-            pipe.expire(feed_key, cls._jitter(cls.FEED_TTL_BASE))
+            for feed_key in dict.fromkeys(feed_keys):
+                pipe.zadd(feed_key, {post_id: score})
+                pipe.zremrangebyrank(feed_key, 0, -(cls.FEED_MAX_ITEMS + 1))
+                pipe.expire(feed_key, cls._jitter(cls.FEED_TTL_BASE))
             await pipe.execute()
-            cls.invalidate_l1(feed_key)
+            for feed_key in feed_keys:
+                cls.invalidate_l1(feed_key)
         except Exception as e:
-            log.debug("Redis push to feed error: %s", e)
+            log.debug("Redis push to feeds error: %s", e)
 
     @classmethod
     async def get_feed_post_ids(

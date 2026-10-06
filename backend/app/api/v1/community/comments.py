@@ -130,20 +130,18 @@ async def get_comments(
     service: CommunityService = Depends(_get_service),
 ):
     try:
-        cache_key = CommunityCacheService.post_comments_key(post_id, cursor, limit)
+        cache_key = CommunityCacheService.post_comments_key(post_id, cursor, limit, user.id)
         cached = await cache_get(cache_key)
         if cached is not None:
             return CommunityCommentListResponse(**cached)
 
-        post = await service.get_post_by_id(post_id)
-        if post.status != "PUBLISHED" and post.author_id != user.id and not getattr(user, "is_admin", False):
-            raise NotFoundError("Post not found")
-
-        comments, next_cursor, has_more = await service.get_comments(post_id, cursor, limit)
-
-        # Batch fetch reply counts in ONE single query (Kills N+1 comment replies queries!)
-        comment_ids = [c.id for c in comments]
-        reply_counts_map = await service.batch_fetch_comment_reply_counts(comment_ids)
+        comments, next_cursor, has_more, reply_counts_map = await service.get_comments(
+            post_id,
+            cursor,
+            limit,
+            current_user_id=user.id,
+            include_hidden=getattr(user, "is_admin", False),
+        )
 
         comment_responses = [
             _build_comment_response(

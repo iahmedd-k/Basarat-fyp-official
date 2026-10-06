@@ -34,4 +34,6 @@ class PortfolioTransaction(Base):
     __table_args__ = (
         Index("ix_portfolio_transactions_user_symbol", "user_id", "symbol"),
         Index("ix_portfolio_transactions_user_date", "user_id", "transaction_date"),
+        Index("ix_portfolio_txns_user_date_created", "user_id", "transaction_date", "created_at"),
+        Index("ix_portfolio_txns_user_symbol_date", "user_id", "symbol", "transaction_date", "created_at"),
     )

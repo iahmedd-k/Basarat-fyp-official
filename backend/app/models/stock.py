@@ -2,7 +2,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -33,3 +33,7 @@ class StockPrice(Base):
     close: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     volume: Mapped[int] = mapped_column(default=0)
     adjusted_close: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+ 
+    __table_args__ = (
+        Index("ix_stock_prices_stock_id_date", "stock_id", "date"),
+    )

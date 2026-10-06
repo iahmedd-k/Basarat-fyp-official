@@ -16,6 +16,9 @@ async def test_community_cache_service_key_generators():
     assert "follow_status:u1:u2" in CommunityCacheService.follow_status_key("u1", "u2")
     assert "unread_count:u1" in CommunityCacheService.unread_count_key("u1")
     assert "comments:p1:first:20" in CommunityCacheService.post_comments_key("p1", None, 20)
+    assert CommunityCacheService.post_comments_key("p1", None, 20, "u1") != (
+        CommunityCacheService.post_comments_key("p1", None, 20, "u2")
+    )
     assert "replies:c1:20" in CommunityCacheService.comment_replies_key("c1", 20)
 
 

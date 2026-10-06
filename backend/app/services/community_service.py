@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 from typing import Optional, List, Tuple, Dict, Set, Any
 from uuid import uuid4
 
-from sqlalchemy import select, func, delete, update, and_, or_, distinct, literal
+from sqlalchemy import select, func, delete, update, and_, or_, distinct, exists, literal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import aliased, joinedload, selectinload
 
 from app.core.exceptions import (
     BadRequestError,
@@ -124,25 +124,6 @@ class CommunityService:
                 bookmarked_ids.add(post_id)
         return liked_ids, bookmarked_ids
 
-    async def batch_fetch_comment_reply_counts(self, comment_ids: List[str]) -> Dict[str, int]:
-        """Fetch reply counts for a list of parent comment IDs in ONE GROUP BY query."""
-        if not comment_ids:
-            return {}
-
-        stmt = (
-            select(
-                CommunityComment.parent_comment_id,
-                func.count(CommunityComment.id),
-            )
-            .where(
-                CommunityComment.parent_comment_id.in_(comment_ids),
-                CommunityComment.status == CommentStatus.PUBLISHED.value,
-            )
-            .group_by(CommunityComment.parent_comment_id)
-        )
-        res = await self.db.execute(stmt)
-        return {row[0]: row[1] for row in res.all() if row[0]}
-
     # =========================================================================
     # Posts
     # =========================================================================
@@ -162,6 +143,7 @@ class CommunityService:
 
         pt_value = post_type.value if hasattr(post_type, "value") else str(post_type)
         validated_symbol = None
+        validated_stock = None
 
         if pt_value == "STOCK":
             if not stock_symbol:
@@ -171,6 +153,7 @@ class CommunityService:
             if not stock or not stock.is_active:
                 raise NotFoundError(f"Stock '{stock_symbol}' not found or inactive")
             validated_symbol = stock.symbol
+            validated_stock = stock
         elif pt_value == "GENERAL_MARKET":
             if stock_symbol:
                 raise ValidationFailedError("stock_symbol must not be provided for GENERAL_MARKET posts")
@@ -191,6 +174,7 @@ class CommunityService:
             media_metadata=media_metadata,
             price_at_post=price_snapshot,
             status=PostStatus.PUBLISHED.value,
+            stock=validated_stock,
         )
         self.db.add(post)
         await self.db.flush()
@@ -201,15 +185,10 @@ class CommunityService:
             candidates.append(validated_symbol)
 
         valid_tickers = await CashtagService.validate_tickers(self.db, candidates)
-        for ticker in valid_tickers:
-            pt = CommunityPostTicker(post_id=post.id, ticker=ticker)
-            self.db.add(pt)
-            # Push to Redis ticker feed
-            await FeedCacheService.push_post_to_feed(f"feed:ticker:{ticker}", post.id, post.created_at.timestamp())
-
-        # Push to Global feed
-        await FeedCacheService.push_post_to_feed("feed:global", post.id, post.created_at.timestamp())
-        await FeedCacheService.push_post_to_feed(f"feed:user:{author_id}", post.id, post.created_at.timestamp())
+        post.tickers = [CommunityPostTicker(ticker=ticker) for ticker in valid_tickers]
+        feed_keys = [f"feed:ticker:{ticker}" for ticker in valid_tickers]
+        feed_keys.extend(("feed:global", f"feed:user:{author_id}"))
+        await FeedCacheService.push_post_to_feeds(feed_keys, post.id, post.created_at.timestamp())
 
         await self.db.flush()
         return post
@@ -230,8 +209,21 @@ class CommunityService:
         current_user_id: Optional[str] = None,
         include_hidden: bool = False,
     ) -> dict:
+        if current_user_id:
+            liked_by_me = exists().where(
+                CommunityPostLike.post_id == CommunityPost.id,
+                CommunityPostLike.user_id == current_user_id,
+            )
+            bookmarked_by_me = exists().where(
+                CommunityBookmark.post_id == CommunityPost.id,
+                CommunityBookmark.user_id == current_user_id,
+            )
+        else:
+            liked_by_me = literal(False)
+            bookmarked_by_me = literal(False)
+
         query = (
-            select(CommunityPost)
+            select(CommunityPost, liked_by_me, bookmarked_by_me)
             .options(
                 joinedload(CommunityPost.author),
                 joinedload(CommunityPost.stock),
@@ -242,22 +234,18 @@ class CommunityService:
         if not include_hidden:
             query = query.where(CommunityPost.status == PostStatus.PUBLISHED.value)
         result = await self.db.execute(query)
-        post = result.scalars().first()
-        if not post:
+        row = result.first()
+        if not row:
             raise NotFoundError("Post not found")
-
-        liked_set, bookmarked_set = await self.batch_fetch_post_interactions(
-            [post_id],
-            current_user_id,
-        )
+        post, liked, bookmarked = row
 
         # Record sampled view
         await CounterService.increment_post_view(post_id, 1)
 
         return {
             "post": post,
-            "liked_by_me": post.id in liked_set,
-            "bookmarked_by_me": post.id in bookmarked_set,
+            "liked_by_me": liked,
+            "bookmarked_by_me": bookmarked,
         }
 
     async def update_post(
@@ -712,6 +700,7 @@ class CommunityService:
                 post_id=post_id,
                 comment_id=comment.id,
                 actor_id=author_id,
+                check_existing=False,
             )
         elif post.author_id != author_id and not parent:
             await self._create_notification(
@@ -722,6 +711,7 @@ class CommunityService:
                 post_id=post_id,
                 comment_id=comment.id,
                 actor_id=author_id,
+                check_existing=False,
             )
 
         return comment
@@ -731,26 +721,22 @@ class CommunityService:
         post_id: str,
         cursor: Optional[str] = None,
         limit: int = 20,
-    ) -> Tuple[List[CommunityComment], Optional[str], bool]:
+        current_user_id: Optional[str] = None,
+        include_hidden: bool = False,
+    ) -> Tuple[List[CommunityComment], Optional[str], bool, Dict[str, int]]:
         limit = max(1, min(50, limit))
 
-        query = (
-            select(CommunityComment)
-            .options(joinedload(CommunityComment.author))
-            .where(
-                CommunityComment.post_id == post_id,
-                CommunityComment.parent_comment_id.is_(None),
-                CommunityComment.status == CommentStatus.PUBLISHED.value,
-            )
-            .order_by(CommunityComment.created_at.asc(), CommunityComment.id.asc())
-        )
-
+        comment_filters = [
+            CommunityComment.post_id == CommunityPost.id,
+            CommunityComment.parent_comment_id.is_(None),
+            CommunityComment.status == CommentStatus.PUBLISHED.value,
+        ]
         if cursor and cursor.strip():
             c_str = cursor.strip()
             if "|" in c_str:
                 try:
                     c_created_at, c_id = c_str.split("|", 1)
-                    query = query.where(
+                    comment_filters.append(
                         or_(
                             CommunityComment.created_at > c_created_at,
                             and_(
@@ -759,25 +745,66 @@ class CommunityService:
                             ),
                         )
                     )
-                except Exception:
-                    pass
+                except ValueError:
+                    log.warning("Invalid comment cursor %r", cursor)
             else:
-                query = query.where(CommunityComment.id > c_str)
+                comment_filters.append(CommunityComment.id > c_str)
 
-        query = query.limit(limit + 1)
+        reply = aliased(CommunityComment)
+        reply_count = (
+            select(func.count(reply.id))
+            .where(
+                reply.parent_comment_id == CommunityComment.id,
+                reply.status == CommentStatus.PUBLISHED.value,
+            )
+            .correlate(CommunityComment)
+            .scalar_subquery()
+        )
+        query = (
+            select(
+                CommunityPost,
+                CommunityComment,
+                func.coalesce(reply_count, 0).label("reply_count"),
+            )
+            .outerjoin(CommunityComment, and_(*comment_filters))
+            .options(joinedload(CommunityComment.author))
+            .where(CommunityPost.id == post_id)
+        )
+        if not include_hidden:
+            query = query.where(
+                or_(
+                    CommunityPost.status == PostStatus.PUBLISHED.value,
+                    CommunityPost.author_id == current_user_id,
+                )
+            )
+
+        query = query.order_by(CommunityComment.created_at.asc(), CommunityComment.id.asc()).limit(limit + 1)
         result = await self.db.execute(query)
-        comments = list(result.scalars().all())
+        rows = result.all()
+        if not rows:
+            raise NotFoundError("Post not found")
+
+        comments: List[CommunityComment] = []
+        reply_counts_by_comment: Dict[str, int] = {}
+        for _, comment, reply_count in rows:
+            if comment is not None:
+                comments.append(comment)
+                reply_counts_by_comment[comment.id] = reply_count
 
         has_more = len(comments) > limit
         if has_more:
             comments = comments[:limit]
+            reply_counts_by_comment = {
+                comment.id: reply_counts_by_comment[comment.id]
+                for comment in comments
+            }
 
         next_cursor = None
         if comments:
             last_comment = comments[-1]
             next_cursor = f"{last_comment.created_at.isoformat()}|{last_comment.id}"
 
-        return comments, next_cursor, has_more
+        return comments, next_cursor, has_more, reply_counts_by_comment
 
     async def get_replies(
         self,
@@ -1297,19 +1324,21 @@ class CommunityService:
         post_id: Optional[str] = None,
         comment_id: Optional[str] = None,
         actor_id: Optional[str] = None,
+        check_existing: bool = True,
     ) -> CommunityNotification:
-        existing = await self.db.execute(
-            select(CommunityNotification).where(
-                CommunityNotification.recipient_id == recipient_id,
-                CommunityNotification.type == type.value,
-                CommunityNotification.post_id == post_id,
-                CommunityNotification.comment_id == comment_id,
-                CommunityNotification.actor_id == actor_id,
+        if check_existing:
+            existing = await self.db.execute(
+                select(CommunityNotification).where(
+                    CommunityNotification.recipient_id == recipient_id,
+                    CommunityNotification.type == type.value,
+                    CommunityNotification.post_id == post_id,
+                    CommunityNotification.comment_id == comment_id,
+                    CommunityNotification.actor_id == actor_id,
+                )
             )
-        )
-        existing_notification = existing.scalars().first()
-        if existing_notification is not None:
-            return existing_notification
+            existing_notification = existing.scalars().first()
+            if existing_notification is not None:
+                return existing_notification
 
         notification = CommunityNotification(
             recipient_id=recipient_id,

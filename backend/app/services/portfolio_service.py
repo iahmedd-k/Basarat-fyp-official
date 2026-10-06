@@ -397,7 +397,7 @@ class PortfolioService:
             "holdings": list(holdings.values()),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        await cache_set(cache_key, result, ttl_seconds=30)
+        await cache_set(cache_key, result, ttl_seconds=60)
         return result
 
     async def get_holdings(self, user_id: str) -> list[dict]:
@@ -433,9 +433,13 @@ class PortfolioService:
         stock_info = await self.repo.get_stock_info([symbol])
         stock = stock_info.get(symbol)
 
-        # Get all portfolio for total value (for weight calculation)
-        portfolio = await self.get_portfolio(user_id)
-        total_portfolio_value = Decimal(str(portfolio["summary"]["current_value"]))
+        # Get portfolio total value for weight calculation (use cached summary if available)
+        cached_summary = await cache_get(f"portfolio:summary:{user_id}")
+        if isinstance(cached_summary, dict) and "summary" in cached_summary:
+            total_portfolio_value = Decimal(str(cached_summary["summary"].get("current_value", "0")))
+        else:
+            portfolio = await self.get_portfolio(user_id)
+            total_portfolio_value = Decimal(str(portfolio["summary"]["current_value"]))
 
         # Build holding detail
         price_info = calculate_holding_from_position(
@@ -474,7 +478,7 @@ class PortfolioService:
             "price_updated_at": price_updated_at,
             "price_status": price_info["price_status"],
         }
-        await cache_set(cache_key, result, ttl_seconds=30)
+        await cache_set(cache_key, result, ttl_seconds=60)
         return result
 
     async def get_pnl(self, user_id: str) -> dict:
@@ -498,7 +502,7 @@ class PortfolioService:
             "total_pnl_percent": summary.get("total_pnl_percent", 0.0),
             "today_pnl": Decimal(str(summary.get("today_pnl", "0"))),
         }
-        await cache_set(cache_key, result, ttl_seconds=30)
+        await cache_set(cache_key, result, ttl_seconds=60)
         return result
 
     async def get_allocation(self, user_id: str) -> dict:
@@ -557,6 +561,19 @@ class PortfolioService:
         for symbol, price_date, adjusted_close in prices_result.all():
             if adjusted_close is not None:
                 historical_prices[symbol][price_date] = Decimal(str(adjusted_close))
+
+        # Fallback to maintained local parquet history for symbols not yet populated in SQL database
+        for sym in symbols:
+            if not historical_prices.get(sym):
+                try:
+                    df = self.stock_service._get_ohlcv_from_file(sym, start=cutoff)
+                    if df is not None and not df.empty:
+                        for idx, row in df.iterrows():
+                            close_val = row.get("CLOSE") or row.get("ADJUSTED_CLOSE")
+                            if close_val is not None:
+                                historical_prices[sym][idx.date()] = Decimal(str(close_val))
+                except Exception:
+                    pass
         
         data_series = calculate_performance_time_series(txns, historical_prices, period)
         result = {

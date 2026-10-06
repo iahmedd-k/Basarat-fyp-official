@@ -2,7 +2,7 @@
 
 import logging
 from typing import Dict, List, Tuple
-from sqlalchemy import select, update, func
+from sqlalchemy import case, select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import get_redis_client
@@ -81,17 +81,16 @@ class CounterService:
         try:
             likes_deltas = await redis.hgetall("buffer:post_likes_delta")
             if likes_deltas:
-                # Remove from buffer first
                 await redis.delete("buffer:post_likes_delta")
-                for post_id, delta_str in likes_deltas.items():
-                    delta = int(delta_str)
-                    if delta != 0:
-                        await session.execute(
-                            update(CommunityPost)
-                            .where(CommunityPost.id == post_id)
-                            .values(like_count=func.greatest(0, CommunityPost.like_count + delta))
-                        )
-                        flushed["likes"] += 1
+                deltas = {post_id: int(delta) for post_id, delta in likes_deltas.items() if int(delta) != 0}
+                if deltas:
+                    delta_by_post = case(deltas, value=CommunityPost.id, else_=0)
+                    await session.execute(
+                        update(CommunityPost)
+                        .where(CommunityPost.id.in_(deltas))
+                        .values(like_count=func.greatest(0, CommunityPost.like_count + delta_by_post))
+                    )
+                    flushed["likes"] = len(deltas)
         except Exception as e:
             log.warning("Failed flushing buffered likes: %s", e)
 
@@ -100,15 +99,15 @@ class CounterService:
             comments_deltas = await redis.hgetall("buffer:post_comments_delta")
             if comments_deltas:
                 await redis.delete("buffer:post_comments_delta")
-                for post_id, delta_str in comments_deltas.items():
-                    delta = int(delta_str)
-                    if delta != 0:
-                        await session.execute(
-                            update(CommunityPost)
-                            .where(CommunityPost.id == post_id)
-                            .values(comment_count=func.greatest(0, CommunityPost.comment_count + delta))
-                        )
-                        flushed["comments"] += 1
+                deltas = {post_id: int(delta) for post_id, delta in comments_deltas.items() if int(delta) != 0}
+                if deltas:
+                    delta_by_post = case(deltas, value=CommunityPost.id, else_=0)
+                    await session.execute(
+                        update(CommunityPost)
+                        .where(CommunityPost.id.in_(deltas))
+                        .values(comment_count=func.greatest(0, CommunityPost.comment_count + delta_by_post))
+                    )
+                    flushed["comments"] = len(deltas)
         except Exception as e:
             log.warning("Failed flushing buffered comments: %s", e)
 
@@ -117,15 +116,15 @@ class CounterService:
             views_deltas = await redis.hgetall("buffer:post_views_delta")
             if views_deltas:
                 await redis.delete("buffer:post_views_delta")
-                for post_id, delta_str in views_deltas.items():
-                    delta = int(delta_str)
-                    if delta > 0:
-                        await session.execute(
-                            update(CommunityPost)
-                            .where(CommunityPost.id == post_id)
-                            .values(view_count=CommunityPost.view_count + delta)
-                        )
-                        flushed["views"] += 1
+                deltas = {post_id: int(delta) for post_id, delta in views_deltas.items() if int(delta) > 0}
+                if deltas:
+                    delta_by_post = case(deltas, value=CommunityPost.id, else_=0)
+                    await session.execute(
+                        update(CommunityPost)
+                        .where(CommunityPost.id.in_(deltas))
+                        .values(view_count=CommunityPost.view_count + delta_by_post)
+                    )
+                    flushed["views"] = len(deltas)
         except Exception as e:
             log.warning("Failed flushing buffered views: %s", e)
 

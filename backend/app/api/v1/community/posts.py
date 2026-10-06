@@ -189,12 +189,9 @@ async def create_post(
             media_metadata=media_metadata,
         )
 
-        post_data = await service.get_post_with_details(post.id, current_user_id=user.id)
-        post_obj = post_data["post"]
         response_model = _build_post_response(
-            post_obj,
-            liked_by_me=post_data["liked_by_me"],
-            bookmarked_by_me=post_data["bookmarked_by_me"],
+            post,
+            author=user,
         )
 
         # Record Idempotency Key
@@ -746,4 +743,3 @@ async def report_post(
     except Exception:
         log.exception("Report post failed")
         raise ServiceUnavailableError("Failed to report post")
-
