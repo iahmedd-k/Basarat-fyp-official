@@ -1,11 +1,14 @@
 """API tests for market endpoints."""
 
+from datetime import date
 from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
 from app.main import app
+from app.models.stock import Stock, StockPrice
 from app.services.market_service import MarketService
 
 
@@ -100,6 +103,43 @@ class TestMarketGainersLosers:
         resp = await client.get("/api/v1/market/losers", headers=auth_headers)
         assert resp.status_code == 200
         assert "losers" in resp.json()
+
+    @pytest.mark.parametrize(
+        ("path", "method_name"),
+        [
+            ("/api/v1/market/gainers?limit=2", "get_top_gainers"),
+            ("/api/v1/market/losers?limit=2", "get_top_losers"),
+        ],
+    )
+    async def test_movers_use_only_symbols_with_persisted_history(
+        self,
+        client: AsyncClient,
+        db_session,
+        override_market,
+        path,
+        method_name,
+    ):
+        stock = await db_session.scalar(select(Stock).where(Stock.symbol == "HBL"))
+        assert stock is not None
+        db_session.add(
+            StockPrice(
+                stock_id=stock.id,
+                date=date.today(),
+                open=150,
+                high=155,
+                low=149,
+                close=154,
+                volume=1000,
+                adjusted_close=154,
+            )
+        )
+        await db_session.flush()
+
+        response = await client.get(path)
+
+        assert response.status_code == 200
+        method = getattr(override_market, method_name)
+        method.assert_awaited_once_with(2, {"HBL"})
 
     async def test_get_volume_spikes(self, client: AsyncClient, auth_headers, override_market):
         override_market.get_volume_spikes.return_value = [

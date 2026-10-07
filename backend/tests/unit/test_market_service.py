@@ -86,3 +86,20 @@ async def test_top_losers_excludes_zero_volume_stale_quotes(monkeypatch):
     result = await service.get_top_losers()
 
     assert [row["symbol"] for row in result] == ["GOOD"]
+
+
+async def test_top_movers_exclude_quote_only_symbols_without_history(monkeypatch):
+    service = MarketService()
+    quotes = [
+        {"symbol": "GCWL", "ldcp": 10, "current": 11, "change_pct": 10, "volume": 100},
+        {"symbol": "GCWLR", "ldcp": 1, "current": 2, "change_pct": 100, "volume": 100},
+        {"symbol": "WASL", "ldcp": 10, "current": 9, "change_pct": -10, "volume": 100},
+        {"symbol": "WASLR", "ldcp": 1, "current": 0.01, "change_pct": -99, "volume": 100},
+    ]
+    monkeypatch.setattr(service, "get_market_data", AsyncMock(return_value=quotes))
+
+    gainers = await service.get_top_gainers(history_symbols={"GCWL", "WASL"})
+    losers = await service.get_top_losers(history_symbols={"GCWL", "WASL"})
+
+    assert [row["symbol"] for row in gainers] == ["GCWL", "WASL"]
+    assert [row["symbol"] for row in losers] == ["WASL", "GCWL"]

@@ -892,24 +892,45 @@ class MarketService:
 
         return []
 
-    async def get_top_gainers(self, limit: int = 10) -> list[dict]:
+    async def get_top_gainers(
+        self,
+        limit: int = 10,
+        history_symbols: set[str] | None = None,
+    ) -> list[dict]:
         data = await self.get_market_data()
-        traded = self._traded_quotes(data)
+        traded = self._traded_quotes(data, history_symbols)
         return sorted(traded, key=lambda d: d["change_pct"], reverse=True)[:limit]
 
-    async def get_top_losers(self, limit: int = 10) -> list[dict]:
+    async def get_top_losers(
+        self,
+        limit: int = 10,
+        history_symbols: set[str] | None = None,
+    ) -> list[dict]:
         data = await self.get_market_data()
-        traded = self._traded_quotes(data)
+        traded = self._traded_quotes(data, history_symbols)
         return sorted(traded, key=lambda d: d["change_pct"])[:limit]
 
     @classmethod
-    def _traded_quotes(cls, data: list[dict]) -> list[dict]:
-        """Exclude no-trade rows from mover lists; their prices may be stale."""
+    def _traded_quotes(
+        cls,
+        data: list[dict],
+        history_symbols: set[str] | None = None,
+    ) -> list[dict]:
+        """Exclude stale quotes and, when supplied, instruments without stock history."""
+        eligible_symbols = (
+            {symbol.strip().upper() for symbol in history_symbols}
+            if history_symbols is not None
+            else None
+        )
         return [
             row for row in data
             if cls._safe_int(row.get("volume")) > 0
             and cls._safe_float(row.get("current")) > 0
             and cls._safe_float(row.get("ldcp")) > 0
+            and (
+                eligible_symbols is None
+                or str(row.get("symbol") or "").strip().upper() in eligible_symbols
+            )
         ]
 
     async def get_volume_spikes(self, limit: int = 10) -> list[dict]:

@@ -1,8 +1,12 @@
 import logging
 from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
 from app.core.rate_limiter import limiter
+from app.db.session import get_db
+from app.models.stock import Stock, StockPrice
 from app.schemas.market import (
     GainersResponse,
     IndexConstituentsResponse,
@@ -23,6 +27,17 @@ from app.services.websocket_manager import PROTOCOL_VERSION
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _symbols_with_price_history(db: AsyncSession) -> set[str]:
+    """Return active stock tickers with persisted OHLCV usable by price-history."""
+    result = await db.scalars(
+        select(Stock.symbol)
+        .join(StockPrice, StockPrice.stock_id == Stock.id)
+        .where(Stock.is_active.is_(True))
+        .distinct()
+    )
+    return {str(symbol).strip().upper() for symbol in result.all() if symbol}
 
 
 @router.get(
@@ -202,36 +217,44 @@ async def get_kmi_30_constituents(
 @router.get(
     "/market/gainers",
     response_model=GainersResponse,
-    summary="Get top gaining stocks",
+    summary="Get top gaining stocks with price history",
+    description="Ranks traded stocks with stored OHLCV history. Quote-only instruments are excluded.",
 )
 @limiter.limit("60/minute")
 async def get_top_gainers(
     request: Request,
     limit: int = Query(10, ge=1, le=100),
     service: MarketService = Depends(MarketService),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
-        gainers = await service.get_top_gainers(limit)
+        history_symbols = await _symbols_with_price_history(db)
+        gainers = await service.get_top_gainers(limit, history_symbols)
         return {"gainers": gainers, **service.quote_freshness()}
     except Exception:
+        log.exception("Failed to fetch gainers with price-history eligibility")
         raise ServiceUnavailableError("Failed to fetch gainers")
 
 
 @router.get(
     "/market/losers",
     response_model=LosersResponse,
-    summary="Get top losing stocks",
+    summary="Get top losing stocks with price history",
+    description="Ranks traded stocks with stored OHLCV history. Quote-only instruments are excluded.",
 )
 @limiter.limit("60/minute")
 async def get_top_losers(
     request: Request,
     limit: int = Query(10, ge=1, le=100),
     service: MarketService = Depends(MarketService),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
-        losers = await service.get_top_losers(limit)
+        history_symbols = await _symbols_with_price_history(db)
+        losers = await service.get_top_losers(limit, history_symbols)
         return {"losers": losers, **service.quote_freshness()}
     except Exception:
+        log.exception("Failed to fetch losers with price-history eligibility")
         raise ServiceUnavailableError("Failed to fetch losers")
 
 
