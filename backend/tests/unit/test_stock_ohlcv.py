@@ -56,6 +56,25 @@ def test_ohlcv_history_tolerates_missing_optional_columns(monkeypatch):
     }
 
 
+def test_price_history_uses_new_cache_version_after_history_source_fix(monkeypatch):
+    service = StockService()
+    dates = pd.to_datetime([date.today() - timedelta(days=1)])
+    frame = pd.DataFrame({"CLOSE": [12.0]}, index=dates)
+    cache_keys = []
+    monkeypatch.setattr(service, "_get_ohlcv", lambda *_args: frame)
+    monkeypatch.setattr(
+        stock_module,
+        "cache_get_sync",
+        lambda key: cache_keys.append(key) or None,
+    )
+    monkeypatch.setattr(stock_module, "cache_set_sync", lambda *_args: None)
+
+    result = service.get_price_history("TESTCACHE", "1W")
+
+    assert result["bars"]
+    assert "stock:history:v4:TESTCACHE:1W" in cache_keys
+
+
 def test_price_history_falls_back_to_latest_available_bars_for_older_data(monkeypatch):
     service = StockService()
     symbol = "TESTOLDER"
@@ -143,6 +162,37 @@ def test_local_ohlcv_history_deduplicates_dates_using_latest_row(tmp_path, monke
     assert result is not None
     assert list(result.index.strftime("%Y-%m-%d")) == ["2026-01-01", "2026-01-02"]
     assert result.loc[pd.Timestamp("2026-01-02"), "CLOSE"] == 13.0
+
+
+def test_local_symbol_history_takes_precedence_over_incomplete_combined_file(
+    tmp_path, monkeypatch
+):
+    symbol = "TESTPRIORITY"
+    dates = pd.to_datetime(["2026-01-01", "2026-01-02"])
+    pd.DataFrame(
+        {"date": dates, "close": [10.0, 11.0]}
+    ).to_parquet(tmp_path / f"{symbol}.parquet", index=False)
+    pd.DataFrame(
+        {"symbol": [symbol], "date": [dates[0]], "close": [9.0]}
+    ).to_parquet(tmp_path / "all_symbols.parquet", index=False)
+    monkeypatch.setattr(stock_module, "OHLCV_DATA_DIR", tmp_path)
+
+    result = StockService()._get_ohlcv_from_file(symbol)
+
+    assert result is not None
+    assert list(result["CLOSE"]) == [10.0, 11.0]
+
+
+def test_technical_indicators_do_not_invent_history_for_missing_symbols(monkeypatch):
+    service = StockService()
+    monkeypatch.setattr(service, "_get_ohlcv_from_file", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(stock_module, "cache_get_sync", lambda _key: None)
+
+    result = service.technical_indicators("MISSINGHISTORY", indicators="RSI")
+
+    assert result["indicators"] == {}
+    assert result["data_quality"]["status"] == "unavailable"
+    assert "No historical OHLCV data" in result["summary_message"]
 
 
 def test_adx_uses_wilder_warmup_and_is_not_a_directional_signal(monkeypatch):

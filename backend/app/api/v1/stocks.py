@@ -1,16 +1,18 @@
 import asyncio
 import logging
 import re
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from sqlalchemy import case, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
 from app.core.rate_limiter import limiter
+from app.core.redis import cache_get, cache_set
 from app.db.session import get_db
-from app.models.stock import Stock
+from app.models.stock import Stock, StockPrice
 from app.schemas.stock import (
     FundamentalsResponse,
     PriceHistoryResponse,
@@ -25,23 +27,65 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 _SYMBOL_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9]{1,9}$")
+_COMPANY_NAME_CHARS = frozenset("&.,'()/-")
 
 
-def _validate_symbol(symbol: str) -> str:
-    """Normalize and validate a PSX stock symbol.
+async def _resolve_stock_symbol(reference: str, db: AsyncSession) -> str:
+    """Resolve a ticker directly, or an exact company/quote name on demand."""
+    value = reference.strip()
+    if _SYMBOL_PATTERN.fullmatch(value):
+        return value.upper()
 
-    Raises ValueError if the symbol doesn't match expected format.
-    """
-    symbol = symbol.strip().upper()
-    if not _SYMBOL_PATTERN.match(symbol):
-        raise ValueError(
-            f"Invalid stock symbol '{symbol}'. "
-            "Symbols must be 2-10 alphanumeric characters starting with a letter."
+    valid_name = (
+        bool(value)
+        and len(value) <= 100
+        and any(char.isalpha() for char in value)
+        and all(
+            char.isalnum() or char.isspace() or char in _COMPANY_NAME_CHARS
+            for char in value
         )
-    return symbol
+    )
+    if not valid_name:
+        raise HTTPException(
+            status_code=422,
+            detail="Enter a stock symbol or exact company name up to 100 characters.",
+        )
 
+    normalized_name = " ".join(value.split()).casefold()
+    try:
+        result = await db.execute(
+            select(Stock.symbol)
+            .where(
+                Stock.is_active.is_(True),
+                func.lower(func.trim(Stock.name)) == normalized_name,
+            )
+            .limit(2)
+        )
+        matches = {str(symbol).upper() for symbol in result.scalars().all()}
+    except Exception as exc:
+        log.exception("Stock name lookup failed for %r", value)
+        raise ServiceUnavailableError("Stock name lookup temporarily unavailable") from exc
 
-from app.core.redis import cache_get, cache_set
+    if not matches:
+        for cache_key in ("market:quotes", "market:quotes:last_known"):
+            quotes = await cache_get(cache_key)
+            if not isinstance(quotes, list):
+                continue
+            matches = {
+                str(quote.get("symbol") or "").strip().upper()
+                for quote in quotes
+                if isinstance(quote, dict)
+                and " ".join(str(quote.get("name") or "").split()).casefold() == normalized_name
+                and str(quote.get("symbol") or "").strip()
+            }
+            if matches:
+                break
+
+    if len(matches) == 1:
+        return matches.pop()
+    if len(matches) > 1:
+        raise NotFoundError(f"Company name '{value}' matches multiple stocks; use its ticker symbol.")
+    raise NotFoundError(f"No stock found for ticker or exact company name '{value}'.")
 
 
 @router.get(
@@ -123,13 +167,11 @@ async def search_stocks(
 @limiter.limit("30/minute")
 async def get_stock_overview(
     request: Request,
-    symbol: str = Path(..., description="PSX stock symbol (e.g. HBL, OGDC)"),
+    symbol: str = Path(..., description="PSX ticker or exact company/quote name"),
+    db: AsyncSession = Depends(get_db),
     service: StockService = Depends(StockService),
 ):
-    try:
-        symbol = _validate_symbol(symbol)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    symbol = await _resolve_stock_symbol(symbol, db)
     try:
         overview = await asyncio.to_thread(service.get_overview, symbol)
         if overview.get("message") == "no data":
@@ -151,18 +193,68 @@ async def get_stock_overview(
 @limiter.limit("30/minute")
 async def get_stock_price_history(
     request: Request,
-    symbol: str = Path(..., description="PSX stock symbol (e.g. HBL, OGDC)"),
+    symbol: str = Path(..., description="PSX ticker or exact company/quote name"),
     range: str = Query("1M", pattern="^(1D|1W|1M|1Y)$"),
+    db: AsyncSession = Depends(get_db),
     service: StockService = Depends(StockService),
 ):
-    try:
-        symbol = _validate_symbol(symbol)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    symbol = await _resolve_stock_symbol(symbol, db)
     try:
         data = await asyncio.to_thread(service.get_price_history, symbol, range)
         if not data.get("bars"):
-            raise NotFoundError(f"No price history available for '{symbol}'")
+            _, lookback = StockService.RANGE_MAP.get(
+                range.upper(), StockService.RANGE_MAP["1M"]
+            )
+            result = await db.execute(
+                select(
+                    StockPrice.date.label("date"),
+                    StockPrice.open.label("open"),
+                    StockPrice.high.label("high"),
+                    StockPrice.low.label("low"),
+                    StockPrice.close.label("close"),
+                    StockPrice.volume.label("volume"),
+                )
+                .join(Stock, StockPrice.stock_id == Stock.id)
+                .where(Stock.symbol == symbol)
+                .order_by(StockPrice.date.desc())
+                .limit(400)
+            )
+            stored_rows = result.all()
+            if stored_rows:
+                latest_date = stored_rows[0].date
+                cutoff = latest_date - lookback
+                selected_rows = [
+                    row for row in reversed(stored_rows) if row.date >= cutoff
+                ]
+                if not selected_rows:
+                    selected_rows = (
+                        list(reversed(stored_rows))[-1:]
+                        if range == "1D"
+                        else list(reversed(stored_rows))[-5:]
+                    )
+
+                as_of_date = latest_date
+                age_days = max(0, (date.today() - as_of_date).days)
+                data = {
+                    "symbol": symbol,
+                    "range": range,
+                    "bars": [
+                        {
+                            "date": row.date.isoformat(),
+                            "open": float(row.open) if row.open is not None else None,
+                            "high": float(row.high) if row.high is not None else None,
+                            "low": float(row.low) if row.low is not None else None,
+                            "close": float(row.close) if row.close is not None else None,
+                            "volume": int(row.volume or 0),
+                        }
+                        for row in selected_rows
+                    ],
+                    "as_of_date": as_of_date.isoformat(),
+                    "data_age_days": age_days,
+                    "is_stale": age_days > 3,
+                }
+            else:
+                raise NotFoundError(f"No price history available for '{symbol}'")
         return data
     except NotFoundError:
         raise
@@ -186,16 +278,14 @@ async def get_stock_price_history(
 @limiter.limit("20/minute")
 async def get_stock_technical_indicators(
     request: Request,
-    symbol: str = Path(..., description="PSX stock symbol (e.g. HBL, OGDC)"),
+    symbol: str = Path(..., description="PSX ticker or exact company/quote name"),
     indicators: str = Query("RSI,MACD,BB,SMA,ADX", description="Comma-separated indicators (RSI, MACD, BB, SMA, ADX)"),
     period: int = Query(14, ge=1, le=200, description="Calculation window period"),
     limit: int = Query(30, ge=1, le=365, description="Number of historical indicator data points to return (default: 30 bars / ~1 month)"),
+    db: AsyncSession = Depends(get_db),
     service: StockService = Depends(StockService),
 ):
-    try:
-        symbol = _validate_symbol(symbol)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    symbol = await _resolve_stock_symbol(symbol, db)
     try:
         data = await asyncio.to_thread(
             service.technical_indicators, symbol, indicators, period, limit
@@ -219,13 +309,11 @@ async def get_stock_technical_indicators(
 @limiter.limit("20/minute")
 async def get_stock_fundamentals(
     request: Request,
-    symbol: str = Path(..., description="PSX stock symbol (e.g. HBL, OGDC)"),
+    symbol: str = Path(..., description="PSX ticker or exact company/quote name"),
+    db: AsyncSession = Depends(get_db),
     service: StockService = Depends(StockService),
 ):
-    try:
-        symbol = _validate_symbol(symbol)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    symbol = await _resolve_stock_symbol(symbol, db)
     try:
         data = await asyncio.to_thread(service.get_fundamentals, symbol)
         return data

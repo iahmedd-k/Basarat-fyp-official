@@ -597,12 +597,12 @@ class StockService:
     ):
         symbol = str(symbol).strip().upper()
         sources = []
-        combined_path = OHLCV_DATA_DIR / "all_symbols.parquet"
-        if combined_path.is_file():
-            sources.append((combined_path, [("symbol", "==", symbol)]))
         symbol_path = OHLCV_DATA_DIR / f"{symbol}.parquet"
         if symbol_path.is_file():
             sources.append((symbol_path, None))
+        combined_path = OHLCV_DATA_DIR / "all_symbols.parquet"
+        if combined_path.is_file():
+            sources.append((combined_path, [("symbol", "==", symbol)]))
 
         for path, filters in sources:
             if not path.is_file():
@@ -843,7 +843,7 @@ class StockService:
     def get_price_history(self, symbol: str, range: str = "1M"):
         symbol = str(symbol).upper()
         label, lookback = self.RANGE_MAP.get(range.upper(), self.RANGE_MAP["1M"])
-        cache_key = f"stock:history:v3:{symbol}:{label}"
+        cache_key = f"stock:history:v4:{symbol}:{label}"
         cached = cache_get_sync(cache_key)
         if cached is not None:
             return cached
@@ -923,7 +923,7 @@ class StockService:
     ) -> dict:
         symbol = str(symbol).upper()
         norm_indicators = ",".join(sorted([i.strip().upper() for i in indicators.split(",") if i.strip()]))
-        cache_key = f"tech:v4:{symbol}:{norm_indicators}:{period}:{limit}"
+        cache_key = f"tech:v5:{symbol}:{norm_indicators}:{period}:{limit}"
 
         # 1. Check Redis cache first
         cached = cache_get_sync(cache_key)
@@ -934,22 +934,27 @@ class StockService:
         end = date.today()
         df = self._get_ohlcv_from_file(symbol, end=end)
 
-        # Fallback if no history
+        # Do not manufacture price history: indicators without observed OHLCV
+        # data would look valid while disagreeing with the history endpoint.
         if df is None or getattr(df, "empty", True):
-            quote = self.get_quote(symbol) or {}
-            cur_p = float(quote.get("current") or quote.get("ldcp") or 100.0)
-            now_dt = date.today()
-            # Generate synthetic 60-day baseline so indicators never fail
-            dates = pd.date_range(end=now_dt, periods=60, freq="B")
-            import numpy as np
-            prices = cur_p * (1 + np.sin(np.linspace(0, 3.14, 60)) * 0.05)
-            df = pd.DataFrame({
-                "OPEN": prices * 0.995,
-                "HIGH": prices * 1.01,
-                "LOW": prices * 0.99,
-                "CLOSE": prices,
-                "VOLUME": 500000
-            }, index=dates)
+            return {
+                "symbol": symbol,
+                "period": period,
+                "as_of_date": None,
+                "data_age_days": None,
+                "is_stale": True,
+                "overall_signal": "NEUTRAL",
+                "summary_message": "No historical OHLCV data is available for this stock.",
+                "signals_breakdown": {"buy": 0, "neutral": 0, "sell": 0},
+                "summary": {},
+                "indicators": {},
+                "data_quality": {
+                    "status": "unavailable",
+                    "source": "PSX",
+                    "missing_indicators": requested,
+                    "calculated_indicators": [],
+                },
+            }
 
         # 2. Blend live session quote if newer than latest historical file bar (for real symbols)
         if not symbol.startswith("TEST"):

@@ -1,8 +1,12 @@
 """API tests for stock endpoints."""
 
+from datetime import date, timedelta
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
+from app.models.stock import Stock, StockPrice
 
 @pytest.mark.api
 class TestStockSearch:
@@ -97,9 +101,116 @@ class TestStockPriceHistory:
             )
             assert resp.status_code in (200, 404, 503)
 
+    async def test_price_history_resolves_exact_company_name(
+        self, client: AsyncClient, mock_stock_service
+    ):
+        called_symbols = []
+        mock_stock_service.get_price_history.side_effect = (
+            lambda symbol, range: called_symbols.append(symbol)
+            or {
+                "symbol": symbol,
+                "range": range,
+                "bars": [{"date": "2026-10-01", "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}],
+                "as_of_date": "2026-10-01",
+                "data_age_days": 0,
+                "is_stale": False,
+            }
+        )
+
+        resp = await client.get("/api/v1/stocks/Habib%20Bank%20Limited/price-history")
+
+        assert resp.status_code == 200
+        assert resp.json()["symbol"] == "HBL"
+        assert called_symbols == ["HBL"]
+
+    async def test_price_history_resolves_quote_name_from_market_cache(
+        self, client: AsyncClient, monkeypatch, mock_stock_service
+    ):
+        async def cached_quotes(key):
+            if key == "market:quotes":
+                return [{"symbol": "QTC", "name": "Quote Test Company"}]
+            return None
+
+        monkeypatch.setattr("app.api.v1.stocks.cache_get", cached_quotes)
+        mock_stock_service.get_price_history.side_effect = (
+            lambda symbol, range: {
+                "symbol": symbol,
+                "range": range,
+                "bars": [{"date": "2026-10-01", "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}],
+                "as_of_date": "2026-10-01",
+                "data_age_days": 0,
+                "is_stale": False,
+            }
+        )
+
+        resp = await client.get("/api/v1/stocks/Quote%20Test%20Company/price-history")
+
+        assert resp.status_code == 200
+        assert resp.json()["symbol"] == "QTC"
+
+    async def test_price_history_falls_back_to_persisted_stock_prices(
+        self, client: AsyncClient, db_session, mock_stock_service
+    ):
+        stock = await db_session.scalar(select(Stock).where(Stock.symbol == "HBL"))
+        assert stock is not None
+        today = date.today()
+        db_session.add_all(
+            [
+                StockPrice(
+                    stock_id=stock.id,
+                    date=today,
+                    open=150,
+                    high=155,
+                    low=149,
+                    close=154,
+                    volume=1000,
+                    adjusted_close=154,
+                ),
+                StockPrice(
+                    stock_id=stock.id,
+                    date=today - timedelta(days=1),
+                    open=149,
+                    high=152,
+                    low=148,
+                    close=150,
+                    volume=900,
+                    adjusted_close=150,
+                ),
+            ]
+        )
+        await db_session.flush()
+        mock_stock_service.get_price_history.side_effect = lambda *_args: {
+            "symbol": "HBL",
+            "range": "1M",
+            "bars": [],
+        }
+
+        resp = await client.get("/api/v1/stocks/HBL/price-history")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["symbol"] == "HBL"
+        assert len(data["bars"]) == 2
+        assert data["bars"][-1]["close"] == 154
+
 
 @pytest.mark.api
 class TestStockTechnicalIndicators:
+    async def test_indicators_without_history_are_not_fabricated(
+        self, client: AsyncClient, mock_stock_service
+    ):
+        mock_stock_service.technical_indicators.side_effect = None
+        mock_stock_service.technical_indicators.return_value = {
+            "symbol": "NOHISTORY",
+            "indicators": {},
+        }
+
+        resp = await client.get(
+            "/api/v1/stocks/NOHISTORY/technical-indicators?indicators=RSI"
+        )
+
+        assert resp.status_code == 404
+
     async def test_indicators_success(self, client: AsyncClient, auth_headers):
         resp = await client.get(
             "/api/v1/stocks/HBL/technical-indicators?indicators=RSI",
