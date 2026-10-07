@@ -1,7 +1,7 @@
 import asyncio
 import sys
 from datetime import date, datetime, timedelta
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -156,7 +156,130 @@ def test_incremental_scrape_refreshes_existing_latest_session(tmp_path, monkeypa
     assert updated.iloc[-1]["close"] == 12.0
 
 
-def test_after_close_runner_pauses_after_each_ten_and_rebuilds_all_symbols(
+def test_incremental_scrape_limits_first_fetch_for_new_symbol(tmp_path, monkeypatch):
+    session_date = date(2026, 10, 2)
+    requested = {}
+    monkeypatch.setattr(
+        run_scrape,
+        "fetch_ohlcv",
+        lambda symbol, start, end: requested.update(
+            symbol=symbol, start=start, end=end
+        )
+        or pd.DataFrame(
+            {
+                "date": pd.to_datetime([session_date]),
+                "open": [10.0],
+                "high": [11.0],
+                "low": [9.0],
+                "close": [10.5],
+                "volume": [100],
+            }
+        ),
+    )
+
+    result = run_scrape._scrape_symbol(
+        symbol="NEWQUOTE",
+        start=session_date - timedelta(days=5 * 365),
+        end=session_date,
+        output_dir=tmp_path,
+        incremental=True,
+        delay=0,
+        initial_lookback_days=365,
+    )
+
+    assert result["status"] == "ok"
+    assert requested["start"] == session_date - timedelta(days=365)
+
+
+def test_refresh_symbol_universe_includes_registered_quotes_and_files(
+    tmp_path, monkeypatch
+):
+    class FakeResult:
+        def all(self):
+            return ["HBL", "UBL", "TEST_SYM_01"]
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def scalars(self, _statement):
+            return FakeResult()
+
+    (tmp_path / "LUCK.parquet").touch()
+    (tmp_path / "all_symbols.parquet").touch()
+    monkeypatch.setattr(after_close, "get_sync_session_factory", lambda: FakeSession)
+    monkeypatch.setattr(
+        after_close,
+        "cache_get_sync",
+        lambda key: (
+            [{"symbol": "OGDC"}, {"symbol": "HBL"}]
+            if key == "market:quotes"
+            else [{"symbol": "GCWL"}]
+        ),
+    )
+    monkeypatch.setattr(
+        after_close,
+        "get_active_symbols",
+        lambda: [{"symbol": "KSE100ONLY"}],
+    )
+
+    assert after_close.get_refresh_symbols(tmp_path) == [
+        "GCWL",
+        "HBL",
+        "KSE100ONLY",
+        "LUCK",
+        "OGDC",
+        "UBL",
+    ]
+
+
+def test_materialize_database_history_writes_missing_symbol_files(
+    tmp_path, monkeypatch
+):
+    rows = [
+        SimpleNamespace(
+            symbol="GCWL",
+            date=date(2026, 10, 6),
+            open=12.0,
+            high=13.0,
+            low=11.0,
+            close=12.5,
+            volume=1000,
+        )
+    ]
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, _statement):
+            return SimpleNamespace(all=lambda: rows)
+
+    monkeypatch.setattr(after_close, "get_sync_session_factory", lambda: FakeSession)
+
+    materialized = after_close._materialize_database_history(tmp_path, ["GCWL"])
+
+    assert materialized == 1
+    frame = pd.read_parquet(tmp_path / "GCWL.parquet")
+    assert frame.to_dict(orient="records") == [
+        {
+            "date": pd.Timestamp("2026-10-06"),
+            "open": 12.0,
+            "high": 13.0,
+            "low": 11.0,
+            "close": 12.5,
+            "volume": 1000,
+        }
+    ]
+
+
+def test_after_close_runner_refreshes_full_universe_and_rebuilds_all_symbols(
     tmp_path, monkeypatch
 ):
     symbols = [f"TEST{index:02d}" for index in range(11)]
@@ -189,7 +312,8 @@ def test_after_close_runner_pauses_after_each_ten_and_rebuilds_all_symbols(
             }
         )
 
-    monkeypatch.setattr(after_close, "get_active_symbols", lambda: [{"symbol": s} for s in symbols])
+    monkeypatch.setattr(after_close, "get_refresh_symbols", lambda _out_dir: symbols)
+    monkeypatch.setattr(after_close, "_materialize_database_history", lambda *_args: 0)
     monkeypatch.setattr(after_close, "reset_psx_access_denied", lambda: None)
     monkeypatch.setattr(after_close, "psx_access_denied", lambda: False)
     monkeypatch.setattr(after_close.time, "sleep", pauses.append)
@@ -198,6 +322,8 @@ def test_after_close_runner_pauses_after_each_ten_and_rebuilds_all_symbols(
 
     result = after_close.run_after_close_scrape(
         output_dir=tmp_path,
+        batch_size=10,
+        pause_seconds=150,
         end_date=session_date,
     )
 

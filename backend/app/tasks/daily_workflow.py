@@ -48,6 +48,8 @@ def _get_sync_session():
     max_retries=3,
     default_retry_delay=300,
     acks_late=True,
+    soft_time_limit=4 * 60 * 60,
+    time_limit=5 * 60 * 60,
 )
 def update_market_data_task(self):
     """Incremental OHLCV scrape for all active symbols.
@@ -308,10 +310,10 @@ def warm_technical_indicators_task(self):
     """Pre-calculate and populate technical indicators, price history, and overview in Redis."""
     log.info("[TECH-WARMER] Starting background pre-calculation of technical indicators and price history")
     try:
-        from app.data.scraper.symbol_universe import get_active_symbols
+        from app.data.scraper.run_after_close import get_refresh_symbols
         from app.services.stock_service import StockService
 
-        symbols = get_active_symbols() or []
+        symbols = get_refresh_symbols()
         service = StockService()
         warmed = 0
         for sym in symbols:
@@ -327,8 +329,17 @@ def warm_technical_indicators_task(self):
             except Exception as e:
                 log.debug("[TECH-WARMER] Could not warm %s: %s", sym, e)
 
-        log.info("[TECH-WARMER] Technical indicators pre-calculation complete: %d symbols warmed", warmed)
-        return {"status": "success", "warmed": warmed, "timestamp": datetime.utcnow().isoformat()}
+        log.info(
+            "[TECH-WARMER] Technical indicators pre-calculation complete: %d/%d symbols warmed",
+            warmed,
+            len(symbols),
+        )
+        return {
+            "status": "success",
+            "warmed": warmed,
+            "total_symbols": len(symbols),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
     except Exception as exc:
         log.exception("[TECH-WARMER] Technical indicators warming failed")
         return {"status": "error", "error": str(exc)}

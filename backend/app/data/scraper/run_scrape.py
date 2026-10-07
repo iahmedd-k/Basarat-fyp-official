@@ -141,6 +141,7 @@ def _scrape_symbol(
     output_dir: Path,
     incremental: bool,
     delay: float,
+    initial_lookback_days: int | None = None,
 ) -> dict:
     """Fetch + write one symbol. Returns a quality-check dict."""
     actual_start = start
@@ -154,6 +155,11 @@ def _scrape_symbol(
             if actual_start > end:
                 log.info("  %s: already up to date (last=%s), skipping", symbol, last_date)
                 return {"symbol": symbol, "status": "skipped", "reason": "up_to_date"}
+        elif initial_lookback_days is not None:
+            actual_start = max(
+                start,
+                end - timedelta(days=max(1, initial_lookback_days)),
+            )
 
     try:
         df = fetch_ohlcv(symbol, start=actual_start, end=end)

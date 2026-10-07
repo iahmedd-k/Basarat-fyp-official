@@ -153,7 +153,7 @@
 ### FR-014 — Daily Forecast Pipeline
 
 **Actor:** System (Celery Beat)
-**Description:** The system shall automatically run a daily pipeline five minutes after the PSX close (Mon-Thu 15:35 and Fri 16:35 PKT under the configured standard schedule). It refreshes final OHLCV closes, generates features and predictions, and evaluates past predictions. The pipeline shall skip weekends and exchange holidays. The OHLCV refresh pauses 150 seconds after each batch of 10 symbols.
+**Description:** The system shall automatically run a daily pipeline five minutes after the PSX close (Mon-Thu 15:35 and Fri 16:35 PKT under the configured standard schedule). It refreshes final OHLCV closes for the union of registered stocks, cached market quote symbols, and existing OHLCV files, then generates features and predictions and evaluates past predictions. The pipeline shall skip weekends and exchange holidays. Before incremental scraping, missing per-symbol files are restored from persisted stock prices where available; new quote-only symbols are initially fetched for up to one year. OHLCV requests are paced in batches of 50 with a 15-second pause between batches, and the refresh task has an extended deadline for the full market universe.
 **Implementation:** Implemented
 **Related Components:**
 - `app/tasks/daily_workflow.py`
