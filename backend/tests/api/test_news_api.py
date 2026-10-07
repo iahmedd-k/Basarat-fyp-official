@@ -143,3 +143,48 @@ class TestNewsRefresh:
     async def test_refresh_news(self, client: AsyncClient, auth_headers):
         resp = await client.post("/api/v1/news/refresh", headers=auth_headers)
         assert resp.status_code in (200, 202, 503)
+
+    async def test_refresh_news_uses_async_redis_lock(
+        self, client: AsyncClient, monkeypatch
+    ):
+        from unittest.mock import AsyncMock
+
+        from app.services.news_pipeline import ingestion_state
+
+        class AsyncRedisStub:
+            def __init__(self):
+                self.set_calls = []
+
+            async def set(self, *_args, **_kwargs):
+                self.set_calls.append((_args, _kwargs))
+                return True
+
+            async def delete(self, *_args):
+                return 1
+
+        redis_stub = AsyncRedisStub()
+        monkeypatch.setattr(
+            "app.api.v1.news.market_status",
+            AsyncMock(return_value={"status": "closed"}),
+        )
+        monkeypatch.setattr(ingestion_state, "get_last_ingestion_time", lambda: None)
+        monkeypatch.setattr(
+            ingestion_state,
+            "get_ingestion_status",
+            lambda: {"state": "idle"},
+        )
+        monkeypatch.setattr(ingestion_state, "mark_ingestion_queued", lambda: None)
+        monkeypatch.setattr(
+            "app.api.v1.news.get_redis_client",
+            lambda: redis_stub,
+        )
+        monkeypatch.setattr(
+            "app.tasks.scrape_news.run.apply_async",
+            lambda **_kwargs: None,
+        )
+
+        response = await client.post("/api/v1/news/refresh")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "started"
+        assert len(redis_stub.set_calls) == 1

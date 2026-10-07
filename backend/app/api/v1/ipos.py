@@ -56,7 +56,7 @@ async def list_ipos(
             limit=limit,
             offset=offset,
         )
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=60)
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
         return res
     except Exception as exc:
         log.exception("Error listing IPOs: %s", exc)
@@ -127,11 +127,10 @@ async def get_ipo_detail(
             return IPOResponse(**cached)
 
         res = await service.get_ipo_by_id_or_symbol(clean_sym)
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=120)
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
         return res
     except NotFoundError:
         raise
     except Exception as exc:
         log.exception("Error getting IPO %s: %s", symbol, exc)
         raise ServiceUnavailableError(f"Failed to retrieve IPO details for {symbol}.")
-

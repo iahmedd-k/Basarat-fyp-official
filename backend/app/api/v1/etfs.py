@@ -49,7 +49,7 @@ async def list_etfs(
             is_shariah_compliant=is_shariah_compliant,
             search=search_query,
         )
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=60)
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=120)
         return res
     except Exception as exc:
         log.exception("Error listing ETFs: %s", exc)
@@ -74,7 +74,7 @@ async def get_etf_detail(
             return ETFResponse(**cached)
 
         res = await service.get_etf_by_symbol(clean_sym)
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=60)
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=120)
         return res
     except NotFoundError:
         raise
@@ -130,11 +130,10 @@ async def get_etf_performance(
             return ETFPerformanceResponse(**cached)
 
         res = await service.get_performance(clean_sym)
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=120)
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
         return res
     except NotFoundError:
         raise
     except Exception as exc:
         log.exception("Error getting ETF performance for %s: %s", symbol, exc)
         raise ServiceUnavailableError(f"Failed to retrieve performance for ETF {symbol}.")
-

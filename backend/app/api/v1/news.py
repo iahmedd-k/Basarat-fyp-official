@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authorization import get_current_user, get_optional_current_user
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError, AppError
-from app.core.redis import cache_get, cache_set
+from app.core.redis import cache_get, cache_set, get_redis_client
 from app.core.rate_limiter import limiter
 from app.db.session import get_db
 from app.models.user import User
@@ -184,10 +184,8 @@ async def refresh_news(
     dispatch_client = None
     dispatch_key = "news:ingestion:dispatch-lock"
     try:
-        from app.core.redis import get_sync_redis_client
-
-        dispatch_client = get_sync_redis_client()
-        if dispatch_client is not None and not dispatch_client.set(
+        dispatch_client = get_redis_client()
+        if dispatch_client is not None and not await dispatch_client.set(
             dispatch_key, "1", nx=True, ex=settings.NEWS_REFRESH_COOLDOWN
         ):
             return NewsRefreshResponse(
@@ -203,7 +201,7 @@ async def refresh_news(
     except Exception as exc:
         if dispatch_client is not None:
             try:
-                dispatch_client.delete(dispatch_key)
+                await dispatch_client.delete(dispatch_key)
             except Exception:
                 pass
         ingestion_state.mark_ingestion_failed(str(exc))

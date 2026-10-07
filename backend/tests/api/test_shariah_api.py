@@ -37,6 +37,32 @@ class TestShariahScreening:
         assert data["screening_available"] is False
         assert data["is_shariah_compliant"] is None
 
+    async def test_screening_unavailable_result_is_cached(
+        self, client: AsyncClient, monkeypatch
+    ):
+        from unittest.mock import AsyncMock
+
+        get_screening = AsyncMock(return_value=None)
+        monkeypatch.setattr(ShariahService, "get_screening", get_screening)
+        values = {}
+
+        async def cache_get(key):
+            return values.get(key)
+
+        async def cache_set(key, value, ttl_seconds=60):
+            values[key] = value
+
+        monkeypatch.setattr("app.api.v1.shariah.cache_get", cache_get)
+        monkeypatch.setattr("app.api.v1.shariah.cache_set", cache_set)
+
+        first = await client.get("/api/v1/shariah/NOSCREEN")
+        second = await client.get("/api/v1/shariah/NOSCREEN")
+
+        assert first.status_code == second.status_code == 200
+        assert first.json()["screening_available"] is False
+        assert second.json()["screening_available"] is False
+        get_screening.assert_awaited_once_with("NOSCREEN")
+
     async def test_screening_kmi30_compliant(self, client: AsyncClient, auth_headers):
         resp = await client.get("/api/v1/shariah/OGDC", headers=auth_headers)
         assert resp.status_code == 200

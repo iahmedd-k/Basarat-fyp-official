@@ -84,7 +84,7 @@ async def get_shariah_screening(
         screening = await service.get_screening(sym_upper)
 
         if screening is None:
-            return ShariahScreeningResponse(
+            res = ShariahScreeningResponse(
                 symbol=sym_upper,
                 screening_available=False,
                 is_shariah_compliant=None,
@@ -93,6 +93,8 @@ async def get_shariah_screening(
                 screened_at=datetime.utcnow(),
                 compliance_summary=f"No Shariah screening data is available for {sym_upper}; compliance is unverified.",
             )
+            await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
+            return res
 
         profile = NON_COMPLIANT_SYMBOLS.get(sym_upper, {})
         purif_rate = (
@@ -279,4 +281,3 @@ async def get_shariah_purification(
     except Exception:
         logger.exception("Failed to calculate purification for %s", symbol)
         raise ServiceUnavailableError("Purification calculation temporarily unavailable.")
-
