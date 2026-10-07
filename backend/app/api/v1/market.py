@@ -32,10 +32,12 @@ router = APIRouter()
 async def _symbols_with_price_history(db: AsyncSession) -> set[str]:
     """Return active stock tickers with persisted OHLCV usable by price-history."""
     result = await db.scalars(
-        select(Stock.symbol)
-        .join(StockPrice, StockPrice.stock_id == Stock.id)
-        .where(Stock.is_active.is_(True))
-        .distinct()
+        select(Stock.symbol).where(
+            Stock.is_active.is_(True),
+            select(StockPrice.id)
+            .where(StockPrice.stock_id == Stock.id)
+            .exists(),
+        )
     )
     return {str(symbol).strip().upper() for symbol in result.all() if symbol}
 

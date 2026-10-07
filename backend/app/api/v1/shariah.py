@@ -132,19 +132,18 @@ async def get_shariah_screening(
         )
         criteria = service.build_criteria(screening, symbol=sym_upper)
 
-        from app.services.market_service import MarketService
-        from app.models.stock import Stock
-        from sqlalchemy import select
-
         resolved_sector = profile.get("sector")
         if not resolved_sector or resolved_sector == "Unclassified":
-            stock_res = await service.db.execute(select(Stock).where(Stock.symbol == sym_upper))
-            stock_obj = stock_res.scalars().first()
+            stock_obj = await service.get_stock_by_symbol(sym_upper)
             if stock_obj and stock_obj.sector:
+                from app.services.market_service import MarketService
+
                 resolved_sector = MarketService._normalize_sector_code_or_name(stock_obj.sector)
         if not resolved_sector:
             resolved_sector = "Commercial & Industrial"
         else:
+            from app.services.market_service import MarketService
+
             resolved_sector = MarketService._normalize_sector_code_or_name(resolved_sector)
 
         res = ShariahScreeningResponse(

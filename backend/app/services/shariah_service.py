@@ -76,12 +76,19 @@ NON_COMPLIANT_SYMBOLS: dict[str, dict] = {
 class ShariahService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._stocks_by_symbol: dict[str, Stock | None] = {}
 
     async def get_stock_by_symbol(self, symbol: str) -> Stock | None:
+        normalized_symbol = symbol.upper()
+        if normalized_symbol in self._stocks_by_symbol:
+            return self._stocks_by_symbol[normalized_symbol]
+
         result = await self.db.execute(
-            select(Stock).where(Stock.symbol == symbol.upper())
+            select(Stock).where(Stock.symbol == normalized_symbol)
         )
-        return result.scalars().first()
+        stock = result.scalars().first()
+        self._stocks_by_symbol[normalized_symbol] = stock
+        return stock
 
     async def get_latest_screening(self, stock_id: str) -> ShariahScreening | None:
         result = await self.db.execute(

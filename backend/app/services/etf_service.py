@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from app.core.exceptions import NotFoundError
-from app.core.redis import cache_get, cache_set
+from app.core.redis import cache_get, cache_get_many, cache_set
 from app.models.etf import ETF
 from app.schemas.etf import (
     ETFQuote,
@@ -135,65 +135,81 @@ class ETFService:
     # Resilient Scraper / Quote Fetching with Redis
     # ───────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _quote_data_from_live_snapshot(symbol: str, live_quotes: Any) -> dict[str, Any] | None:
+        if not isinstance(live_quotes, dict):
+            return None
+        row = live_quotes.get(symbol)
+        if not isinstance(row, dict):
+            return None
+
+        try:
+            close = float(row.get("current") or row.get("close") or row.get("price") or 0.0)
+            if close <= 0:
+                return None
+            open_price = float(row.get("open") or close)
+            change = float(row.get("change") or (close - open_price))
+            return {
+                "current_price": round(close, 2),
+                "change": round(change, 2),
+                "change_percent": round(float(row.get("change_percent") or 0.0), 2),
+                "open_price": round(open_price, 2),
+                "high_price": round(float(row.get("high") or close), 2),
+                "low_price": round(float(row.get("low") or close), 2),
+                "close_price": round(close, 2),
+                "volume": int(row.get("volume") or 0),
+                "bid_price": round(close, 2),
+                "ask_price": round(close, 2),
+                "data_as_of": datetime.utcnow().isoformat(),
+                "quote_source": "redis_live_bus",
+            }
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    @staticmethod
+    def _fallback_quote_data(symbol: str) -> dict[str, Any]:
+        fallback = DEFAULT_ETF_PRICES.get(
+            symbol,
+            {"price": 25.0, "change": 0.0, "change_pct": 0.0, "open": 25.0, "high": 25.0, "low": 25.0, "volume": 10000},
+        )
+        return {
+            "current_price": fallback["price"],
+            "change": fallback["change"],
+            "change_percent": fallback["change_pct"],
+            "open_price": fallback["open"],
+            "high_price": fallback["high"],
+            "low_price": fallback["low"],
+            "close_price": fallback["price"],
+            "volume": fallback["volume"],
+            "bid_price": fallback["price"],
+            "ask_price": fallback["price"],
+            "data_as_of": datetime.utcnow().isoformat(),
+            "quote_source": "cached_fallback",
+        }
+
     async def get_live_quote(self, symbol: str) -> ETFQuote:
-        """Fetch live ETF quote with multi-tier Redis caching and scraper protection."""
+        """Read a live ETF quote from Redis, falling back to the configured quote."""
         sym = symbol.strip().upper()
         cache_key = f"etf:quote:v1:{sym}"
         cached = await cache_get(cache_key)
         if cached:
             return ETFQuote(**cached)
 
-        quote_data = None
-        # Try reading from shared live quotes cache if available
-        try:
-            live_quotes = await cache_get("market:quotes:live")
-            if live_quotes and isinstance(live_quotes, dict) and sym in live_quotes:
-                row = live_quotes[sym]
-                close = float(row.get("current") or row.get("close") or row.get("price") or 0.0)
-                if close > 0:
-                    open_p = float(row.get("open") or close)
-                    change = float(row.get("change") or (close - open_p))
-                    quote_data = {
-                        "current_price": round(close, 2),
-                        "change": round(change, 2),
-                        "change_percent": round(float(row.get("change_percent") or 0.0), 2),
-                        "open_price": round(open_p, 2),
-                        "high_price": round(float(row.get("high") or close), 2),
-                        "low_price": round(float(row.get("low") or close), 2),
-                        "close_price": round(close, 2),
-                        "volume": int(row.get("volume") or 0),
-                        "bid_price": round(close, 2),
-                        "ask_price": round(close, 2),
-                        "data_as_of": datetime.utcnow().isoformat(),
-                        "quote_source": "redis_live_bus",
-                    }
-        except Exception:
-            pass
+        live_quotes = await cache_get("market:quotes:live")
+        quote_data = self._quote_data_from_live_snapshot(sym, live_quotes)
+        if quote_data is None:
+            quote_data = self._fallback_quote_data(sym)
 
-
-        if not quote_data:
-            fallback = DEFAULT_ETF_PRICES.get(sym, {"price": 25.0, "change": 0.0, "change_pct": 0.0, "open": 25.0, "high": 25.0, "low": 25.0, "volume": 10000})
-            quote_data = {
-                "current_price": fallback["price"],
-                "change": fallback["change"],
-                "change_percent": fallback["change_pct"],
-                "open_price": fallback["open"],
-                "high_price": fallback["high"],
-                "low_price": fallback["low"],
-                "close_price": fallback["price"],
-                "volume": fallback["volume"],
-                "bid_price": fallback["price"],
-                "ask_price": fallback["price"],
-                "data_as_of": datetime.utcnow().isoformat(),
-                "quote_source": "cached_fallback",
-            }
-
-        # Cache live quote for 120 seconds
         await cache_set(cache_key, quote_data, ttl_seconds=120)
         return ETFQuote(**quote_data)
 
-    async def _format_etf_response(self, etf: ETF) -> ETFResponse:
-        quote = await self.get_live_quote(etf.symbol)
+    async def _format_etf_response(
+        self,
+        etf: ETF,
+        quote: ETFQuote | None = None,
+    ) -> ETFResponse:
+        if quote is None:
+            quote = await self.get_live_quote(etf.symbol)
         return ETFResponse(
             id=etf.id,
             symbol=etf.symbol,
@@ -252,8 +268,22 @@ class ETFService:
         res = await self.db.execute(query)
         etfs = res.scalars().all()
 
-        import asyncio
-        formatted = await asyncio.gather(*[self._format_etf_response(e) for e in etfs])
+        quote_keys = [f"etf:quote:v1:{etf.symbol.strip().upper()}" for etf in etfs]
+        cached_quotes = await cache_get_many(quote_keys)
+        live_quotes = await cache_get("market:quotes:live")
+        formatted = []
+        for etf, quote_key in zip(etfs, quote_keys):
+            quote_data = cached_quotes.get(quote_key)
+            if not quote_data:
+                quote_data = self._quote_data_from_live_snapshot(
+                    etf.symbol.strip().upper(),
+                    live_quotes,
+                )
+            if not quote_data:
+                quote_data = self._fallback_quote_data(etf.symbol.strip().upper())
+            formatted.append(
+                await self._format_etf_response(etf, quote=ETFQuote(**quote_data))
+            )
         shariah_count = sum(1 for e in formatted if e.is_shariah_compliant)
         conventional_count = len(formatted) - shariah_count
 
@@ -387,4 +417,3 @@ class ETFService:
         )
         await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
         return response
-

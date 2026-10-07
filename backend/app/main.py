@@ -116,6 +116,7 @@ async def lifespan(app: FastAPI):
                 refresh_market_cache.delay(
                     refresh_reference=True,
                     refresh_constituents=True,
+                    refresh_screener=True,
                 )
             else:
                 log.info("Startup market warmup already queued by another API replica")

@@ -2,7 +2,7 @@
 
 API handlers stay read-only. Celery owns upstream scrapes:
   - refresh_market_session: every ~60s during PSX open hours → Redis + live bus
-  - refresh_market_cache: close/startup/weekly reference refresh
+  - refresh_market_cache: startup/close reference refresh and scheduled screener refresh
 """
 
 from __future__ import annotations
@@ -112,6 +112,8 @@ def _looks_like_access_denied(exc: BaseException) -> bool:
 
 async def _refresh_quotes_and_optional_reference(
     *,
+    refresh_quotes: bool,
+    refresh_screener: bool,
     refresh_reference: bool,
     refresh_constituents: bool,
     publish_live: bool,
@@ -121,10 +123,22 @@ async def _refresh_quotes_and_optional_reference(
     from app.core.redis import close_async_redis_client
 
     service = MarketService()
-    results: dict = {"quotes": 0, "indices": 0, "constituents": {}, "published": False}
+    results: dict = {
+        "quotes": 0,
+        "screener": 0,
+        "indices": 0,
+        "constituents": {},
+        "published": False,
+    }
     try:
-        quotes = await service.get_market_data(force_refresh=True, read_only=False)
-        results["quotes"] = len(quotes)
+        quotes = []
+        if refresh_quotes:
+            quotes = await service.get_market_data(force_refresh=True, read_only=False)
+            results["quotes"] = len(quotes)
+
+        if refresh_screener:
+            screener_data = await service.get_screener_data(force_refresh=True)
+            results["screener"] = len(screener_data)
 
         if refresh_reference:
             indices = await service.get_indices(force_refresh=True, read_only=False)
@@ -167,8 +181,14 @@ async def _refresh_quotes_and_optional_reference(
     default_retry_delay=60,
     acks_late=True,
 )
-def refresh_market_cache(self, refresh_reference: bool = False, refresh_constituents: bool = False):
-    """Full/reference refresh (startup, close snapshot, weekly constituents)."""
+def refresh_market_cache(
+    self,
+    refresh_reference: bool = False,
+    refresh_constituents: bool = False,
+    refresh_quotes: bool = True,
+    refresh_screener: bool = False,
+):
+    """Refresh shared quote, reference, and screener snapshots."""
     status, lock_client, lock_token = _acquire_lock(ttl_seconds=900)
     if status == "no_redis":
         return {"status": "blocked", "reason": "redis_unavailable"}
@@ -183,6 +203,8 @@ def refresh_market_cache(self, refresh_reference: bool = False, refresh_constitu
     try:
         result = _run_async(
             _refresh_quotes_and_optional_reference(
+                refresh_quotes=refresh_quotes,
+                refresh_screener=refresh_screener,
                 refresh_reference=refresh_reference,
                 refresh_constituents=refresh_constituents,
                 publish_live=True,
@@ -248,6 +270,8 @@ def refresh_market_session(self):
     try:
         result = _run_async(
             _refresh_quotes_and_optional_reference(
+                refresh_quotes=True,
+                refresh_screener=False,
                 refresh_reference=False,
                 refresh_constituents=False,
                 publish_live=True,

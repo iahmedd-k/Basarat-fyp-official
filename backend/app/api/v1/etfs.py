@@ -21,9 +21,6 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> ETFService:
     return ETFService(db)
 
 
-from app.core.redis import cache_get, cache_set
-
-
 @router.get(
     "",
     response_model=ETFListResponse,
@@ -39,18 +36,11 @@ async def list_etfs(
 ):
     try:
         search_query = q or search
-        cache_key = f"etfs:list:{category or 'all'}:{is_shariah_compliant}:{search_query or 'all'}"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return ETFListResponse(**cached)
-
-        res = await service.get_etfs(
+        return await service.get_etfs(
             category=category,
             is_shariah_compliant=is_shariah_compliant,
             search=search_query,
         )
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=120)
-        return res
     except Exception as exc:
         log.exception("Error listing ETFs: %s", exc)
         raise ServiceUnavailableError("Failed to retrieve ETFs.")
@@ -68,14 +58,7 @@ async def get_etf_detail(
 ):
     try:
         clean_sym = symbol.strip().upper()
-        cache_key = f"etf:detail:{clean_sym}"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return ETFResponse(**cached)
-
-        res = await service.get_etf_by_symbol(clean_sym)
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=120)
-        return res
+        return await service.get_etf_by_symbol(clean_sym)
     except NotFoundError:
         raise
     except Exception as exc:
@@ -97,14 +80,7 @@ async def get_etf_history(
     try:
         clean_sym = symbol.strip().upper()
         clean_tf = timeframe.strip().upper()
-        cache_key = f"etf:history:{clean_sym}:{clean_tf}"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return ETFHistoryResponse(**cached)
-
-        res = await service.get_history(clean_sym, timeframe=clean_tf)
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
-        return res
+        return await service.get_history(clean_sym, timeframe=clean_tf)
     except NotFoundError:
         raise
     except Exception as exc:
@@ -124,14 +100,7 @@ async def get_etf_performance(
 ):
     try:
         clean_sym = symbol.strip().upper()
-        cache_key = f"etf:perf:{clean_sym}"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return ETFPerformanceResponse(**cached)
-
-        res = await service.get_performance(clean_sym)
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
-        return res
+        return await service.get_performance(clean_sym)
     except NotFoundError:
         raise
     except Exception as exc:

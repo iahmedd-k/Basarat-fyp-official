@@ -23,6 +23,8 @@ _mem_cache: dict[str, tuple[Any, float]] = {}
 _redis_retry_after = 0.0
 _REDIS_FAILURE_BACKOFF_SECONDS = 30.0
 _REDIS_PRIMARY_RETRY_SECONDS = 30.0
+REDIS_CONNECT_TIMEOUT_SECONDS = 0.25
+REDIS_SOCKET_TIMEOUT_SECONDS = 0.5
 
 
 def _redis_available_for_attempt() -> bool:
@@ -147,8 +149,8 @@ def get_redis_client():
             _redis_client = aioredis.from_url(
                 urls[_redis_url_index % len(urls)],
                 decode_responses=True,
-                socket_connect_timeout=2.0,
-                socket_timeout=3.0,
+                socket_connect_timeout=REDIS_CONNECT_TIMEOUT_SECONDS,
+                socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
             )
         except Exception as exc:
             log.warning("Could not initialize async Redis client: %s", exc)
@@ -171,8 +173,8 @@ def get_sync_redis_client():
             _sync_redis_client = redis.from_url(
                 urls[_sync_redis_url_index % len(urls)],
                 decode_responses=True,
-                socket_connect_timeout=2.0,
-                socket_timeout=3.0,
+                socket_connect_timeout=REDIS_CONNECT_TIMEOUT_SECONDS,
+                socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
             )
         except Exception as exc:
             log.warning("Could not initialize sync Redis client: %s", exc)
@@ -213,6 +215,44 @@ async def cache_get(key: str) -> Any | None:
             return data
         del _mem_cache[key]
     return None
+
+
+async def cache_get_many(keys: list[str]) -> dict[str, Any]:
+    """Get multiple Redis values with one round trip, falling back to local memory."""
+    unique_keys = list(dict.fromkeys(keys))
+    if not unique_keys:
+        return {}
+
+    values: dict[str, Any] = {}
+    client = get_redis_client()
+    if client and _redis_available_for_attempt():
+        try:
+            cached_values = await client.mget(unique_keys)
+            _mark_redis_success()
+            values = {
+                key: json.loads(value)
+                for key, value in zip(unique_keys, cached_values)
+                if value is not None
+            }
+        except Exception as exc:
+            _switch_async_redis_url()
+            _mark_redis_failure()
+            log.debug("Redis multi-get error: %s", exc)
+
+    now = time.monotonic()
+    for key in unique_keys:
+        if key in values:
+            continue
+        cached = _mem_cache.get(key)
+        if cached is None:
+            continue
+        data, expires_at = cached
+        if expires_at > now:
+            values[key] = data
+        else:
+            del _mem_cache[key]
+
+    return values
 
 
 async def cache_set(key: str, value: Any, ttl_seconds: int = 60) -> None:

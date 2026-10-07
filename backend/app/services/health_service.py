@@ -1,14 +1,18 @@
 import asyncio
+import logging
 import os
 import redis
 from sqlalchemy import text
 
 from app.celery_app import celery
 from app.core.config import get_settings
+from app.core.redis import REDIS_CONNECT_TIMEOUT_SECONDS, REDIS_SOCKET_TIMEOUT_SECONDS
 from app.db.base import engine
 
 settings = get_settings()
 IS_TESTING = os.environ.get("PYTEST_CURRENT_TEST") is not None or os.environ.get("TESTING") == "true"
+HEALTH_CHECK_TIMEOUT_SECONDS = 0.75
+log = logging.getLogger(__name__)
 
 
 class HealthService:
@@ -25,18 +29,30 @@ class HealthService:
     def _check_redis(self):
         if IS_TESTING or not getattr(settings, "REDIS_ENABLED", True):
             return "ready"
+        client = None
         try:
-            if redis.from_url(settings.REDIS_URL, socket_timeout=2.0).ping():
+            client = redis.from_url(
+                settings.REDIS_URL,
+                socket_connect_timeout=REDIS_CONNECT_TIMEOUT_SECONDS,
+                socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+            )
+            if client.ping():
                 return "ready"
         except Exception:
-            pass
+            return "down"
+        finally:
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    log.debug("Could not close Redis health-check client", exc_info=True)
         return "down"
 
     def _check_celery_worker(self):
         if IS_TESTING or not getattr(settings, "USE_CELERY", True):
             return "ready"
         try:
-            if celery.control.ping(timeout=2):
+            if celery.control.ping(timeout=0.5):
                 return "ready"
         except Exception:
             pass
@@ -56,19 +72,34 @@ class HealthService:
 
     async def _check_database(self):
         try:
-            async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
+            async def _ping_database():
+                async with engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
+
+            await asyncio.wait_for(
+                _ping_database(),
+                timeout=HEALTH_CHECK_TIMEOUT_SECONDS,
+            )
             return "ready"
         except Exception:
             return "down"
 
     async def check_health(self):
+        async def _run_sync_check(check):
+            try:
+                return await asyncio.wait_for(
+                    asyncio.to_thread(check),
+                    timeout=HEALTH_CHECK_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                return "down"
+
         database_status, redis_status, worker_status, beat_status, model_status = await asyncio.gather(
             self._check_database(),
-            asyncio.to_thread(self._check_redis),
-            asyncio.to_thread(self._check_celery_worker),
-            asyncio.to_thread(self._check_celery_beat),
-            asyncio.to_thread(self._check_model),
+            _run_sync_check(self._check_redis),
+            _run_sync_check(self._check_celery_worker),
+            _run_sync_check(self._check_celery_beat),
+            _run_sync_check(self._check_model),
         )
         services = {
             "api": "ready",

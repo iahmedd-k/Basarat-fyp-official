@@ -22,9 +22,6 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> IPOService:
     return IPOService(db)
 
 
-from app.core.redis import cache_get, cache_set
-
-
 @router.get(
     "",
     response_model=IPOListResponse,
@@ -43,12 +40,7 @@ async def list_ipos(
 ):
     try:
         search_query = q or search
-        cache_key = f"ipos:list:{status or 'all'}:{sector or 'all'}:{is_shariah_compliant}:{search_query or 'all'}:{limit}:{offset}"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return IPOListResponse(**cached)
-
-        res = await service.get_ipos(
+        return await service.get_ipos(
             status=status,
             sector=sector,
             is_shariah_compliant=is_shariah_compliant,
@@ -56,8 +48,6 @@ async def list_ipos(
             limit=limit,
             offset=offset,
         )
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
-        return res
     except Exception as exc:
         log.exception("Error listing IPOs: %s", exc)
         raise ServiceUnavailableError("Failed to retrieve IPOs.")
@@ -73,14 +63,7 @@ async def get_ipo_calendar(
     service: IPOService = Depends(_get_service),
 ):
     try:
-        cache_key = "ipos:calendar"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return IPOCalendarResponse(**cached)
-
-        res = await service.get_calendar()
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
-        return res
+        return await service.get_calendar()
     except Exception as exc:
         log.exception("Error getting IPO calendar: %s", exc)
         raise ServiceUnavailableError("Failed to retrieve IPO calendar.")
@@ -96,14 +79,7 @@ async def get_ipo_performance(
     service: IPOService = Depends(_get_service),
 ):
     try:
-        cache_key = "ipos:performance"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return IPOPerformanceResponse(**cached)
-
-        res = await service.get_performance()
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
-        return res
+        return await service.get_performance()
     except Exception as exc:
         log.exception("Error getting IPO performance: %s", exc)
         raise ServiceUnavailableError("Failed to retrieve IPO performance.")
@@ -121,14 +97,7 @@ async def get_ipo_detail(
 ):
     try:
         clean_sym = symbol.strip().upper()
-        cache_key = f"ipo:detail:{clean_sym}"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return IPOResponse(**cached)
-
-        res = await service.get_ipo_by_id_or_symbol(clean_sym)
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=300)
-        return res
+        return await service.get_ipo_by_id_or_symbol(clean_sym)
     except NotFoundError:
         raise
     except Exception as exc:

@@ -107,6 +107,11 @@ celery.conf.update(
             "kwargs": {"refresh_reference": True},
             "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
         },
+        "refresh-market-screener": {
+            "task": "app.tasks.refresh_market_cache.refresh_market_cache",
+            "kwargs": {"refresh_quotes": False, "refresh_screener": True},
+            "schedule": crontab(minute="*/30", hour="9-15", day_of_week="1-5"),
+        },
         # ── Intraday shared snapshot during weekdays (task self-gates hours) ──
         # A weekday crontab prevents even enqueueing this task on weekends.
         "refresh-market-session": {
