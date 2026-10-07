@@ -95,7 +95,7 @@
 | `GET` | `/recommendations/top-picks` | No | Top ranked buy/sell recommendations across PSX universe |
 | `GET` | `/recommendations/engine-weights` | No | Default and configured signal engine weights |
 | `POST` | `/recommendations/engine-weights` | Yes | Customize user-specific recommendation weighting |
-| `GET` | `/forecast/{symbol}` | No | Probabilistic horizon forecasts (1D, 1W, 1M) via BiGRU + XGBoost |
+| `GET` | `/forecast/{symbol}` | No | Versioned, normalized multi-horizon response from BiGRU + XGBoost forecasts and persisted PSX market data (1D, 1W, 2W, 1M) |
 
 ---
 

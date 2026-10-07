@@ -596,11 +596,13 @@ class StockService:
         end: date | None = None,
     ):
         symbol = str(symbol).strip().upper()
+        sources = []
         combined_path = OHLCV_DATA_DIR / "all_symbols.parquet"
         if combined_path.is_file():
-            sources = ((combined_path, [("symbol", "==", symbol)]),)
-        else:
-            sources = ((OHLCV_DATA_DIR / f"{symbol}.parquet", None),)
+            sources.append((combined_path, [("symbol", "==", symbol)]))
+        symbol_path = OHLCV_DATA_DIR / f"{symbol}.parquet"
+        if symbol_path.is_file():
+            sources.append((symbol_path, None))
 
         for path, filters in sources:
             if not path.is_file():

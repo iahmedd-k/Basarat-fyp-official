@@ -7,7 +7,7 @@ In production, both **Attention-BiGRU v2** and **Multi-Horizon XGBoost v4** are 
 ```mermaid
 flowchart TD
     subgraph ClientReq ["API Client Request"]
-        REQ["GET /api/v1/forecast/{symbol}?horizon=1W<br/>(Options: 1D, 1W/5D, 2W/10D, 1M/20D)"]
+        REQ["GET /api/v1/forecast/{symbol}?horizon=1W<br/>(1D/1, 1W/5, 2W/10, 1M/22 trading days)"]
     end
 
     subgraph MemoryLoaded ["Preloaded Model Singleton (model_loader.py)"]

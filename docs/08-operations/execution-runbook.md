@@ -502,13 +502,13 @@ Each module below gives the React page's data needs alongside the Android screen
 **API Endpoints**
 | Method | Endpoint | Query | Notes |
 |---|---|---|---|
-| GET | `/forecast/{symbol}` | `horizon=1D\|1W\|1M` | Typed response with `probabilities.{bullish,bearish,sideways}` (percent), `confidence` (0–1), dates, price levels, optional model details and market context. Full example is in Swagger. |
+| GET | `/forecast/{symbol}` | `horizon=1D\|1W\|2W\|1M` | Versioned forecast contract: `schema_version`, stock identity/currency, freshness and market status, horizon code/days/end date, price/outlook/volatility levels, recent relative returns, model agreement, upcoming events, evaluated track record, and model probabilities/indicators. Unavailable source data is `null`; see Swagger for the complete schema. |
 | GET | `/forecast/{symbol}/history` | `limit=30` | past predictions vs realized outcome |
 
 **Android Screens & Data**
 | Screen | Purpose | Data fields shown | ViewModel State | API calls |
 |---|---|---|---|---|
-| Forecast | View ML prediction | stock selector, horizon toggle (1D/1W/1M), bar chart (`forecast.probabilities.bullish/bearish/sideways`, percent), confidence (`forecast.confidence × 100`), trend label + one-line summary, "prediction history" expandable list (`date, predicted_direction, actual_direction, was_correct`) | `symbol, horizon, forecast: ForecastData?, history: List<PredictionRecord>, isLoading` | `GET /forecast/{symbol}`, `GET /forecast/{symbol}/history` |
+| Forecast | View ML prediction | stock selector; all available horizons; `outlook.direction` and `outlook.strength`; `price.current`, `levels`, recent movement and model probabilities; "prediction history" expandable list (`date, predicted_direction, actual_direction, was_correct`) | `symbol, horizon, forecast: ForecastData?, history: List<PredictionRecord>, isLoading` | `GET /forecast/{symbol}`, `GET /forecast/{symbol}/history` |
 
 **Navigation flow:** Entry is exclusively from Stock Detail's "View Forecast" action (Module 3), arriving with `symbol` pre-set. The "prediction history" list is an **expandable section on this same screen**, not a separate route. Back returns to Stock Detail; there's no forward navigation from here.
 

@@ -29,6 +29,15 @@ FEATURES_PATH = ROOT_DIR / "data" / "features" / "features_daily.parquet"
 NEAR_TIE_THRESHOLD_PP = 5.0
 
 
+def _finite_float(value) -> float | None:
+    """Convert a feature value to a JSON-safe number, or null when unavailable."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
+
+
 def compute_confidence(class_probabilities: dict[str, float]) -> float:
     """Uncalibrated top-class probability mass (Task 4).
 
@@ -383,7 +392,7 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
     # tuple. Share the result in Redis so forecast API calls and recommendation
     # generation do not run the same model repeatedly across workers.
     model_cache_version = str(getattr(artifacts, "model_version", None) or "current")
-    cache_key = f"forecast:v2:{symbol}:{horizon}:{as_of_date.isoformat()}:{model_cache_version}"
+    cache_key = f"forecast:v3:{symbol}:{horizon}:{as_of_date.isoformat()}:{model_cache_version}"
     try:
         from app.core.redis import cache_get_sync
         cached_forecast = cache_get_sync(cache_key)
@@ -435,26 +444,37 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
         }
 
     # ── Build market_context ──────────────────────────────────────────
-    market_ctx = None
     latest_row = sym_df.iloc[-1]
-    idx_5d = latest_row.get("index_return_5d")
-    idx_20d = latest_row.get("index_return_20d")
-    rel_20d = latest_row.get("stock_relative_return_20d")
+    stock_return_5d = None
+    stock_return_20d = None
+    if len(sym_df) >= 6:
+        close_5d_ago = _finite_float(sym_df.iloc[-6].get("close"))
+        close_now = _finite_float(latest_row.get("close"))
+        if close_5d_ago and close_5d_ago > 0 and close_now is not None:
+            stock_return_5d = (close_now / close_5d_ago) - 1.0
+    if len(sym_df) >= 21:
+        close_20d_ago = _finite_float(sym_df.iloc[-21].get("close"))
+        close_now = _finite_float(latest_row.get("close"))
+        if close_20d_ago and close_20d_ago > 0 and close_now is not None:
+            stock_return_20d = (close_now / close_20d_ago) - 1.0
 
-    stock_ret_20d = None
-    if len(sym_df) >= 20:
-        close_now = float(latest_row["close"])
-        close_20d_ago = float(sym_df.iloc[-20]["close"])
-        if close_20d_ago > 0:
-            stock_ret_20d = round((close_now - close_20d_ago) / close_20d_ago, 6)
+    idx_5d = _finite_float(latest_row.get("index_return_5d"))
+    idx_20d = _finite_float(latest_row.get("index_return_20d"))
+    if stock_return_20d is None:
+        stock_return_20d = _finite_float(latest_row.get("stock_return_20d"))
+    rel_20d = _finite_float(latest_row.get("stock_relative_return_20d"))
+    market_ctx = {
+        "market_return_5d": idx_5d,
+        "market_return_20d": idx_20d,
+        "stock_return_5d": stock_return_5d,
+        "stock_return_20d": stock_return_20d,
+        "stock_relative_return_20d": rel_20d,
+    }
 
-    if pd.notna(idx_5d) or pd.notna(idx_20d):
-        market_ctx = {
-            "market_return_5d": round(float(idx_5d), 6) if pd.notna(idx_5d) else None,
-            "market_return_20d": round(float(idx_20d), 6) if pd.notna(idx_20d) else None,
-            "stock_return_20d": stock_ret_20d,
-            "stock_relative_return_20d": round(float(rel_20d), 6) if pd.notna(rel_20d) else None,
-        }
+    daily_returns = pd.to_numeric(sym_df["close"], errors="coerce").pct_change().dropna()
+    volatility_14d = None
+    if len(daily_returns) >= 14:
+        volatility_14d = _finite_float(daily_returns.tail(14).std(ddof=1))
 
     log.info("Forecast %s: %s (%.1f%%) gate=%s as_of=%s for=%s horizon=%s",
              symbol, ensemble["direction"], ensemble["top_class_probability"],
@@ -466,7 +486,7 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
         "direction": ensemble["direction"],
         "bullish_pct": ensemble["bullish_pct"],
         "bearish_pct": ensemble["bearish_pct"],
-        "sideways_pct": sideways_pct if "sideways_pct" in locals() else ensemble["sideways_pct"],
+        "sideways_pct": ensemble["sideways_pct"],
         "top_class_probability": ensemble["top_class_probability"],
         "as_of_date": as_of_date,
         "predicted_for_date": predicted_for_date,
@@ -474,6 +494,10 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
         "model_details": model_details,
         "gate_reason": ensemble.get("gate_reason", ""),
         "market_context": market_ctx,
+        "current_price": _finite_float(latest_row.get("close")),
+        "volatility_14d": volatility_14d,
+        "rsi": _finite_float(latest_row.get("rsi_14")),
+        "macd_hist": _finite_float(latest_row.get("macd_hist")),
     }
     try:
         from app.core.redis import cache_set_sync

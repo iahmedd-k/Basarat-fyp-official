@@ -8,7 +8,7 @@ Design principles:
 """
 
 from datetime import date, datetime
-from typing import Optional, Any
+from typing import Optional, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -49,6 +49,88 @@ class ForecastMarketContext(BaseModel):
     market_return_20d: float | None = Field(None, description="PSX market return over 20 trading days; 0.034 means 3.4%.", examples=[0.034])
     stock_return_20d: float | None = Field(None, description="Stock return over 20 trading days; -0.058 means -5.8%.", examples=[-0.058])
     stock_relative_return_20d: float | None = Field(None, description="Stock return minus market return over 20 trading days, as a decimal.", examples=[-0.092])
+
+
+class ForecastModelSummary(BaseModel):
+    name: str
+    direction: Literal["up", "down", "sideways", "uncertain"]
+    pct: float = Field(..., ge=0, le=100)
+
+
+class ForecastHorizonSummary(BaseModel):
+    code: Literal["1D", "1W", "2W", "1M"]
+    trading_days: int
+    ends_on: date
+
+
+class ForecastPriceSummary(BaseModel):
+    current: float | None
+
+
+class ForecastOutlookSummary(BaseModel):
+    direction: Literal["up", "down", "sideways", "uncertain"]
+    strength: Literal["low", "medium", "high"]
+
+
+class ForecastLevelsSummary(BaseModel):
+    lower: float | None
+    upper: float | None
+    basis: Literal["volatility_14d"] = "volatility_14d"
+
+
+class ForecastMovementSummary(BaseModel):
+    stock_5d_pct: float | None
+    stock_20d_pct: float | None
+    market_5d_pct: float | None
+    market_20d_pct: float | None
+    vs_market: Literal["stronger", "weaker", "in_line"] | None
+
+
+class ForecastUpcomingEventSummary(BaseModel):
+    type: str
+    date: date
+
+
+class ForecastTrackRecordSummary(BaseModel):
+    evaluated_predictions: int
+    accuracy_pct: float
+
+
+class ForecastIndicatorSummary(BaseModel):
+    rsi: float | None
+    macd_hist: float | None
+
+
+class ForecastDetailsSummary(BaseModel):
+    up_probability_pct: float | None
+    down_probability_pct: float | None
+    models: list[ForecastModelSummary]
+    indicators: ForecastIndicatorSummary
+
+
+class ForecastSummaryResponse(BaseModel):
+    """Stable response contract for GET /forecast/{symbol}."""
+
+    model_config = {"extra": "forbid"}
+
+    schema_version: Literal[1] = 1
+    symbol: str
+    name: str | None
+    currency: Literal["PKR"] = "PKR"
+    generated_at: datetime
+    data_as_of: date
+    freshness: Literal["fresh", "stale"]
+    market_status: Literal["open", "closed"]
+    horizon: ForecastHorizonSummary
+    available_horizons: list[Literal["1D", "1W", "2W", "1M"]]
+    price: ForecastPriceSummary
+    outlook: ForecastOutlookSummary
+    levels: ForecastLevelsSummary
+    recent_movement: ForecastMovementSummary
+    agreement: Literal["full", "partial", "none"]
+    upcoming_events: list[ForecastUpcomingEventSummary]
+    track_record: ForecastTrackRecordSummary | None
+    details: ForecastDetailsSummary
 
 
 class ForecastResponse(BaseModel):

@@ -9,11 +9,12 @@ History never invents sideways/actual labels.
 """
 
 import logging
+import math
+from datetime import date, datetime, timedelta, timezone
 
-import pandas as pd
 from fastapi import APIRouter, Depends, Query
 from starlette.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
@@ -29,14 +30,16 @@ from app.ml.serving.model_loader import artifacts
 from app.ml.serving.prediction_logger import log_prediction
 from app.ml.serving.prediction_store import pkt_today
 from app.models.prediction import Prediction
+from app.models.event import MarketEvent
+from app.models.stock import Stock
 from app.models.user import User
-from app.services.recommendation_service import RecommendationEngine
+from app.services.news_pipeline.market_schedule import is_market_hours
 
 from app.ml.serving.schemas import (
     ErrorResponse,
     ForecastHistoryItem,
     ForecastHistoryResponse,
-    ForecastResponse,
+    ForecastSummaryResponse,
 )
 
 log = logging.getLogger(__name__)
@@ -46,7 +49,7 @@ router = APIRouter()
 
 @router.get(
     "/forecast/{symbol}",
-    response_model=ForecastResponse,
+    response_model=ForecastSummaryResponse,
     summary="Predict bullish/bearish/sideways and save to history",
     responses={
         404: {"model": ErrorResponse, "description": "Symbol not found"},
@@ -86,28 +89,6 @@ async def get_stock_forecast(
                 "AI Forecasts and Ensemble ML models are trained and calibrated exclusively for KSE-100 constituent stocks."
             )
 
-        cache_key = f"forecast:stock:v2:{symbol_upper}:{horizon}"
-        cached = await cache_get(cache_key)
-        if cached and isinstance(cached, dict):
-            # Real-time market price overlay over pre-computed forecast
-            try:
-                from app.services.stock_service import StockService
-                stock_svc = StockService()
-                quote = stock_svc.get_quote(symbol_upper)
-                if quote and (quote.get("current") or quote.get("ldcp")):
-                    curr_p = float(quote.get("current") or quote.get("ldcp"))
-                    if curr_p > 0:
-                        cached["current_price"] = round(curr_p, 2)
-                        tp = cached.get("target_price")
-                        sl = cached.get("stop_loss")
-                        if tp:
-                            cached["upside_pct"] = round((tp - curr_p) / curr_p * 100, 2)
-                        if sl:
-                            cached["downside_pct"] = round((sl - curr_p) / curr_p * 100, 2)
-            except Exception:
-                pass
-            return ForecastResponse(**cached)
-
         if not artifacts.model_ready:
             raise ServiceUnavailableError("ML model is not loaded yet")
 
@@ -129,80 +110,54 @@ async def get_stock_forecast(
             model_details=result.get("model_details"),
         )
 
-        target_stop = {"current_price": None, "target_price": None, "stop_loss": None}
-        try:
-            from app.ml.serving.inference import FEATURES_PATH
+        stock_name_result = await db.execute(
+            select(Stock.name).where(func.upper(Stock.symbol) == symbol_upper).limit(1)
+        )
+        stock_name = stock_name_result.scalar_one_or_none()
 
-            features_path = FEATURES_PATH
-            if features_path.exists():
-                df = pd.read_parquet(features_path)
-                df["date"] = pd.to_datetime(df["date"])
-                sym_df = (
-                    df[df["symbol"] == result["symbol"]]
-                    .copy()
-                    .sort_values("date")
-                    .reset_index(drop=True)
-                )
-                if not sym_df.empty:
-                    engine = RecommendationEngine()
-                    target_stop = engine.compute_target_stop(
-                        result["symbol"],
-                        sym_df,
-                        ml_direction=result.get("direction"),
-                        horizon=horizon,
-                    )
-        except Exception:
-            log.warning("Target/stop computation failed for %s", result["symbol"], exc_info=True)
+        horizon_ends = _as_date(result["predicted_for_date"])
+        today = pkt_today()
+        events_result = await db.execute(
+            select(MarketEvent)
+            .where(
+                MarketEvent.event_date >= today,
+                MarketEvent.event_date <= horizon_ends,
+                or_(MarketEvent.symbol == symbol_upper, MarketEvent.symbol.is_(None)),
+            )
+            .order_by(MarketEvent.event_date.asc())
+        )
+        events = [
+            {"type": _event_type_for_response(event), "date": event.event_date}
+            for event in events_result.scalars().all()
+        ]
 
-        if (
-            (not target_stop or target_stop.get("target_price") is None)
-            and result.get("direction") in ("bullish", "bearish")
-        ):
-            try:
-                from app.services.stock_service import StockService
+        record_result = await db.execute(
+            select(
+                func.count(Prediction.id),
+                func.sum(case((Prediction.was_correct.is_(True), 1), else_=0)),
+            ).where(
+                Prediction.symbol == symbol_upper,
+                Prediction.horizon == horizon,
+                Prediction.actual_direction.is_not(None),
+                Prediction.predicted_direction.in_(("bullish", "bearish")),
+            )
+        )
+        evaluated_count, correct_count = record_result.one()
+        track_record = None
+        if evaluated_count:
+            track_record = {
+                "evaluated_predictions": evaluated_count,
+                "accuracy_pct": round((correct_count or 0) / evaluated_count * 100, 1),
+            }
 
-                stock_svc = StockService()
-                quote = stock_svc.get_quote(result["symbol"])
-                curr_p = (
-                    float(quote.get("current") or quote.get("ldcp")) if quote and (quote.get("current") or quote.get("ldcp")) else 0.0
-                )
-                if curr_p <= 0:
-                    raise ValueError("No current price is available for target/stop calculation")
-                atr = 0.0
-                mult = 2.0 if horizon == "1D" else 3.0 if horizon == "1W" else 3.5 if horizon == "2W" else 4.0
-                dir_str = str(result.get("direction", "sideways")).lower()
-                if dir_str in ("bullish", "buy", "up") and atr > 0:
-                    tp = round(curr_p + (atr * mult), 2)
-                    sl = round(curr_p - (atr * mult * 0.75), 2)
-                elif dir_str in ("bearish", "sell", "down") and atr > 0:
-                    tp = round(curr_p - (atr * mult), 2)
-                    sl = round(curr_p + (atr * mult * 0.75), 2)
-                else:
-                    raise ValueError("ATR is unavailable for target/stop calculation")
-                up_pct = round((tp - curr_p) / curr_p * 100, 2)
-                down_pct = round((sl - curr_p) / curr_p * 100, 2)
-                rr = round(abs(tp - curr_p) / max(0.01, abs(curr_p - sl)), 2)
-                target_stop = {
-                    "symbol": result["symbol"],
-                    "current_price": round(curr_p, 2),
-                    "target_price": tp,
-                    "stop_loss": sl,
-                    "expected_range": {"low": min(sl, tp), "high": max(sl, tp), "method": "atr_band"},
-                    "upside_pct": up_pct,
-                    "downside_pct": down_pct,
-                    "risk_reward_ratio": rr,
-                    "method": "atr_band",
-                }
-            except Exception as exc:
-                log.warning(
-                    "Fallback target/stop computation failed for %s: %s",
-                    result["symbol"],
-                    exc,
-                )
-
-        response = _build_forecast_response(result, horizon, target_stop)
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
-        return response
+        return _build_forecast_response(
+            result,
+            horizon,
+            name=stock_name,
+            upcoming_events=events,
+            track_record=track_record,
+            market_open=await is_market_hours(),
+        )
 
     except SymbolNotFoundError as exc:
         raise NotFoundError(str(exc))
@@ -217,115 +172,150 @@ async def get_stock_forecast(
         raise ServiceUnavailableError(f"Failed to generate forecast: {exc}")
 
 
-def _build_forecast_response(result: dict, horizon: str, target_stop: dict | None = None) -> ForecastResponse:
-    """Transform raw inference output into enterprise-grade optimized response schema."""
-    direction = result["direction"]
-    top_prob = result["top_class_probability"]
-    confidence = round(top_prob / 100.0, 3)
+def _as_date(value) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    return value if isinstance(value, date) else date.fromisoformat(str(value)[:10])
 
-    probabilities = {
-        "bullish": result["bullish_pct"],
-        "bearish": result["bearish_pct"],
-        "sideways": result["sideways_pct"],
-    }
 
-    if direction == "bullish":
-        signal_rating = "Strong Buy" if probabilities["bullish"] >= 58.0 or confidence >= 0.58 else "Buy"
-    elif direction == "bearish":
-        signal_rating = "Strong Sell" if probabilities["bearish"] >= 58.0 or confidence >= 0.58 else "Sell"
+def _finite_float(value) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _response_direction(direction: str) -> str:
+    return {
+        "bullish": "up",
+        "buy": "up",
+        "up": "up",
+        "bearish": "down",
+        "sell": "down",
+        "down": "down",
+        "sideways": "sideways",
+        "uncertain": "uncertain",
+    }.get(str(direction).lower(), "uncertain")
+
+
+def _event_type_for_response(event: MarketEvent) -> str:
+    if event.event_type == "dividend":
+        text = f"{event.title} {event.description or ''}".casefold()
+        if "ex-date" in text or "ex date" in text or "ex-dividend" in text or "ex dividend" in text:
+            return "dividend_ex_date"
+    return event.event_type
+
+
+def _build_forecast_response(
+    result: dict,
+    horizon: str,
+    *,
+    name: str | None = None,
+    upcoming_events: list[dict] | None = None,
+    track_record: dict | None = None,
+    market_open: bool = False,
+) -> ForecastSummaryResponse:
+    """Shape actual inference, feature, and persistence values into the public contract."""
+    trading_days_by_horizon = {"1D": 1, "1W": 5, "2W": 10, "1M": 22}
+    trading_days = trading_days_by_horizon[horizon]
+    data_as_of = _as_date(result["as_of_date"])
+    target_date = _as_date(result["predicted_for_date"])
+    current_price = _finite_float(result.get("current_price"))
+    volatility_14d = _finite_float(result.get("volatility_14d"))
+
+    lower = upper = None
+    if current_price is not None and current_price > 0 and volatility_14d is not None and volatility_14d >= 0:
+        distance = current_price * volatility_14d * math.sqrt(trading_days)
+        lower = round(max(0.0, current_price - distance), 2)
+        upper = round(current_price + distance, 2)
+
+    raw_direction = _response_direction(result["direction"])
+    top_probability = _finite_float(result.get("top_class_probability")) or 0.0
+    strength = "high" if top_probability >= 75 else "medium" if top_probability >= 60 else "low"
+
+    bullish_pct = _finite_float(result.get("bullish_pct"))
+    bearish_pct = _finite_float(result.get("bearish_pct"))
+    directional_total = (bullish_pct or 0.0) + (bearish_pct or 0.0)
+    up_probability = down_probability = None
+    if directional_total > 0:
+        up_probability = round((bullish_pct or 0.0) / directional_total * 100, 1)
+        down_probability = round((bearish_pct or 0.0) / directional_total * 100, 1)
+
+    model_summaries = []
+    model_directions = []
+    for model_name, detail in (result.get("model_details") or {}).items():
+        model_direction = _response_direction(detail.get("direction", "uncertain"))
+        model_probability_key = {
+            "up": "bullish_pct",
+            "down": "bearish_pct",
+            "sideways": "sideways_pct",
+        }.get(model_direction)
+        model_probability = _finite_float(detail.get(model_probability_key)) if model_probability_key else None
+        if model_probability is None:
+            model_probability = _finite_float(detail.get("top_class_probability"))
+        if model_probability is None:
+            continue
+        normalized_name = "gru" if "gru" in model_name.casefold() else "xgb" if "xgb" in model_name.casefold() else model_name
+        model_summaries.append({
+            "name": normalized_name,
+            "direction": model_direction,
+            "pct": round(model_probability, 1),
+        })
+        model_directions.append(model_direction)
+
+    if len(model_directions) >= 2:
+        agreement = "full" if len(set(model_directions)) == 1 else "partial"
     else:
-        signal_rating = "Neutral / Hold"
+        agreement = "partial" if model_directions else "none"
 
-    models = None
-    if result.get("model_details"):
-        models = {}
-        for model_name, detail in result["model_details"].items():
-            short_name = "gru" if "gru" in model_name else "xgb" if "xgb" in model_name else model_name
-            models[short_name] = {
-                "direction": detail["direction"],
-                "bullish_pct": detail["bullish_pct"],
-                "bearish_pct": detail["bearish_pct"],
-                "sideways_pct": detail["sideways_pct"],
-                "gap_pp": detail["gap_pp"],
-            }
-
-    current_price = None
-    target_price = None
-    stop_loss = None
-    expected_range = None
-    upside_pct = None
-    downside_pct = None
-    risk_reward_ratio = None
-
-    if target_stop:
-        current_price = target_stop.get("current_price")
-        target_price = target_stop.get("target_price")
-        stop_loss = target_stop.get("stop_loss")
-        expected_range = target_stop.get("expected_range")
-        upside_pct = target_stop.get("upside_pct")
-        downside_pct = target_stop.get("downside_pct")
-        risk_reward_ratio = target_stop.get("risk_reward_ratio")
-
-    if current_price and direction in ("bullish", "bearish") and (target_price is None or stop_loss is None):
-        price_target_rationale = "Target and stop-loss are unavailable because a verified ATR value is missing."
-    elif target_price is not None and stop_loss is not None:
-        price_target_rationale = (
-            f"Target price and stop-loss calculated via ATR volatility interval for {horizon} horizon."
-        )
-    elif direction not in ("bullish", "bearish") and expected_range:
-        price_target_rationale = "Neutral forecasts have no directional target or stop; the expected range is an ATR volatility envelope."
-    else:
-        price_target_rationale = "Target and stop-loss calculations are pending current session price data."
-
-    # UI display helpers
-    as_of = result["as_of_date"]
-    target_d = result["predicted_for_date"]
-
-    HORIZON_LABELS = {
-        "1D": "1-Day (1 Trading Day)",
-        "1W": "1-Week (5 Trading Days)",
-        "2W": "2-Weeks (10 Trading Days)",
-        "1M": "1-Month (22 Trading Days)",
+    market_context = result.get("market_context") or {}
+    movement = {}
+    movement_fields = {
+        "stock_5d_pct": "stock_return_5d",
+        "stock_20d_pct": "stock_return_20d",
+        "market_5d_pct": "market_return_5d",
+        "market_20d_pct": "market_return_20d",
     }
-    HORIZON_TRADING_DAYS = {"1D": 1, "1W": 5, "2W": 10, "1M": 22}
+    for output_field, source_field in movement_fields.items():
+        value = _finite_float(market_context.get(source_field))
+        movement[output_field] = round(value * 100, 2) if value is not None else None
 
-    horizon_label = HORIZON_LABELS.get(horizon, f"{horizon} (5 Trading Days)")
-    trading_days = HORIZON_TRADING_DAYS.get(horizon, 5)
+    stock_20d = _finite_float(market_context.get("stock_return_20d"))
+    market_20d = _finite_float(market_context.get("market_return_20d"))
+    vs_market = None
+    if stock_20d is not None and market_20d is not None:
+        delta = stock_20d - market_20d
+        vs_market = "in_line" if abs(delta) < 0.001 else "stronger" if delta > 0 else "weaker"
 
-    as_of_label = as_of.strftime("%a, %b %d, %Y") if hasattr(as_of, "strftime") else str(as_of)
-    target_label = f"Target by {target_d.strftime('%a, %b %d, %Y')}" if hasattr(target_d, "strftime") else f"Target by {target_d}"
-
-    from zoneinfo import ZoneInfo
-    from datetime import datetime as dt
-    pkt_now = dt.now(ZoneInfo("Asia/Karachi"))
-    market_status = "closed" if pkt_now.weekday() >= 5 else "open"
-
-    return ForecastResponse(
-        price_target_rationale=price_target_rationale,
+    pkt_today_date = pkt_today()
+    return ForecastSummaryResponse(
+        schema_version=1,
         symbol=result["symbol"],
-        horizon=horizon,
-        horizon_label=horizon_label,
-        trading_days=trading_days,
-        direction=direction,
-        confidence=confidence,
-        probabilities=probabilities,
-        as_of_date=as_of,
-        as_of_label=as_of_label,
-        target_date=target_d,
-        target_label=target_label,
-        market_status=market_status,
-        current_price=current_price,
-        target_price=target_price,
-        expected_range=expected_range,
-        stop_loss=stop_loss,
-        signal_rating=signal_rating,
-        upside_pct=upside_pct,
-        downside_pct=downside_pct,
-        risk_reward_ratio=risk_reward_ratio,
-        model_version=result["model_version"],
-        gate_reason=result.get("gate_reason", ""),
-        models=models,
-        market_context=result.get("market_context"),
+        name=name,
+        currency="PKR",
+        generated_at=datetime.now(timezone.utc),
+        data_as_of=data_as_of,
+        freshness="fresh" if data_as_of >= pkt_today_date - timedelta(days=3) else "stale",
+        market_status="open" if market_open else "closed",
+        horizon={"code": horizon, "trading_days": trading_days, "ends_on": target_date},
+        available_horizons=["1D", "1W", "2W", "1M"],
+        price={"current": round(current_price, 2) if current_price is not None else None},
+        outlook={"direction": raw_direction, "strength": strength},
+        levels={"lower": lower, "upper": upper, "basis": "volatility_14d"},
+        recent_movement={**movement, "vs_market": vs_market},
+        agreement=agreement,
+        upcoming_events=upcoming_events or [],
+        track_record=track_record,
+        details={
+            "up_probability_pct": up_probability,
+            "down_probability_pct": down_probability,
+            "models": model_summaries,
+            "indicators": {
+                "rsi": _finite_float(result.get("rsi")),
+                "macd_hist": _finite_float(result.get("macd_hist")),
+            },
+        },
     )
 
 
