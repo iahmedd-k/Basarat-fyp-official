@@ -11,6 +11,8 @@
 !data/config/
 !data/config/**
 !models/
+!models/production/
+!models/production/**
 !models/final/
 !models/final/final_v3/
 !models/final/final_v3/gru_best_weights.weights.h5
@@ -18,6 +20,10 @@
 !models/final/final_v3/gru_scaler.joblib
 !models/final/final_v3/xgb_model.ubj
 !models/final/final_v3/xgb_features.json
+!deploy_assets/
+!deploy_assets/**
+!scripts/
+!scripts/**
 **/.git/
 **/__pycache__/
 **/*.py[cod]
