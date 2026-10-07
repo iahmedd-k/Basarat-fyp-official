@@ -1009,3 +1009,60 @@ def save_recommendations_cache(recommendations: list[dict]) -> None:
     from app.core.redis import cache_set_sync
     cache_set_sync("recommendations:default:v5", data, 7 * 24 * 3600)
     log.info("Saved %d recommendations to cache", len(recommendations))
+
+
+SEED_RECOMMENDATIONS_CACHE = Path("app/seeds/recommendations_cache.seed.json")
+
+
+def sync_seed_recommendations(force: bool = False) -> bool:
+    """Synchronize recommendations cache on startup from seed assets if volume is missing or stale."""
+    if not SEED_RECOMMENDATIONS_CACHE.is_file():
+        return False
+
+    try:
+        seed_data = json.loads(SEED_RECOMMENDATIONS_CACHE.read_text(encoding="utf-8"))
+        seed_as_of = None
+        for item in seed_data.get("recommendations", []):
+            if item.get("data_as_of"):
+                seed_as_of = str(item["data_as_of"])[:10]
+                break
+
+        should_sync = force
+        if not should_sync:
+            if not RECOMMENDATIONS_CACHE.is_file():
+                should_sync = True
+            else:
+                try:
+                    current_data = json.loads(RECOMMENDATIONS_CACHE.read_text(encoding="utf-8"))
+                    current_as_of = None
+                    for item in current_data.get("recommendations", []):
+                        if item.get("data_as_of"):
+                            current_as_of = str(item["data_as_of"])[:10]
+                            break
+                    if not current_as_of or (seed_as_of and current_as_of < seed_as_of):
+                        should_sync = True
+                except Exception:
+                    should_sync = True
+
+        if should_sync:
+            log.info("Synchronizing recommendations cache to seed version (as_of: %s)", seed_as_of)
+            RECOMMENDATIONS_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = RECOMMENDATIONS_CACHE.with_suffix(".tmp")
+            temp_path.write_text(json.dumps(seed_data, default=str), encoding="utf-8")
+            temp_path.replace(RECOMMENDATIONS_CACHE)
+
+            from app.core.redis import cache_set_sync, get_sync_redis_client
+            cache_set_sync("recommendations:default:v5", seed_data, 7 * 24 * 3600)
+            client = get_sync_redis_client()
+            if client:
+                try:
+                    keys = client.keys("rec:all:v4:*") + client.keys("forecast:v3:*")
+                    if keys:
+                        client.delete(*keys)
+                except Exception as exc:
+                    log.warning("Could not flush outdated redis recommendation keys: %s", exc)
+            return True
+    except Exception as exc:
+        log.warning("Could not sync seed recommendations: %s", exc)
+    return False
+

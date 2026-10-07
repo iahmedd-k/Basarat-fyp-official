@@ -74,6 +74,19 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     setup_logging()
 
+    # ── Ensure feature assets and recommendation cache are current ──────
+    try:
+        from scripts.prepare_feature_assets import prepare_features
+        prepare_features()
+    except Exception as exc:
+        log.warning("Could not auto-prepare feature assets: %s", exc)
+
+    try:
+        from app.services.recommendation_service import sync_seed_recommendations
+        sync_seed_recommendations()
+    except Exception as exc:
+        log.warning("Could not sync seed recommendations: %s", exc)
+
     # ── Load ML model + scaler + metadata ──────────────────────────────
     from app.ml.serving.model_loader import load_artifacts
     load_artifacts()

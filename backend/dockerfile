@@ -26,6 +26,8 @@ COPY --chown=1000:1000 models/production/v3/gru_features.json ./models/productio
 COPY --chown=1000:1000 models/production/v3/gru_scaler.joblib ./models/production/v3/gru_scaler.joblib
 COPY --chown=1000:1000 models/production/v3/xgb_model.ubj ./models/production/v3/xgb_model.ubj
 COPY --chown=1000:1000 models/production/v3/xgb_features.json ./models/production/v3/xgb_features.json
+COPY --chown=1000:1000 deploy_assets/ ./deploy_assets/
+COPY --chown=1000:1000 scripts/ ./scripts/
 
 RUN mkdir -p /app/tmp /app/data/raw/ohlcv /app/data/features /app/data/reports /app/data/reports/sentiment /app/data/reports/monte_carlo /app/data/news_state /var/lib/celery /home/app \
     && chown -R 1000:1000 /app /var/lib/celery /home/app \

@@ -9,11 +9,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PARTS_DIR = ROOT / "deploy_assets"
 TARGET = ROOT / "data" / "features" / "features_daily.parquet"
-EXPECTED_SIZE = 101_686_063
-EXPECTED_SHA256 = "9d6d3af65121f2b1d4a7d75b14adceab05a8ff2a19a3ebba8ee104c17da21976"
+EXPECTED_SIZE = 41_180_828
+EXPECTED_SHA256 = "f52ddc78c74389b4852486e66e17bf00abb35eb8305f697524431bcbb98f0459"
 
 
-def prepare_features() -> Path:
+def prepare_features(force: bool = False) -> Path:
     parts = sorted(PARTS_DIR.glob("features_daily.parquet.part-*"))
     if not parts:
         if TARGET.is_file():
@@ -22,6 +22,12 @@ def prepare_features() -> Path:
             "Forecast feature data is missing. Include backend/deploy_assets/ "
             "or provide data/features/features_daily.parquet."
         )
+
+    # Re-use existing target if it matches expected size and force is not set
+    if TARGET.is_file() and not force:
+        if TARGET.stat().st_size == EXPECTED_SIZE:
+            return TARGET
+
     expected_names = [f"features_daily.parquet.part-{index:02d}" for index in range(len(parts))]
     if [part.name for part in parts] != expected_names:
         raise RuntimeError("Forecast feature chunks are incomplete or out of sequence.")
