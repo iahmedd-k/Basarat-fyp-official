@@ -61,6 +61,18 @@ BUY_THRESHOLD = 0.15
 SELL_THRESHOLD = -0.15
 
 
+def _ensure_features_fresh() -> None:
+    """Ensure features_daily.parquet exists and is populated from raw OHLCV."""
+    raw_path = Path("data/raw/ohlcv/all_symbols.parquet")
+    if not FEATURES_PATH.exists() and raw_path.exists():
+        try:
+            from app.data.features.run_features import run_features
+            log.info("features_daily.parquet not found; generating from %s", raw_path)
+            run_features()
+        except Exception as exc:
+            log.warning("Automatic feature generation encountered error: %s", exc)
+
+
 class RecommendationEngine:
     """Compute stock recommendations by synthesizing multiple signal sources."""
 
@@ -694,6 +706,7 @@ class RecommendationEngine:
         """Get the full recommendation for a single symbol."""
         symbol = symbol.upper()
         if sym_df is None:
+            _ensure_features_fresh()
             if not FEATURES_PATH.exists():
                 return {
                     "symbol": symbol,
@@ -859,6 +872,7 @@ class RecommendationEngine:
         weights: dict | None = None,
     ) -> list[dict]:
         """Get recommendations for all active symbols with Redis caching."""
+        _ensure_features_fresh()
         if not FEATURES_PATH.exists():
             return []
 

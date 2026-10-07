@@ -42,16 +42,12 @@ The API exposes Prometheus metrics at `GET /metrics` when
 authenticated mode uses HTTP Basic authentication with
 `PROMETHEUS_METRICS_USERNAME` and `PROMETHEUS_METRICS_PASSWORD`.
 
-> **Temporary development-only exposure:** The Oracle monitoring Compose
-> overlay currently sets `PROMETHEUS_METRICS_PUBLIC=true`, publishes
-> Prometheus on port 9090 and Grafana on port 3000 on all network interfaces,
-> and lists `/metrics` in Swagger. Anyone who can reach the VM can read API
-> traffic metrics and query Prometheus. Grafana still requires its admin
-> password, but without HTTPS its login is not encrypted in transit. Do not
-> use this configuration for production or sensitive traffic. Before
-> production lockdown, set `PROMETHEUS_METRICS_PUBLIC=false`, remove the
-> public port mappings (bind to `127.0.0.1`), and access the tools through an
-> SSH tunnel or a TLS-protected authenticated proxy.
+> **Monitoring access:** Prometheus and Grafana bind to loopback on the Oracle
+> VM; access them through an SSH tunnel rather than opening ports 9090 and
+> 3000 to the internet. The deployment currently sets
+> `PROMETHEUS_METRICS_PUBLIC=true`, so `/metrics` on API port 8000 is
+> unauthenticated. Restrict API access or configure authenticated metrics
+> scraping before using this setup with sensitive traffic.
 
 The optional Compose overlay starts Prometheus and Grafana alongside the local
 stack. Configure the three credentials in `backend/.env` (do not commit them),
@@ -61,14 +57,13 @@ then run from the repository root:
 make monitoring-up
 ```
 
-Prometheus scrapes the API every 15 seconds. The scrape request uses
-`PROMETHEUS_METRICS_HOST_HEADER` (default `localhost`) so it can pass the API's
-trusted-host check; when monitoring a deployment, set it to one of that
-deployment's configured `ALLOWED_HOSTS`. Grafana is available at
+Prometheus scrapes the API every 15 seconds using the Compose service hostname
+`app`. Include `app` in the API's `ALLOWED_HOSTS`; Prometheus does not allow
+overriding the reserved `Host` header in its scrape configuration. Grafana is available at
 `http://localhost:3000` (user `admin`, password from `GRAFANA_ADMIN_PASSWORD`)
 with the provisioned **Basarat API Overview** dashboard. This overlay
-temporarily publishes Prometheus and Grafana on all host interfaces at ports
-9090 and 3000; restrict those bindings before using it in production.
+binds Prometheus and Grafana to loopback; use the SSH tunnel instructions in
+the Oracle deployment guide to access the cloud instance.
 
 The dashboard reports API request rate by route and method, HTTP status
 distribution, server-side 5xx rate, and p50/p95 request latency. Labels use

@@ -94,6 +94,12 @@ def run_after_close_scrape(
         frames[path.stem] = pd.read_parquet(path)
     if frames:
         write_combined_parquet(frames, out_dir)
+        try:
+            from app.data.features.run_features import run_features
+            log.info("Triggering automatic feature generation from freshly scraped OHLCV data...")
+            run_features()
+        except Exception as exc:
+            log.warning("Automatic post-scrape feature generation skipped or failed: %s", exc)
 
     summary = {
         "mode": "incremental_after_close",

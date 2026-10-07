@@ -5,10 +5,6 @@ global:
 scrape_configs:
   - job_name: basarat-api
     metrics_path: /metrics
-    http_headers:
-      Host:
-        values:
-          - ${PROMETHEUS_METRICS_HOST_HEADER}
     static_configs:
       - targets:
           - app:8000

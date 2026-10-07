@@ -25,6 +25,7 @@ Do not use or upload a development machine's `.env`. Set at least:
 - `CLOUD_DATABASE_URL` to the production PostgreSQL URL. Use a TLS-enabled database connection where supported.
 - `CORS_ORIGINS=["https://your-frontend.example"]` with the exact deployed frontend origin. Wildcards are only for development and are rejected in production.
 - `ALLOWED_HOSTS=["193.123.84.223"]`, or the actual public API hostname.
+- Include `app` in `ALLOWED_HOSTS` so Prometheus can scrape the API using its Compose service hostname.
 - `FIREBASE_PROJECT_ID` to the Firebase project ID.
 
 Compose points API and Celery at the included Redis container and explicitly disables the external Redis fallback; do not set Redis URLs to localhost or an external service. The API is published on host port 8000. Prometheus (9090) and Grafana (3000) bind to loopback only; access them with an SSH tunnel rather than exposing these ports publicly. Restrict Oracle ingress to the required sources and configure TLS before sending credentials or production user traffic.
@@ -85,12 +86,14 @@ docker compose --env-file .env --env-file .env.monitoring \
 curl --fail http://127.0.0.1:8000/health
 ```
 
-The monitoring Compose overlay temporarily exposes the metrics, Prometheus, and Grafana ports publicly for development. Open:
+The monitoring UI ports bind to loopback on the VM. From your local terminal, open an SSH tunnel:
 
-- `http://193.123.84.223:8000/metrics` — unauthenticated Prometheus-format metrics; it is also listed in Swagger.
-- `http://193.123.84.223:9090` — Prometheus query UI.
-- `http://193.123.84.223:3000` — Grafana login (`admin` and `GRAFANA_ADMIN_PASSWORD`); the provisioned **Basarat API Overview** dashboard is available after sign-in.
+```bash
+ssh -N -L 9090:127.0.0.1:9090 -L 3000:127.0.0.1:3000 ubuntu@193.123.84.223
+```
 
-Replace the IP if the VM address changes. Public access also requires the Oracle Cloud VCN/security-list or NSG ingress rules and host firewall to allow TCP ports 3000 and 9090. The API port 8000 is already used by the API. This is temporary development exposure only: the metrics and Prometheus UI have no authentication, and HTTP provides no TLS. Do not send sensitive traffic or use real secrets through these public HTTP pages. Before production lockdown, set metrics back to authenticated/private mode, bind the monitoring ports to loopback, and put any required external UI behind HTTPS and access control.
+Then open `http://localhost:9090` for Prometheus and `http://localhost:3000` for Grafana (`admin` and `GRAFANA_ADMIN_PASSWORD`). The provisioned **Basarat API Overview** dashboard is available after sign-in. Do not add public ingress rules for ports 3000 or 9090. The `/metrics` endpoint on API port 8000 is currently unauthenticated; configure authenticated scraping or restrict access before using it with sensitive traffic.
+
+Prometheus scrapes the API at `app:8000`; the API's `ALLOWED_HOSTS` must include `app`. Prometheus does not permit setting the reserved `Host` header through `http_headers`.
 
 The workflow's deploy job must complete successfully before the release is considered deployed.
