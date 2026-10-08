@@ -63,7 +63,7 @@ services:
     build:
       context: .
       dockerfile: dockerfile
-    command: celery -A app.celery_app worker --loglevel=info --queues=default,market-live,news,fundamentals,ml-training,data-pipeline --concurrency=2 --max-tasks-per-child=20
+    command: celery -A app.celery_app worker --loglevel=info --queues=health,default,market-live,news,fundamentals,ml-training,data-pipeline --concurrency=2 --max-tasks-per-child=20
     env_file:
       - .env
     environment:

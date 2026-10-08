@@ -46,6 +46,7 @@ celery.conf.update(
     worker_prefetch_multiplier=1,
     task_default_queue="default",
     task_routes={
+        "app.tasks.health.*": {"queue": "health"},
         "app.tasks.refresh_market_cache.refresh_market_session": {"queue": "market-live"},
         "app.tasks.refresh_market_cache.refresh_market_cache": {"queue": "market-live"},
         "app.tasks.scrape_news.run": {"queue": "news"},

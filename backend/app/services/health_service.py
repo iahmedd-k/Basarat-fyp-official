@@ -11,7 +11,7 @@ from app.db.base import engine
 
 settings = get_settings()
 IS_TESTING = os.environ.get("PYTEST_CURRENT_TEST") is not None or os.environ.get("TESTING") == "true"
-HEALTH_CHECK_TIMEOUT_SECONDS = 0.75
+HEALTH_CHECK_TIMEOUT_SECONDS = float(os.environ.get("HEALTH_CHECK_TIMEOUT_SECONDS", "5.0"))
 log = logging.getLogger(__name__)
 
 
