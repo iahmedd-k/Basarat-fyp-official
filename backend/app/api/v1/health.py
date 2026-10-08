@@ -18,6 +18,6 @@ async def readiness_check(
 ):
     """Readiness probe: dependencies required for serving are available."""
     result = await health_service.check_health()
-    if result["status"] != "healthy":
+    if result["status"] == "unhealthy":
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return result

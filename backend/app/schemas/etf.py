@@ -66,6 +66,7 @@ class ETFHistoryResponse(BaseModel):
     timeframe: str
     count: int
     history: List[ETFHistoryItem]
+    data_available: bool = False
 
 
 class ETFPerformanceResponse(BaseModel):
@@ -76,3 +77,4 @@ class ETFPerformanceResponse(BaseModel):
     benchmark_returns: Dict[str, Optional[float]]
     tracking_difference_1m: Optional[float] = None
     volatility_annualized: Optional[float] = None
+    is_estimated: bool = False

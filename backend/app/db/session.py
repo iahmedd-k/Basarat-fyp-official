@@ -1,9 +1,12 @@
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from app.db.base import async_session_factory
 
 
-async def get_db() -> AsyncGenerator:
+@asynccontextmanager
+async def db_session() -> AsyncGenerator:
+    """Open a Postgres session only for the caller's `async with` block."""
     async with async_session_factory() as session:
         try:
             yield session
@@ -13,5 +16,8 @@ async def get_db() -> AsyncGenerator:
             if session.is_active:
                 await session.rollback()
             raise
-        finally:
-            await session.close()
+
+
+async def get_db() -> AsyncGenerator:
+    async with db_session() as session:
+        yield session

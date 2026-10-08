@@ -1,10 +1,10 @@
 """API tests for Shariah screening endpoints."""
 
+import time
+
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.shariah import ShariahScreening
 from app.services.shariah_service import ShariahService
 
 
@@ -221,3 +221,52 @@ class TestShariahKMI30:
         assert rows["MEBL"]["purification_rate_provisional"] is False
         assert rows["FFC"]["purification_rate_provisional"] is False
         assert rows["SYS"]["purification_rate_provisional"] is False
+
+
+@pytest.mark.api
+class TestShariahLatency:
+    async def test_cold_and_warm_shariah_endpoints_stay_under_one_second(
+        self, client: AsyncClient, monkeypatch
+    ):
+        cache_values = {}
+
+        async def cache_get(key):
+            return cache_values.get(key)
+
+        async def cache_set(key, value, ttl_seconds=60):
+            cache_values[key] = value
+
+        for module in (
+            "app.api.v1.shariah",
+            "app.services.shariah_service",
+        ):
+            monkeypatch.setattr(f"{module}.cache_get", cache_get)
+            monkeypatch.setattr(f"{module}.cache_set", cache_set)
+
+        async def external_constituent_fetch(*args, **kwargs):
+            raise AssertionError("Shariah API requests must not call the external KMI-30 source")
+
+        from app.services.market_service import MarketService
+
+        monkeypatch.setattr(
+            MarketService,
+            "get_index_constituents",
+            external_constituent_fetch,
+        )
+        urls = (
+            "/api/v1/shariah/OGDC",
+            "/api/v1/shariah/OGDC/criteria",
+            "/api/v1/shariah/OGDC/purification?dividend_income=15000",
+            "/api/v1/shariah/kmi30",
+        )
+        for url in urls:
+            timings = []
+            for _ in range(3):
+                cache_values.clear()
+                for _ in range(2):
+                    started = time.perf_counter()
+                    response = await client.get(url)
+                    timings.append(time.perf_counter() - started)
+                    assert response.status_code == 200, response.text
+
+            assert max(timings) < 1.0, f"{url} latency samples: {timings}"

@@ -11,9 +11,10 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis import cache_set
 from app.models.news import NewsArticle, NewsArticleSymbol, NewsSourceState
 from app.schemas.news import IngestResult
 from app.services.sentiment_service import score_text
@@ -36,6 +37,10 @@ from app.services.news_pipeline import fbr_mof_source
 from app.services.news_pipeline.base import NormalizedArticle
 
 log = logging.getLogger(__name__)
+
+# Redis cache key for total article count
+NEWS_TOTAL_COUNT_KEY = "news:total_count"
+NEWS_TOTAL_COUNT_TTL = 3600
 
 # All source adapters in execution order
 _SOURCE_ADAPTERS = [
@@ -441,5 +446,14 @@ async def run_pipeline(db: AsyncSession, limit_per_source: int = 50) -> Pipeline
         result.total_skipped_duplicate,
         result.total_sentiment_processed,
     )
+
+    # Update cached total article count for fast /news feed
+    try:
+        total_count_result = await db.execute(select(func.count(NewsArticle.id)))
+        total_count = total_count_result.scalar() or 0
+        await cache_set(NEWS_TOTAL_COUNT_KEY, total_count, NEWS_TOTAL_COUNT_TTL)
+        log.debug("Updated cached news total count: %d", total_count)
+    except Exception as exc:
+        log.warning("Failed to update news total count cache: %s", exc)
 
     return result

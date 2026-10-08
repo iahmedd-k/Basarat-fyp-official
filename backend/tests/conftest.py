@@ -1,9 +1,13 @@
 import os
 os.environ.setdefault("SECRET_KEY", "test-secret-key-12345678901234567890")
+if not os.environ.get("USE_REAL_DB"): os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+if not os.environ.get("USE_REAL_DB"): os.environ["DATABASE_URL_SYNC"] = "sqlite:///:memory:"
+os.environ.setdefault("REDIS_ENABLED", "false")
+os.environ.setdefault("USE_CELERY", "false")
 
 import asyncio
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from uuid import uuid4
 
 import pytest
@@ -14,9 +18,13 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+import pandas as pd
+from pathlib import Path
+
+
 
 from app.core.security import create_access_token, hash_password
-from app.db.base import Base
+from app.db.base import Base, engine as app_engine
 from app.db.session import get_db
 from app.main import app
 from app.models.stock import Stock
@@ -49,14 +57,10 @@ def _mock_email_service(monkeypatch):
                 yield
 
 
-# ---------------------------------------------------------------------------
-# In-memory async SQLite engine + tables
-# ---------------------------------------------------------------------------
-TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
-
-engine = create_async_engine(TEST_DB_URL, echo=False, future=True)
+# Use the app's engine (configured via DATABASE_URL env var) for tests
+# This ensures tests and the app share the same in-memory SQLite database
 TestSessionLocal = async_sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
+    app_engine, class_=AsyncSession, expire_on_commit=False
 )
 
 
@@ -66,7 +70,7 @@ def _dispose_engine_at_session_end():
     yield
 
     async def _dispose():
-        await engine.dispose()
+        await app_engine.dispose()
 
     loop = asyncio.new_event_loop()
     try:
@@ -77,15 +81,15 @@ def _dispose_engine_at_session_end():
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Yield a clean async DB session, rolled back after each test."""
-    async with engine.begin() as conn:
+    """Yield a clean async DB session, rolled back and dropped after each test."""
+    async with app_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     async with TestSessionLocal() as session:
         yield session
         await session.rollback()
 
-    async with engine.begin() as conn:
+    async with app_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
 
@@ -434,12 +438,14 @@ async def seed_stocks(db_session: AsyncSession) -> list[Stock]:
         Stock(id="stock-ubl", symbol="UBL", name="United Bank Limited", sector="Banking"),
         Stock(id="stock-mcb", symbol="MCB", name="MCB Bank Limited", sector="Banking"),
     ]
+    merged = []
     for stock in stocks:
-        db_session.add(stock)
+        merged_stock = await db_session.merge(stock)
+        merged.append(merged_stock)
     await db_session.flush()
-    for stock in stocks:
+    for stock in merged:
         await db_session.refresh(stock)
-    return stocks
+    return merged
 
 
 @pytest.fixture(autouse=True)
@@ -470,3 +476,36 @@ def reset_rate_limiter():
     from app.core.rate_limiter import limiter
     limiter.reset()
     yield
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def seed_etf_ohlcv_files():
+    """Create minimal ETF OHLCV parquet files for testing."""
+    etf_symbols = ["MIIETF", "UBLPETF", "NITGETF", "MZNPETF", "JSGBETF", "HBLTETF"]
+    ohlcv_dir = Path(__file__).resolve().parents[1] / "backend" / "data" / "raw" / "ohlcv"
+    ohlcv_dir.mkdir(parents=True, exist_ok=True)
+    
+    base_prices = {
+        "MIIETF": 16.24,
+        "UBLPETF": 28.52,
+        "NITGETF": 32.83,
+        "MZNPETF": 17.49,
+        "JSGBETF": 38.92,
+        "HBLTETF": 105.40,
+    }
+    
+    for sym in etf_symbols:
+        file_path = ohlcv_dir / f"{sym}.parquet"
+        if not file_path.exists():
+            base_price = base_prices.get(sym, 25.0)
+            dates = pd.date_range(end=date.today(), periods=60, freq='B')
+            df = pd.DataFrame({
+                "date": dates,
+                "OPEN": [round(base_price * (1 + (i % 10) * 0.001), 2) for i in range(60)],
+                "HIGH": [round(base_price * (1 + (i % 10) * 0.002 + 0.01), 2) for i in range(60)],
+                "LOW": [round(base_price * (1 - (i % 10) * 0.002 - 0.01), 2) for i in range(60)],
+                "CLOSE": [round(base_price * (1 + (i % 10) * 0.0015), 2) for i in range(60)],
+                "ADJUSTED_CLOSE": [round(base_price * (1 + (i % 10) * 0.0015), 2) for i in range(60)],
+                "VOLUME": [100000 + i * 1000 for i in range(60)],
+            })
+            df.to_parquet(file_path, index=False)

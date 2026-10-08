@@ -3,10 +3,10 @@
 from datetime import date, datetime
 from typing import Literal
 
-from sqlalchemy import and_, desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.news import NewsArticle
+from app.models.news import NewsArticle, NewsArticleSymbol
 from app.models.sentiment import SentimentAggregate, SentimentResult
 from app.models.stock import Stock
 
@@ -74,9 +74,6 @@ class SentimentRepository:
         page: int = 1,
     ) -> tuple[list[NewsArticle], int]:
         from datetime import timezone, timedelta
-        from sqlalchemy import or_
-        from app.models.news import NewsArticleSymbol
-
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         stmt = (
             select(NewsArticle)
@@ -91,14 +88,7 @@ class SentimentRepository:
         if symbol:
             sym_clean = symbol.strip().upper()
             sym_subq = select(NewsArticleSymbol.article_id).where(NewsArticleSymbol.symbol == sym_clean)
-            stmt = stmt.where(
-                or_(
-                    NewsArticle.id.in_(sym_subq),
-                    NewsArticle.symbols.ilike(f'%"{sym_clean}"%'),
-                    NewsArticle.symbols.ilike(f'%{sym_clean}%'),
-                    NewsArticle.title.ilike(f'%{sym_clean}%'),
-                )
-            )
+            stmt = stmt.where(NewsArticle.id.in_(sym_subq))
 
         count_stmt = select(func.count(NewsArticle.id)).where(stmt.whereclause)
         total = await self.db.scalar(count_stmt) or 0

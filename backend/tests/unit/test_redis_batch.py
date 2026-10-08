@@ -10,7 +10,7 @@ from app.core import redis as redis_cache
 @pytest.mark.asyncio
 async def test_cache_get_many_uses_one_redis_round_trip_and_local_fallback(monkeypatch):
     client = AsyncMock()
-    client.mget.return_value = [json.dumps({"price": 12}), None]
+    client.mget.return_value = [json.dumps({"price": 12})]
     monkeypatch.setattr(redis_cache, "get_redis_client", lambda: client)
     monkeypatch.setattr(redis_cache, "_redis_available_for_attempt", lambda: True)
     monkeypatch.setattr(
@@ -21,7 +21,7 @@ async def test_cache_get_many_uses_one_redis_round_trip_and_local_fallback(monke
 
     result = await redis_cache.cache_get_many(["redis-value", "local-only", "local-only"])
 
-    client.mget.assert_awaited_once_with(["redis-value", "local-only"])
+    client.mget.assert_awaited_once_with(["redis-value"])
     assert result == {"redis-value": {"price": 12}, "local-only": {"price": 9}}
 
 

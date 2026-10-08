@@ -13,6 +13,8 @@ from app.core.redis import (
     cache_set,
     cache_invalidate,
     cache_invalidate_pattern,
+    cache_get_many,
+    get_redis_client,
 )
 from app.core.exceptions import (
     BadRequestError,
@@ -40,6 +42,13 @@ from app.services.portfolio_calculation import (
 from app.services.stock_service import StockService
 
 logger = logging.getLogger(__name__)
+
+# Redis cache keys
+MARKET_QUOTES_KEY = "market:quotes"
+MARKET_QUOTES_FALLBACK_KEY = "market:quotes:last_known"
+
+# Portfolio cache TTL (5 minutes)
+PORTFOLIO_CACHE_TTL = 300
 
 
 class PortfolioService:
@@ -365,18 +374,11 @@ class PortfolioService:
         # Get active symbols
         active_symbols = [s for s, p in positions.items() if p.is_active]
 
-        # Fetch current prices for all active symbols in thread
+        # Fetch current prices directly from Redis cache (fast path)
         current_prices = {}
         price_dates = {}
         if active_symbols:
-            quotes = await asyncio.to_thread(self.stock_service.get_quote_batch, active_symbols)
-            quote_list = list(quotes.values()) if isinstance(quotes, dict) else (quotes or [])
-            for q in quote_list:
-                if isinstance(q, dict):
-                    sym = q.get("symbol", "").upper()
-                    if sym and q.get("current") is not None:
-                        current_prices[sym] = Decimal(str(q["current"]))
-                        price_dates[sym] = datetime.now(timezone.utc)
+            current_prices, price_dates = await self._get_prices_from_redis(active_symbols)
 
         # Calculate portfolio summary and holdings
         summary, holdings = calculate_portfolio_summary(
@@ -397,7 +399,7 @@ class PortfolioService:
             "holdings": list(holdings.values()),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        await cache_set(cache_key, result, ttl_seconds=60)
+        await cache_set(cache_key, result, ttl_seconds=PORTFOLIO_CACHE_TTL)
         return result
 
     async def get_holdings(self, user_id: str) -> list[dict]:
@@ -421,13 +423,13 @@ class PortfolioService:
         # Calculate position
         position = calculate_position(txns)
 
-        # Get current price
+        # Get current price from Redis cache
         current_price = None
         price_updated_at = None
-        quote = await asyncio.to_thread(self.stock_service.get_quote, symbol)
-        if quote and quote.get("current") is not None:
-            current_price = Decimal(str(quote["current"]))
-            price_updated_at = datetime.utcnow()
+        prices, dates = await self._get_prices_from_redis([symbol])
+        if symbol in prices:
+            current_price = prices[symbol]
+            price_updated_at = dates.get(symbol) or datetime.now(timezone.utc)
 
         # Get stock info
         stock_info = await self.repo.get_stock_info([symbol])
@@ -478,7 +480,7 @@ class PortfolioService:
             "price_updated_at": price_updated_at,
             "price_status": price_info["price_status"],
         }
-        await cache_set(cache_key, result, ttl_seconds=60)
+        await cache_set(cache_key, result, ttl_seconds=PORTFOLIO_CACHE_TTL)
         return result
 
     async def get_pnl(self, user_id: str) -> dict:
@@ -502,7 +504,7 @@ class PortfolioService:
             "total_pnl_percent": summary.get("total_pnl_percent", 0.0),
             "today_pnl": Decimal(str(summary.get("today_pnl", "0"))),
         }
-        await cache_set(cache_key, result, ttl_seconds=60)
+        await cache_set(cache_key, result, ttl_seconds=PORTFOLIO_CACHE_TTL)
         return result
 
     async def get_allocation(self, user_id: str) -> dict:
@@ -516,7 +518,7 @@ class PortfolioService:
         holdings = portfolio["holdings"]
         
         result = calculate_allocation({h["symbol"]: h for h in holdings})
-        await cache_set(cache_key, result, ttl_seconds=60)
+        await cache_set(cache_key, result, ttl_seconds=PORTFOLIO_CACHE_TTL)
         return result
 
     async def get_performance(
@@ -547,7 +549,7 @@ class PortfolioService:
         
         if not txns:
             empty_perf = {"period": period, "data": []}
-            await cache_set(cache_key, empty_perf, ttl_seconds=120)
+            await cache_set(cache_key, empty_perf, ttl_seconds=PORTFOLIO_CACHE_TTL)
             return empty_perf
         
         symbols = sorted({transaction.symbol for transaction in txns})
@@ -580,7 +582,7 @@ class PortfolioService:
             "period": period,
             "data": data_series,
         }
-        await cache_set(cache_key, result, ttl_seconds=120)
+        await cache_set(cache_key, result, ttl_seconds=PORTFOLIO_CACHE_TTL)
         return result
 
     # ── Helper Methods ────────────────────────────────────────────────────────
@@ -654,3 +656,128 @@ class PortfolioService:
             await cache_invalidate(f"portfolio:txns:{user_id}:*")
         except Exception:
             pass
+
+    async def _get_prices_from_redis(self, symbols: list[str]) -> tuple[dict[str, Decimal], dict[str, datetime]]:
+        """Fetch current prices for symbols directly from Redis market quotes cache."""
+        current_prices: dict[str, Decimal] = {}
+        price_dates: dict[str, datetime] = {}
+        
+        if not symbols:
+            return current_prices, price_dates
+        
+        # Build cache keys for batch fetch - check both ETF and stock quote keys
+        etf_symbols = {"MIIETF", "UBLPETF", "NITGETF", "MZNPETF", "JSGBETF", "HBLTETF"}
+        quote_keys = []
+        for sym in symbols:
+            if sym in etf_symbols:
+                quote_keys.append(f"etf:quote:v1:{sym}")
+            else:
+                quote_keys.append(f"stock:quote:v1:{sym}")
+        
+        # Try batch fetch from Redis using MGET
+        client = get_redis_client()
+        if client:
+            try:
+                cached_values = await client.mget(quote_keys)
+                for sym, val in zip(symbols, cached_values):
+                    if val is not None:
+                        import json
+                        quote_data = json.loads(val)
+                        current = quote_data.get("current_price") or quote_data.get("current")
+                        if current is not None:
+                            current_prices[sym] = Decimal(str(current))
+                            price_dates[sym] = datetime.now(timezone.utc)
+            except Exception as exc:
+                logger.debug("Redis batch quote fetch failed: %s", exc)
+        
+        # Fallback to market quotes cache for any missing symbols
+        missing_symbols = [s for s in symbols if s not in current_prices]
+        if missing_symbols:
+            try:
+                market_quotes = await cache_get(MARKET_QUOTES_KEY)
+                if not market_quotes:
+                    market_quotes = await cache_get(MARKET_QUOTES_FALLBACK_KEY)
+                
+                if market_quotes and isinstance(market_quotes, list):
+                    quote_map = {q.get("symbol", "").upper(): q for q in market_quotes if isinstance(q, dict)}
+                    for sym in missing_symbols:
+                        quote = quote_map.get(sym)
+                        if quote and quote.get("current") is not None:
+                            current_prices[sym] = Decimal(str(quote["current"]))
+                            price_dates[sym] = datetime.now(timezone.utc)
+            except Exception as exc:
+                logger.debug("Market quotes cache fetch failed: %s", exc)
+        
+        return current_prices, price_dates
+
+    # ───────────────────────────────────────────────────────────────────
+    # Precomputation methods for scheduled jobs
+    # ───────────────────────────────────────────────────────────────────
+
+    async def precompute_performance(self, user_id: str, period: str = "1M") -> dict:
+        """Precompute portfolio performance and store in Redis (called from scheduled job)."""
+        cache_key = f"portfolio:performance:{user_id}:{period}"
+        
+        period_days = {
+            "1D": 1,
+            "1W": 7,
+            "1M": 30,
+            "3M": 90,
+            "6M": 180,
+            "1Y": 365,
+            "ALL": 3650,
+        }
+        
+        days = period_days.get(period, 30)
+        cutoff = date.today() - timedelta(days=days)
+        
+        txns = await self.repo.get_all_user_transactions(user_id)
+        
+        if not txns:
+            empty_perf = {"period": period, "data": []}
+            await cache_set(cache_key, empty_perf, ttl_seconds=PORTFOLIO_CACHE_TTL)
+            return empty_perf
+        
+        symbols = sorted({transaction.symbol for transaction in txns})
+        prices_result = await self.db.execute(
+            select(Stock.symbol, StockPrice.date, StockPrice.adjusted_close)
+            .join(Stock, StockPrice.stock_id == Stock.id)
+            .where(Stock.symbol.in_(symbols), StockPrice.date >= cutoff)
+            .order_by(StockPrice.date.asc())
+        )
+        historical_prices: dict[str, dict[date, Decimal]] = defaultdict(dict)
+        for symbol, price_date, adjusted_close in prices_result.all():
+            if adjusted_close is not None:
+                historical_prices[symbol][price_date] = Decimal(str(adjusted_close))
+
+        # Fallback to maintained local parquet history for symbols not yet populated in SQL database
+        for sym in symbols:
+            if not historical_prices.get(sym):
+                try:
+                    df = self.stock_service._get_ohlcv_from_file(sym, start=cutoff)
+                    if df is not None and not df.empty:
+                        for idx, row in df.iterrows():
+                            close_val = row.get("CLOSE") or row.get("ADJUSTED_CLOSE")
+                            if close_val is not None:
+                                historical_prices[sym][idx.date()] = Decimal(str(close_val))
+                except Exception:
+                    pass
+        
+        data_series = calculate_performance_time_series(txns, historical_prices, period)
+        result = {
+            "period": period,
+            "data": data_series,
+        }
+        await cache_set(cache_key, result, ttl_seconds=PORTFOLIO_CACHE_TTL)
+        return result
+
+    async def precompute_all_performance(self, user_id: str) -> dict:
+        """Precompute performance for all periods for a user."""
+        periods = ["1D", "1W", "1M", "3M", "6M", "1Y", "ALL"]
+        results = {}
+        for period in periods:
+            try:
+                results[period] = await self.precompute_performance(user_id, period)
+            except Exception as exc:
+                logger.warning("Precompute performance failed for user %s period %s: %s", user_id, period, exc)
+        return results

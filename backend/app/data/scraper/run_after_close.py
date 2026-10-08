@@ -32,16 +32,27 @@ _PKT = ZoneInfo("Asia/Karachi")
 
 
 def get_refresh_symbols(output_dir: Path | None = None) -> list[str]:
-    """Return the union of registered stocks, quotes, and existing OHLCV tickers."""
+    """Return the union of registered stocks, ETFs, quotes, and existing OHLCV tickers."""
     output_dir = output_dir or _DEFAULT_OUTPUT_DIR
     symbols: set[str] = set()
 
     session_factory = get_sync_session_factory()
     with session_factory() as session:
+        # Stocks
         registered = session.scalars(
             select(Stock.symbol).where(Stock.is_active.is_(True))
         ).all()
         symbols.update(str(symbol).strip().upper() for symbol in registered)
+
+        # ETFs (active)
+        try:
+            from app.models.etf import ETF
+            etf_symbols = session.scalars(
+                select(ETF.symbol).where(ETF.is_active.is_(True))
+            ).all()
+            symbols.update(str(symbol).strip().upper() for symbol in etf_symbols)
+        except Exception as exc:
+            log.debug("Could not load ETF symbols for OHLCV refresh: %s", exc)
 
     for cache_key in ("market:quotes", "market:quotes:last_known"):
         quotes = cache_get_sync(cache_key)

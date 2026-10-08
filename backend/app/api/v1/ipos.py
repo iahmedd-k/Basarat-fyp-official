@@ -1,11 +1,10 @@
 from typing import Optional
 from fastapi import APIRouter, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
-from app.db.session import get_db
-from fastapi import Depends
+from app.core.redis import cache_get
+from app.db.session import db_session
 from app.schemas.ipo import (
     IPOResponse,
     IPOListResponse,
@@ -16,10 +15,6 @@ from app.services.ipo_service import IPOService
 
 router = APIRouter(prefix="/ipos", tags=["IPOs"])
 log = logging.getLogger(__name__)
-
-
-def _get_service(db: AsyncSession = Depends(get_db)) -> IPOService:
-    return IPOService(db)
 
 
 @router.get(
@@ -36,18 +31,22 @@ async def list_ipos(
     search: Optional[str] = Query(None, description="Alias for search query"),
     limit: int = Query(50, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    service: IPOService = Depends(_get_service),
 ):
     try:
         search_query = q or search
-        return await service.get_ipos(
-            status=status,
-            sector=sector,
-            is_shariah_compliant=is_shariah_compliant,
-            search=search_query,
-            limit=limit,
-            offset=offset,
-        )
+        cache_key = f"ipo:list:v1:{status}:{sector}:{is_shariah_compliant}:{search_query}:{limit}:{offset}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return IPOListResponse(**cached)
+        async with db_session() as db:
+            return await IPOService(db).get_ipos(
+                status=status,
+                sector=sector,
+                is_shariah_compliant=is_shariah_compliant,
+                search=search_query,
+                limit=limit,
+                offset=offset,
+            )
     except Exception as exc:
         log.exception("Error listing IPOs: %s", exc)
         raise ServiceUnavailableError("Failed to retrieve IPOs.")
@@ -59,11 +58,13 @@ async def list_ipos(
     summary="Get PSX IPO calendar milestones (Public)",
     description="Chronological schedule of Book Building dates, Public Subscription windows, and listing days.",
 )
-async def get_ipo_calendar(
-    service: IPOService = Depends(_get_service),
-):
+async def get_ipo_calendar():
     try:
-        return await service.get_calendar()
+        cached = await cache_get("ipo:calendar:v1")
+        if cached:
+            return IPOCalendarResponse(**cached)
+        async with db_session() as db:
+            return await IPOService(db).get_calendar()
     except Exception as exc:
         log.exception("Error getting IPO calendar: %s", exc)
         raise ServiceUnavailableError("Failed to retrieve IPO calendar.")
@@ -75,11 +76,13 @@ async def get_ipo_calendar(
     summary="Get IPO listing performance & returns (Public)",
     description="Historical returns of listed IPOs comparing strike/offer price against listing day and current market prices.",
 )
-async def get_ipo_performance(
-    service: IPOService = Depends(_get_service),
-):
+async def get_ipo_performance():
     try:
-        return await service.get_performance()
+        cached = await cache_get("ipo:performance:v1")
+        if cached:
+            return IPOPerformanceResponse(**cached)
+        async with db_session() as db:
+            return await IPOService(db).get_performance()
     except Exception as exc:
         log.exception("Error getting IPO performance: %s", exc)
         raise ServiceUnavailableError("Failed to retrieve IPO performance.")
@@ -93,11 +96,15 @@ async def get_ipo_performance(
 )
 async def get_ipo_detail(
     symbol: str,
-    service: IPOService = Depends(_get_service),
 ):
     try:
         clean_sym = symbol.strip().upper()
-        return await service.get_ipo_by_id_or_symbol(clean_sym)
+        cache_key = f"ipo:detail:v1:{clean_sym}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return IPOResponse(**cached)
+        async with db_session() as db:
+            return await IPOService(db).get_ipo_by_id_or_symbol(clean_sym)
     except NotFoundError:
         raise
     except Exception as exc:

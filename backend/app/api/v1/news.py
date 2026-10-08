@@ -3,14 +3,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user, get_optional_current_user
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError, AppError
 from app.core.redis import cache_get, cache_set, get_redis_client
 from app.core.rate_limiter import limiter
-from app.db.session import get_db
+from app.db.session import db_session
 from app.models.user import User
 from app.schemas.news import (
     NewsArticleResponse,
@@ -53,7 +52,6 @@ async def get_news(
     limit: int = Query(20, ge=1, le=50),
     cursor: Optional[str] = Query(None, description="Opaque cursor from previous page"),
     user: Optional[User] = Depends(get_optional_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     try:
         if row not in ("news", "portfolio"):
@@ -71,38 +69,39 @@ async def get_news(
 
         empty_reason = None
 
-        if row == "portfolio":
-            if not user:
-                return NewsListResponse(
-                    items=[],
-                    next_cursor=None,
-                    has_more=False,
-                    row="portfolio",
-                    last_updated_at=None,
-                    empty_reason="unauthenticated",
+        async with db_session() as db:
+            if row == "portfolio":
+                if not user:
+                    return NewsListResponse(
+                        items=[],
+                        next_cursor=None,
+                        has_more=False,
+                        row="portfolio",
+                        last_updated_at=None,
+                        empty_reason="unauthenticated",
+                    )
+                from app.services.psx_announcement_service import PSXAnnouncementService
+                psx_svc = PSXAnnouncementService(db)
+                items, empty_reason = await psx_svc.get_portfolio_announcements(user_id=user_id, limit=limit)
+                next_cursor = None
+                total = len(items)
+            else:
+                svc = NewsService(db)
+                articles, total, next_cursor = await svc.get_articles(
+                    limit=limit,
+                    cursor=cursor,
+                    symbol=symbol,
+                    q=q,
+                    sentiment=sentiment,
+                    source=source,
+                    event_type=event_type,
+                    source_type=source_type,
+                    row=row,
+                    user_id=user_id,
                 )
-            from app.services.psx_announcement_service import PSXAnnouncementService
-            psx_svc = PSXAnnouncementService(db)
-            items, empty_reason = await psx_svc.get_portfolio_announcements(user_id=user_id, limit=limit)
-            next_cursor = None
-            total = len(items)
-        else:
-            svc = NewsService(db)
-            articles, total, next_cursor = await svc.get_articles(
-                limit=limit,
-                cursor=cursor,
-                symbol=symbol,
-                q=q,
-                sentiment=sentiment,
-                source=source,
-                event_type=event_type,
-                source_type=source_type,
-                row=row,
-                user_id=user_id,
-            )
-            items = [svc.to_response(a) for a in articles]
-            if not items:
-                empty_reason = "no_results"
+                items = [svc.to_response(a) for a in articles]
+                if not items:
+                    empty_reason = "no_results"
 
         # The feed's last-updated time is the latest visible article
         last_updated_str = ""
@@ -264,7 +263,6 @@ REGISTERED_SOURCES = [
 @limiter.limit("30/minute")
 async def get_sources(
     request: Request,
-    db: AsyncSession = Depends(get_db),
 ):
     """Per-source health status for all configured data sources."""
     cache_key = "news:sources:health"
@@ -273,8 +271,9 @@ async def get_sources(
         return SourcesResponse(**cached)
 
     from app.models.news import NewsSourceState
-    result = await db.execute(select(NewsSourceState).order_by(NewsSourceState.source_key))
-    db_sources = {s.source_key: s for s in result.scalars().all()}
+    async with db_session() as db:
+        result = await db.execute(select(NewsSourceState).order_by(NewsSourceState.source_key))
+        db_sources = {s.source_key: s for s in result.scalars().all()}
 
     source_list = []
     for reg in REGISTERED_SOURCES:
@@ -314,7 +313,6 @@ async def get_sources(
 async def get_news_article(
     request: Request,
     article_id: str,
-    db: AsyncSession = Depends(get_db),
 ):
     try:
         cache_key = f"news:article:{article_id}"
@@ -322,11 +320,12 @@ async def get_news_article(
         if cached:
             return NewsArticleResponse(**cached)
 
-        svc = NewsService(db)
-        article = await svc.get_article_by_id(article_id)
-        if article is None:
-            raise NotFoundError(f"News article '{article_id}' not found.")
-        payload = svc.to_response(article)
+        async with db_session() as db:
+            svc = NewsService(db)
+            article = await svc.get_article_by_id(article_id)
+            if article is None:
+                raise NotFoundError(f"News article '{article_id}' not found.")
+            payload = svc.to_response(article)
         res = NewsArticleResponse(**payload)
         await cache_set(cache_key, res.model_dump(), ttl_seconds=300)
         return res
@@ -352,7 +351,6 @@ async def get_stock_news(
     event_type: Optional[str] = Query(None, description="Filter by event type"),
     limit: int = Query(20, ge=1, le=50),
     cursor: Optional[str] = Query(None, description="Opaque cursor from previous page"),
-    db: AsyncSession = Depends(get_db),
 ):
     """Stock page News tab with filtering and cursor pagination."""
     try:
@@ -367,17 +365,18 @@ async def get_stock_news(
         if cached:
             return NewsListResponse(**cached)
 
-        svc = NewsService(db)
-        articles, total, next_cursor = await svc.get_articles(
-            symbol=sym_clean,
-            q=None,
-            sentiment=sentiment,
-            event_type=event_type,
-            source_type=source_type,
-            limit=limit,
-            cursor=cursor,
-        )
-        items = [svc.to_response(article) for article in articles]
+        async with db_session() as db:
+            svc = NewsService(db)
+            articles, total, next_cursor = await svc.get_articles(
+                symbol=sym_clean,
+                q=None,
+                sentiment=sentiment,
+                event_type=event_type,
+                source_type=source_type,
+                limit=limit,
+                cursor=cursor,
+            )
+            items = [svc.to_response(article) for article in articles]
 
         last_updated = ""
         if items:

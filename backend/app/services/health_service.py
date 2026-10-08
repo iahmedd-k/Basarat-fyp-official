@@ -109,9 +109,11 @@ class HealthService:
             "celery_beat": beat_status,
             "ml_model": model_status,
         }
-        status = (
-            "healthy"
-            if all(value == "ready" for value in services.values())
-            else "degraded"
-        )
+        if database_status != "ready":
+            status = "unhealthy"
+        elif all(value == "ready" for value in services.values()):
+            status = "healthy"
+        else:
+            # Redis/Celery/ML can be down while public GETs still serve Redis/L1/Postgres.
+            status = "degraded"
         return {"status": status, "services": services}

@@ -119,9 +119,8 @@ async def get_current_user(
 
 async def get_optional_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    db: AsyncSession = Depends(get_db),
 ) -> User | None:
-    """Extract user if valid Authorization header present; otherwise returns None without throwing."""
+    """Extract user if a valid Authorization header is present; skip Postgres otherwise."""
     if credentials is None:
         return None
     try:
@@ -140,12 +139,14 @@ async def get_optional_current_user(
                 return None
             return user
 
-        user = await db.get(User, user_id)
-        if user is None or not user.is_active:
-            return None
+        from app.db.session import db_session
 
-        await cache_set(cache_key, _user_to_dict(user), ttl_seconds=300)
-        return user
+        async with db_session() as db:
+            user = await db.get(User, user_id)
+            if user is None or not user.is_active:
+                return None
+            await cache_set(cache_key, _user_to_dict(user), ttl_seconds=300)
+            return user
     except Exception:
         return None
 

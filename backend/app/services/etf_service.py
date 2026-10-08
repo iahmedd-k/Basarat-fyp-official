@@ -319,6 +319,7 @@ class ETFService:
 
         Historical data is published by the daily ingestion pipeline. API
         requests must not contact PSX directly when a cache is cold.
+        Returns empty history with data_available=False if no OHLCV file exists.
         """
         sym = symbol.strip().upper()
         cache_key = f"etf:hist:v1:{sym}:{timeframe}"
@@ -327,63 +328,53 @@ class ETFService:
             return ETFHistoryResponse(**cached)
 
         history_items: List[ETFHistoryItem] = []
+        data_available = False
         try:
             path = OHLCV_DATA_DIR / f"{sym}.parquet"
-            df = pd.read_parquet(path) if path.is_file() else pd.DataFrame()
-            if "date" in df.columns:
-                df["date"] = pd.to_datetime(df["date"])
-                df = df.set_index("date")
-            if not df.empty:
-                df.index = pd.to_datetime(df.index)
-                df.columns = [str(column).upper() for column in df.columns]
-                df = df.sort_index(ascending=True)
-            if hasattr(df, "iloc") and len(df) > 0:
-                df = df.sort_index(ascending=True)
-                for idx, row in df.tail(30 if timeframe == "1M" else 90 if timeframe == "3M" else 250).iterrows():
-                    d_str = str(idx.date()) if hasattr(idx, "date") else str(idx)[:10]
-                    history_items.append(
-                        ETFHistoryItem(
-                            date=d_str,
-                            open=float(row.get("OPEN") or row.get("CLOSE", 0)),
-                            high=float(row.get("HIGH") or row.get("CLOSE", 0)),
-                            low=float(row.get("LOW") or row.get("CLOSE", 0)),
-                            close=float(row.get("CLOSE") or 0),
-                            volume=int(row.get("VOLUME") or 0),
+            if path.is_file():
+                df = pd.read_parquet(path)
+                if "date" in df.columns:
+                    df["date"] = pd.to_datetime(df["date"])
+                    df = df.set_index("date")
+                if not df.empty:
+                    df.index = pd.to_datetime(df.index)
+                    df.columns = [str(column).upper() for column in df.columns]
+                    df = df.sort_index(ascending=True)
+                if hasattr(df, "iloc") and len(df) > 0:
+                    df = df.sort_index(ascending=True)
+                    limit = 30 if timeframe == "1M" else 90 if timeframe == "3M" else 250
+                    for idx, row in df.tail(limit).iterrows():
+                        d_str = str(idx.date()) if hasattr(idx, "date") else str(idx)[:10]
+                        history_items.append(
+                            ETFHistoryItem(
+                                date=d_str,
+                                open=float(row.get("OPEN") or row.get("CLOSE", 0)),
+                                high=float(row.get("HIGH") or row.get("CLOSE", 0)),
+                                low=float(row.get("LOW") or row.get("CLOSE", 0)),
+                                close=float(row.get("CLOSE") or 0),
+                                volume=int(row.get("VOLUME") or 0),
+                            )
                         )
-                    )
+                    data_available = len(history_items) > 0
         except Exception as exc:
             log.warning("Persisted ETF history read failed for %s: %s", sym, exc)
 
-        if not history_items:
-            # Construct synthetic smooth history based on base price
-            base = DEFAULT_ETF_PRICES.get(sym, {}).get("price", 25.0)
-            today = date.today()
-            for i in range(30, -1, -1):
-                d = today - timedelta(days=i)
-                if d.weekday() < 5:
-                    p = round(base * (1.0 + np.sin(i / 5.0) * 0.04), 2)
-                    history_items.append(
-                        ETFHistoryItem(
-                            date=str(d),
-                            open=round(p * 0.995, 2),
-                            high=round(p * 1.01, 2),
-                            low=round(p * 0.99, 2),
-                            close=p,
-                            volume=int(50000 + (i % 7) * 8000),
-                        )
-                    )
+        # Do NOT generate synthetic data - return empty history with data_available flag
+        if not data_available:
+            log.info("No OHLCV data available for ETF %s (%s)", sym, timeframe)
 
         response = ETFHistoryResponse(
             symbol=sym,
             timeframe=timeframe,
             count=len(history_items),
             history=history_items,
+            data_available=data_available,
         )
         await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
         return response
 
     async def get_performance(self, symbol: str) -> ETFPerformanceResponse:
-        """Calculate returns across standard holding periods."""
+        """Calculate returns across standard holding periods from actual OHLCV data."""
         sym = symbol.strip().upper()
         cache_key = f"etf:perf:v1:{sym}"
         cached = await cache_get(cache_key)
@@ -393,27 +384,64 @@ class ETFService:
         etf = await self.get_etf_by_symbol(symbol)
         sym = etf.symbol
 
-        # Baseline performance estimates for PSX ETF asset class
-        perf_map = {
-            "MIIETF": {"1D": 1.18, "1W": 2.45, "1M": 5.80, "3M": 14.20, "1Y": 48.50, "YTD": 28.60},
-            "UBLPETF": {"1D": -0.52, "1W": 1.85, "1M": 4.90, "3M": 12.10, "1Y": 42.10, "YTD": 24.30},
-            "NITGETF": {"1D": 1.08, "1W": 2.10, "1M": 5.40, "3M": 13.80, "1Y": 46.20, "YTD": 26.70},
-            "MZNPETF": {"1D": 0.63, "1W": 1.95, "1M": 5.10, "3M": 13.10, "1Y": 44.80, "YTD": 25.90},
-            "JSGBETF": {"1D": -0.56, "1W": 0.90, "1M": 3.40, "3M": 16.50, "1Y": 54.10, "YTD": 32.10},
-            "HBLTETF": {"1D": 0.08, "1W": 0.38, "1M": 1.62, "3M": 5.10, "1Y": 21.40, "YTD": 14.20},
-        }
+        # Try to calculate from actual OHLCV data
+        returns = {}
+        is_estimated = False
+        try:
+            path = OHLCV_DATA_DIR / f"{sym}.parquet"
+            if path.is_file():
+                df = pd.read_parquet(path)
+                if "date" in df.columns:
+                    df["date"] = pd.to_datetime(df["date"])
+                    df = df.set_index("date")
+                if not df.empty:
+                    df.index = pd.to_datetime(df.index)
+                    df.columns = [str(column).upper() for column in df.columns]
+                    df = df.sort_index(ascending=True)
+                    if "CLOSE" in df.columns and len(df) > 1:
+                        close = df["CLOSE"]
+                        last_price = close.iloc[-1]
+                        periods = {
+                            "1D": 1,
+                            "1W": 5,
+                            "1M": 21,
+                            "3M": 63,
+                            "1Y": 252,
+                        }
+                        for period, days in periods.items():
+                            if len(close) > days:
+                                past_price = close.iloc[-(days + 1)]
+                                if past_price > 0:
+                                    returns[period] = round(((last_price - past_price) / past_price) * 100, 2)
+                        # YTD
+                        current_year = pd.Timestamp.now().year
+                        ytd_data = close[close.index.year == current_year]
+                        if len(ytd_data) > 1:
+                            ytd_start = ytd_data.iloc[0]
+                            if ytd_start > 0:
+                                returns["YTD"] = round(((last_price - ytd_start) / ytd_start) * 100, 2)
+        except Exception as exc:
+            log.warning("Failed to calculate ETF performance from OHLCV for %s: %s", sym, exc)
 
-        ret = perf_map.get(sym, {"1D": 0.5, "1W": 1.2, "1M": 3.5, "3M": 8.0, "1Y": 25.0, "YTD": 15.0})
-        bench_ret = {k: round(v * 0.98, 2) for k, v in ret.items()}
+        if not returns:
+            # Fallback to estimated - clearly marked
+            is_estimated = True
+            returns = {
+                "1D": 0.0, "1W": 0.0, "1M": 0.0, "3M": 0.0, "1Y": 0.0, "YTD": 0.0
+            }
+
+        # Benchmark returns (estimated as 98% of ETF returns when no benchmark data)
+        bench_ret = {k: round(v * 0.98, 2) for k, v in returns.items()}
 
         response = ETFPerformanceResponse(
             symbol=sym,
             name=etf.name,
             benchmark_index=etf.benchmark_index,
-            returns=ret,
+            returns=returns,
             benchmark_returns=bench_ret,
-            tracking_difference_1m=round(ret["1M"] - bench_ret["1M"], 2),
-            volatility_annualized=18.4,
+            tracking_difference_1m=round(returns.get("1M", 0) - bench_ret.get("1M", 0), 2),
+            volatility_annualized=None,
+            is_estimated=is_estimated,
         )
         await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
         return response

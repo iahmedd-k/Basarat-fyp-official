@@ -39,12 +39,7 @@ def compute_stock_sentiment_sync(db, symbol: str, days: int = 7) -> dict:
                 NewsArticle.published_at >= cutoff,
                 NewsArticle.published_at.is_(None),
             ),
-            or_(
-                NewsArticle.id.in_(sym_subq),
-                NewsArticle.symbols.ilike(f'%"{sym_clean}"%'),
-                NewsArticle.symbols.ilike(f'%{sym_clean}%'),
-                NewsArticle.title.ilike(f'%{sym_clean}%'),
-            ),
+            NewsArticle.id.in_(sym_subq),
         )
         .order_by(NewsArticle.published_at.desc().nulls_last(), NewsArticle.created_at.desc())
         .limit(100)

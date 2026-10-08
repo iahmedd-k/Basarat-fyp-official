@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from sqlalchemy import text
 
 from app.api.v1.health import router as health_router
 from app.core.config import get_settings
@@ -123,12 +124,37 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             log.warning("Could not enqueue initial market cache refresh: %s", exc)
 
+        try:
+            from app.core.redis import get_sync_redis_client
+
+            client = get_sync_redis_client()
+            warmup_key = "jobs:shariah-cache:startup-warmup"
+            should_enqueue = client is None or bool(
+                client.set(warmup_key, "1", nx=True, ex=900)
+            )
+            if should_enqueue:
+                from app.tasks.refresh_shariah_cache import refresh_shariah_cache
+
+                refresh_shariah_cache.delay()
+            else:
+                log.info("Startup Shariah cache warmup already queued by another API replica")
+        except Exception as exc:
+            log.warning("Could not enqueue initial Shariah cache refresh: %s", exc)
+
     # Background warmup of assistant universe profile cache
     try:
         from app.services.assistant_context_cache import AssistantContextCache
         asyncio.create_task(AssistantContextCache().warm_universe())
     except Exception as exc:
         log.warning("Could not pre-warm assistant universe cache: %s", exc)
+
+    # ── Pre-warm DB connection pool ──────────────────────────────────────
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+        log.info("DB connection pool pre-warmed successfully")
+    except Exception as exc:
+        log.warning("Could not pre-warm DB pool: %s", exc)
 
     yield
 

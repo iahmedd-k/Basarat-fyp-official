@@ -7,10 +7,15 @@ from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestError
+from app.core.redis import cache_get, cache_set
 from app.models.news import NewsArticle, NewsArticleSymbol
 from app.models.user import User
 
 log = logging.getLogger(__name__)
+
+# Redis cache key for total article count (unfiltered)
+NEWS_TOTAL_COUNT_KEY = "news:total_count"
+NEWS_TOTAL_COUNT_TTL = 3600  # 1 hour
 
 
 class NewsService:
@@ -48,8 +53,12 @@ class NewsService:
         """
         # Base query
         query = select(NewsArticle)
-        count_query = select(func.count(NewsArticle.id))
         conditions = []
+
+        # Determine if we have filters that require exact count
+        has_filters = any([
+            symbol, q, sentiment, source, event_type, source_type, row == "portfolio"
+        ])
 
         # Row filtering
         if row == "portfolio":
@@ -60,22 +69,13 @@ class NewsService:
             if not user_symbols:
                 return [], 0, None  # no_holdings
 
-            # Join with link table or check symbols
+            # Filter through the indexed article-symbol relation.
             sym_subq = select(NewsArticleSymbol.article_id).where(NewsArticleSymbol.symbol.in_(user_symbols))
-            or_filters = [NewsArticle.id.in_(sym_subq)]
-            for s in user_symbols:
-                or_filters.append(NewsArticle.symbols.contains(f'"{s}"'))
-            conditions.append(or_(*or_filters))
+            conditions.append(NewsArticle.id.in_(sym_subq))
         elif symbol:
             sym_clean = symbol.strip().upper()
             sym_subq = select(NewsArticleSymbol.article_id).where(NewsArticleSymbol.symbol == sym_clean)
-            conditions.append(
-                or_(
-                    NewsArticle.id.in_(sym_subq),
-                    NewsArticle.symbols.contains(f'"{sym_clean}"'),
-                )
-            )
-
+            conditions.append(NewsArticle.id.in_(sym_subq))
 
         if q and q.strip():
             search_term = f"%{q.strip()}%"
@@ -98,10 +98,15 @@ class NewsService:
 
         if conditions:
             query = query.where(and_(*conditions))
-            count_query = count_query.where(and_(*conditions))
 
-        total_result = await self.db.execute(count_query)
-        total = total_result.scalar() or 0
+        # Get total count: use cached value for unfiltered queries, skip for filtered
+        if not has_filters:
+            # Unfiltered feed: use Redis-cached total count
+            cached_total = await cache_get(NEWS_TOTAL_COUNT_KEY)
+            total = cached_total if isinstance(cached_total, int) else 0
+        else:
+            # Filtered query: don't run COUNT(*) — expensive and not needed for cursor pagination
+            total = 0
 
         # Cursor pagination: published_at DESC, id DESC
         cursor_timestamp = func.coalesce(NewsArticle.published_at, NewsArticle.created_at)

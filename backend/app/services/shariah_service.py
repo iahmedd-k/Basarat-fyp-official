@@ -5,9 +5,9 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis import cache_get, cache_set
 from app.models.shariah import ShariahScreening
 from app.models.stock import Stock
-from app.services.market_service import MarketService
 
 log = logging.getLogger(__name__)
 
@@ -17,6 +17,8 @@ with _PSX_SCREENING_PATH.open(encoding="utf-8") as _source_file:
 PSX_KMI30_COMPANIES: dict[str, dict] = PSX_KMI30_SCREENING["companies"]
 _SCREENING_AS_OF = date.fromisoformat(PSX_KMI30_SCREENING["accounts_as_of"])
 _KMI30_EFFECTIVE_FROM = date.fromisoformat(PSX_KMI30_SCREENING["effective_from"])
+STOCK_METADATA_CACHE_TTL_SECONDS = 3600
+KMI30_MEMBERSHIP_CACHE_KEY = "shariah:kmi30:membership"
 
 
 def _screening_source_fields(row: dict) -> dict:
@@ -79,15 +81,41 @@ class ShariahService:
         self._stocks_by_symbol: dict[str, Stock | None] = {}
 
     async def get_stock_by_symbol(self, symbol: str) -> Stock | None:
-        normalized_symbol = symbol.upper()
+        normalized_symbol = symbol.strip().upper()
         if normalized_symbol in self._stocks_by_symbol:
             return self._stocks_by_symbol[normalized_symbol]
+
+        cached = await cache_get(f"stock:{normalized_symbol}")
+        if isinstance(cached, dict):
+            stock = Stock(
+                id=cached["id"],
+                symbol=cached["symbol"],
+                name=cached["name"],
+                sector=cached.get("sector"),
+                market=cached.get("market") or "PSX",
+                is_active=bool(cached.get("is_active", True)),
+            )
+            self._stocks_by_symbol[normalized_symbol] = stock
+            return stock
 
         result = await self.db.execute(
             select(Stock).where(Stock.symbol == normalized_symbol)
         )
         stock = result.scalars().first()
         self._stocks_by_symbol[normalized_symbol] = stock
+        if stock is not None:
+            await cache_set(
+                f"stock:{normalized_symbol}",
+                {
+                    "id": stock.id,
+                    "symbol": stock.symbol,
+                    "name": stock.name,
+                    "sector": stock.sector,
+                    "market": stock.market,
+                    "is_active": stock.is_active,
+                },
+                ttl_seconds=STOCK_METADATA_CACHE_TTL_SECONDS,
+            )
         return stock
 
     async def get_latest_screening(self, stock_id: str) -> ShariahScreening | None:
@@ -107,19 +135,28 @@ class ShariahService:
         # a market-price cache to disclose verified screening ratios.
         if sym_upper in PSX_KMI30_COMPANIES:
             row = PSX_KMI30_COMPANIES[sym_upper]
+            source_fields = _screening_source_fields(row)
             screening = ShariahScreening(
                 stock_id=stock.id if stock else f"stock-{sym_upper.lower()}",
                 is_shariah_compliant=bool(row["status"]),
-                **{key: value for key, value in _screening_source_fields(row).items()
+                **{key: value for key, value in source_fields.items()
                    if key in {"debt_ratio", "interest_income_ratio", "screening_method", "screened_at"}},
             )
-            for key, value in _screening_source_fields(row).items():
+            for key, value in source_fields.items():
                 setattr(screening, key, value)
             return screening
 
         # Legacy database rows were populated from static profiles. They have no
         # source/as-of metadata, so their ratios cannot be presented as current.
         return await self._evaluate_and_persist_screening(sym_upper, stock)
+
+    async def get_screening_with_stock(
+        self, symbol: str
+    ) -> tuple[ShariahScreening | None, Stock | None]:
+        """Return screening and its already-loaded stock row for one request."""
+        normalized_symbol = symbol.strip().upper()
+        screening = await self.get_screening(normalized_symbol)
+        return screening, self._stocks_by_symbol.get(normalized_symbol)
 
     async def _evaluate_and_persist_screening(self, symbol: str, stock: Stock | None = None) -> ShariahScreening | None:
         """Evaluate Shariah compliance dynamically based on PSX KMI-30 / Meezan criteria."""
@@ -166,15 +203,42 @@ class ShariahService:
         return screening
 
     async def _is_current_kmi30_member(self, symbol: str) -> bool:
-        """Use the current source-backed constituent cache, never a static profile."""
+        """Read pre-warmed membership only; request handlers never scrape PSX."""
         try:
-            freshness = MarketService.constituents_freshness("KMI30")
-            if freshness.get("is_stale", True):
+            members = await cache_get(KMI30_MEMBERSHIP_CACHE_KEY)
+            if members is None:
+                # Reuse the market service's shared Redis snapshot if the
+                # dedicated Shariah membership key has not been warmed yet.
+                fetched_at = await cache_get(
+                    "market:constituents:KMI30:fetched_at"
+                )
+                if not self._constituent_snapshot_is_fresh(fetched_at):
+                    return False
+                members = await cache_get("market:constituents:KMI30")
+            if not isinstance(members, list):
                 return False
-            rows = await MarketService().get_index_constituents("KMI30")
-            return any(str(row.get("symbol", "")).upper() == symbol for row in (rows or []))
+            if members and all(isinstance(row, str) for row in members):
+                return symbol in {row.strip().upper() for row in members}
+            return any(
+                str(row.get("symbol", "")).strip().upper() == symbol
+                for row in members
+                if isinstance(row, dict)
+            )
         except Exception as exc:
             log.warning("KMI-30 membership unavailable while screening %s: %s", symbol, exc)
+            return False
+
+    @staticmethod
+    def _constituent_snapshot_is_fresh(fetched_at: object) -> bool:
+        if not isinstance(fetched_at, str):
+            return False
+        try:
+            stamp = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
+            return 0 <= age <= 86400
+        except ValueError:
             return False
 
     def build_criteria(self, screening: ShariahScreening | None, symbol: str = "") -> list[dict]:
@@ -291,6 +355,8 @@ class ShariahService:
 
     @staticmethod
     def market_constituents_freshness() -> dict:
+        from app.services.market_service import MarketService
+
         return MarketService.constituents_freshness("KMI30")
 
     @staticmethod

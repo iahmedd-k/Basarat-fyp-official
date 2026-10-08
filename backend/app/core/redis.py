@@ -25,6 +25,34 @@ _REDIS_FAILURE_BACKOFF_SECONDS = 30.0
 _REDIS_PRIMARY_RETRY_SECONDS = 30.0
 REDIS_CONNECT_TIMEOUT_SECONDS = 0.25
 REDIS_SOCKET_TIMEOUT_SECONDS = 0.5
+_L1_TTL_SECONDS = 5.0
+_MISSING = object()
+
+
+def _l1_ttl_seconds(ttl_seconds: int | float | None = None) -> float:
+    try:
+        configured = float(get_settings().CACHE_L1_TTL_SECONDS)
+    except Exception:
+        configured = _L1_TTL_SECONDS
+    limit = configured if configured > 0 else _L1_TTL_SECONDS
+    if ttl_seconds is None:
+        return limit
+    return max(0.5, min(float(ttl_seconds), limit))
+
+
+def _mem_get(key: str) -> Any:
+    cached = _mem_cache.get(key)
+    if cached is None:
+        return _MISSING
+    data, expires_at = cached
+    if expires_at > time.monotonic():
+        return data
+    _mem_cache.pop(key, None)
+    return _MISSING
+
+
+def _mem_store(key: str, value: Any, ttl_seconds: int | float) -> None:
+    _mem_cache[key] = (value, time.monotonic() + _l1_ttl_seconds(ttl_seconds))
 
 
 def _redis_available_for_attempt() -> bool:
@@ -194,7 +222,11 @@ async def close_async_redis_client() -> None:
 
 
 async def cache_get(key: str) -> Any | None:
-    """Get item from Redis, falling back to local memory cache."""
+    """Get item from L1 memory first, then Redis."""
+    local = _mem_get(key)
+    if local is not _MISSING:
+        return local
+
     _restore_async_primary_if_due()
     client = get_redis_client()
     if client and _redis_available_for_attempt():
@@ -202,61 +234,53 @@ async def cache_get(key: str) -> Any | None:
             val = await client.get(key)
             _mark_redis_success()
             if val is not None:
-                return json.loads(val)
+                parsed = json.loads(val)
+                _mem_store(key, parsed, _L1_TTL_SECONDS)
+                return parsed
         except Exception as exc:
             _switch_async_redis_url()
             _mark_redis_failure()
             log.debug("Redis get error for key %s: %s", key, exc)
-
-    # Local fallback
-    if key in _mem_cache:
-        data, exp = _mem_cache[key]
-        if exp > time.monotonic():
-            return data
-        del _mem_cache[key]
     return None
 
 
 async def cache_get_many(keys: list[str]) -> dict[str, Any]:
-    """Get multiple Redis values with one round trip, falling back to local memory."""
+    """Get multiple values from L1, then one Redis MGET for the remainder."""
     unique_keys = list(dict.fromkeys(keys))
     if not unique_keys:
         return {}
 
     values: dict[str, Any] = {}
+    missing: list[str] = []
+    for key in unique_keys:
+        local = _mem_get(key)
+        if local is not _MISSING:
+            values[key] = local
+        else:
+            missing.append(key)
+
     client = get_redis_client()
-    if client and _redis_available_for_attempt():
+    if missing and client and _redis_available_for_attempt():
         try:
-            cached_values = await client.mget(unique_keys)
+            cached_values = await client.mget(missing)
             _mark_redis_success()
-            values = {
-                key: json.loads(value)
-                for key, value in zip(unique_keys, cached_values)
-                if value is not None
-            }
+            for key, value in zip(missing, cached_values):
+                if value is None:
+                    continue
+                parsed = json.loads(value)
+                values[key] = parsed
+                _mem_store(key, parsed, _L1_TTL_SECONDS)
         except Exception as exc:
             _switch_async_redis_url()
             _mark_redis_failure()
             log.debug("Redis multi-get error: %s", exc)
 
-    now = time.monotonic()
-    for key in unique_keys:
-        if key in values:
-            continue
-        cached = _mem_cache.get(key)
-        if cached is None:
-            continue
-        data, expires_at = cached
-        if expires_at > now:
-            values[key] = data
-        else:
-            del _mem_cache[key]
-
     return values
 
 
 async def cache_set(key: str, value: Any, ttl_seconds: int = 60) -> None:
-    """Set item in Redis and local memory cache."""
+    """Set item in Redis (full TTL) and L1 (short TTL unless Redis is down)."""
+    redis_ok = False
     _restore_async_primary_if_due()
     client = get_redis_client()
     if client and _redis_available_for_attempt():
@@ -264,12 +288,14 @@ async def cache_set(key: str, value: Any, ttl_seconds: int = 60) -> None:
             raw = json.dumps(value, default=str)
             await client.setex(key, ttl_seconds, raw)
             _mark_redis_success()
+            redis_ok = True
         except Exception as exc:
             _switch_async_redis_url()
             _mark_redis_failure()
             log.debug("Redis set error for key %s: %s", key, exc)
 
-    _mem_cache[key] = (value, time.monotonic() + ttl_seconds)
+    l1_ttl = _l1_ttl_seconds() if redis_ok else float(ttl_seconds)
+    _mem_cache[key] = (value, time.monotonic() + l1_ttl)
 
 
 async def cache_invalidate(key: str) -> None:
@@ -312,6 +338,10 @@ async def cache_invalidate_pattern(pattern: str) -> None:
 
 def cache_get_sync(key: str) -> Any | None:
     """Sync version of cache_get for synchronous services."""
+    local = _mem_get(key)
+    if local is not _MISSING:
+        return local
+
     _restore_sync_primary_if_due()
     client = get_sync_redis_client()
     if client and _redis_available_for_attempt():
@@ -319,22 +349,19 @@ def cache_get_sync(key: str) -> Any | None:
             val = client.get(key)
             _mark_redis_success()
             if val is not None:
-                return json.loads(val)
+                parsed = json.loads(val)
+                _mem_store(key, parsed, _L1_TTL_SECONDS)
+                return parsed
         except Exception as exc:
             _switch_sync_redis_url()
             _mark_redis_failure()
             log.debug("Sync Redis get error for key %s: %s", key, exc)
-
-    if key in _mem_cache:
-        data, exp = _mem_cache[key]
-        if exp > time.monotonic():
-            return data
-        del _mem_cache[key]
     return None
 
 
 def cache_set_sync(key: str, value: Any, ttl_seconds: int = 60) -> None:
     """Sync version of cache_set for synchronous services."""
+    redis_ok = False
     _restore_sync_primary_if_due()
     client = get_sync_redis_client()
     if client and _redis_available_for_attempt():
@@ -342,9 +369,11 @@ def cache_set_sync(key: str, value: Any, ttl_seconds: int = 60) -> None:
             raw = json.dumps(value, default=str)
             client.setex(key, ttl_seconds, raw)
             _mark_redis_success()
+            redis_ok = True
         except Exception as exc:
             _switch_sync_redis_url()
             _mark_redis_failure()
             log.debug("Sync Redis set error for key %s: %s", key, exc)
 
-    _mem_cache[key] = (value, time.monotonic() + ttl_seconds)
+    l1_ttl = _l1_ttl_seconds() if redis_ok else float(ttl_seconds)
+    _mem_cache[key] = (value, time.monotonic() + l1_ttl)

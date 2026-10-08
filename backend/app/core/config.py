@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     CLOUD_REDIS_URL: str = ""
     REDIS_ENABLED: bool = True
     CACHE_TTL_SECONDS: int = 300
+    # Process-local cache so hot GET paths skip remote Redis on every request.
+    # Keep this well under MARKET_SESSION_REFRESH_SECONDS so replicas see new snapshots.
+    CACHE_L1_TTL_SECONDS: float = 5.0
 
     # Celery & Task Runner
     USE_CELERY: bool = True

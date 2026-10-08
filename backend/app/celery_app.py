@@ -12,7 +12,7 @@ celery = Celery(
     "basarat",
     broker=broker_urls,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=[
+include=[
         "app.tasks.scrape_news",
         "app.tasks.refresh_market_cache",
         "app.tasks.news_tasks",
@@ -23,12 +23,14 @@ celery = Celery(
         "app.tasks.model_monitoring",
         "app.tasks.recommendation_cache",
         "app.tasks.risk_tasks",
-        "app.tasks.sentiment_tasks",
         "app.tasks.community_tasks",
         "app.tasks.push_notifications",
         "app.tasks.alert_tasks",
         "app.tasks.email",
         "app.tasks.health",
+        "app.tasks.refresh_shariah_cache",
+        "app.tasks.refresh_etf_ipo",
+        "app.tasks.portfolio_tasks",
     ],
 )
 
@@ -100,6 +102,10 @@ celery.conf.update(
             "task": "app.tasks.model_monitoring.detect_drift",
             "schedule": crontab(hour=7, minute=0, day_of_week="1-5"),
         },
+        "refresh-shariah-cache": {
+            "task": "app.tasks.refresh_shariah_cache.refresh_shariah_cache",
+            "schedule": crontab(hour=9, minute=5, day_of_week="1-5"),
+        },
         # ── Save the previous session's final quote snapshot once after close ──
         # API handlers serve this shared Redis snapshot; they do not scrape PSX.
         "refresh-market-close-snapshot": {
@@ -111,6 +117,10 @@ celery.conf.update(
             "task": "app.tasks.refresh_market_cache.refresh_market_cache",
             "kwargs": {"refresh_quotes": False, "refresh_screener": True},
             "schedule": crontab(minute="*/30", hour="9-15", day_of_week="1-5"),
+        },
+        "refresh-etf-ipo-catalogs": {
+            "task": "app.tasks.refresh_etf_ipo.refresh_etf_ipo_catalogs",
+            "schedule": crontab(minute="*/30", hour="9-16", day_of_week="1-5"),
         },
         # ── Intraday shared snapshot during weekdays (task self-gates hours) ──
         # A weekday crontab prevents even enqueueing this task on weekends.
@@ -145,6 +155,16 @@ celery.conf.update(
         "rescore-failed-sentiment": {
             "task": "app.tasks.sentiment_tasks.rescore_failed_sentiment",
             "schedule": crontab(minute=0, day_of_week="1-5"),  # Hourly on trading weekdays
+        },
+        # ── Portfolio performance precomputation: daily after market close ──
+        # Runs 10 minutes after daily-workflow completes (15:45 Mon-Thu, 16:45 Fri)
+        "precompute-portfolio-performance": {
+            "task": "app.tasks.portfolio_tasks.precompute_all_portfolio_performance",
+            "schedule": crontab(hour=15, minute=45, day_of_week="1-4"),
+        },
+        "precompute-portfolio-performance-friday": {
+            "task": "app.tasks.portfolio_tasks.precompute_all_portfolio_performance",
+            "schedule": crontab(hour=16, minute=45, day_of_week="5"),
         },
     },
 )

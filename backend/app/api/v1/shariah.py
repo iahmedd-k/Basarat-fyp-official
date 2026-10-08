@@ -33,7 +33,6 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> ShariahService:
 @limiter.limit("30/minute")
 async def get_kmi30_shariah(
     request: Request,
-    service: ShariahService = Depends(_get_service),
 ):
     """Retrieve all constituent companies of the PSX KMI-30 Shariah Index."""
     try:
@@ -42,6 +41,7 @@ async def get_kmi30_shariah(
         if cached:
             return ShariahKMI30Response(**cached)
 
+        service = ShariahService(None)
         constituents = await service.get_kmi30_constituents()
         if not constituents:
             raise ServiceUnavailableError("KMI-30 constituent data is temporarily unavailable.")
@@ -81,7 +81,7 @@ async def get_shariah_screening(
         if cached:
             return ShariahScreeningResponse(**cached)
 
-        screening = await service.get_screening(sym_upper)
+        screening, stock_obj = await service.get_screening_with_stock(sym_upper)
 
         if screening is None:
             res = ShariahScreeningResponse(
@@ -134,7 +134,6 @@ async def get_shariah_screening(
 
         resolved_sector = profile.get("sector")
         if not resolved_sector or resolved_sector == "Unclassified":
-            stock_obj = await service.get_stock_by_symbol(sym_upper)
             if stock_obj and stock_obj.sector:
                 from app.services.market_service import MarketService
 

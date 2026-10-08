@@ -11,10 +11,10 @@ from app.schemas.ipo import (
     IPOStatus,
     IPOResponse,
     IPOListResponse,
-    IPOCalendarMilestone,
     IPOCalendarResponse,
-    IPOPerformanceItem,
     IPOPerformanceResponse,
+    IPOCalendarMilestone,
+    IPOPerformanceItem,
 )
 
 log = logging.getLogger(__name__)
@@ -208,7 +208,12 @@ class IPOService:
             return IPOListResponse(**cached)
 
         await self.ensure_seed_data()
-        query = select(IPO)
+        # Default: exclude CLOSED IPOs unless explicitly requested
+        excluded_statuses = ["CLOSED"]
+        if status is None:
+            query = select(IPO).where(~IPO.status.in_(excluded_statuses))
+        else:
+            query = select(IPO)
         if status:
             st_upper = status.strip().upper()
             if st_upper in ("UPCOMING", "OPEN_FOR_BOOK_BUILDING", "OPEN_FOR_PUBLIC_SUBSCRIPTION", "LISTED", "CLOSED"):
@@ -235,8 +240,11 @@ class IPOService:
         result = await self.db.execute(query)
         ipos = result.scalars().all()
 
-        # Consolidated counts in a single query
-        counts_res = await self.db.execute(select(IPO.status, func.count(IPO.id)).group_by(IPO.status))
+        # Consolidated counts in a single query (respecting default filter)
+        counts_query = select(IPO.status, func.count(IPO.id))
+        if status is None:
+            counts_query = counts_query.where(~IPO.status.in_(excluded_statuses))
+        counts_res = await self.db.execute(counts_query.group_by(IPO.status))
         counts_map = {row[0]: row[1] for row in counts_res.all()}
         total_count = sum(counts_map.values())
         upcoming_count = counts_map.get("UPCOMING", 0)
@@ -405,4 +413,135 @@ class IPOService:
             recent_listings=items[:10],
         )
         await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        return response
+
+    # ───────────────────────────────────────────────────────────────────
+    # Precomputation methods for scheduled jobs
+    # ───────────────────────────────────────────────────────────────────
+
+    async def precompute_calendar(self) -> IPOCalendarResponse:
+        """Precompute calendar response and store in Redis (called from scheduled job)."""
+        cache_key = "ipo:calendar:v1"
+        await self.ensure_seed_data()
+        query = select(IPO).where(
+            IPO.status.in_(["UPCOMING", "OPEN_FOR_BOOK_BUILDING", "OPEN_FOR_PUBLIC_SUBSCRIPTION"])
+        ).order_by(IPO.book_building_start.asc(), IPO.public_subscription_start.asc())
+        res = await self.db.execute(query)
+        active_ipos = res.scalars().all()
+
+        milestones: List[IPOCalendarMilestone] = []
+        for item in active_ipos:
+            price_txt = f"Floor: PKR {item.floor_price}" if item.floor_price else ""
+            if item.book_building_start:
+                milestones.append(
+                    IPOCalendarMilestone(
+                        ipo_id=item.id,
+                        symbol=item.symbol,
+                        company_name=item.company_name,
+                        event_type="BOOK_BUILDING_START",
+                        event_date=item.book_building_start,
+                        status="SCHEDULED" if item.book_building_start > date.today() else "LIVE",
+                        price_info=price_txt,
+                    )
+                )
+            if item.book_building_end:
+                milestones.append(
+                    IPOCalendarMilestone(
+                        ipo_id=item.id,
+                        symbol=item.symbol,
+                        company_name=item.company_name,
+                        event_type="BOOK_BUILDING_END",
+                        event_date=item.book_building_end,
+                        status="SCHEDULED" if item.book_building_end > date.today() else "CLOSING",
+                        price_info=price_txt,
+                    )
+                )
+            if item.public_subscription_start:
+                milestones.append(
+                    IPOCalendarMilestone(
+                        ipo_id=item.id,
+                        symbol=item.symbol,
+                        company_name=item.company_name,
+                        event_type="PUBLIC_SUBSCRIPTION_START",
+                        event_date=item.public_subscription_start,
+                        status="SCHEDULED" if item.public_subscription_start > date.today() else "LIVE",
+                        price_info=f"Strike: PKR {item.strike_price or item.floor_price}",
+                    )
+                )
+            if item.public_subscription_end:
+                milestones.append(
+                    IPOCalendarMilestone(
+                        ipo_id=item.id,
+                        symbol=item.symbol,
+                        company_name=item.company_name,
+                        event_type="PUBLIC_SUBSCRIPTION_END",
+                        event_date=item.public_subscription_end,
+                        status="SCHEDULED" if item.public_subscription_end > date.today() else "CLOSING",
+                        price_info=f"Strike: PKR {item.strike_price or item.floor_price}",
+                    )
+                )
+            if item.listing_date:
+                milestones.append(
+                    IPOCalendarMilestone(
+                        ipo_id=item.id,
+                        symbol=item.symbol,
+                        company_name=item.company_name,
+                        event_type="EXCHANGE_LISTING",
+                        event_date=item.listing_date,
+                        status="EXPECTED",
+                        price_info=f"Listing Date",
+                    )
+                )
+
+        milestones.sort(key=lambda m: m.event_date)
+        response = IPOCalendarResponse(
+            total_events=len(milestones),
+            upcoming_milestones=milestones,
+        )
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=3600)
+        return response
+
+    async def precompute_performance(self) -> IPOPerformanceResponse:
+        """Precompute performance response and store in Redis (called from scheduled job)."""
+        cache_key = "ipo:performance:v1"
+        await self.ensure_seed_data()
+        query = select(IPO).where(IPO.status == "LISTED").order_by(desc(IPO.listing_date))
+        res = await self.db.execute(query)
+        listed_ipos = res.scalars().all()
+
+        items: List[IPOPerformanceItem] = []
+        gains = []
+        for item in listed_ipos:
+            offer = item.strike_price or item.floor_price or item.listing_price or 1.0
+            first_day = item.listing_price or offer
+            current = item.current_price or first_day
+
+            first_day_ret = round(((first_day - offer) / offer) * 100, 2)
+            total_ret = round(((current - offer) / offer) * 100, 2)
+            gains.append(first_day_ret)
+
+            items.append(
+                IPOPerformanceItem(
+                    symbol=item.symbol,
+                    company_name=item.company_name,
+                    sector=item.sector,
+                    listing_date=item.listing_date,
+                    offer_price=round(offer, 2),
+                    first_day_close=round(first_day, 2),
+                    current_price=round(current, 2),
+                    first_day_return_pct=first_day_ret,
+                    total_return_pct=total_ret,
+                )
+            )
+
+        top = sorted(items, key=lambda i: (i.total_return_pct or 0), reverse=True)
+        avg_gain = round(sum(gains) / len(gains), 2) if gains else 0.0
+
+        response = IPOPerformanceResponse(
+            total_listed=len(items),
+            average_listing_day_gain_pct=avg_gain,
+            top_performers=top[:5],
+            recent_listings=items[:10],
+        )
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=3600)
         return response

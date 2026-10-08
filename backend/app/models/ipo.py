@@ -46,4 +46,5 @@ class IPO(Base):
     __table_args__ = (
         Index("ix_ipos_status_listing_date", "status", "listing_date"),
         Index("ix_ipos_sector", "sector"),
+        Index("ix_ipos_symbol_id", "symbol", "id"),
     )
