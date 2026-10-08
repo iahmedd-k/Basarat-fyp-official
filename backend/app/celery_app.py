@@ -45,6 +45,7 @@ celery.conf.update(
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
     task_default_queue="default",
+    beat_scheduler="app.core.celery_beat:HeartbeatPersistentScheduler",
     task_routes={
         "app.tasks.health.*": {"queue": "health"},
         "app.tasks.refresh_market_cache.refresh_market_session": {"queue": "market-live"},
