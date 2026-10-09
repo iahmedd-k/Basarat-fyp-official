@@ -57,8 +57,7 @@ jobs:
           REDIS_ENABLED: "false"
           USE_CELERY: "false"
         run: |
-          python -m pip install pyarrow fastparquet
-          python -c "import fastparquet"
+          python -c "import numpy, pyarrow; print(f'NumPy {numpy.__version__}, PyArrow {pyarrow.__version__}')"
           python -m pytest -c pytest.ini tests/unit -q
 
       - name: Validate Oracle Compose configuration
