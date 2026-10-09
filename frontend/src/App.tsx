@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router-dom'
 import brandLogo from './logo_120.png'
 import './App.css'
@@ -76,20 +76,26 @@ const features = [
   {
     number: '01',
     icon: '↗',
-    title: 'Market intelligence',
-    description: 'Explore PSX market activity, company data, and the signals shaping the day.',
+    title: 'PSX market intelligence',
+    description: 'Explore Pakistan Stock Exchange market activity, company fundamentals, financial news, and market sentiment.',
   },
   {
     number: '02',
     icon: '⌁',
     title: 'Research & forecasts',
-    description: 'Bring quantitative models and market context together to support your research.',
+    description: 'Review technical indicators, quantitative research, and 5-, 10-, and 20-day model forecasts. Forecasts are estimates, not guarantees.',
   },
   {
     number: '03',
     icon: '◌',
-    title: 'Portfolio perspective',
-    description: 'Understand portfolio exposure, risk measures, and Shariah screening insights.',
+    title: 'Portfolio & risk tools',
+    description: 'Track watchlists and portfolio transactions you enter, explore risk measures, configure alerts, and review Shariah screening insights.',
+  },
+  {
+    number: '04',
+    icon: '✳',
+    title: 'Investor community & AI',
+    description: 'Discuss market ideas with the community and use the in-app assistant to explore investment research in context.',
   },
 ]
 
@@ -167,6 +173,25 @@ function HomePage() {
         </div>
       </section>
 
+      <section aria-labelledby="google-data-title" className="data-transparency">
+        <div className="page-container data-transparency-inner">
+          <div className="data-icon" aria-hidden="true">◎</div>
+          <div className="data-transparency-copy">
+            <div className="eyebrow eyebrow-dark">A CLEARER SIGN-IN</div>
+            <h2 id="google-data-title">Google sign-in. Only the basics.</h2>
+            <p>
+              If you choose Google sign-in in the Basarat app, we use your email address,
+              Google account identifier, and—when available—your name and profile photo to
+              create or identify your Basarat account and show your profile. We do not receive
+              your Google password or access Gmail, Drive, or Contacts.
+            </p>
+          </div>
+          <Link className="data-policy-link" to="/privacy">
+            Read our privacy policy <ArrowIcon />
+          </Link>
+        </div>
+      </section>
+
       <section className="closing-section">
         <div className="page-container closing-inner">
           <div>
@@ -175,12 +200,13 @@ function HomePage() {
             <p>Explore the Basarat platform and its investment research capabilities.</p>
           </div>
           <a className="button button-light" href={applicationUrl} rel="noreferrer" target="_blank">
-            Open the Basarat app <ArrowIcon />
+            Explore the live API <ArrowIcon />
           </a>
         </div>
       </section>
       <p className="disclaimer page-container">
-        Basarat provides informational and analytical tools only. Nothing on this site is investment,
+        Basarat’s market data, analysis, model forecasts, and portfolio tools are for informational
+        purposes only. Nothing on this site is investment,
         financial, legal, or tax advice, nor a recommendation to buy or sell any security.
       </p>
     </main>
@@ -188,6 +214,12 @@ function HomePage() {
 }
 
 function PolicyLayout({ children, title, description }: { children: ReactNode; title: string; description: string }) {
+  useEffect(() => {
+    document.title = `${title} | Basarat`
+    const descriptionTag = document.querySelector<HTMLMetaElement>('meta[name="description"]')
+    descriptionTag?.setAttribute('content', description)
+  }, [description, title])
+
   return (
     <main className="legal-page">
       <section className="legal-hero">
@@ -202,10 +234,22 @@ function PolicyLayout({ children, title, description }: { children: ReactNode; t
         <aside className="legal-aside">
           <div className="aside-label">ON THIS PAGE</div>
           <a href="#overview">Overview</a>
-          <a href="#information">Information</a>
-          <a href="#use-and-protection">Use & protection</a>
-          <a href="#your-choices">Your choices</a>
-          <a href="#contact">Contact</a>
+          {title === 'Privacy policy' ? (
+            <>
+              <a href="#google-data">Google data</a>
+              <a href="#other-data">Other information</a>
+              <a href="#use-and-protection">Use & sharing</a>
+              <a href="#retention-and-choices">Retention & choices</a>
+              <a href="#contact">Contact</a>
+            </>
+          ) : (
+            <>
+              <a href="#information">Information</a>
+              <a href="#use-and-protection">Use & protection</a>
+              <a href="#your-choices">Your choices</a>
+              <a href="#contact">Contact</a>
+            </>
+          )}
         </aside>
         <article className="legal-article">{children}</article>
       </div>
@@ -223,87 +267,145 @@ function PrivacyPage() {
         <span className="article-index">01 / OVERVIEW</span>
         <h2>Your privacy matters.</h2>
         <p>
-          This policy describes how Basarat handles information when you choose to sign in or
-          create an account using Google. Basarat is an investment intelligence platform focused
-          on the Pakistan Stock Exchange (PSX).
+          This Privacy Policy explains what information Basarat collects, how we use and share it,
+          and the choices available to you. It applies to the Basarat mobile application, the
+          Basarat investment intelligence service for the Pakistan Stock Exchange (PSX), and this
+          public website.
         </p>
         <p>
-          Google sign-in is optional. You can use another sign-in method where one is available.
-          This website is informational and is not the Basarat product interface.
+          Google sign-in is optional. If you choose it, the Google account information described
+          below is used to create or access your Basarat account. We do not receive your Google
+          password and do not use Google sign-in to access Google services such as Gmail, Drive,
+          or Contacts.
         </p>
       </section>
 
-      <section id="information">
-        <span className="article-index">02 / INFORMATION</span>
-        <h2>What we receive from Google</h2>
+      <section id="google-data">
+        <span className="article-index">02 / GOOGLE SIGN-IN DATA</span>
+        <h2>Information received from Google</h2>
         <p>
-          When you authorize Google sign-in, Google provides basic account and profile information
-          needed to identify your account. Depending on what is available from your Google profile,
-          this includes:
+          When you choose “Continue with Google,” Basarat receives the following basic profile
+          information from Google, to the extent it is available and authorized by you:
         </p>
         <ul>
-          <li><strong>Email address</strong> — to create or match your Basarat account and identify you when you sign in.</li>
-          <li><strong>Name</strong> — to display your profile name in Basarat.</li>
-          <li><strong>Profile picture</strong> — to display your account avatar when available.</li>
-          <li><strong>Google account identifier</strong> — a unique identifier used to recognize your Google-linked account.</li>
+          <li><strong>Email address</strong> — used to identify you, create your account, or connect Google sign-in to an existing Basarat account with the same email address.</li>
+          <li><strong>Name</strong> — used as your account’s display name when provided.</li>
+          <li><strong>Profile picture URL</strong> — used as your Basarat account avatar when provided.</li>
+          <li><strong>Google account identifier</strong> — a unique account identifier used to recognize your Google-linked account on later sign-ins.</li>
         </ul>
         <p>
-          Basarat does not receive your Google password. Google sign-in credentials are validated
-          to complete authentication; Basarat does not use them to access your Google account or
-          other Google services.
+          Basarat processes the Google sign-in token to authenticate your request. The token is
+          used for authentication and is not stored as part of your Basarat profile. Basarat does
+          not receive your Google password, request access to your Google content, or use this
+          information for advertising, sale of data, or training generative AI models.
+        </p>
+      </section>
+
+      <section id="other-data">
+        <span className="article-index">03 / OTHER INFORMATION</span>
+        <h2>Information you provide when using Basarat</h2>
+        <p>
+          If you use the Basarat application and its features, we also collect information you
+          choose to provide or create in the service. Depending on which features you use, this
+          may include:
+        </p>
+        <ul>
+          <li><strong>Account and profile details</strong>, such as your username, name, optional phone number, profile image, and account preferences.</li>
+          <li><strong>Investment information</strong>, such as watchlists, portfolio transactions you enter, investment horizon, risk tolerance, sector preferences, and alert settings.</li>
+          <li><strong>Content and communications</strong>, such as community posts and comments, messages or prompts you send to the in-app assistant, and saved assistant conversations.</li>
+          <li><strong>App and device information</strong>, such as device name, platform, and a push-notification registration token when you register a device for notifications.</li>
+        </ul>
+        <p>
+          You can choose whether to provide optional profile details and whether to use features
+          that require additional information. If you provide portfolio or investment details,
+          they are used to operate the corresponding portfolio, analytics, alert, or
+          personalization features.
         </p>
       </section>
 
       <section id="use-and-protection">
-        <span className="article-index">03 / USE & PROTECTION</span>
-        <h2>How we use and safeguard information</h2>
-        <p>We use the information above only to:</p>
+        <span className="article-index">04 / USE & SHARING</span>
+        <h2>How we use information</h2>
+        <p>We use information to:</p>
         <ul>
-          <li>create your account or match it to an existing Basarat account;</li>
-          <li>authenticate you and maintain your signed-in session; and</li>
-          <li>show your name and profile image in your Basarat account.</li>
+          <li>create, secure, and maintain your account and authenticate sign-ins;</li>
+          <li>display and update your profile information;</li>
+          <li>provide the market research, portfolio analysis, alerts, community, and assistant features you choose to use;</li>
+          <li>maintain, troubleshoot, and protect the reliability and security of Basarat; and</li>
+          <li>respond to your support requests and comply with legal obligations.</li>
         </ul>
         <p>
-          Account information is stored by Basarat for these purposes and is handled using
-          access-controlled application systems. We use reasonable administrative and technical
-          safeguards to protect it against unauthorized access, loss, or misuse. Information is
-          shared only as needed to operate and secure the service, comply with applicable law, or
-          protect users and Basarat; it is not sold.
+          <strong>Google user data is used only to provide or improve user-facing features that
+          are visible in the Basarat application.</strong> In particular, Google profile data is
+          used for account registration, account matching, sign-in, and your Basarat profile. It
+          is not sold, used for advertising, or used to train generalized AI or machine-learning
+          models.
         </p>
         <p>
-          We retain account information while your account remains active and for a limited period
-          where needed to meet legal, security, or service obligations. Deletion from active
-          systems may not immediately remove data held in protected backups or records we are
-          required to keep.
+          We do not sell personal information. We share information only when necessary with
+          service providers that host, store, secure, or help operate Basarat; when you ask us to
+          use a feature that requires another provider; when required by law or valid legal
+          process; or when reasonably necessary to protect users, the service, or legal rights.
+          Service providers are permitted to process information only to provide their services
+          to Basarat.
+        </p>
+        <p>
+          If you use the in-app AI assistant, the prompts and context you submit may be sent to
+          the AI service provider to generate a response. Do not include information in a prompt
+          that you do not want processed for that purpose. Google sign-in data is not used as
+          training data for that provider.
         </p>
       </section>
 
-      <section id="your-choices">
-        <span className="article-index">04 / YOUR CHOICES</span>
-        <h2>Your choices and Google’s role</h2>
+      <section id="retention-and-choices">
+        <span className="article-index">05 / STORAGE & YOUR CHOICES</span>
+        <h2>Storage, security, and retention</h2>
         <p>
-          You can choose whether to use Google sign-in. You can review or revoke Basarat’s Google
-          account access through your Google Account’s third-party connections settings. Revoking
-          access does not itself delete an existing Basarat account.
+          Basarat stores account and feature data in systems used to operate the service. Google
+          account identifiers and the profile information associated with your Basarat account
+          are retained while the account remains active, so that we can recognize and provide
+          access to your account. We apply administrative and technical safeguards intended to
+          protect personal information from unauthorized access, alteration, disclosure, or loss.
+          No method of storage or transmission can be guaranteed to be completely secure.
         </p>
         <p>
-          To ask us to access, correct, or delete your Basarat account information, contact us
-          using the details below. We may need to verify your request before taking action.
+          You may stop using Google sign-in at any time and revoke Basarat’s access in your Google
+          Account’s third-party connections settings. Revoking access does not automatically
+          delete information already associated with your Basarat account.
         </p>
         <p>
-          Google handles its own services and personal information under
+          To request access to, correction of, or deletion of your Basarat account information,
+          email us using the contact details below. We may ask you to verify your identity before
+          acting on a request. We retain information for as long as needed to provide the service
+          and then delete or de-identify it when no longer needed, unless a longer retention
+          period is required for legal, security, dispute-resolution, or backup purposes.
+        </p>
+        <p>
+          Google processes information it receives under
           {' '}<a href="https://policies.google.com/privacy" rel="noreferrer" target="_blank">Google’s Privacy Policy</a>.
-          This policy applies to Basarat’s handling of information we receive for sign-in; it does
-          not replace Google’s policy.
+          This policy describes Basarat’s handling of information after it is shared with us.
+        </p>
+      </section>
+
+      <section id="changes">
+        <span className="article-index">06 / POLICY UPDATES</span>
+        <h2>Changes to this policy</h2>
+        <p>
+          We may update this policy when our practices or legal requirements change. We will post
+          the revised policy on this page and update the “Last updated” date. Please review this
+          page periodically for the current policy.
         </p>
       </section>
 
       <section id="contact">
-        <span className="article-index">05 / CONTACT</span>
-        <h2>Questions about privacy?</h2>
+        <span className="article-index">07 / CONTACT</span>
+        <h2>Privacy questions or data requests</h2>
         <p>
-          Contact the Basarat team at <a href={`mailto:${contactEmail}`}>{contactEmail}</a> for
-          privacy questions or account-data requests.
+          For questions about this policy, Google sign-in data, or to request access to, correction
+          of, or deletion of your account information, contact the Basarat privacy team at
+          {' '}<a href={`mailto:${contactEmail}`}>{contactEmail}</a>. Include enough information for us
+          to understand and verify your request, but do not send your password or Google sign-in
+          token.
         </p>
       </section>
     </PolicyLayout>
