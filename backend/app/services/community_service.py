@@ -164,6 +164,13 @@ class CommunityService:
         target_sym = validated_symbol or (stock_symbol.upper() if stock_symbol else None)
         price_snapshot = await CashtagService.get_price_snapshot(target_sym)
 
+        # Parse and validate cashtags before constructing the post so the
+        # relationship is initialized without an async lazy load.
+        candidates = CashtagService.extract_cashtags(content)
+        if validated_symbol and validated_symbol not in candidates:
+            candidates.append(validated_symbol)
+        valid_tickers = await CashtagService.validate_tickers(self.db, candidates)
+
         post = CommunityPost(
             author_id=author_id,
             content=content,
@@ -175,17 +182,11 @@ class CommunityService:
             price_at_post=price_snapshot,
             status=PostStatus.PUBLISHED.value,
             stock=validated_stock,
+            tickers=[CommunityPostTicker(ticker=ticker) for ticker in valid_tickers],
         )
         self.db.add(post)
         await self.db.flush()
 
-        # Parse and register cashtags ($AAPL, #OGDC) into post_tickers junction table
-        candidates = CashtagService.extract_cashtags(content)
-        if validated_symbol and validated_symbol not in candidates:
-            candidates.append(validated_symbol)
-
-        valid_tickers = await CashtagService.validate_tickers(self.db, candidates)
-        post.tickers = [CommunityPostTicker(ticker=ticker) for ticker in valid_tickers]
         feed_keys = [f"feed:ticker:{ticker}" for ticker in valid_tickers]
         feed_keys.extend(("feed:global", f"feed:user:{author_id}"))
         await FeedCacheService.push_post_to_feeds(feed_keys, post.id, post.created_at.timestamp())
