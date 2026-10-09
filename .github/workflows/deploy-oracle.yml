@@ -57,7 +57,8 @@ jobs:
           REDIS_ENABLED: "false"
           USE_CELERY: "false"
         run: |
-          python -m pip install pyarrow
+          python -m pip install pyarrow fastparquet
+          python -c "import fastparquet"
           python -m pytest -c pytest.ini tests/unit -q
 
       - name: Validate Oracle Compose configuration
