@@ -294,6 +294,33 @@ class TestPortfolioSummary:
         data = response.json()
         assert isinstance(data, list)
 
+    async def test_holding_detail_endpoint(self, client: AsyncClient, portfolio_test_context):
+        headers, _ = portfolio_test_context
+        create_response = await client.post(
+            "/api/v1/portfolio/transactions",
+            headers=headers,
+            json={
+                "symbol": "OGDC",
+                "transaction_type": "BUY",
+                "quantity": "100",
+                "price": "250.00",
+                "fee": "100",
+                "transaction_date": "2026-09-18",
+            },
+        )
+        assert create_response.status_code == 201, create_response.text
+
+        response = await client.get(
+            "/api/v1/portfolio/holdings/OGDC",
+            headers=headers,
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["symbol"] == "OGDC"
+        assert Decimal(str(data["quantity"])) == Decimal("100")
+        assert len(data["transactions"]) == 1
+
     async def test_pnl_endpoint(self, client: AsyncClient, portfolio_test_context):
         headers, _ = portfolio_test_context
         response = await client.get("/api/v1/portfolio/pnl", headers=headers)
