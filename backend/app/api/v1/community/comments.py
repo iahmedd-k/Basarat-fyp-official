@@ -208,9 +208,8 @@ async def delete_comment(
     service: CommunityService = Depends(_get_service),
 ):
     try:
-        comment = await service.get_comment_by_id(comment_id)
+        comment = await service.delete_comment(comment_id, user.id)
         post_id = getattr(comment, "post_id", None)
-        await service.delete_comment(comment_id, user.id)
         if post_id:
             await CommunityCacheService.invalidate_comment_mutations(post_id, comment_id)
     except (NotFoundError, ForbiddenError):

@@ -114,3 +114,41 @@ async def test_create_post_with_cashtag_returns_tickers(
         select(CommunityPostTicker).where(CommunityPostTicker.post_id == post_id)
     )
     assert [row.ticker for row in ticker_rows.scalars()] == ["OGDC"]
+
+
+@pytest.mark.asyncio
+async def test_delete_own_comment(client, auth_headers):
+    post_response = await client.post(
+        "/api/v1/community/posts",
+        headers=auth_headers,
+        data={
+            "content": "Post for comment deletion regression",
+            "post_type": "GENERAL_MARKET",
+        },
+    )
+    assert post_response.status_code == 201, post_response.text
+    post_id = post_response.json()["id"]
+
+    comment_response = await client.post(
+        f"/api/v1/community/posts/{post_id}/comments",
+        headers=auth_headers,
+        json={"content": "Comment to delete"},
+    )
+    assert comment_response.status_code == 201, comment_response.text
+    comment_id = comment_response.json()["id"]
+
+    delete_response = await client.delete(
+        f"/api/v1/community/comments/{comment_id}",
+        headers=auth_headers,
+    )
+    assert delete_response.status_code == 204, delete_response.text
+
+    comments_response = await client.get(
+        f"/api/v1/community/posts/{post_id}/comments",
+        headers=auth_headers,
+    )
+    assert comments_response.status_code == 200, comments_response.text
+    assert all(
+        comment["id"] != comment_id
+        for comment in comments_response.json()["comments"]
+    )
