@@ -14,7 +14,7 @@ def test_search_symbols_resolves_known_company_name_alias(monkeypatch):
 
     result = service.search_symbols("Habib", limit=10)
 
-    assert result == [{"symbol": "HBL", "name": "Habib Bank", "sector": "COMMERCIAL BANKS"}]
+    assert result == [{"symbol": "HBL", "name": "Habib Bank Limited", "sector": "COMMERCIAL BANKS"}]
 
 
 def test_company_name_falls_back_to_known_alias_when_psx_returns_ticker(monkeypatch):
@@ -24,4 +24,4 @@ def test_company_name_falls_back_to_known_alias_when_psx_returns_ticker(monkeypa
         "app.services.stock_service.pypsx_toolkit.Ticker",
         lambda symbol: type("Ticker", (), {"info": {"name": "HBL"}})(),
     )
-    assert StockService._company_name("HBL") == "Habib Bank"
+    assert StockService._company_name("HBL") == "Habib Bank Limited"

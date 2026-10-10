@@ -357,10 +357,33 @@ async def create_alert_rule(
     """Create a new custom alert rule for market conditions or stock triggers."""
     try:
         stock = await _resolve_stock(db, data.stock_id, data.symbol, data.stock_name)
+        stock_id = stock.id if stock else None
+
+        # Check for existing identical active rule to avoid duplicates
+        existing_rule_stmt = select(AlertRule).where(
+            AlertRule.user_id == user.id,
+            AlertRule.stock_id == stock_id,
+            AlertRule.condition == data.condition,
+            AlertRule.threshold == data.threshold,
+            AlertRule.is_active == True,
+        )
+        existing = (await db.execute(existing_rule_stmt)).scalars().first()
+        if existing:
+            return AlertRuleResponse(
+                id=existing.id,
+                user_id=existing.user_id,
+                stock_id=existing.stock_id,
+                symbol=stock.symbol if stock else None,
+                stock_name=stock.name if stock else None,
+                condition=existing.condition,
+                threshold=float(existing.threshold),
+                is_active=existing.is_active,
+                created_at=existing.created_at.isoformat() if existing.created_at else "",
+            )
 
         rule = AlertRule(
             user_id=user.id,
-            stock_id=stock.id if stock else None,
+            stock_id=stock_id,
             condition=data.condition,
             threshold=data.threshold,
         )

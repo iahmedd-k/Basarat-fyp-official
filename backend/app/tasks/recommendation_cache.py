@@ -1,7 +1,8 @@
 """Publish the daily KSE-100 recommendation snapshot after sentiment runs."""
 
+import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -26,10 +27,15 @@ def refresh_recommendations_task(self):
     log.info("[RECOMMEND] Refreshing recommendation cache")
 
     try:
+        from app.core.redis import set_dataset_status_sync
+
+        set_dataset_status_sync("recommendations", "pending")
         from app.services.recommendation_service import (
             RecommendationEngine,
             save_recommendations_cache,
         )
+        from app.data.scraper.symbol_universe import get_active_symbols
+        from app.core.redis import get_sync_redis_client
 
         engine = RecommendationEngine()
         recommendations = engine.get_all_recommendations(
@@ -37,7 +43,74 @@ def refresh_recommendations_task(self):
             weights=None,  # use defaults
         )
 
+        expected_symbols = {
+            str(entry["symbol"]).strip().upper()
+            for entry in get_active_symbols()
+            if entry.get("symbol")
+        }
+        actual_symbols = [
+            str(item.get("symbol") or "").strip().upper()
+            for item in recommendations
+        ]
+        if (
+            not expected_symbols
+            or len(actual_symbols) != len(set(actual_symbols))
+            or set(actual_symbols) != expected_symbols
+        ):
+            missing = sorted(expected_symbols - set(actual_symbols))
+            unexpected = sorted(set(actual_symbols) - expected_symbols)
+            raise RuntimeError(
+                "Recommendation snapshot is incomplete or has duplicate symbols "
+                f"(expected={len(expected_symbols)}, actual={len(actual_symbols)}, "
+                f"missing={missing[:10]}, unexpected={unexpected[:10]})"
+            )
+        for item in recommendations:
+            data_as_of = item.get("data_as_of")
+            if not data_as_of:
+                raise RuntimeError(
+                    f"Recommendation for {item['symbol']} has no source data date"
+                )
+            date.fromisoformat(str(data_as_of)[:10])
+
+        started_at = datetime.utcnow()
         save_recommendations_cache(recommendations)
+
+        redis = get_sync_redis_client()
+        if redis is None:
+            raise RuntimeError("Redis is unavailable; recommendation snapshot was not warmed")
+        redis.ping()
+        raw_snapshot = redis.get("recommendations:default:v5")
+        if raw_snapshot is None:
+            raise RuntimeError("Recommendation snapshot was not written to Redis")
+        published = json.loads(raw_snapshot)
+        published_at = datetime.fromisoformat(published["timestamp"])
+        published_symbols = {
+            str(item.get("symbol") or "").strip().upper()
+            for item in published.get("recommendations", [])
+            if isinstance(item, dict)
+        }
+        if (
+            published_at < started_at
+            or published.get("cache_version") != 5
+            or published.get("count") != len(expected_symbols)
+            or published_symbols != expected_symbols
+        ):
+            raise RuntimeError("Redis still contains an older or incomplete recommendation snapshot")
+
+        set_dataset_status_sync("recommendations", "success")
+
+        for pattern in (
+            "rec:list:v3:*",
+            "rec:detail:v3:*",
+            "rec:targetstop:v3:*",
+        ):
+            cursor = 0
+            while True:
+                cursor, keys = redis.scan(cursor, match=pattern, count=500)
+                if keys:
+                    redis.delete(*keys)
+                if cursor == 0:
+                    break
 
         # Summary stats
         buy_count = sum(1 for r in recommendations if r.get("signal") == "buy")

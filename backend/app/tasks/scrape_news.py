@@ -164,3 +164,38 @@ def run(self, force: bool = False, limit_per_source: int = 50):
                 )
             except Exception:
                 log.warning("Could not release news ingestion lock", exc_info=True)
+
+@shared_task(
+    name="app.tasks.scrape_news.cleanup_old_news",
+    bind=True,
+    max_retries=1,
+    acks_late=True,
+)
+def cleanup_old_news(self, retention_days: int = 90):
+    """Prune news articles older than `retention_days` (default 90 days)."""
+    log.info("[NEWS-CLEANUP] Starting cleanup of news articles older than %d days", retention_days)
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import delete
+    from app.db.base import get_sync_session_factory
+    from app.models.news import NewsArticle
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    session_factory = get_sync_session_factory()
+    with session_factory() as session:
+        try:
+            result = session.execute(
+                delete(NewsArticle).where(NewsArticle.published_at < cutoff)
+            )
+            session.commit()
+            deleted = result.rowcount
+            log.info("[NEWS-CLEANUP] Cleaned up %d old news articles (published before %s)", deleted, cutoff.isoformat())
+            return {
+                "status": "success",
+                "deleted_count": deleted,
+                "cutoff": cutoff.isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception as exc:
+            session.rollback()
+            log.exception("[NEWS-CLEANUP] Failed to cleanup old news: %s", exc)
+            return {"status": "error", "error": str(exc)}

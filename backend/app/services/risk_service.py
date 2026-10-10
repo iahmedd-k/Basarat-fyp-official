@@ -28,10 +28,62 @@ except Exception:
         pass
 
 STRESS_SCENARIOS = {
-    "2008_crash": {"name": "Illustrative broad market crash", "description": "Illustrative one-step sector shocks; not a reconstruction of 2008.", "market_shock": -.45, "worst_case_shock": -.60, "volatility_multiplier": 2.5, "recovery_days": 540, "sector_shocks": {"bank": -.55, "oil_gas": -.40, "cement": -.50, "fertilizer": -.35, "tech": -.60, "pharma": -.30, "textile": -.55, "power": -.25}},
-    "pkr_devaluation": {"name": "Illustrative PKR devaluation", "description": "Illustrative sector shocks; not an empirically calibrated forecast.", "market_shock": -.15, "worst_case_shock": -.25, "volatility_multiplier": 1.8, "recovery_days": 180, "sector_shocks": {"bank": -.20, "oil_gas": -.10, "cement": -.25, "fertilizer": -.05, "tech": -.30, "pharma": -.05, "textile": .10, "power": -.20}},
-    "covid_crash": {"name": "Illustrative pandemic sell-off", "description": "Illustrative one-step shocks; not a replay of March 2020.", "market_shock": -.30, "worst_case_shock": -.40, "volatility_multiplier": 3.0, "recovery_days": 120, "sector_shocks": {"bank": -.35, "oil_gas": -.50, "cement": -.30, "fertilizer": -.10, "tech": .05, "pharma": .20, "textile": -.25, "power": -.15}},
-    "interest_rate_hike": {"name": "Illustrative interest rate shock", "description": "Illustrative sector shocks for a rate increase; not a forecast.", "market_shock": -.08, "worst_case_shock": -.12, "volatility_multiplier": 1.5, "recovery_days": 90, "sector_shocks": {"bank": .05, "oil_gas": -.10, "cement": -.15, "fertilizer": -.08, "tech": -.15, "pharma": -.05, "textile": -.12, "power": -.10}},
+    "2008_crash": {
+        "name": "Illustrative broad market crash",
+        "description": "Illustrative one-step sector shocks; not a reconstruction of 2008.",
+        "market_shock": -.45,
+        "worst_case_shock": -.60,
+        "volatility_multiplier": 2.5,
+        "recovery_days": 540,
+        "sector_shocks": {
+            "bank": -.55, "oil_gas": -.40, "refinery": -.45, "cement": -.50,
+            "fertilizer": -.35, "tech": -.60, "pharma": -.30, "textile": -.55,
+            "power": -.25, "auto": -.65, "chemical": -.45, "food": -.20,
+            "engineering": -.55, "insurance": -.50,
+        },
+    },
+    "pkr_devaluation": {
+        "name": "Illustrative PKR devaluation",
+        "description": "Illustrative sector shocks; not an empirically calibrated forecast.",
+        "market_shock": -.15,
+        "worst_case_shock": -.25,
+        "volatility_multiplier": 1.8,
+        "recovery_days": 180,
+        "sector_shocks": {
+            "bank": -.20, "oil_gas": -.10, "refinery": -.10, "cement": -.25,
+            "fertilizer": -.05, "tech": -.30, "pharma": -.05, "textile": .10,
+            "power": -.20, "auto": -.35, "chemical": -.20, "food": -.05,
+            "engineering": -.20, "insurance": -.15,
+        },
+    },
+    "covid_crash": {
+        "name": "Illustrative pandemic sell-off",
+        "description": "Illustrative one-step shocks; not a replay of March 2020.",
+        "market_shock": -.30,
+        "worst_case_shock": -.40,
+        "volatility_multiplier": 3.0,
+        "recovery_days": 120,
+        "sector_shocks": {
+            "bank": -.35, "oil_gas": -.50, "refinery": -.50, "cement": -.30,
+            "fertilizer": -.10, "tech": .05, "pharma": .20, "textile": -.25,
+            "power": -.15, "auto": -.45, "chemical": -.25, "food": .05,
+            "engineering": -.35, "insurance": -.20,
+        },
+    },
+    "interest_rate_hike": {
+        "name": "Illustrative interest rate shock",
+        "description": "Illustrative sector shocks for a rate increase; not a forecast.",
+        "market_shock": -.08,
+        "worst_case_shock": -.12,
+        "volatility_multiplier": 1.5,
+        "recovery_days": 90,
+        "sector_shocks": {
+            "bank": .05, "oil_gas": -.10, "refinery": -.10, "cement": -.15,
+            "fertilizer": -.08, "tech": -.15, "pharma": -.05, "textile": -.12,
+            "power": -.10, "auto": -.25, "chemical": -.12, "food": -.04,
+            "engineering": -.15, "insurance": .02,
+        },
+    },
 }
 
 _PRICE_PIVOT_CACHE: pd.DataFrame | None = None
@@ -120,9 +172,15 @@ def run_monte_carlo_simulation(holdings: list, num_simulations: int = 1000, hori
         return {"status": "error", "message": "At least 30 complete daily observations are required.", "num_simulations": num_simulations, "horizon_days": horizon_days, "user_id": None, "symbols_used": symbols, "symbols_excluded": excluded}
     rng = np.random.default_rng(seed)
     sample = returns.to_numpy(dtype=float)
-    mu = sample.mean(axis=0)
+    mu_sample = sample.mean(axis=0)
     covariance = np.atleast_2d(np.cov(sample, rowvar=False, ddof=1))
     covariance = (covariance + covariance.T) / 2
+
+    # Bayesian shrinkage on drift: pull extreme sample historical means towards conservative zero baseline
+    # Prevents anomalous short-term rallies from causing exponential explosion in multi-week simulations
+    shrinkage_factor = 0.50
+    mu = mu_sample * (1.0 - shrinkage_factor)
+
     # Numerical jitter allows valid simulation with collinear asset series.
     eigval, eigvec = np.linalg.eigh(covariance)
     root_cov = eigvec @ np.diag(np.sqrt(np.maximum(eigval, 0)))
@@ -140,7 +198,7 @@ def run_monte_carlo_simulation(holdings: list, num_simulations: int = 1000, hori
     running_peak = np.maximum.accumulate(paths, axis=1)
     max_drawdowns = np.min(paths / running_peak - 1.0, axis=1)
     percentiles = {f"p{p}": round(float(np.percentile(terminal, p)), 6) for p in (1, 5, 10, 25, 50, 75, 90, 95, 99)}
-    return {"status": "completed", "num_simulations": num_simulations, "horizon_days": horizon_days, "portfolio_value": round(portfolio_value, 2), "currency": "PKR", "method": "correlated_multivariate_gbm", "assumptions": "Constant estimated drift/covariance, Gaussian independent daily innovations, fixed initial share quantities; excludes fees, taxes, liquidity and regime changes.", "data_as_of": str(returns.index.max().date()), "symbols_used": symbols, "symbols_excluded": excluded, "params": {"daily_drift": {s: round(float(m), 8) for s, m in zip(symbols, mu)}, "daily_covariance": covariance.tolist(), "annualized_volatility": {s: round(float(np.sqrt(max(covariance[i, i], 0) * 252)), 6) for i, s in enumerate(symbols)}}, "percentiles": percentiles, "stats": {"mean_return": round(float(terminal.mean()), 6), "std_return": round(float(terminal.std()), 6), "prob_loss": round(float((terminal < 0).mean()), 4), "max_drawdown": round(float(max_drawdowns.min()), 6), "mean_max_drawdown": round(float(max_drawdowns.mean()), 6), "tail_observations_p1": max(1, int(np.floor(num_simulations * .01))), "best_case": round(float(terminal.max()), 6)}, "paths_sample": paths[rng.choice(num_simulations, min(50, num_simulations), replace=False)].tolist(), "tail_estimate_reliable": num_simulations >= 1000}
+    return {"status": "completed", "num_simulations": num_simulations, "horizon_days": horizon_days, "portfolio_value": round(portfolio_value, 2), "currency": "PKR", "method": "correlated_multivariate_gbm", "assumptions": "Constant drift/covariance with 50% Bayesian shrinkage, Gaussian innovations, fixed initial asset weights; excludes fees, taxes, and extreme regime breaks.", "data_as_of": str(returns.index.max().date()), "symbols_used": symbols, "symbols_excluded": excluded, "params": {"daily_drift": {s: round(float(m), 8) for s, m in zip(symbols, mu)}, "daily_covariance": covariance.tolist(), "annualized_volatility": {s: round(float(np.sqrt(max(covariance[i, i], 0) * 252)), 6) for i, s in enumerate(symbols)}}, "percentiles": percentiles, "stats": {"mean_return": round(float(terminal.mean()), 6), "std_return": round(float(terminal.std()), 6), "prob_loss": round(float((terminal < 0).mean()), 4), "max_drawdown": round(float(max_drawdowns.min()), 6), "mean_max_drawdown": round(float(max_drawdowns.mean()), 6), "tail_observations_p1": max(1, int(np.floor(num_simulations * .01))), "best_case": round(float(terminal.max()), 6)}, "paths_sample": paths[rng.choice(num_simulations, min(50, num_simulations), replace=False)].tolist(), "tail_estimate_reliable": num_simulations >= 1000}
 
 
 def save_monte_carlo_result(job_id: str, result: dict) -> Path:
@@ -157,13 +215,19 @@ def load_monte_carlo_result(job_id: str) -> dict | None:
 def _normalize_sector(sector: str) -> str:
     value = " ".join(str(sector or "").lower().replace("&", "and").replace("_", " ").split())
     if any(k in value for k in ("bank", "financial", "commercial")): return "bank"
-    if any(k in value for k in ("oil", "gas", "exploration", "refinery")): return "oil_gas"
+    if any(k in value for k in ("oil", "gas", "exploration")): return "oil_gas"
+    if "refiner" in value: return "refinery"
     if "cement" in value: return "cement"
     if "fertili" in value: return "fertilizer"
-    if any(k in value for k in ("technology", "tech", "software")): return "tech"
+    if any(k in value for k in ("technology", "tech", "software", "communication")): return "tech"
     if any(k in value for k in ("pharma", "pharmaceutical")): return "pharma"
     if "textile" in value: return "textile"
     if any(k in value for k in ("power", "electric", "utility")): return "power"
+    if any(k in value for k in ("food", "personal care", "consumer", "tobacco", "sugar", "vanaspati")): return "food"
+    if any(k in value for k in ("auto", "motor", "assembler", "cars", "vehicle")): return "auto"
+    if any(k in value for k in ("chemical", "polymer", "synthetic")): return "chemical"
+    if any(k in value for k in ("engineer", "steel", "cable", "metal")): return "engineering"
+    if "insurance" in value or "takaful" in value: return "insurance"
     return "default"
 
 

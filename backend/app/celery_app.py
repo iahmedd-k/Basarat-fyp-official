@@ -68,27 +68,28 @@ celery.conf.update(
             "schedule": 30.0,
         },
         # ── Daily: data update + features + predictions + evaluation ──
-        # Mon–Thu 15:35 and Fri 16:35 Asia/Karachi, five minutes after the
-        # configured PSX close (the pipeline skips weekends and holidays):
-        #   update_market_data → generate_features → generate_predictions (upsert)
-        #   → evaluate_pending (set actual_direction from closes) → sentiment → recs
+        # Mon–Fri 18:00 Asia/Karachi (after PSX close and settlement):
+        #   update_market_data → warm_technical_indicators → generate_features
+        #   → generate_predictions → evaluate_pending → sentiment → recs
         "daily-workflow": {
             "task": "app.tasks.daily_workflow.run_daily_pipeline",
-            "schedule": crontab(hour=15, minute=35, day_of_week="1-4"),
+            "schedule": crontab(hour=18, minute=0, day_of_week="1-5"),
         },
-        "daily-workflow-friday": {
-            "task": "app.tasks.daily_workflow.run_daily_pipeline",
-            "schedule": crontab(hour=16, minute=35, day_of_week="5"),
+        # Refresh the persisted forecast rows and publish both shared Redis
+        # snapshots before users arrive; the preceding evening chain updates data.
+        "morning-market-intelligence-refresh": {
+            "task": "app.tasks.daily_workflow.run_morning_market_intelligence",
+            "schedule": crontab(hour=5, minute=30, day_of_week="1-5"),
         },
-        # Fundamentals are refreshed separately so a slow/rate-limited source
-        # cannot block the OHLCV/features/predictions chain.
+        # Fundamentals are refreshed separately before daily-workflow so a slow/rate-limited
+        # source cannot block the OHLCV/features/predictions chain.
         "daily-fundamentals": {
             "task": "app.tasks.refresh_fundamentals.refresh_fundamentals",
             "schedule": crontab(hour=17, minute=30, day_of_week="1-4"),
         },
         "daily-fundamentals-friday": {
             "task": "app.tasks.refresh_fundamentals.refresh_fundamentals",
-            "schedule": crontab(hour=18, minute=0, day_of_week="5"),
+            "schedule": crontab(hour=17, minute=15, day_of_week="5"),  # 17:15 PKT on Friday (45m after 16:30 close, finishes before 18:00 daily workflow)
         },
         # ── Weekly: retraining pipeline ──
         "weekly-retraining": {
@@ -118,11 +119,11 @@ celery.conf.update(
         "refresh-market-screener": {
             "task": "app.tasks.refresh_market_cache.refresh_market_cache",
             "kwargs": {"refresh_quotes": False, "refresh_screener": True},
-            "schedule": crontab(minute="*/30", hour="9-15", day_of_week="1-5"),
+            "schedule": crontab(minute="*/30", hour="9-16", day_of_week="1-5"),
         },
         "refresh-etf-ipo-catalogs": {
             "task": "app.tasks.refresh_etf_ipo.refresh_etf_ipo_catalogs",
-            "schedule": crontab(minute="*/30", hour="9-16", day_of_week="1-5"),
+            "schedule": crontab(hour="9,16", minute=10, day_of_week="1-5"),  # Twice daily (09:10 PKT pre-market and 16:10 PKT post-market)
         },
         # ── Intraday shared snapshot during weekdays (task self-gates hours) ──
         # A weekday crontab prevents even enqueueing this task on weekends.
@@ -135,10 +136,17 @@ celery.conf.update(
             "task": "app.tasks.alert_tasks.evaluate_alert_rules",
             "schedule": crontab(minute="*/5", day_of_week="1-5"),
         },
-        # ── Daily Portfolio Risk Breach Monitoring ──
+        # ── Portfolio performance precomputation: daily after daily-workflow completes ──
+        # Scheduled at 18:45 PKT to guarantee daily-workflow (started at 18:00) is fully completed
+        "precompute-portfolio-performance": {
+            "task": "app.tasks.portfolio_tasks.precompute_all_portfolio_performance",
+            "schedule": crontab(hour=18, minute=45, day_of_week="1-5"),
+        },
+        # ── Daily Portfolio Risk Breach Monitoring: daily after performance precomputation ──
+        # Scheduled at 19:00 PKT so all daily predictions, prices, and portfolio metrics are settled
         "daily-risk-threshold-monitoring": {
             "task": "app.tasks.risk_tasks.check_all_portfolios_risk_breaches",
-            "schedule": crontab(hour=18, minute=30, day_of_week="1-5"),
+            "schedule": crontab(hour=19, minute=0, day_of_week="1-5"),
         },
         # Sentiment and recommendation publication run as dependent final
         # stages of daily-workflow, after OHLCV/features/forecast finish.
@@ -158,15 +166,11 @@ celery.conf.update(
             "task": "app.tasks.sentiment_tasks.rescore_failed_sentiment",
             "schedule": crontab(minute=0, day_of_week="1-5"),  # Hourly on trading weekdays
         },
-        # ── Portfolio performance precomputation: daily after market close ──
-        # Runs 10 minutes after daily-workflow completes (15:45 Mon-Thu, 16:45 Fri)
-        "precompute-portfolio-performance": {
-            "task": "app.tasks.portfolio_tasks.precompute_all_portfolio_performance",
-            "schedule": crontab(hour=15, minute=45, day_of_week="1-4"),
-        },
-        "precompute-portfolio-performance-friday": {
-            "task": "app.tasks.portfolio_tasks.precompute_all_portfolio_performance",
-            "schedule": crontab(hour=16, minute=45, day_of_week="5"),
+        # ── Prune news articles older than 90 days: daily at 03:00 AM PKT ──
+        "daily-news-cleanup": {
+            "task": "app.tasks.scrape_news.cleanup_old_news",
+            "kwargs": {"retention_days": 90},
+            "schedule": crontab(hour=3, minute=0),
         },
     },
 )

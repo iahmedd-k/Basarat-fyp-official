@@ -30,9 +30,17 @@ async def log_prediction(
 ) -> Prediction:
     """Upsert one forecast observation per symbol, horizon, and session date."""
     if model_details and not gru_result:
-        gru_result = model_details.get("gru") or model_details.get("gru_v1")
+        gru_result = (
+            model_details.get("gru")
+            or model_details.get("gru_v1")
+            or model_details.get("gru_v2")
+        )
     if model_details and not xgb_result:
-        xgb_result = model_details.get("xgb") or model_details.get("xgb_v1")
+        xgb_result = (
+            model_details.get("xgb")
+            or model_details.get("xgb_v1")
+            or model_details.get("xgb_v4")
+        )
 
     ensemble = {
         "direction": predicted_direction,

@@ -29,6 +29,17 @@ def source_backed_kmi_fixture(monkeypatch):
 
 @pytest.mark.api
 class TestShariahScreening:
+    async def test_bulk_screening_returns_the_official_kmi30_dataset(self, client: AsyncClient):
+        response = await client.get("/api/v1/shariah/screenings")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["dataset"] == "PSX KMI-30"
+        assert payload["total"] == len(payload["screenings"])
+        assert payload["total"] > 0
+        assert {item["symbol"] for item in payload["screenings"]} >= {"OGDC"}
+        assert all(item["criteria"] for item in payload["screenings"])
+
     async def test_screening_unknown_stock(self, client: AsyncClient, auth_headers):
         resp = await client.get("/api/v1/shariah/UNKNOWNXYZ", headers=auth_headers)
         assert resp.status_code == 200

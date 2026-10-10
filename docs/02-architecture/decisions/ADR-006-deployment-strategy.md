@@ -20,7 +20,8 @@ Deploy containerized backend fleet on **Oracle Cloud Infrastructure (OCI) Ampere
 - Automated migrations and health verification (`/health`, `/api/v1/health/ready`) before cutover.
 
 ## Current Implementation
-- Production Host: `193.123.84.223` (Oracle Cloud Infrastructure)
+- Production Gateway: `https://api.basarat.live` (Host IP: `193.123.84.223`, Oracle Cloud Infrastructure)
+- Interactive Docs: `https://api.basarat.live/docs`
 - Workflow: `.github/workflows/deploy-oracle.yml`
 - Docker Compose: `docker-compose.production.yml`
 - Documentation: `docs/07-deployment/oracle-deployment.md`

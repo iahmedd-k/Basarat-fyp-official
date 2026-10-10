@@ -2,9 +2,9 @@
 
 ## Base URL
 - **Local Development**: `http://localhost:8000/api/v1`
-- **Production (Oracle Cloud VM)**: `http://193.123.84.223:8000/api/v1`
-- **Interactive Swagger Docs**: `http://193.123.84.223:8000/docs`
-- **ReDoc Specification**: `http://193.123.84.223:8000/redoc`
+- **Production (Oracle Cloud)**: `https://api.basarat.live/api/v1`
+- **Interactive Swagger Docs**: `https://api.basarat.live/docs`
+- **ReDoc Specification**: `https://api.basarat.live/redoc`
 
 ## API Version
 `v1` (all API resources versioned under `/api/v1/`, with root liveness probe at `/health`).
@@ -70,23 +70,32 @@
 | `GET` | `/stocks/{symbol}/price-history` | No | Daily OHLCV price series (1D, 1W, 1M, 1Y) |
 | `GET` | `/stocks/{symbol}/technical-indicators` | No | Calculated indicators (RSI, MACD, BB, SMA, ADX) with signal summary |
 | `GET` | `/stocks/{symbol}/fundamentals` | No | Full company profile, ratios, financials, trading limits & sector peers |
+| `GET` | `/stocks/{symbol}/price-on-date` | No | Historical exact or previous-trading-day closing price on specified date |
 
 ---
 
-## 5. Shariah Screening Engine (`/api/v1/shariah`)
+## 5. Corporate Events Calendar (`/api/v1/events`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
-| `GET` | `/shariah/stocks` | No | List all verified Shariah-compliant PSX equities |
-| `GET` | `/shariah/search?q={query}` | No | Search within Shariah-compliant equities |
-| `GET` | `/shariah/status/{symbol}` | No | Detailed Shariah compliance status and criteria badge |
-| `GET` | `/shariah/metrics/{symbol}` | No | Quantitative KMI financial ratios (debt/equity, illiquid assets, income) |
-| `GET` | `/shariah/screen` | No | Interactive Shariah compliance screening parameter test |
-| `GET` | `/shariah/summary` | No | Overall Shariah market statistics and compliance breakdown |
+| `GET` | `/events/calendar` | No | PSX corporate events calendar (AGM, EOGM, Board Meetings, Dividends) with `from` and `to` date filtering |
+| `GET` | `/events/{symbol}` | No | Stock-specific corporate announcements and dividend history |
 
 ---
 
-## 6. ML Forecasts & Quantitative Recommendations (`/api/v1/recommendations`, `/api/v1/forecast`)
+## 6. Shariah Screening Engine (`/api/v1/shariah`)
+
+| Method | Path | Auth Required | Purpose |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/shariah/kmi30` | No | Dated KMI-30 constituent list |
+| `GET` | `/shariah/screenings` | No | Bulk official KMI-30 screening dataset, including criteria and source dates |
+| `GET` | `/shariah/{symbol}` | No | Individual stock Shariah compliance screening |
+| `GET` | `/shariah/{symbol}/criteria` | No | Detailed breakdown of the stock's screening criteria |
+| `GET` | `/shariah/{symbol}/purification?dividend_income={amount}` | No | Calculate dividend purification using a verified published rate |
+
+---
+
+## 7. ML Forecasts & Quantitative Recommendations (`/api/v1/recommendations`, `/api/v1/forecast`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
@@ -99,7 +108,7 @@
 
 ---
 
-## 7. News & Sentiment Analysis (`/api/v1/news`, `/api/v1/sentiment`)
+## 8. News & Sentiment Analysis (`/api/v1/news`, `/api/v1/sentiment`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
@@ -112,7 +121,7 @@
 
 ---
 
-## 8. Risk Analytics (`/api/v1/risk`)
+## 9. Risk Analytics (`/api/v1/risk`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
@@ -121,7 +130,7 @@
 
 ---
 
-## 9. Watchlists Management (`/api/v1/watchlists`)
+## 10. Watchlists Management (`/api/v1/watchlists`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
@@ -137,7 +146,7 @@
 
 ---
 
-## 10. Portfolio Tracking & Analytics (`/api/v1/portfolio`)
+## 11. Portfolio Tracking & Analytics (`/api/v1/portfolio`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
@@ -152,7 +161,7 @@
 
 ---
 
-## 11. Social Community (`/api/v1/community`)
+## 12. Social Community (`/api/v1/community`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
@@ -168,7 +177,18 @@
 
 ---
 
-## 12. IPOs & ETFs (`/api/v1/ipos`, `/api/v1/etfs`)
+## 13. Subscriptions & Billing (`/api/v1/subscription`)
+
+| Method | Path | Auth Required | Purpose |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/subscription/plans` | No | List Free vs Pro subscription tier features and pricing |
+| `GET` | `/subscription/me` | Yes | Get current user's subscription status, tier, and quota limits |
+| `POST` | `/subscription/checkout` | Yes | Initialize Stripe PaymentSheet checkout session |
+| `POST` | `/subscription/webhook` | No | Stripe signature verified billing events webhook callback |
+
+---
+
+## 14. IPOs & ETFs (`/api/v1/ipos`, `/api/v1/etfs`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
@@ -179,7 +199,7 @@
 
 ---
 
-## 13. Alerts & Push Notifications (`/api/v1/alerts`, `/api/v1/notifications`)
+## 15. Alerts & Push Notifications (`/api/v1/alerts`, `/api/v1/notifications`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
@@ -194,7 +214,7 @@
 
 ---
 
-## 14. Stock AI Assistant (`/api/v1/assistant`)
+## 16. Stock AI Assistant (`/api/v1/assistant`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |
@@ -207,7 +227,17 @@
 
 ---
 
-## 15. WebSocket & System Health (`/api/v1/ws`, `/health`)
+## 17. Admin Moderation (`/api/v1/admin/community`)
+
+| Method | Path | Auth Required | Purpose |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/admin/community/reports` | Yes (Admin) | List reported community posts and comments |
+| `POST` | `/admin/community/reports/{id}/resolve` | Yes (Admin) | Resolve or dismiss moderation report |
+| `POST` | `/admin/community/posts/{id}/hide` | Yes (Admin) | Hide infringing community post from public feed |
+
+---
+
+## 18. WebSocket & System Health (`/api/v1/ws`, `/health`)
 
 | Method | Path | Auth Required | Purpose |
 | :--- | :--- | :---: | :--- |

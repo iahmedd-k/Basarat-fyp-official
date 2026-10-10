@@ -34,7 +34,7 @@ htmlcov/
 *.sqlite3
 
 # ML data artifacts
-data/
+/data/
 backend/data/raw/
 backend/data/features/*.parquet
 backend/data/sequences/
@@ -60,6 +60,7 @@ backend/research/backup_models/
 *_tmp.*
 *.tar.gz
 backend/*report.json
+backend/*latency*.json
 backend/scripts/inspect_pso_fundamentals.py
 backend/scripts/test_pso_local.py
 backend/scripts/test_stocks_enrichment.py

@@ -293,3 +293,73 @@ class TestStockFundamentals:
             headers=auth_headers,
         )
         assert resp.status_code == 422
+
+
+@pytest.mark.api
+class TestStockPriceOnDate:
+    async def test_price_on_date_exact_match(self, client: AsyncClient, db_session):
+        stock = await db_session.scalar(select(Stock).where(Stock.symbol == "HBL"))
+        assert stock is not None
+        hist_date = date(2026, 9, 15)
+        db_session.add(
+            StockPrice(
+                stock_id=stock.id,
+                date=hist_date,
+                open=150.0,
+                high=155.0,
+                low=149.0,
+                close=154.0,
+                volume=1000,
+                adjusted_close=154.0,
+            )
+        )
+        await db_session.flush()
+
+        resp = await client.get(f"/api/v1/stocks/HBL/price-on-date?date={hist_date.isoformat()}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["symbol"] == "HBL"
+        assert data["close"] == 154.0
+        assert data["is_fallback"] is False
+        assert data["status"] == "EXACT_MATCH"
+
+    async def test_price_on_date_weekend_holiday_fallback(self, client: AsyncClient, db_session):
+        stock = await db_session.scalar(select(Stock).where(Stock.symbol == "HBL"))
+        assert stock is not None
+        friday_date = date(2026, 9, 18)
+        saturday_date = date(2026, 9, 19)
+
+        db_session.add(
+            StockPrice(
+                stock_id=stock.id,
+                date=friday_date,
+                open=152.0,
+                high=156.0,
+                low=151.0,
+                close=155.5,
+                volume=5000,
+                adjusted_close=155.5,
+            )
+        )
+        await db_session.flush()
+
+        # Query on Saturday (weekend/closed)
+        resp = await client.get(f"/api/v1/stocks/HBL/price-on-date?date={saturday_date.isoformat()}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["symbol"] == "HBL"
+        assert data["requested_date"] == "2026-09-19"
+        assert data["price_date"] == "2026-09-18"
+        assert data["close"] == 155.5
+        assert data["is_fallback"] is True
+        assert data["status"] == "PREVIOUS_TRADING_DAY"
+
+    async def test_price_on_date_future_date_rejected(self, client: AsyncClient):
+        future_date = date.today() + timedelta(days=5)
+        resp = await client.get(f"/api/v1/stocks/HBL/price-on-date?date={future_date.isoformat()}")
+        assert resp.status_code == 422
+
+    async def test_price_on_date_vintage_date_not_found(self, client: AsyncClient):
+        old_date = date(1980, 1, 1)
+        resp = await client.get(f"/api/v1/stocks/HBL/price-on-date?date={old_date.isoformat()}")
+        assert resp.status_code == 404

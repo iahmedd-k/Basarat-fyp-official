@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 import json
 import logging
+from types import SimpleNamespace
 from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -338,6 +339,61 @@ class ShariahService:
         """Return PSX's dated roster without coupling it to live market/cache availability."""
         return [self._kmi_constituent(symbol, row, None)
                 for symbol, row in PSX_KMI30_COMPANIES.items()]
+
+    def get_screening_dataset(self) -> dict:
+        """Build detailed screenings directly from the bundled official KMI-30 dataset."""
+        snapshot = self.screening_snapshot_freshness()
+        screenings = []
+        for symbol, row in PSX_KMI30_COMPANIES.items():
+            source_fields = _screening_source_fields(row)
+            screening = SimpleNamespace(
+                is_shariah_compliant=bool(row["status"]),
+                **source_fields,
+            )
+            effective_from = source_fields["effective_from"]
+            data_as_of = source_fields["data_as_of"]
+            criteria = self.build_criteria(screening, symbol=symbol)
+            screenings.append(
+                {
+                    "symbol": symbol,
+                    "name": row["name"],
+                    "screening_available": True,
+                    "is_shariah_compliant": bool(row["status"]),
+                    "overall_score": 100.0 if row["status"] else 0.0,
+                    "screening_method": source_fields["screening_method"],
+                    "screened_at": source_fields["screened_at"],
+                    "data_as_of": data_as_of,
+                    "data_is_stale": snapshot["data_is_stale"],
+                    "effective_from": effective_from,
+                    "source_url": snapshot["source_url"],
+                    "source_exception": source_fields["source_exception"]
+                    or "None (Standard PSX KMI-30 screening)",
+                    "purification_rate_provisional": source_fields[
+                        "purification_rate_provisional"
+                    ],
+                    "criteria": criteria,
+                    "sector": "Commercial & Industrial",
+                    "purification_rate": (
+                        source_fields["interest_income_ratio"]
+                        if row["status"] and source_fields["interest_income_ratio"] is not None
+                        else 0.0
+                    ),
+                    "compliance_summary": (
+                        f"{symbol} is classified by the PSX KMI-30 screening effective "
+                        f"{effective_from:%Y-%m-%d}; financial ratios are as of "
+                        f"{data_as_of:%Y-%m-%d}."
+                    ),
+                }
+            )
+        return {
+            "dataset": "PSX KMI-30",
+            "total": len(screenings),
+            "data_as_of": snapshot["data_as_of"],
+            "data_is_stale": snapshot["data_is_stale"],
+            "effective_from": snapshot["effective_from"],
+            "source_url": snapshot["source_url"],
+            "screenings": screenings,
+        }
 
     @staticmethod
     def _kmi_constituent(symbol: str, row: dict, market_row: dict | None) -> dict:

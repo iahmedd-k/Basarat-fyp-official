@@ -81,18 +81,23 @@ def calculate_position(transactions: list[PortfolioTransaction]) -> Position:
         fee = txn.fee or Decimal("0")
 
         if txn.transaction_type == TransactionType.BUY:
+            current_held = total_bought - total_sold
+            new_qty = current_held + qty
             # New total cost = old cost + (qty * price) + fee
             total_cost_basis += qty * price + fee
             total_bought += qty
-            # Recalculate average cost
-            if total_bought > 0:
-                average_cost = total_cost_basis / total_bought
+            # Recalculate average cost based on currently held shares
+            if new_qty > 0:
+                average_cost = total_cost_basis / new_qty
+            else:
+                average_cost = Decimal("0")
 
         elif txn.transaction_type == TransactionType.SELL:
-            if total_bought - total_sold < qty:
+            current_held = total_bought - total_sold
+            if current_held < qty:
                 raise ValueError(
                     f"Insufficient holdings for SELL: "
-                    f"available={total_bought - total_sold}, requested={qty}"
+                    f"available={current_held}, requested={qty}"
                 )
             
             # Cost of sold shares at current average cost
@@ -105,7 +110,7 @@ def calculate_position(transactions: list[PortfolioTransaction]) -> Position:
             total_sold += qty
             total_cost_basis -= cost_of_sold
             
-            remaining = total_bought - total_sold
+            remaining = current_held - qty
             if remaining > 0:
                 average_cost = total_cost_basis / remaining
             else:

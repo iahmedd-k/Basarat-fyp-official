@@ -16,6 +16,9 @@ log = logging.getLogger(__name__)
 
 
 class HealthService:
+    _cached_result: dict | None = None
+    _cached_timestamp: float = 0.0
+
     def _check_model(self):
         if IS_TESTING:
             return "ready"
@@ -29,30 +32,20 @@ class HealthService:
     def _check_redis(self):
         if IS_TESTING or not getattr(settings, "REDIS_ENABLED", True):
             return "ready"
-        client = None
         try:
-            client = redis.from_url(
-                settings.REDIS_URL,
-                socket_connect_timeout=REDIS_CONNECT_TIMEOUT_SECONDS,
-                socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
-            )
-            if client.ping():
+            from app.core.redis import get_sync_redis_client
+            client = get_sync_redis_client()
+            if client and client.ping():
                 return "ready"
         except Exception:
             return "down"
-        finally:
-            if client is not None:
-                try:
-                    client.close()
-                except Exception:
-                    log.debug("Could not close Redis health-check client", exc_info=True)
         return "down"
 
     def _check_celery_worker(self):
         if IS_TESTING or not getattr(settings, "USE_CELERY", True):
             return "ready"
         try:
-            if celery.control.ping(timeout=0.5):
+            if celery.control.ping(timeout=0.3):
                 return "ready"
         except Exception:
             pass
@@ -85,6 +78,11 @@ class HealthService:
             return "down"
 
     async def check_health(self):
+        import time
+        now = time.time()
+        if HealthService._cached_result and (now - HealthService._cached_timestamp < 15.0):
+            return HealthService._cached_result
+
         async def _run_sync_check(check):
             try:
                 return await asyncio.wait_for(
@@ -116,4 +114,7 @@ class HealthService:
         else:
             # Redis/Celery/ML can be down while public GETs still serve Redis/L1/Postgres.
             status = "degraded"
-        return {"status": status, "services": services}
+        res = {"status": status, "services": services}
+        HealthService._cached_result = res
+        HealthService._cached_timestamp = now
+        return res

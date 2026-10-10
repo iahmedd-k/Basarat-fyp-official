@@ -5,6 +5,7 @@ Returns clean, flat JSON optimized for frontend rendering.
 
 import logging
 from datetime import date, datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Path as PathParam
 from starlette.concurrency import run_in_threadpool
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
-from app.core.redis import cache_get, cache_set
+from app.core.redis import cache_get, cache_set, dataset_refresh_ready
 from app.db.session import get_db
 from app.models.user import User
 from app.ml.serving.schemas import (
@@ -54,6 +55,37 @@ def _get_user_weights(user: User, defaults: dict) -> dict[str, float]:
         return {key: value / total for key, value in weights.items()}
     except (KeyError, TypeError, ValueError):
         return defaults.copy()
+
+
+def _feature_revision() -> str:
+    from app.services.recommendation_service import FEATURES_PATH
+
+    try:
+        return str(FEATURES_PATH.stat().st_mtime_ns)
+    except OSError:
+        return "missing"
+
+
+def _personalize_snapshot_item(
+    engine: Any,
+    snapshot: list[dict] | None,
+    symbol: str,
+    risk_profile: str,
+    weights: dict[str, float],
+) -> dict | None:
+    if not snapshot:
+        return None
+    source = next(
+        (
+            item for item in snapshot
+            if str(item.get("symbol") or "").strip().upper() == symbol
+        ),
+        None,
+    )
+    if source is None:
+        return None
+    personalized = engine.personalize_snapshot([source], risk_profile, weights)
+    return personalized[0] if personalized else None
 
 
 def _summarize(r: dict) -> str:
@@ -319,43 +351,51 @@ def _decision_reason(rec: dict) -> str:
 )
 async def get_recommendations(
     risk_profile: str | None = Query(None, pattern="^(conservative|moderate|aggressive)$"),
+    horizon: str | None = Query(None, pattern="^(5D|10D|20D|5d|10d|20d)$", description="Trading strategy horizon: 5D (Tactical Swing), 10D (Multi-week Standard), 20D (Monthly Positional)"),
     sector: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
 ):
     try:
         effective_risk = risk_profile or _get_user_risk_profile(user)
-        cache_key = f"rec:list:v3:{user.id}:{effective_risk}:{sector}:{limit}"
-        cached = await cache_get(cache_key)
+        h_tag = str(horizon).upper() if horizon else "10D"
+        shared_cache_ready = await dataset_refresh_ready("recommendations")
+        cache_key = (
+            f"rec:list:v3:{user.id}:{effective_risk}:{h_tag}:{sector}:{limit}:"
+            f"{_feature_revision()}"
+        )
+        cached = await cache_get(cache_key) if shared_cache_ready else None
         if cached:
             return RecommendationsListResponse(**cached)
 
         from app.services.recommendation_service import (
             DEFAULT_WEIGHTS,
+            HORIZON_WEIGHT_PRESETS,
             RecommendationEngine,
             get_cached_recommendations,
         )
 
-        weights = _get_user_weights(user, DEFAULT_WEIGHTS)
+        preset_weights = HORIZON_WEIGHT_PRESETS.get(h_tag, DEFAULT_WEIGHTS)
+        has_custom = bool(isinstance(getattr(user, "recommendation_weights", None), dict))
+        weights = _get_user_weights(user, preset_weights) if has_custom and not horizon else preset_weights
         engine = RecommendationEngine(weights=weights)
-        snapshot = await run_in_threadpool(get_cached_recommendations)
+        snapshot = (
+            await run_in_threadpool(get_cached_recommendations)
+            if shared_cache_ready
+            else None
+        )
         if snapshot:
             recommendations = engine.personalize_snapshot(snapshot, effective_risk, weights)
             if sector:
                 recommendations = [r for r in recommendations if str(r.get("sector") or "").casefold() == sector.casefold()]
         else:
-            from app.services.recommendation_service import save_recommendations_cache
             recommendations = await run_in_threadpool(
                 engine.get_all_recommendations,
                 risk_tolerance=effective_risk,
                 sector_filter=sector,
                 weights=weights,
+                force_refresh=not shared_cache_ready,
             )
-            if recommendations:
-                try:
-                    await run_in_threadpool(save_recommendations_cache, recommendations)
-                except Exception:
-                    pass
 
         recommendations = [_apply_freshness_guard(r) for r in recommendations]
 
@@ -389,7 +429,8 @@ async def get_recommendations(
             risk_profile=effective_risk,
             recommendations=items,
         )
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+        if shared_cache_ready:
+            await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
         return response
 
     except ServiceUnavailableError:
@@ -466,6 +507,7 @@ async def set_engine_weights(
 )
 async def get_recommendation_detail(
     symbol: str = PathParam(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.&-]+$"),
+    horizon: str | None = Query(None, pattern="^(5D|10D|20D|5d|10d|20d)$", description="Trading strategy horizon: 5D (Tactical Swing), 10D (Multi-week Standard), 20D (Monthly Positional)"),
     user: User = Depends(get_current_user),
 ):
     try:
@@ -484,25 +526,42 @@ async def get_recommendation_detail(
                 "Stock recommendations and multi-signal synthesis are computed exclusively for KSE-100 constituent stocks."
             )
 
-        cache_key = f"rec:detail:v3:{user.id}:{symbol_upper}"
-        cached = await cache_get(cache_key)
+        h_tag = str(horizon).upper() if horizon else "10D"
+        shared_cache_ready = await dataset_refresh_ready("recommendations")
+        cache_key = (
+            f"rec:detail:v3:{user.id}:{symbol_upper}:{h_tag}:{_feature_revision()}"
+        )
+        cached = await cache_get(cache_key) if shared_cache_ready else None
         if cached:
             return RecommendationDetailResponse(**cached)
 
         from app.services.recommendation_service import (
             RecommendationEngine,
             DEFAULT_WEIGHTS,
+            HORIZON_WEIGHT_PRESETS,
+            get_cached_recommendations,
         )
 
-        user_weights = _get_user_weights(user, DEFAULT_WEIGHTS)
+        preset_weights = HORIZON_WEIGHT_PRESETS.get(h_tag, DEFAULT_WEIGHTS)
+        has_custom = bool(isinstance(getattr(user, "recommendation_weights", None), dict))
+        user_weights = _get_user_weights(user, preset_weights) if has_custom and not horizon else preset_weights
         risk_profile = _get_user_risk_profile(user)
         engine = RecommendationEngine(weights=user_weights)
-        rec = await run_in_threadpool(
-            engine.get_recommendation,
-            symbol_upper,
-            risk_profile,
-            weights=user_weights,
+        snapshot = (
+            await run_in_threadpool(get_cached_recommendations)
+            if shared_cache_ready
+            else None
         )
+        rec = _personalize_snapshot_item(
+            engine, snapshot, symbol_upper, risk_profile, user_weights
+        )
+        if rec is None:
+            rec = await run_in_threadpool(
+                engine.get_recommendation,
+                symbol_upper,
+                risk_profile,
+                weights=user_weights,
+            )
         if not rec:
             raise ServiceUnavailableError("Failed to fetch recommendation")
 
@@ -520,7 +579,8 @@ async def get_recommendation_detail(
             risk_profile=risk_profile,
             summary=_summarize(rec),
         )
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+        if shared_cache_ready:
+            await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
         return response
 
     except NotFoundError:
@@ -557,25 +617,38 @@ async def get_target_stop(
                 "Target price and stop loss levels are computed exclusively for KSE-100 constituent stocks."
             )
 
-        cache_key = f"rec:targetstop:v3:{user.id}:{symbol_upper}"
-        cached = await cache_get(cache_key)
+        shared_cache_ready = await dataset_refresh_ready("recommendations")
+        cache_key = (
+            f"rec:targetstop:v3:{user.id}:{symbol_upper}:{_feature_revision()}"
+        )
+        cached = await cache_get(cache_key) if shared_cache_ready else None
         if cached:
             return TargetStopResponse(**cached)
 
         from app.services.recommendation_service import (
             RecommendationEngine,
             DEFAULT_WEIGHTS,
+            get_cached_recommendations,
         )
 
         user_weights = _get_user_weights(user, DEFAULT_WEIGHTS)
         risk_profile = _get_user_risk_profile(user)
         engine = RecommendationEngine(weights=user_weights)
-        rec = await run_in_threadpool(
-            engine.get_recommendation,
-            symbol_upper,
-            risk_profile,
-            weights=user_weights,
+        snapshot = (
+            await run_in_threadpool(get_cached_recommendations)
+            if shared_cache_ready
+            else None
         )
+        rec = _personalize_snapshot_item(
+            engine, snapshot, symbol_upper, risk_profile, user_weights
+        )
+        if rec is None:
+            rec = await run_in_threadpool(
+                engine.get_recommendation,
+                symbol_upper,
+                risk_profile,
+                weights=user_weights,
+            )
         if not rec:
             raise ServiceUnavailableError("Failed to fetch target/stop")
 
@@ -589,7 +662,8 @@ async def get_target_stop(
             risk=_risk_payload(rec),
             risk_profile=risk_profile,
         )
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+        if shared_cache_ready:
+            await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
         return response
 
     except NotFoundError:

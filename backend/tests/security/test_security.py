@@ -10,11 +10,10 @@ class TestAuthenticationSecurity:
         protected_endpoints = [
             ("GET", "/api/v1/users/me"),
             ("GET", "/api/v1/portfolio"),
-            ("GET", "/api/v1/market/indices"),
-            ("GET", "/api/v1/news"),
             ("GET", "/api/v1/community/feed"),
             ("GET", "/api/v1/alerts"),
             ("GET", "/api/v1/notifications"),
+            ("GET", "/api/v1/watchlists"),
         ]
         for method, url in protected_endpoints:
             resp = await getattr(client, method.lower())(url)
@@ -57,8 +56,10 @@ class TestAuthorizationSecurity:
     async def test_user_cannot_modify_other_users_data(
         self, client: AsyncClient, db_session, auth_headers, test_user
     ):
+        from decimal import Decimal
+        from datetime import date
         from app.models.user import User
-        from app.models.portfolio import Portfolio, PortfolioHolding
+        from app.models.portfolio import PortfolioTransaction, TransactionType
         from app.core.security import hash_password
 
         other = User(
@@ -69,21 +70,19 @@ class TestAuthorizationSecurity:
         db_session.add(other)
         await db_session.flush()
 
-        other_portfolio = Portfolio(user_id=other.id, name="Other Portfolio")
-        db_session.add(other_portfolio)
-        await db_session.flush()
-
-        other_holding = PortfolioHolding(
-            portfolio_id=other_portfolio.id,
-            stock_id="stock-hbl",
-            quantity=100,
-            avg_buy_price=150.0,
+        other_tx = PortfolioTransaction(
+            user_id=other.id,
+            symbol="OGDC",
+            transaction_type=TransactionType.BUY,
+            quantity=Decimal("100"),
+            price=Decimal("150.0"),
+            transaction_date=date(2025, 1, 1),
         )
-        db_session.add(other_holding)
+        db_session.add(other_tx)
         await db_session.flush()
 
         resp = await client.delete(
-            f"/api/v1/portfolio/holdings/{other_holding.id}",
+            f"/api/v1/portfolio/transactions/{other_tx.id}",
             headers=auth_headers,
         )
         assert resp.status_code in (403, 404)
@@ -146,17 +145,17 @@ class TestInputValidation:
 
     async def test_negative_stock_quantity_rejected(self, client: AsyncClient, auth_headers):
         resp = await client.post(
-            "/api/v1/portfolio/holdings",
+            "/api/v1/portfolio/transactions",
             headers=auth_headers,
-            json={"symbol": "HBL", "quantity": -100, "avg_buy_price": 150.0, "purchase_date": "2025-01-01"},
+            json={"symbol": "OGDC", "transaction_type": "BUY", "quantity": -100, "price": 150.0, "transaction_date": "2025-01-01"},
         )
         assert resp.status_code in (400, 422)
 
     async def test_zero_stock_quantity_rejected(self, client: AsyncClient, auth_headers):
         resp = await client.post(
-            "/api/v1/portfolio/holdings",
+            "/api/v1/portfolio/transactions",
             headers=auth_headers,
-            json={"symbol": "HBL", "quantity": 0, "avg_buy_price": 150.0, "purchase_date": "2025-01-01"},
+            json={"symbol": "OGDC", "transaction_type": "BUY", "quantity": 0, "price": 150.0, "transaction_date": "2025-01-01"},
         )
         assert resp.status_code in (400, 422)
 

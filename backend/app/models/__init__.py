@@ -1,7 +1,7 @@
 # ruff: noqa: F401
 from app.models.user import User, RefreshToken, PasswordResetToken
 from app.models.stock import Stock, StockPrice
-from app.models.portfolio import PortfolioTransaction, TransactionType
+from app.models.portfolio import PortfolioSnapshot, PortfolioTransaction, TransactionType
 from app.models.watchlist import Watchlist, WatchlistItem
 from app.models.forecast import Forecast
 from app.models.prediction import Prediction

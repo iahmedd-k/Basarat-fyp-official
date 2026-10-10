@@ -1,7 +1,7 @@
 """Celery tasks for evaluating alert rules and watchlist target prices."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from app.celery_app import celery
@@ -11,25 +11,56 @@ log = logging.getLogger(__name__)
 
 
 def _get_sync_session():
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    settings = get_settings()
-    engine = create_engine(settings.DATABASE_URL_SYNC, pool_pre_ping=True)
-    return sessionmaker(bind=engine)()
+    from app.db.base import get_sync_session_factory
+    return get_sync_session_factory()()
 
 
-def _check_and_set_cooldown(redis_client, key: str, ttl_seconds: int = 1800) -> bool:
-    """Returns True if action is allowed (cooldown not active). Sets cooldown."""
-    if not redis_client:
-        return True
-    try:
-        # set(key, "1", nx=True, ex=ttl_seconds) returns True if set, None/False if already exists
-        is_set = redis_client.set(key, "1", nx=True, ex=ttl_seconds)
-        return bool(is_set)
-    except Exception as exc:
-        log.warning("Redis cooldown check failed for %s: %s", key, exc)
-        return True
+def _is_in_cooldown(
+    session,
+    redis_client,
+    cooldown_key: str,
+    rule_id: str | None = None,
+    user_id: str | None = None,
+    title_pattern: str | None = None,
+    ttl_seconds: int = 1800,
+) -> bool:
+    """Check if an alert is on cooldown via Redis with DB fallback to prevent duplicate spam."""
+    if redis_client:
+        try:
+            # set(key, "1", nx=True, ex=ttl_seconds) returns True if newly set, False/None if already exists
+            is_new = redis_client.set(cooldown_key, "1", nx=True, ex=ttl_seconds)
+            if not is_new:
+                return True
+            return False
+        except Exception as exc:
+            log.warning("Redis cooldown check failed for %s: %s", cooldown_key, exc)
+
+    # Fallback to DB check: ensure no alert was created for this rule/target within cooldown window
+    if session:
+        try:
+            from app.models.alert import Alert
+            from sqlalchemy import select
+            cutoff = datetime.utcnow() - timedelta(seconds=ttl_seconds)
+            if rule_id:
+                existing = session.execute(
+                    select(Alert.id).where(Alert.rule_id == rule_id, Alert.created_at >= cutoff).limit(1)
+                ).scalar()
+                if existing:
+                    return True
+            elif user_id and title_pattern:
+                existing = session.execute(
+                    select(Alert.id).where(
+                        Alert.user_id == user_id,
+                        Alert.title.like(f"%{title_pattern}%"),
+                        Alert.created_at >= cutoff,
+                    ).limit(1)
+                ).scalar()
+                if existing:
+                    return True
+        except Exception as exc:
+            log.warning("DB fallback cooldown check failed: %s", exc)
+
+    return False
 
 
 @celery.task(
@@ -132,25 +163,27 @@ def evaluate_alert_rules_task(self):
             trigger_reason = ""
 
             if cond in ("price_above", "above", "target_price_above", "gte"):
-                if current_price >= threshold:
+                if current_price >= threshold and threshold > 0:
                     matched = True
                     trigger_reason = f"{sym} reached PKR {current_price:.2f} (above target {threshold:.2f})"
             elif cond in ("price_below", "below", "target_price_below", "lte"):
-                if current_price <= threshold:
+                if current_price <= threshold and threshold > 0:
                     matched = True
                     trigger_reason = f"{sym} dropped to PKR {current_price:.2f} (below limit {threshold:.2f})"
             elif cond in ("pct_change_up", "change_pct_above", "gain_above"):
-                if change_pct >= threshold:
+                target_gain = abs(threshold)
+                if change_pct >= target_gain:
                     matched = True
-                    trigger_reason = f"{sym} is up {change_pct:+.2f}% (exceeding +{threshold:.2f}%)"
+                    trigger_reason = f"{sym} is up {change_pct:+.2f}% (exceeding +{target_gain:.2f}%)"
             elif cond in ("pct_change_down", "change_pct_below", "loss_below"):
-                if change_pct <= threshold:
+                target_loss = -abs(threshold)
+                if change_pct <= target_loss:
                     matched = True
-                    trigger_reason = f"{sym} is down {change_pct:+.2f}% (exceeding {threshold:.2f}%)"
+                    trigger_reason = f"{sym} is down {change_pct:+.2f}% (exceeding {target_loss:.2f}%)"
 
             if matched:
                 cooldown_key = f"alert:cooldown:rule:{rule.id}"
-                if _check_and_set_cooldown(redis_client, cooldown_key, ttl_seconds=1800):
+                if not _is_in_cooldown(session, redis_client, cooldown_key, rule_id=rule.id, ttl_seconds=1800):
                     alert = Alert(
                         id=uuid4().hex,
                         user_id=rule.user_id,
@@ -188,7 +221,14 @@ def evaluate_alert_rules_task(self):
 
             if target_price > 0 and current_price >= target_price:
                 cooldown_key = f"alert:cooldown:watchlist:{item.id}"
-                if _check_and_set_cooldown(redis_client, cooldown_key, ttl_seconds=3600):
+                if not _is_in_cooldown(
+                    session,
+                    redis_client,
+                    cooldown_key,
+                    user_id=watchlist.user_id,
+                    title_pattern=f"Watchlist Target: {sym}",
+                    ttl_seconds=3600,
+                ):
                     message = f"{sym} reached your target price of PKR {target_price:.2f} (Current: PKR {current_price:.2f})"
                     alert = Alert(
                         id=uuid4().hex,

@@ -49,6 +49,34 @@ DEFAULT_WEIGHTS = {
     "sentiment": 0.20,
 }
 
+# Multi-Horizon Strategy Presets matching trained models (5D, 10D, 20D)
+HORIZON_WEIGHT_PRESETS = {
+    "5D": {"gru": 0.35, "technical": 0.35, "sentiment": 0.20, "fundamental": 0.10},   # Short-term / Tactical Swing
+    "10D": {"gru": 0.30, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.20},  # Multi-week Standard (Default)
+    "20D": {"gru": 0.25, "technical": 0.25, "fundamental": 0.35, "sentiment": 0.15},  # Monthly Positional / 1-Month
+}
+
+# Sector median P/E benchmarks for relative valuation normalization in PSX
+SECTOR_PE_BENCHMARKS = {
+    "COMMERCIAL BANKS": 5.5,
+    "OIL & GAS EXPLORATION COMPANIES": 6.5,
+    "OIL & GAS MARKETING COMPANIES": 7.0,
+    "FERTILIZER": 7.5,
+    "CEMENT": 9.0,
+    "POWER GENERATION & DISTRIBUTION": 5.2,
+    "TECHNOLOGY & COMMUNICATION": 22.0,
+    "PHARMACEUTICALS": 15.0,
+    "AUTOMOBILE ASSEMBLER": 11.0,
+    "FOOD & PERSONAL CARE PRODUCTS": 16.5,
+    "TEXTILE COMPOSITE": 8.0,
+    "CHEMICAL": 10.0,
+    "REFINERY": 6.0,
+    "ENGINEERING": 9.5,
+    "CABLE & ELECTRICAL GOODS": 12.0,
+    "INSURANCE": 6.5,
+}
+DEFAULT_MARKET_PE = 8.5
+
 # Risk profile multipliers for target/stop-loss
 RISK_MULTIPLIERS = {
     "conservative": {"target": 2.0, "stop": 1.5},
@@ -400,19 +428,27 @@ class RecommendationEngine:
 
             signals = []
 
-            # P/E ratio signal
+            # Sector-Relative P/E ratio signal
             if pe_ratio is not None and pe_ratio > 0:
-                if pe_ratio < 10:
-                    pe_score = 0.6  # cheap
-                elif pe_ratio < 15:
-                    pe_score = 0.3
-                elif pe_ratio > 25:
-                    pe_score = -0.5  # expensive
-                elif pe_ratio > 20:
-                    pe_score = -0.2
+                sector_name = (
+                    (overview.get("sector") if isinstance(overview, dict) else None)
+                    or (fundamentals.get("sector") if isinstance(fundamentals, dict) else None)
+                    or "EQUITY MARKET"
+                )
+                benchmark_pe = SECTOR_PE_BENCHMARKS.get(str(sector_name).strip().upper(), DEFAULT_MARKET_PE)
+                rel_pe = pe_ratio / max(0.1, benchmark_pe)
+
+                if rel_pe < 0.75:
+                    pe_score = 0.6  # Significantly undervalued vs sector median
+                elif rel_pe < 0.95:
+                    pe_score = 0.3  # Moderate discount to sector
+                elif rel_pe > 1.40:
+                    pe_score = -0.5  # Expensive relative to sector peers
+                elif rel_pe > 1.20:
+                    pe_score = -0.2  # Moderate premium over sector
                 else:
                     pe_score = 0.0
-                signals.append(("pe", pe_score, f"P/E={pe_ratio:.1f}"))
+                signals.append(("pe", pe_score, f"P/E={pe_ratio:.1f} (Sector {sector_name}: {benchmark_pe:.1f}x)"))
             # Use reported valuation and profitability metrics (P/E, PEG, EPS growth, Net Margin, Dividend Yield, EPS)
             peg = metric_number("peg_ratio", "peg", "p/e_g_ratio", "p_e_g_ratio")
             eps_growth = metric_number("eps_growth_pct", "eps_growth", "eps_growth_(%)")
@@ -443,7 +479,7 @@ class RecommendationEngine:
 
             reasoning = {s[0]: s[2] for s in signals}
             reasoning["status"] = "available"
-            reasoning["method"] = "unvalidated_available_fundamental_metrics_heuristic"
+            reasoning["method"] = "sector_normalized_fundamental_metrics_heuristic"
             return float(final), reasoning
 
         except Exception as e:
@@ -451,7 +487,7 @@ class RecommendationEngine:
             return 0.0, {"status": "unavailable", "reason": f"PSX fundamental data lookup failed: {e}"}
 
     def _sentiment_signal(self, symbol: str, sentiment_data: dict | None = None) -> tuple[float, dict]:
-        """Use the asynchronously aggregated per-stock FinBERT sentiment cache."""
+        """Use the asynchronously aggregated per-stock FinBERT sentiment cache with recency decay."""
         try:
             from app.services.sentiment_service import get_cached_sentiment
 
@@ -461,13 +497,16 @@ class RecommendationEngine:
                     "status": "unavailable",
                     "reason": sentiment.get("reason") or "FinBERT sentiment could not be computed",
                 }
-            if not sentiment or int(sentiment.get("article_count", 0) or 0) < 2:
+            article_count = int(sentiment.get("article_count", 0) or 0) if sentiment else 0
+            if not sentiment or article_count < 2:
                 reason = (sentiment or {}).get("reason") or "fewer than 2 scored news articles available in 7-day window"
                 return 0.0, {"status": "unavailable", "reason": reason}
+
             raw_score = sentiment.get("score")
             if raw_score is None or not np.isfinite(float(raw_score)):
                 return 0.0, {"status": "unavailable", "reason": "sentiment score missing or invalid"}
 
+            decay = 1.0
             updated_at = sentiment.get("updated_at")
             if updated_at:
                 timestamp = pd.Timestamp(updated_at)
@@ -476,12 +515,19 @@ class RecommendationEngine:
                 age = datetime.now(timezone.utc) - timestamp.to_pydatetime()
                 if age > timedelta(days=7) or age < timedelta(minutes=-5):
                     return 0.0, {"status": "unavailable", "reason": "sentiment cache is stale or dated in the future", "updated_at": updated_at}
+                # Exponential recency decay over 7 days (half-life ~ 4.5 days)
+                days_old = max(0.0, age.total_seconds() / 86400.0)
+                decay = float(np.exp(-0.15 * days_old))
 
-            score = float(np.clip(float(raw_score), -1.0, 1.0))
+            score = float(np.clip(float(raw_score) * decay, -1.0, 1.0))
             return score, {
-                "status": "available", "model": "FinBERT news aggregate",
-                "label": sentiment.get("label"), "article_count": int(sentiment.get("article_count", 0)),
-                "trend": sentiment.get("trend"), "updated_at": updated_at,
+                "status": "available",
+                "model": "FinBERT news aggregate",
+                "label": sentiment.get("label"),
+                "article_count": article_count,
+                "trend": sentiment.get("trend"),
+                "updated_at": updated_at,
+                "recency_decay": round(decay, 3),
             }
         except Exception as exc:
             log.warning("Sentiment recommendation unavailable for %s: %s", symbol, exc)
@@ -870,6 +916,7 @@ class RecommendationEngine:
         risk_tolerance: str = "moderate",
         sector_filter: str | None = None,
         weights: dict | None = None,
+        force_refresh: bool = False,
     ) -> list[dict]:
         """Get recommendations for all active symbols with Redis caching."""
         _ensure_features_fresh()
@@ -883,10 +930,15 @@ class RecommendationEngine:
             json.dumps(requested_weights, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:12]
         sector_key = (sector_filter or "all").strip().lower()
-        cache_key = f"rec:all:v4:{risk_tolerance}:{sector_key}:{weight_key}"
-        cached = cache_get_sync(cache_key)
-        if cached:
-            return cached
+        try:
+            feature_revision = str(FEATURES_PATH.stat().st_mtime_ns)
+        except OSError:
+            feature_revision = "missing"
+        cache_key = f"rec:all:v5:{risk_tolerance}:{sector_key}:{weight_key}:{feature_revision}"
+        if not force_refresh:
+            cached = cache_get_sync(cache_key)
+            if cached:
+                return cached
 
         from app.data.scraper.symbol_universe import get_active_symbols
         from app.services.stock_service import StockService
@@ -983,8 +1035,26 @@ def get_cached_recommendations() -> list[dict] | None:
         if any(
             not isinstance(item, dict)
             or not {"composite_score", "signals", "weights"}.issubset(item)
+            or not item.get("data_as_of")
             for item in recommendations
         ):
+            return None
+        try:
+            feature_dates = pd.read_parquet(
+                FEATURES_PATH, columns=["symbol", "date"]
+            )
+            feature_dates["date"] = pd.to_datetime(feature_dates["date"])
+            latest_by_symbol = feature_dates.groupby("symbol")["date"].max()
+            for item in recommendations:
+                latest = latest_by_symbol.get(item.get("symbol"))
+                if latest is not None and str(latest.date()) > str(item["data_as_of"])[:10]:
+                    return None
+        except (OSError, ValueError, KeyError):
+            log.debug(
+                "Could not validate recommendation snapshot against feature dates",
+                exc_info=True,
+            )
+        if not recommendations:
             return None
         return recommendations
     except Exception:
@@ -1056,7 +1126,7 @@ def sync_seed_recommendations(force: bool = False) -> bool:
             client = get_sync_redis_client()
             if client:
                 try:
-                    keys = client.keys("rec:all:v4:*") + client.keys("forecast:v3:*")
+                    keys = client.keys("rec:all:v5:*") + client.keys("forecast:v4:*")
                     if keys:
                         client.delete(*keys)
                 except Exception as exc:
@@ -1065,4 +1135,3 @@ def sync_seed_recommendations(force: bool = False) -> bool:
     except Exception as exc:
         log.warning("Could not sync seed recommendations: %s", exc)
     return False
-

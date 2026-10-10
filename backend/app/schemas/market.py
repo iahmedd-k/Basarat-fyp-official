@@ -14,8 +14,13 @@ class IndexItem(BaseModel):
 
 class IndicesResponse(BaseModel):
     indices: list[IndexItem] = Field(default_factory=list)
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = True
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""
 
 
 class ConstituentItem(BaseModel):
@@ -37,13 +42,18 @@ class IndexConstituentsResponse(BaseModel):
     code: str = ""
     shariah_compliant: bool = False
     constituents: list[ConstituentItem] = Field(default_factory=list)
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = True
 
     @field_validator("shariah_compliant", mode="before")
     @classmethod
     def _clean_shariah(cls, v):
         return bool(v) if v is not None else False
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""
 
 
 class MarketQuoteItem(BaseModel):
@@ -88,20 +98,35 @@ class MarketQuoteItem(BaseModel):
 
 class GainersResponse(BaseModel):
     gainers: list[MarketQuoteItem] = Field(default_factory=list)
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = True
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""
 
 
 class LosersResponse(BaseModel):
     losers: list[MarketQuoteItem] = Field(default_factory=list)
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = True
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""
 
 
 class VolumeSpikesResponse(BaseModel):
     volume_spikes: list[MarketQuoteItem] = Field(default_factory=list)
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = True
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""
 
 
 class MarketQuotesResponse(BaseModel):
@@ -110,10 +135,15 @@ class MarketQuotesResponse(BaseModel):
     limit: int = 50
     offset: int = 0
     filtered: bool = False
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = True
     recommended_poll_seconds: int = 30
     transport_hint: str = "Prefer websocket; use rest_polling when WS is unavailable"
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""
 
 
 class LiveTransportInfo(BaseModel):
@@ -135,12 +165,17 @@ class MarketLiveResponse(BaseModel):
     is_market_open: bool = True
     timezone: str = "Asia/Karachi"
     current_time_pkt: str = ""
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = True
     quote_count: int = 0
     session_refresh_enabled: bool = True
     transport: LiveTransportInfo = Field(default_factory=LiveTransportInfo)
     android_integration: list[str] = Field(default_factory=list)
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""
 
 
 class SectorPerformance(BaseModel):
@@ -164,8 +199,13 @@ class SectorPerformanceResponse(BaseModel):
     total_companies: int = 0
     classified_companies: int = 0
     unclassified_companies: int = 0
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = True
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""
 
 
 class SentimentOverview(BaseModel):
@@ -178,8 +218,13 @@ class SentimentOverview(BaseModel):
     losers_pct: float = 0.0
     sector_performance: list[SectorPerformance] = Field(default_factory=list)
     top_movers: list[MarketQuoteItem] = Field(default_factory=list)
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = True
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""
 
 
 class CuratedStockItem(BaseModel):
@@ -203,5 +248,10 @@ class CuratedStocksResponse(BaseModel):
     description: str = ""
     total_count: int = 0
     items: list[CuratedStockItem] = Field(default_factory=list)
-    as_of: str = ""
+    as_of: Optional[str] = ""
     is_stale: bool = False
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _clean_as_of(cls, v):
+        return str(v) if v is not None else ""

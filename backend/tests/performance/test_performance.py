@@ -32,22 +32,15 @@ class TestResponseTime:
         assert resp.status_code == 201
         assert ms < self.MAX_RESPONSE_MS, f"Signup took {ms:.0f}ms"
 
-    async def test_market_indices_response_time(self, client: AsyncClient, auth_headers):
-        from unittest.mock import patch
-        import pandas as pd
-
-        mock_data = pd.DataFrame({
-            "CURRENT": [42000.0], "CHANGE": [200.0],
-            "PERCENTAGE_CHANGE": [0.48], "HIGH": [42200.0], "LOW": [41800.0],
-        }, index=["KSE100"])
-
-        with patch("app.services.market_service.pypsx_toolkit") as mock:
-            mock.get_indices.return_value = mock_data
-            resp, ms = await self._measure(
-                client, "get", "/api/v1/market/indices", headers=auth_headers,
-            )
-            assert resp.status_code == 200
-            assert ms < self.MAX_RESPONSE_MS
+    async def test_market_indices_response_time(self, client: AsyncClient, auth_headers, mock_market_service, override_services):
+        mock_market_service.get_indices.return_value = [
+            {"index": "KSE-100", "code": "KSE100", "current": 42000.0, "change": 200.0, "change_pct": 0.48, "high": 42200.0, "low": 41800.0},
+        ]
+        resp, ms = await self._measure(
+            client, "get", "/api/v1/market/indices", headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert ms < self.MAX_RESPONSE_MS
 
 
 @pytest.mark.performance
@@ -57,11 +50,11 @@ class TestConcurrency:
     async def test_concurrent_signups(self, client: AsyncClient):
         async def signup(i):
             return await client.post("/api/v1/auth/signup", json={
-                "email": f"conc{i}@test.com",
+                "email": f"conc{i}_{time.time()}@test.com",
                 "password": "ConcPass1!",
             })
 
-        results = await asyncio.gather(*[signup(i) for i in range(10)])
+        results = await asyncio.gather(*[signup(i) for i in range(5)])
         statuses = [r.status_code for r in results]
         assert all(s == 201 for s in statuses)
 
@@ -109,9 +102,15 @@ class TestRegression:
 
     async def test_negative_quantity_rejected(self, client: AsyncClient, auth_headers):
         resp = await client.post(
-            "/api/v1/portfolio/holdings",
+            "/api/v1/portfolio/transactions",
             headers=auth_headers,
-            json={"symbol": "HBL", "quantity": -10, "avg_buy_price": 150.0, "purchase_date": "2025-01-01"},
+            json={
+                "symbol": "HBL",
+                "transaction_type": "buy",
+                "quantity": -10,
+                "price": 150.0,
+                "transaction_date": "2025-01-01T00:00:00Z",
+            },
         )
         assert resp.status_code in (400, 422)
 

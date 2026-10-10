@@ -18,12 +18,8 @@ log = logging.getLogger(__name__)
 
 
 def _get_sync_session():
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from app.core.config import get_settings
-    settings = get_settings()
-    engine = create_engine(settings.DATABASE_URL_SYNC, pool_pre_ping=True)
-    return sessionmaker(bind=engine)()
+    from app.db.base import get_sync_session_factory
+    return get_sync_session_factory()()
 
 
 def _compute_metrics(rows: list) -> dict:

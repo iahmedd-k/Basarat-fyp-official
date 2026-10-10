@@ -151,7 +151,8 @@ class TestRecommendationsListEndpoint:
             }
         ]
 
-        with patch("app.services.recommendation_service.get_cached_recommendations", return_value=sample_recs):
+        with patch("app.api.v1.recommendations.dataset_refresh_ready", return_value=True), \
+             patch("app.services.recommendation_service.get_cached_recommendations", return_value=sample_recs):
             resp = await client.get("/api/v1/recommendations?risk_profile=moderate&limit=10", headers=auth_headers)
             assert resp.status_code == 200
             data = resp.json()
@@ -177,6 +178,26 @@ class TestRecommendationsListEndpoint:
             assert rec["decision"]["reason"].startswith("Composite score")
             assert "generated_at" in data
 
+    async def test_recommendations_force_compute_when_redis_is_unavailable(
+        self, client: AsyncClient, auth_headers
+    ):
+        with patch(
+            "app.api.v1.recommendations.dataset_refresh_ready", return_value=False
+        ), patch(
+            "app.services.recommendation_service.get_cached_recommendations"
+        ) as get_snapshot, patch(
+            "app.services.recommendation_service.RecommendationEngine.get_all_recommendations",
+            return_value=[],
+        ) as get_all:
+            response = await client.get(
+                "/api/v1/recommendations",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        get_snapshot.assert_not_called()
+        assert get_all.call_args.kwargs["force_refresh"] is True
+
     async def test_stale_cached_buy_is_returned_as_suppressed_hold(self, client: AsyncClient, auth_headers):
         stale_rec = {
             "symbol": "SYS", "signal": "buy", "confidence": 1.0, "composite_score": 0.64,
@@ -186,7 +207,8 @@ class TestRecommendationsListEndpoint:
             "data_as_of": "2026-09-18", "target_price": 485.0, "stop_loss": 430.0,
             "target_stop_method": "atr_band",
         }
-        with patch("app.services.recommendation_service.get_cached_recommendations", return_value=[stale_rec]):
+        with patch("app.api.v1.recommendations.dataset_refresh_ready", return_value=True), \
+             patch("app.services.recommendation_service.get_cached_recommendations", return_value=[stale_rec]):
             response = await client.get("/api/v1/recommendations", headers=auth_headers)
         assert response.status_code == 200
         item = response.json()["recommendations"][0]
@@ -207,7 +229,8 @@ class TestRecommendationsListEndpoint:
             "reasoning": {name: {"status": "available"} for name in ("ml", "technical", "fundamental", "sentiment")},
             "data_as_of": "2026-09-25", "current_price": 450.0, "atr_14": 10.0,
         }]
-        with patch("app.services.recommendation_service.get_cached_recommendations", return_value=snapshot), \
+        with patch("app.api.v1.recommendations.dataset_refresh_ready", return_value=True), \
+             patch("app.services.recommendation_service.get_cached_recommendations", return_value=snapshot), \
              patch("app.services.recommendation_service.RecommendationEngine.get_all_recommendations") as get_all:
             response = await client.get("/api/v1/recommendations", headers=auth_headers)
         assert response.status_code == 200
@@ -333,6 +356,75 @@ class TestRecommendationDetailEndpoint:
             assert "reasoning" not in data
             assert "generated_at" in data
 
+    async def test_detail_uses_daily_snapshot_without_recomputing(
+        self, client: AsyncClient, auth_headers
+    ):
+        snapshot_item = {
+            "symbol": "SYS",
+            "name": "Systems Limited",
+            "sector": "Technology",
+            "signal": "buy",
+            "confidence": 0.82,
+            "composite_score": 0.38,
+            "signals": {"ml": 0.6, "technical": 0.4, "fundamental": 0.1, "sentiment": 0.3},
+            "weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
+            "effective_weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
+            "current_price": 450.0,
+            "atr_14": 12.5,
+            "data_as_of": date.today().isoformat(),
+            "reasoning": {
+                name: {"status": "available"}
+                for name in ("ml", "technical", "fundamental", "sentiment")
+            },
+        }
+
+        with patch(
+            "app.api.v1.recommendations.dataset_refresh_ready",
+            return_value=True,
+        ), patch(
+            "app.services.recommendation_service.get_cached_recommendations",
+            return_value=[snapshot_item],
+        ), patch(
+            "app.services.recommendation_service.RecommendationEngine.get_recommendation"
+        ) as get_recommendation:
+            response = await client.get(
+                "/api/v1/recommendations/SYS",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        assert response.json()["symbol"] == "SYS"
+        get_recommendation.assert_not_called()
+
+    async def test_detail_recomputes_directly_when_redis_is_unavailable(
+        self, client: AsyncClient, auth_headers
+    ):
+        live_rec = {
+            "signal": "hold",
+            "confidence": 0.0,
+            "composite_score": 0.0,
+            "data_as_of": date.today().isoformat(),
+            "signals": {},
+            "weights": {},
+            "reasoning": {},
+        }
+        with patch(
+            "app.api.v1.recommendations.dataset_refresh_ready", return_value=False
+        ), patch(
+            "app.services.recommendation_service.get_cached_recommendations"
+        ) as get_snapshot, patch(
+            "app.services.recommendation_service.RecommendationEngine.get_recommendation",
+            return_value=live_rec,
+        ) as get_recommendation:
+            response = await client.get(
+                "/api/v1/recommendations/SYS",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        get_snapshot.assert_not_called()
+        get_recommendation.assert_called_once()
+
     async def test_detail_uses_persisted_custom_weights(self, client: AsyncClient, auth_headers):
         await client.post(
             "/api/v1/recommendations/engine-weights",
@@ -395,3 +487,42 @@ class TestTargetStopEndpoint:
             assert "generated_at" in data
             assert data["risk"]["upside_pct"] is not None
             assert data["risk"]["downside_pct"] is not None
+
+    async def test_target_stop_uses_daily_snapshot_without_recomputing(
+        self, client: AsyncClient, auth_headers
+    ):
+        snapshot_item = {
+            "symbol": "SYS",
+            "signal": "buy",
+            "confidence": 0.8,
+            "composite_score": 0.4,
+            "signals": {"ml": 0.6, "technical": 0.4, "fundamental": 0.2, "sentiment": 0.3},
+            "weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
+            "effective_weights": {"gru": 0.3, "technical": 0.25, "fundamental": 0.25, "sentiment": 0.2},
+            "current_price": 450.0,
+            "atr_14": 10.0,
+            "data_as_of": date.today().isoformat(),
+            "reasoning": {
+                name: {"status": "available"}
+                for name in ("ml", "technical", "fundamental", "sentiment")
+            },
+        }
+
+        with patch(
+            "app.api.v1.recommendations.dataset_refresh_ready",
+            return_value=True,
+        ), patch(
+            "app.services.recommendation_service.get_cached_recommendations",
+            return_value=[snapshot_item],
+        ), patch(
+            "app.services.recommendation_service.RecommendationEngine.get_recommendation"
+        ) as get_recommendation:
+            response = await client.get(
+                "/api/v1/recommendations/SYS/target-stop",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        assert response.json()["symbol"] == "SYS"
+        assert response.json()["risk"]["target_price"] is not None
+        get_recommendation.assert_not_called()

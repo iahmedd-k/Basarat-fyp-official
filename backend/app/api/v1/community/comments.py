@@ -130,7 +130,7 @@ async def get_comments(
     service: CommunityService = Depends(_get_service),
 ):
     try:
-        cache_key = CommunityCacheService.post_comments_key(post_id, cursor, limit, user.id)
+        cache_key = CommunityCacheService.post_comments_key(post_id, cursor, limit)
         cached = await cache_get(cache_key)
         if cached is not None:
             return CommunityCommentListResponse(**cached)
@@ -157,7 +157,7 @@ async def get_comments(
             next_cursor=next_cursor,
             has_more=has_more,
         )
-        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=60)
         return result
     except NotFoundError:
         raise
@@ -190,7 +190,7 @@ async def get_comment_replies(
             next_cursor=None,
             has_more=len(replies) >= limit,
         )
-        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=30)
+        await cache_set(cache_key, result.model_dump(mode="json"), ttl_seconds=60)
         return result
     except Exception:
         log.exception("Get replies failed")

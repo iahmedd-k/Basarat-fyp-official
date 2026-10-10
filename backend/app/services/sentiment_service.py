@@ -179,20 +179,78 @@ def _call_hf_api_batch(texts: list[str]) -> list[dict[str, Any] | None]:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# Sentiment Scoring — Heuristic Fallback with Negation & Phrase Matching
+# Aspect & Context-Snippet Extraction for Multi-Entity Articles
+# ════════════════════════════════════════════════════════════════════════
+
+import re
+
+
+def extract_entity_context(
+    text: str,
+    symbol: str,
+    aliases: list[str] | None = None,
+    window_sentences: int = 1,
+) -> str:
+    """Extract targeted sentence window (+/- window_sentences) mentioning the symbol or company.
+
+    Prevents cross-contamination in multi-company news articles.
+    """
+    if not text or not symbol:
+        return text
+
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    if len(sentences) <= 2:
+        return text
+
+    terms = {symbol.lower()}
+    if aliases:
+        for a in aliases:
+            if a and len(a) >= 3:
+                terms.add(a.lower())
+
+    matched_indices = []
+    for idx, sentence in enumerate(sentences):
+        sentence_lower = sentence.lower()
+        for term in terms:
+            if re.search(r"\b" + re.escape(term) + r"\b", sentence_lower):
+                matched_indices.append(idx)
+                break
+
+    if not matched_indices:
+        return text
+
+    selected_indices = set()
+    for idx in matched_indices:
+        for offset in range(-window_sentences, window_sentences + 1):
+            target_idx = idx + offset
+            if 0 <= target_idx < len(sentences):
+                selected_indices.add(target_idx)
+
+    extracted = [sentences[i] for i in sorted(selected_indices)]
+    return " ".join(extracted)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Sentiment Scoring — Heuristic Fallback with Negation & PSX Phrases
 # ════════════════════════════════════════════════════════════════════════
 
 _POSITIVE_PHRASES = [
     "profit surge", "profit rises", "net profit up", "dividend payout",
     "revenue growth", "beats estimate", "all-time high", "bullish momentum",
     "record high", "outperform", "buy rating", "strong quarterly", "earning beat",
+    "interim dividend", "bonus shares", "right issue", "current account surplus",
+    "remittances surge", "imf tranche approved", "credit rating upgrade", "fitch upgrade",
+    "moody's upgrade", "tax relief", "record revenue", "sales surge", "export boost",
+    "gas discovery", "hydrocarbon discovery", "debt restructuring", "capacity expansion",
 ]
 
 _NEGATIVE_PHRASES = [
     "net loss", "profit drops", "profit declines", "profit slump",
     "revenue miss", "circular debt rises", "downgrade", "underperform",
     "selloff", "bearish trend", "defaults on", "legal notice", "fined by",
-    "loss widened", "earnings miss",
+    "loss widened", "earnings miss", "circular debt", "super tax", "gas tariff hike",
+    "power tariff hike", "rate hike", "rupee depreciation", "plant shutdown",
+    "curtailment", "turnaround shutdown", "inventory loss", "secp notice", "court stay",
 ]
 
 _POSITIVE_WORDS = {
@@ -200,6 +258,7 @@ _POSITIVE_WORDS = {
     "outperform", "buy", "strong", "growth", "revenue", "beat", "exceed",
     "record", "dividend", "positive", "recovery", "boom", "jump",
     "boost", "soar", "climb", "higher", "profitable", "expansion", "inflow", "upbeat", "ease", "eased",
+    "bonus", "surplus", "rebound", "discovery", "breakthrough", "accretion",
 }
 
 _NEGATIVE_WORDS = {
@@ -207,6 +266,7 @@ _NEGATIVE_WORDS = {
     "sell", "weak", "decline", "miss", "deficit", "default",
     "bankruptcy", "fraud", "negative", "recession", "slump", "plunge", "down",
     "shrink", "tariff", "debt", "curtail", "shutdown", "layoff", "penalty", "sanction", "slowdown", "deteriorate",
+    "depreciation", "litigation", "fine", "adverse", "headwind", "deficit", "curtailment",
 }
 
 _NEGATION_WORDS = {
@@ -457,16 +517,19 @@ async def compute_stock_sentiment(
             "details": [],
         }
 
-    # Score all texts
+    # Score all texts using targeted entity-context snippets
     details = []
     all_scores = []
 
     for item in news:
-        if item["existing_score"] is not None:
+        # Extract the focused sentence window mentioning the target symbol
+        target_text = extract_entity_context(item["text"], symbol)
+
+        if item["existing_score"] is not None and target_text == item["text"]:
             score = item["existing_score"]
             model = "cached"
         else:
-            result = score_text(item["text"])
+            result = score_text(target_text)
             score = result["score"]
             model = result["model"]
             # Persist the text score once per article so recommendations for
@@ -493,7 +556,7 @@ async def compute_stock_sentiment(
         all_scores.append(score)
         details.append({
             "source": "news",
-            "text_preview": item["text"][:120],
+            "text_preview": target_text[:120],
             "score": score,
             "model": model,
             "published_at": item["published_at"],
@@ -562,7 +625,15 @@ async def compute_stock_sentiment(
     pos_ratio = round(sum(1 for s in all_scores if s >= 0.15) / len(all_scores), 4) if all_scores else 0.0
     neu_ratio = round(sum(1 for s in all_scores if -0.15 < s < 0.15) / len(all_scores), 4) if all_scores else 0.0
     neg_ratio = round(sum(1 for s in all_scores if s <= -0.15) / len(all_scores), 4) if all_scores else 0.0
-    confidence = round(min(1.0, (abs(overall_score) * 0.7) + (min(len(details), 10) / 10.0 * 0.3)), 2)
+    
+    article_cnt = len(details)
+    if article_cnt == 1:
+        # Calibrated single-article confidence
+        confidence = round(min(0.70, (abs(overall_score) * 0.4) + 0.35), 2)
+    elif article_cnt >= 2:
+        confidence = round(min(1.0, (abs(overall_score) * 0.7) + (min(article_cnt, 10) / 10.0 * 0.3)), 2)
+    else:
+        confidence = 0.0
     updated_at = period_end.isoformat()
 
     result = {

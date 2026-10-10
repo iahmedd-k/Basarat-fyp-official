@@ -1,8 +1,7 @@
-"""Paced daily OHLCV refresh using the existing per-symbol scraper."""
+"""Paced daily OHLCV refresh using latest market quotes from Redis."""
 
 import logging
 import re
-import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -19,14 +18,13 @@ from app.data.scraper.ohlcv import psx_access_denied, reset_psx_access_denied
 from app.data.scraper.run_scrape import (
     _DEFAULT_OUTPUT_DIR,
     _save_fetch_log,
-    _scrape_symbol,
 )
 from app.models.stock import Stock, StockPrice
 
 log = logging.getLogger(__name__)
 
 _BATCH_SIZE = 50
-_BATCH_PAUSE_SECONDS = 15
+_BATCH_PAUSE_SECONDS = 0
 _SYMBOL_PATTERN = re.compile(r"^[A-Z0-9]{1,20}$")
 _PKT = ZoneInfo("Asia/Karachi")
 
@@ -139,17 +137,13 @@ def run_after_close_scrape(
     pause_seconds: float = _BATCH_PAUSE_SECONDS,
     end_date=None,
 ) -> dict:
-    """Refresh current-session closes, pausing after each batch of symbols."""
-    if batch_size < 1:
-        raise ValueError("batch_size must be at least 1")
-    if pause_seconds < 0:
-        raise ValueError("pause_seconds cannot be negative")
-
+    """Refresh current-session daily OHLCV from Redis market quotes."""
     out_dir = output_dir or _DEFAULT_OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     symbols = get_refresh_symbols(out_dir)
     if not symbols:
         raise RuntimeError("No stock or quote symbols are available for OHLCV refresh")
+
     materialized = _materialize_database_history(out_dir, symbols)
     explicit_end_date = end_date is not None
     end = end_date or datetime.now(_PKT).date()
@@ -158,78 +152,121 @@ def run_after_close_scrape(
     if not explicit_end_date:
         while end.weekday() >= 5:
             end -= timedelta(days=1)
-    start = end - timedelta(days=5 * 365)
-    results = []
-    reset_psx_access_denied()
+
+    # 1. Read quotes from Redis (checking last_known fallback and active quotes)
+    raw_quotes = cache_get_sync("market:quotes:last_known")
+    if not raw_quotes or not isinstance(raw_quotes, list):
+        raw_quotes = cache_get_sync("market:quotes")
+
+    quotes_list = raw_quotes if isinstance(raw_quotes, list) else []
+    quote_map: dict[str, dict] = {
+        str(q.get("symbol") or "").strip().upper(): q
+        for q in quotes_list
+        if isinstance(q, dict) and q.get("symbol")
+    }
 
     log.info(
-        "Starting paced after-close OHLCV refresh for %d symbols (%d database histories materialized)",
+        "Starting Redis-backed after-close OHLCV refresh for %d symbols (%d cached quotes, %d DB materialized)",
         len(symbols),
+        len(quote_map),
         materialized,
     )
-    for index, symbol in enumerate(symbols, start=1):
-        if psx_access_denied():
-            log.error("Stopping OHLCV refresh after PSX HTTP 403/429")
-            results.extend(
-                {
-                    "symbol": pending,
-                    "status": "skipped",
-                    "reason": "source_rate_limited",
-                }
-                for pending in symbols[index - 1 :]
-            )
-            break
 
-        result = _scrape_symbol(
-            symbol=symbol,
-            start=start,
-            end=end,
-            output_dir=out_dir,
-            incremental=True,
-            delay=0,
-            initial_lookback_days=365,
+    results = []
+    target_date = pd.Timestamp(end)
+
+    for symbol in symbols:
+        quote = quote_map.get(symbol)
+
+        current = quote.get("current") if quote else None
+        ldcp = quote.get("ldcp") if quote else None
+        close_price = current if (current is not None and current > 0) else (ldcp if (ldcp is not None and ldcp > 0) else None)
+
+        if close_price is None or close_price <= 0:
+            existing_path = out_dir / f"{symbol}.parquet"
+            if existing_path.is_file():
+                results.append({"symbol": symbol, "status": "skipped", "reason": "no_recent_quote"})
+            else:
+                results.append({"symbol": symbol, "status": "no_data", "reason": "no_quote_and_no_file"})
+            continue
+
+        open_price = quote.get("open") if (quote.get("open") is not None and quote.get("open") > 0) else close_price
+        high_price = quote.get("high") if (quote.get("high") is not None and quote.get("high") > 0) else max(open_price, close_price)
+        low_price = quote.get("low") if (quote.get("low") is not None and quote.get("low") > 0) else min(open_price, close_price)
+        volume = int(quote.get("volume") or 0)
+
+        new_row = pd.DataFrame(
+            [{
+                "date": target_date,
+                "open": float(open_price),
+                "high": float(high_price),
+                "low": float(low_price),
+                "close": float(close_price),
+                "volume": volume,
+            }]
         )
-        results.append(result)
-        if index % batch_size == 0 and index < len(symbols) and not psx_access_denied():
-            log.info(
-                "Completed %d/%d symbols; pausing %.0f seconds",
-                index,
-                len(symbols),
-                pause_seconds,
-            )
-            time.sleep(pause_seconds)
 
-    # Rebuild the combined model-input file from all per-symbol files, including
-    # symbols skipped because they already had a current-session record.
+        existing_path = out_dir / f"{symbol}.parquet"
+        if existing_path.is_file():
+            try:
+                existing_df = pd.read_parquet(existing_path)
+                if not existing_df.empty and "date" in existing_df.columns:
+                    existing_df["date"] = pd.to_datetime(existing_df["date"])
+                    combined_df = pd.concat([existing_df, new_row], ignore_index=True)
+                    combined_df = combined_df.drop_duplicates(subset=["date"], keep="last")
+                    combined_df = combined_df.sort_values("date").reset_index(drop=True)
+                else:
+                    combined_df = new_row
+            except Exception as exc:
+                log.warning("Could not read existing parquet for %s: %s", symbol, exc)
+                combined_df = new_row
+        else:
+            combined_df = new_row
+
+        write_symbol_parquet(combined_df, symbol, out_dir)
+        results.append({
+            "symbol": symbol,
+            "status": "ok",
+            "close": float(close_price),
+            "volume": volume,
+            "rows": len(combined_df),
+        })
+
+    # Rebuild combined all_symbols.parquet
     frames = {}
     for path in sorted(out_dir.glob("*.parquet")):
         if path.name == "all_symbols.parquet":
             continue
-        frames[path.stem] = pd.read_parquet(path)
+        try:
+            frames[path.stem] = pd.read_parquet(path)
+        except Exception as exc:
+            log.warning("Could not read %s for combined parquet: %s", path.name, exc)
+
     if frames:
         write_combined_parquet(frames, out_dir)
         try:
             from app.data.features.run_features import run_features
-            log.info("Triggering automatic feature generation from freshly scraped OHLCV data...")
+            log.info("Triggering automatic feature generation from freshly updated OHLCV data...")
             run_features()
         except Exception as exc:
             log.warning("Automatic post-scrape feature generation skipped or failed: %s", exc)
 
     summary = {
-        "mode": "incremental_after_close",
-        "date_range": f"{start} -> {end}",
+        "mode": "redis_after_close",
+        "date_range": f"{end} -> {end}",
+        "session_date": str(end),
         "total_symbols": len(symbols),
         "materialized_from_database": materialized,
         "ok": sum(result.get("status") == "ok" for result in results),
         "skipped": sum(result.get("status") == "skipped" for result in results),
         "errors": sum(result.get("status") == "error" for result in results),
         "no_data": sum(result.get("status") == "no_data" for result in results),
-        "rate_limited": psx_access_denied(),
+        "rate_limited": False,
         "results": results,
     }
     _save_fetch_log(out_dir / "logs", summary)
     log.info(
-        "After-close OHLCV refresh finished: updated=%d skipped=%d errors=%d no_data=%d",
+        "After-close Redis OHLCV refresh finished: updated=%d skipped=%d errors=%d no_data=%d",
         summary["ok"],
         summary["skipped"],
         summary["errors"],

@@ -12,6 +12,7 @@ from app.schemas.shariah import (
     ShariahCriteriaResponse,
     ShariahKMI30Response,
     ShariahPurificationResponse,
+    ShariahScreeningDatasetResponse,
     ShariahScreeningResponse,
 )
 from app.services.shariah_service import NON_COMPLIANT_SYMBOLS, PSX_KMI30_SCREENING, ShariahService
@@ -19,6 +20,7 @@ from app.services.shariah_service import NON_COMPLIANT_SYMBOLS, PSX_KMI30_SCREEN
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+SCREENING_DATASET_CACHE_KEY = "shariah:screening:dataset:kmi30"
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> ShariahService:
@@ -60,6 +62,32 @@ async def get_kmi30_shariah(
     except Exception:
         logger.exception("Failed to fetch KMI-30 constituents")
         raise ServiceUnavailableError("KMI-30 constituents temporarily unavailable.")
+
+
+@router.get(
+    "/shariah/screenings",
+    response_model=ShariahScreeningDatasetResponse,
+    summary="Get the bulk PSX KMI-30 Shariah screening dataset",
+)
+@limiter.limit("30/minute")
+async def get_shariah_screening_dataset(request: Request):
+    """Return all official KMI-30 screenings in one cacheable response."""
+    try:
+        cached = await cache_get(SCREENING_DATASET_CACHE_KEY)
+        if cached:
+            return ShariahScreeningDatasetResponse(**cached)
+
+        payload = ShariahService(None).get_screening_dataset()
+        response = ShariahScreeningDatasetResponse(**payload)
+        await cache_set(
+            SCREENING_DATASET_CACHE_KEY,
+            response.model_dump(mode="json"),
+            ttl_seconds=24 * 60 * 60,
+        )
+        return response
+    except Exception:
+        logger.exception("Failed to fetch bulk Shariah screening dataset")
+        raise ServiceUnavailableError("Shariah screening dataset temporarily unavailable.")
 
 
 @router.get(

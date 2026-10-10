@@ -101,6 +101,45 @@ INITIAL_PSX_ETFS = [
         "description": "First sovereign debt ETF tracking high-yield Pakistan Treasury Bills and PIBs.",
         "is_active": True,
     },
+    {
+        "symbol": "NBPGETF",
+        "name": "NBP Pakistan Growth ETF",
+        "fund_manager": "NBP Fund Management Limited",
+        "category": "Broad Market Equity ETF",
+        "benchmark_index": "NBP Pakistan Growth Index",
+        "is_shariah_compliant": False,
+        "expense_ratio": 0.65,
+        "inception_date": date(2020, 10, 6),
+        "total_assets_pkr": 1100000000,
+        "description": "Tracks high-growth fundamental large and mid-cap companies on PSX.",
+        "is_active": True,
+    },
+    {
+        "symbol": "JSMFETF",
+        "name": "JS Momentum Factor ETF",
+        "fund_manager": "JS Investments Limited",
+        "category": "Factor Equity ETF",
+        "benchmark_index": "JSMF Index",
+        "is_shariah_compliant": False,
+        "expense_ratio": 0.70,
+        "inception_date": date(2022, 1, 7),
+        "total_assets_pkr": 540000000,
+        "description": "Rules-based momentum strategy investing in high-relative-strength PSX stocks.",
+        "is_active": True,
+    },
+    {
+        "symbol": "ACIETF",
+        "name": "Alfalah Consumer Index ETF",
+        "fund_manager": "Alfalah Asset Management Limited",
+        "category": "Sector Equity ETF",
+        "benchmark_index": "Alfalah Consumer Index",
+        "is_shariah_compliant": False,
+        "expense_ratio": 0.75,
+        "inception_date": date(2022, 1, 14),
+        "total_assets_pkr": 720000000,
+        "description": "Captures Pakistan's domestic consumer demand and demographic growth sectors.",
+        "is_active": True,
+    },
 ]
 
 # Reliable baseline fallbacks for live metrics if scraper is temporarily down
@@ -111,6 +150,9 @@ DEFAULT_ETF_PRICES = {
     "MZNPETF": {"price": 17.49, "change": 0.11, "change_pct": 0.63, "open": 17.49, "high": 17.60, "low": 17.30, "volume": 68000},
     "JSGBETF": {"price": 38.92, "change": -0.22, "change_pct": -0.56, "open": 38.92, "high": 38.95, "low": 38.92, "volume": 45000},
     "HBLTETF": {"price": 105.40, "change": 0.08, "change_pct": 0.08, "open": 105.32, "high": 105.45, "low": 105.30, "volume": 310000},
+    "NBPGETF": {"price": 15.60, "change": 0.14, "change_pct": 0.91, "open": 15.46, "high": 15.65, "low": 15.45, "volume": 75000},
+    "JSMFETF": {"price": 14.85, "change": -0.08, "change_pct": -0.54, "open": 14.93, "high": 14.95, "low": 14.80, "volume": 52000},
+    "ACIETF": {"price": 12.30, "change": 0.05, "change_pct": 0.41, "open": 12.25, "high": 12.35, "low": 12.20, "volume": 61000},
 }
 
 

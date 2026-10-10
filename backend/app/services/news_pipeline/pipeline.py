@@ -374,14 +374,9 @@ async def run_pipeline(db: AsyncSession, limit_per_source: int = 50) -> Pipeline
 
                 if sentiment and sentiment.get("score") is not None:
                     score = sentiment["score"]
-                    label = sentiment["label"]
-                    # Apply confidence threshold
-                    min_conf = 0.6
-                    if abs(score) < min_conf:
-                        label = "neutral"
-                        score = 0.0
+                    label = sentiment.get("label") or ("positive" if score >= 0.15 else "negative" if score <= -0.15 else "neutral")
 
-                    article["sentiment_label"] = label  # bullish|bearish|neutral
+                    article["sentiment_label"] = label  # positive|negative|neutral
                     article["sentiment_score"] = round(score, 4)
                     article["sentiment_method"] = "finbert"
                     article["sentiment_status"] = "ok"

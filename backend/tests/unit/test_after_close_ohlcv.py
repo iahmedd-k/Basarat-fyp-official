@@ -13,17 +13,116 @@ from app.celery_app import celery
 from app.tasks import daily_workflow
 
 
-def test_daily_pipeline_is_scheduled_five_minutes_after_psx_close():
-    mon_thu = celery.conf.beat_schedule["daily-workflow"]["schedule"]
-    friday = celery.conf.beat_schedule["daily-workflow-friday"]["schedule"]
+def test_daily_pipeline_is_scheduled_at_six_pm():
+    schedule = celery.conf.beat_schedule["daily-workflow"]["schedule"]
 
     assert celery.conf.timezone == "Asia/Karachi"
-    assert (mon_thu.hour, mon_thu.minute, mon_thu.day_of_week) == (
-        {15},
-        {35},
-        {1, 2, 3, 4},
+    assert (schedule.hour, schedule.minute, schedule.day_of_week) == (
+        {18},
+        {0},
+        {1, 2, 3, 4, 5},
     )
-    assert (friday.hour, friday.minute, friday.day_of_week) == ({16}, {35}, {5})
+
+
+def test_morning_market_intelligence_is_scheduled_before_market_open():
+    schedule = celery.conf.beat_schedule["morning-market-intelligence-refresh"]["schedule"]
+
+    assert (schedule.hour, schedule.minute, schedule.day_of_week) == (
+        {5},
+        {30},
+        {1, 2, 3, 4, 5},
+    )
+
+
+def test_morning_market_intelligence_dispatches_forecasts_then_recommendations(monkeypatch):
+    class FridayDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 2, 5, 30, tzinfo=tz)
+
+    class Redis:
+        def __init__(self):
+            self.values = {}
+
+        def set(self, key, value, *, ex, nx=False):
+            if key.startswith("jobs:morning-market-intelligence:20"):
+                assert nx is True
+            self.values[key] = (value, ex)
+            return True
+
+        def delete(self, key):
+            self.values.pop(key, None)
+
+    class FakeTask:
+        def __init__(self, name):
+            self.name = name
+
+        def si(self, *args, **kwargs):
+            return (self.name, *args, kwargs) if kwargs else (self.name, *args)
+
+    class Workflow:
+        def __init__(self, tasks):
+            self.tasks = tasks
+
+        def apply_async(self):
+            return SimpleNamespace(id="morning-refresh-id")
+
+    redis = Redis()
+    dispatched = {}
+    monkeypatch.setattr(daily_workflow, "datetime", FridayDateTime)
+    monkeypatch.setattr(asyncio, "run", lambda coroutine: (coroutine.close(), False)[1])
+    monkeypatch.setattr("app.core.redis.get_sync_redis_client", lambda: redis)
+    monkeypatch.setattr(
+        "app.core.redis.set_dataset_status_sync", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        daily_workflow, "generate_predictions_task", FakeTask("forecasts")
+    )
+    monkeypatch.setattr(
+        "app.tasks.refresh_market_cache.refresh_market_cache",
+        FakeTask("market-cache"),
+    )
+    from app.tasks import recommendation_cache
+
+    monkeypatch.setattr(
+        recommendation_cache, "refresh_recommendations_task", FakeTask("recommendations")
+    )
+    monkeypatch.setattr(
+        daily_workflow,
+        "mark_morning_market_intelligence_success",
+        FakeTask("mark-success"),
+        raising=False,
+    )
+
+    def make_chain(*tasks):
+        dispatched["tasks"] = tasks
+        return Workflow(tasks)
+
+    monkeypatch.setattr(daily_workflow, "chain", make_chain)
+
+    result = daily_workflow.run_morning_market_intelligence.run()
+
+    assert result == {"status": "dispatched", "group_id": "morning-refresh-id"}
+    assert dispatched["tasks"] == (
+        (
+            "market-cache",
+            {
+                "refresh_reference": True,
+                "refresh_constituents": True,
+                "require_complete": True,
+            },
+        ),
+        ("forecasts",),
+        ("recommendations",),
+        ("mark-success", "2026-10-02"),
+    )
+    assert redis.values == {
+        "jobs:morning-market-intelligence:2026-10-02": ("1", 12 * 60 * 60),
+        "jobs:morning-market-intelligence:status:2026-10-02": (
+            "pending",
+            36 * 60 * 60,
+        ),
+    }
 
 
 @pytest.mark.parametrize(
@@ -296,40 +395,31 @@ def test_after_close_runner_refreshes_full_universe_and_rebuilds_all_symbols(
             }
         ).to_parquet(tmp_path / f"{symbol}.parquet", index=False)
 
-    requested_symbols = []
-    pauses = []
-
-    def fetch(symbol, start, end):
-        requested_symbols.append(symbol)
-        return pd.DataFrame(
-            {
-                "date": pd.to_datetime([session_date]),
-                "open": [10.5],
-                "high": [12.5],
-                "low": [10.0],
-                "close": [12.0],
-                "volume": [500],
-            }
-        )
+    redis_quotes = [
+        {
+            "symbol": sym,
+            "open": 10.5,
+            "high": 12.5,
+            "low": 10.0,
+            "current": 12.0,
+            "volume": 500,
+        }
+        for sym in symbols
+    ]
 
     monkeypatch.setattr(after_close, "get_refresh_symbols", lambda _out_dir: symbols)
     monkeypatch.setattr(after_close, "_materialize_database_history", lambda *_args: 0)
-    monkeypatch.setattr(after_close, "reset_psx_access_denied", lambda: None)
-    monkeypatch.setattr(after_close, "psx_access_denied", lambda: False)
-    monkeypatch.setattr(after_close.time, "sleep", pauses.append)
-    monkeypatch.setattr(run_scrape, "fetch_ohlcv", fetch)
+    monkeypatch.setattr(after_close, "cache_get_sync", lambda key: redis_quotes if "market:quotes" in key else None)
     monkeypatch.setattr(after_close, "_save_fetch_log", lambda *_args: None)
 
     result = after_close.run_after_close_scrape(
         output_dir=tmp_path,
         batch_size=10,
-        pause_seconds=150,
+        pause_seconds=0,
         end_date=session_date,
     )
 
     combined = pd.read_parquet(tmp_path / "all_symbols.parquet")
-    assert requested_symbols == symbols
-    assert [pause for pause in pauses if pause > 0] == [150]
     assert result["ok"] == len(symbols)
     assert len(combined["symbol"].unique()) == len(symbols)
     assert set(combined.loc[combined["date"].dt.date == session_date, "close"]) == {12.0}

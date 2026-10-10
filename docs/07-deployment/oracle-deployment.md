@@ -23,8 +23,8 @@ Do not use or upload a development machine's `.env`. Set at least:
 
 - `ENVIRONMENT=production`, `DEBUG=false`, and a fresh random `SECRET_KEY` of at least 32 characters.
 - `CLOUD_DATABASE_URL` to the production PostgreSQL URL. Use a TLS-enabled database connection where supported.
-- `CORS_ORIGINS=["https://your-frontend.example"]` with the exact deployed frontend origin. Wildcards are only for development and are rejected in production.
-- `ALLOWED_HOSTS=["193.123.84.223"]`, or the actual public API hostname.
+- `CORS_ORIGINS=["https://basarat.live","https://www.basarat.live"]` with the exact deployed frontend origin. Wildcards are only for development and are rejected in production.
+- `ALLOWED_HOSTS=["api.basarat.live","193.123.84.223","app"]`, or the actual public API hostname.
 - Include `app` in `ALLOWED_HOSTS` so Prometheus can scrape the API using its Compose service hostname.
 - `FIREBASE_PROJECT_ID` to the Firebase project ID.
 

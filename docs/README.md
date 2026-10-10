@@ -13,7 +13,7 @@ flowchart TD
     end
 
     subgraph ServiceFleet ["Containerized Backend Services (Oracle Cloud Infrastructure)"]
-        FASTAPI["FastAPI API Server & Gateway (Port 8000)<br/>- 22 Domain Routers<br/>- Correlation ID (X-Request-ID)<br/>- SlowAPI Rate Limiting<br/>- RAG AI Copilot (Groq LLM)"]
+        FASTAPI["FastAPI API Server & Gateway (https://api.basarat.live)<br/>- 25 Domain Routers<br/>- Correlation ID (X-Request-ID)<br/>- SlowAPI Rate Limiting<br/>- RAG AI Copilot (Groq LLM)"]
         CELERY_W["Celery Distributed Workers<br/>- Post-Close Automated Pipeline<br/>- Multi-Source News Ingestion<br/>- FinBERT Sentiment Scoring<br/>- Price & Risk Alert Monitors"]
         CELERY_B["Celery Beat Scheduler<br/>(Mon-Fri Intraday & Post-Market Crons)"]
     end
@@ -29,7 +29,7 @@ flowchart TD
         REDIS[("Redis 7 In-Memory Cache & Broker<br/>Pub/Sub, Locks, Caches, Celery Queues")]
     end
 
-    ANDROID -->|HTTPS / WSS Port 8000| FASTAPI
+    ANDROID -->|HTTPS / WSS| FASTAPI
     FASTAPI --> GRU_XGB
     FASTAPI --> QUANT
     FASTAPI --> POSTGRES

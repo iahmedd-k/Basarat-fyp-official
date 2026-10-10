@@ -139,7 +139,14 @@ def refresh_fundamentals(self, symbols: list[str] | None = None):
     from app.db.base import get_sync_session_factory
     from app.models.fundamentals import FundamentalsRefreshRun
 
-    configured = symbols or [item["symbol"] for item in get_active_symbols()]
+    if not symbols:
+        try:
+            from app.data.scraper.run_after_close import get_refresh_symbols
+            configured = get_refresh_symbols()
+        except Exception:
+            configured = [item["symbol"] for item in get_active_symbols()]
+    else:
+        configured = symbols
     configured = sorted({str(symbol).strip().upper() for symbol in configured if symbol})
     run_id = uuid4().hex
     started = datetime.now(timezone.utc)

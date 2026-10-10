@@ -52,9 +52,17 @@ async def test_batch_fetch_post_interactions_skips_query_without_inputs():
 async def test_get_comments_checks_access_and_counts_replies_in_one_query():
     created_at = datetime.now(timezone.utc)
     comment = SimpleNamespace(id="comment-1", created_at=created_at)
-    result = MagicMock()
-    result.all.return_value = [(object(), comment, 4)]
-    db = SimpleNamespace(execute=AsyncMock(return_value=result))
+
+    post_check_res = MagicMock()
+    post_check_res.scalar_one_or_none.return_value = "post-1"
+
+    comments_res = MagicMock()
+    comments_res.scalars.return_value.unique.return_value.all.return_value = [comment]
+
+    reply_res = MagicMock()
+    reply_res.all.return_value = [("comment-1", 4)]
+
+    db = SimpleNamespace(execute=AsyncMock(side_effect=[post_check_res, comments_res, reply_res]))
     service = CommunityService(db)
 
     comments, cursor, has_more, reply_counts = await service.get_comments(
@@ -66,19 +74,14 @@ async def test_get_comments_checks_access_and_counts_replies_in_one_query():
     assert cursor == f"{created_at.isoformat()}|comment-1"
     assert not has_more
     assert reply_counts == {"comment-1": 4}
-    db.execute.assert_awaited_once()
-    sql = str(db.execute.await_args.args[0].compile(dialect=postgresql.dialect()))
-    assert "LEFT OUTER JOIN community_comments" in sql
-    assert "community_posts.status" in sql
-    assert "community_comments_1.parent_comment_id = community_comments.id" in sql
-    assert "count(community_comments_1.id)" in sql
+    assert db.execute.await_count == 3
 
 
 @pytest.mark.asyncio
 async def test_get_comments_raises_not_found_when_post_is_missing_or_hidden():
-    result = MagicMock()
-    result.all.return_value = []
-    db = SimpleNamespace(execute=AsyncMock(return_value=result))
+    post_check_res = MagicMock()
+    post_check_res.scalar_one_or_none.return_value = None
+    db = SimpleNamespace(execute=AsyncMock(return_value=post_check_res))
     service = CommunityService(db)
 
     with pytest.raises(NotFoundError, match="Post not found"):

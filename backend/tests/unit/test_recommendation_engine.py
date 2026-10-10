@@ -1,6 +1,9 @@
+import json
 import pandas as pd
 import pytest
+from datetime import date, datetime, timedelta
 
+from app.services import recommendation_service
 from app.services.recommendation_service import RecommendationEngine
 
 
@@ -34,6 +37,43 @@ def test_ml_signal_reports_forecast_failure_reason(monkeypatch):
     assert signal == 0.0
     assert reasoning["status"] == "unavailable"
     assert "model assets missing" in reasoning["reason"]
+
+
+def test_cached_recommendations_reject_snapshot_older_than_latest_features(
+    monkeypatch, tmp_path
+):
+    cache_file = tmp_path / "recommendations.json"
+    yesterday = date.today() - timedelta(days=1)
+    snapshot = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "cache_version": 5,
+        "count": 1,
+        "recommendations": [
+            {
+                "symbol": "TEST",
+                "data_as_of": yesterday.isoformat(),
+                "composite_score": 0.0,
+                "signals": {},
+                "weights": {},
+            }
+        ],
+    }
+    cache_file.write_text(json.dumps(snapshot), encoding="utf-8")
+    monkeypatch.setattr(recommendation_service, "RECOMMENDATIONS_CACHE", cache_file)
+    monkeypatch.setattr("app.core.redis.cache_get_sync", lambda _key: None)
+    monkeypatch.setattr(
+        "app.data.scraper.symbol_universe.get_active_symbols",
+        lambda: [{"symbol": "TEST"}],
+    )
+    monkeypatch.setattr(
+        recommendation_service.pd,
+        "read_parquet",
+        lambda *_args, **_kwargs: pd.DataFrame(
+            {"symbol": ["TEST"], "date": [date.today()]}
+        ),
+    )
+
+    assert recommendation_service.get_cached_recommendations() is None
 
 
 def test_composite_renormalizes_only_over_available_components(monkeypatch):

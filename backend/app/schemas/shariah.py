@@ -14,6 +14,7 @@ class ShariahCriterion(BaseModel):
 
 class ShariahScreeningResponse(BaseModel):
     symbol: str
+    name: str | None = None
     screening_available: bool = True
     is_shariah_compliant: bool | None = True
     overall_score: float | None = 100.0
@@ -63,4 +64,13 @@ class ShariahKMI30Response(BaseModel):
     source_url: str = "https://www.psx.com.pk"
     constituents: list[dict] = Field(default_factory=list)
 
+
+class ShariahScreeningDatasetResponse(BaseModel):
+    dataset: str = "PSX KMI-30"
+    total: int = 0
+    data_as_of: datetime | None = None
+    data_is_stale: bool = False
+    effective_from: datetime | None = None
+    source_url: str = "https://www.psx.com.pk"
+    screenings: list[ShariahScreeningResponse] = Field(default_factory=list)
 

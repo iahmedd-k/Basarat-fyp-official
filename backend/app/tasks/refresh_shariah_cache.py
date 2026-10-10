@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from uuid import uuid4
 
@@ -11,8 +12,9 @@ from app.core.redis import (
     cache_set,
     close_async_redis_client,
     get_sync_redis_client,
+    set_dataset_status_sync,
 )
-from app.schemas.shariah import ShariahKMI30Response
+from app.schemas.shariah import ShariahKMI30Response, ShariahScreeningDatasetResponse
 from app.services.shariah_service import (
     KMI30_MEMBERSHIP_CACHE_KEY,
     PSX_KMI30_SCREENING,
@@ -22,6 +24,7 @@ from app.services.shariah_service import (
 log = logging.getLogger(__name__)
 
 KMI30_RESPONSE_CACHE_KEY = "shariah:kmi30:constituents"
+SCREENING_DATASET_CACHE_KEY = "shariah:screening:dataset:kmi30"
 KMI30_CACHE_TTL_SECONDS = 3600
 KMI30_MEMBERSHIP_TTL_SECONDS = 86400
 LOCK_KEY = "jobs:shariah-cache:refresh-lock"
@@ -50,6 +53,26 @@ async def _refresh_shariah_cache() -> dict[str, int]:
         response.model_dump(mode="json"),
         ttl_seconds=KMI30_CACHE_TTL_SECONDS,
     )
+
+    dataset = ShariahScreeningDatasetResponse(
+        **service.get_screening_dataset()
+    )
+    dataset_payload = dataset.model_dump(mode="json")
+    await cache_set(
+        SCREENING_DATASET_CACHE_KEY,
+        dataset_payload,
+        ttl_seconds=24 * 60 * 60,
+    )
+    redis = get_sync_redis_client()
+    if redis is None:
+        raise RuntimeError("Redis is unavailable while publishing Shariah screening data")
+    raw_dataset = redis.get(SCREENING_DATASET_CACHE_KEY)
+    if raw_dataset is None:
+        raise RuntimeError("Shariah screening dataset was not written to Redis")
+    published_dataset = json.loads(raw_dataset)
+    if len(published_dataset.get("screenings", [])) != dataset.total:
+        raise RuntimeError("Redis contains an incomplete Shariah screening dataset")
+    set_dataset_status_sync("shariah_screening", "success")
 
     market_service = MarketService()
     members = await market_service.get_index_constituents(

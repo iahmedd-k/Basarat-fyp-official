@@ -120,9 +120,25 @@ async def _refresh_quotes_and_optional_reference(
     source: str,
 ) -> dict:
     from app.services.market_service import MarketService
-    from app.core.redis import close_async_redis_client
+    from app.core.redis import close_async_redis_client, set_dataset_status_sync
 
     service = MarketService()
+    status_datasets = []
+    if refresh_quotes:
+        status_datasets.append("market_quotes")
+    if refresh_reference:
+        status_datasets.append("market_indices")
+    if refresh_constituents:
+        status_datasets.extend(
+            f"market_constituents_{code.lower()}"
+            for code in ("KSE100", "KSE30", "KMI30")
+        )
+    if refresh_screener:
+        status_datasets.append("market_screener")
+    for dataset in status_datasets:
+        set_dataset_status_sync(dataset, "pending")
+    completed_datasets = set()
+
     results: dict = {
         "quotes": 0,
         "screener": 0,
@@ -135,14 +151,26 @@ async def _refresh_quotes_and_optional_reference(
         if refresh_quotes:
             quotes = await service.get_market_data(force_refresh=True, read_only=False)
             results["quotes"] = len(quotes)
+            if not quotes:
+                raise RuntimeError("Market quote refresh returned no data")
+            set_dataset_status_sync("market_quotes", "success")
+            completed_datasets.add("market_quotes")
 
         if refresh_screener:
             screener_data = await service.get_screener_data(force_refresh=True)
             results["screener"] = len(screener_data)
+            if not screener_data:
+                raise RuntimeError("Market screener refresh returned no data")
+            set_dataset_status_sync("market_screener", "success")
+            completed_datasets.add("market_screener")
 
         if refresh_reference:
             indices = await service.get_indices(force_refresh=True, read_only=False)
             results["indices"] = len(indices)
+            if not indices:
+                raise RuntimeError("Market index refresh returned no data")
+            set_dataset_status_sync("market_indices", "success")
+            completed_datasets.add("market_indices")
 
         if refresh_constituents:
             for code in ("KSE100", "KSE30", "KMI30"):
@@ -150,6 +178,13 @@ async def _refresh_quotes_and_optional_reference(
                     code, force_refresh=True, read_only=False
                 )
                 results["constituents"][code] = len(values)
+                if not values:
+                    raise RuntimeError(f"{code} constituent refresh returned no data")
+                set_dataset_status_sync(
+                    f"market_constituents_{code.lower()}",
+                    "success",
+                )
+                completed_datasets.add(f"market_constituents_{code.lower()}")
             try:
                 from app.services.assistant_context_cache import warm_assistant_universe
 
@@ -170,6 +205,14 @@ async def _refresh_quotes_and_optional_reference(
                 source=source,
             )
         return results
+    except Exception:
+        for dataset in status_datasets:
+            if dataset not in completed_datasets:
+                try:
+                    set_dataset_status_sync(dataset, "failed")
+                except Exception:
+                    log.exception("Could not mark %s refresh as failed", dataset)
+        raise
     finally:
         await close_async_redis_client()
 
@@ -187,17 +230,24 @@ def refresh_market_cache(
     refresh_constituents: bool = False,
     refresh_quotes: bool = True,
     refresh_screener: bool = False,
+    require_complete: bool = False,
 ):
     """Refresh shared quote, reference, and screener snapshots."""
     status, lock_client, lock_token = _acquire_lock(ttl_seconds=900)
     if status == "no_redis":
+        if require_complete:
+            raise RuntimeError("Redis unavailable; required market warmup cannot proceed")
         return {"status": "blocked", "reason": "redis_unavailable"}
     if status == "held":
         log.info("Skipping market refresh; another worker holds the refresh lock")
+        if require_complete:
+            raise RuntimeError("Another market refresh is running; required warmup was not verified")
         return {"status": "skipped", "reason": "already_running"}
 
     if _circuit_is_open(lock_client):
         _release_lock(lock_client, lock_token)
+        if require_complete:
+            raise RuntimeError("Market refresh circuit is open; required warmup cannot proceed")
         return {"status": "skipped", "reason": "circuit_open"}
 
     try:
@@ -216,6 +266,8 @@ def refresh_market_cache(
     except Exception as exc:
         if _looks_like_access_denied(exc):
             _open_circuit(lock_client, str(exc))
+            if require_complete:
+                raise RuntimeError("Market source denied the required warmup") from exc
             return {"status": "circuit_open", "error": str(exc)}
         log.exception("PSX market cache refresh failed")
         raise self.retry(exc=exc)

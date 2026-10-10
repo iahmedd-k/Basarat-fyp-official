@@ -21,20 +21,39 @@ def synthetic_prices(monkeypatch):
 
 
 @pytest.mark.api
-async def _seed_database_portfolio(db_session, test_user, monkeypatch):
-    from app.models.portfolio import PortfolioTransaction, TransactionType
+async def _seed_database_portfolio(client: AsyncClient, auth_headers: dict, db_session, test_user, monkeypatch):
+    from sqlalchemy import select
+    from app.models.stock import Stock
     from app.services.stock_service import StockService
-    db_session.add_all([
-        PortfolioTransaction(user_id=test_user.id, symbol="HBL", transaction_type=TransactionType.BUY, quantity=Decimal("400"), price=Decimal("140"), fee=Decimal("0"), transaction_date=date(2025, 1, 2)),
-        PortfolioTransaction(user_id=test_user.id, symbol="OGDC", transaction_type=TransactionType.BUY, quantity=Decimal("500"), price=Decimal("75"), fee=Decimal("0"), transaction_date=date(2025, 1, 2)),
-    ])
-    await db_session.flush()
+
+    for sym, name, sector in [("HBL", "Habib Bank Limited", "Banking"), ("OGDC", "Oil & Gas Development Company Limited", "Oil & Gas")]:
+        res = await db_session.execute(select(Stock).where(Stock.symbol == sym))
+        if not res.scalars().first():
+            db_session.add(Stock(symbol=sym, name=name, sector=sector, is_active=True))
+    await db_session.commit()
+
     monkeypatch.setattr(StockService, "get_quote_batch", lambda self, symbols: [{"symbol": "HBL", "current": 150.0}, {"symbol": "OGDC", "current": 80.0}])
+    monkeypatch.setattr(StockService, "get_quote", lambda self, symbol: {"symbol": symbol, "current": 150.0 if symbol == "HBL" else 80.0, "name": "Company", "sector": "Banking" if symbol == "HBL" else "Oil & Gas"})
+
+    await client.post(
+        "/api/v1/portfolio/transactions",
+        headers=auth_headers,
+        json={"symbol": "HBL", "transaction_type": "BUY", "quantity": 400, "price": 140.0, "fee": 0, "transaction_date": "2025-01-02", "confirm_outlier": True},
+    )
+    await client.post(
+        "/api/v1/portfolio/transactions",
+        headers=auth_headers,
+        json={"symbol": "OGDC", "transaction_type": "BUY", "quantity": 500, "price": 75.0, "fee": 0, "transaction_date": "2025-01-02", "confirm_outlier": True},
+    )
+
+    from app.core.redis import cache_invalidate_pattern
+    await cache_invalidate_pattern(f"risk:*:{test_user.id}*")
+    await cache_invalidate_pattern(f"portfolio:*:{test_user.id}*")
 
 
 @pytest.mark.api
 async def test_seeded_portfolio_var_and_stress_routes(client: AsyncClient, auth_headers, test_user, db_session, monkeypatch, synthetic_prices):
-    await _seed_database_portfolio(db_session, test_user, monkeypatch)
+    await _seed_database_portfolio(client, auth_headers, db_session, test_user, monkeypatch)
 
     var_resp = await client.get("/api/v1/risk/var?confidence=95&horizon=1W", headers=auth_headers)
     assert var_resp.status_code == 200, var_resp.text
@@ -62,7 +81,7 @@ async def test_seeded_portfolio_monte_carlo_start_and_poll(client: AsyncClient, 
     from app.core import task_runner
     from app.services.risk_service import run_monte_carlo_simulation
 
-    await _seed_database_portfolio(db_session, test_user, monkeypatch)
+    await _seed_database_portfolio(client, auth_headers, db_session, test_user, monkeypatch)
     seeded_holdings = [SimpleNamespace(symbol="HBL", sector="Banking", current_value=60000.0, allocation_pct=60.0), SimpleNamespace(symbol="OGDC", sector="Oil & Gas", current_value=40000.0, allocation_pct=40.0)]
     # Preserve the real dispatcher/task calculation; only poll storage is stubbed to
     # supply its result synchronously, as a completed worker would.

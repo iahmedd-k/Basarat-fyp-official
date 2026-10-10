@@ -282,6 +282,35 @@ async def create_transaction(
     For SELL: validates that user has sufficient holdings.
     """
     try:
+        # Check for extreme price anomaly / typo if confirm_outlier is False
+        if not data.confirm_outlier and data.price > Decimal("0"):
+            try:
+                from app.models.stock import StockPrice, Stock
+                from sqlalchemy import select
+                hist_price_stmt = (
+                    select(StockPrice.close)
+                    .join(Stock, StockPrice.stock_id == Stock.id)
+                    .where(Stock.symbol == data.symbol, StockPrice.date <= data.transaction_date)
+                    .order_by(StockPrice.date.desc())
+                    .limit(1)
+                )
+                price_row = (await service.db.execute(hist_price_stmt)).first()
+                if price_row and price_row[0] is not None:
+                    market_close = Decimal(str(price_row[0]))
+                    if market_close > 0:
+                        deviation = abs(data.price - market_close) / market_close
+                        if deviation >= Decimal("0.70"):  # 70% deviation outlier
+                            raise ValidationFailedError(
+                                f"Entered price PKR {data.price:.2f} deviates significantly by {float(deviation*100):.1f}% from {data.symbol}'s market price (PKR {market_close:.2f}) on {data.transaction_date}. "
+                                f"If this is an intentional corporate action (e.g. rights issue, bonus share, off-market deal), set confirm_outlier=true.",
+                                code="OUTLIER_PRICE_WARNING",
+                                field="price",
+                            )
+            except ValidationFailedError:
+                raise
+            except Exception as exc:
+                logger.debug("Price anomaly check bypassed: %s", exc)
+
         txn_type = TransactionType(data.transaction_type)
         txn = await service.create_transaction(
             user_id=user.id,

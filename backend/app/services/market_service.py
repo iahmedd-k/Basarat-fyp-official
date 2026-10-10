@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Any
 
 import httpx
+import pandas as pd
 try:
     import pypsx_toolkit
 except Exception:
@@ -19,6 +20,7 @@ from app.core.redis import (
     cache_get_sync,
     cache_set,
     cache_set_sync,
+    cache_invalidate_pattern,
 )
 
 log = logging.getLogger(__name__)
@@ -878,9 +880,7 @@ class MarketService:
                     datetime.now(timezone.utc).isoformat(),
                     FALLBACK_TTL_SECONDS,
                 )
-                freshness = await asyncio.to_thread(self.quote_freshness)
-                if freshness.get("is_stale"):
-                    log.error("Market quote Redis mirror is not visible to sync readers: %s", freshness)
+                await cache_invalidate_pattern("market:sectors:performance:*")
                 log.info("Stored %d market quotes in centralized cache", len(rows))
                 return rows
 
@@ -1021,6 +1021,12 @@ class MarketService:
 
     async def get_sector_performance(self, order: str = "desc") -> dict:
         """Aggregate daily price performance and breadth for each classified sector."""
+        norm_order = (order or "desc").strip().lower()
+        cache_key = f"market:sectors:performance:{norm_order}"
+        cached = await cache_get(cache_key)
+        if cached and isinstance(cached, dict):
+            return cached
+
         data = await self.get_market_data()
         # Sector enrichment belongs to the scheduled market ingestion job.
         # A read endpoint must not fall back to scraping the PSX screener.
@@ -1069,9 +1075,9 @@ class MarketService:
                 "top_loser_symbol": top_loser.get("symbol") if top_loser else None,
             })
 
-        sectors.sort(key=lambda item: item["avg_change_pct"] if item["avg_change_pct"] is not None else 0.0, reverse=order.lower() != "asc")
+        sectors.sort(key=lambda item: item["avg_change_pct"] if item["avg_change_pct"] is not None else 0.0, reverse=norm_order != "asc")
         classified = sum(len(quotes) for quotes in grouped.values())
-        return {
+        result = {
             "sectors": sectors,
             "total_sectors": len(sectors),
             "total_companies": len(data),
@@ -1079,6 +1085,8 @@ class MarketService:
             "unclassified_companies": len(data) - classified,
             **self.quote_freshness(),
         }
+        await cache_set(cache_key, result, ttl_seconds=60)
+        return result
 
     async def get_screener_data(self, force_refresh: bool = False) -> list[dict]:
         """Fetch and cache full 560-stock PSX screener metrics with 3-tier caching."""

@@ -116,6 +116,6 @@ def test_celery_schedule_refreshes_during_market_day_window():
     from app.celery_app import celery
 
     schedule = celery.conf.beat_schedule["refresh-etf-ipo-catalogs"]["schedule"]
-    assert schedule.minute == {0, 30}
-    assert schedule.hour == set(range(9, 17))
+    assert schedule.minute == {10}
+    assert schedule.hour == {9, 16}
     assert schedule.day_of_week == {1, 2, 3, 4, 5}

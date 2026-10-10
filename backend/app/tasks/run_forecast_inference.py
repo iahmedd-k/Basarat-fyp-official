@@ -1,6 +1,6 @@
 """Legacy Celery entrypoint — delegates to the daily workflow tasks.
 
-Prefer `app.tasks.daily_workflow.run_daily_pipeline` (Beat Mon–Fri 18:00 PKT).
+Prefer `app.tasks.daily_workflow.run_daily_pipeline` (Beat Mon–Fri 05:30 PKT).
 This module remains for manual ops: `celery call app.tasks.run_forecast_inference.run`.
 """
 

@@ -1,6 +1,6 @@
 """API tests for user profile and investment profile preferences."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -95,12 +95,12 @@ class TestUsersInvestmentProfile:
             sent_codes.append(code)
             return {"status": "sent"}
 
-        monkeypatch.setattr(EmailService, "send_email_change_code", AsyncMock(side_effect=capture_code))
-        request_response = await client.post(
-            "/api/v1/users/me/email-change",
-            headers=auth_headers,
-            json={"email": "new-address@example.com"},
-        )
+        with patch.object(EmailService, "send_email_change_code", new_callable=AsyncMock, side_effect=capture_code):
+            request_response = await client.post(
+                "/api/v1/users/me/email-change",
+                headers=auth_headers,
+                json={"email": "new-address@example.com"},
+            )
         assert request_response.status_code == 200
         assert sent_codes
         assert test_user.email != "new-address@example.com"

@@ -53,20 +53,22 @@ async def chat(
     The assistant has real-time context on PSX quotes, technicals, fundamentals,
     model forecasts, and portfolio holdings.
     """
+    user_id = str(user.id)
     try:
         from app.services.subscription_service import SubscriptionService
         sub_service = SubscriptionService(service.db)
         await sub_service.check_and_increment_ai_quota(user)
 
         result = await service.process_chat(
-            user_id=user.id,
+            user_id=user_id,
             message=chat_request.message,
             conversation_id=chat_request.conversation_id,
+            current_user=user,
         )
         conv_id = result.get("conversation_id")
         if conv_id:
-            await cache_invalidate(f"assistant:conv:{user.id}:{conv_id}")
-        await cache_invalidate_pattern(f"assistant:convs:{user.id}:*")
+            await cache_invalidate(f"assistant:conv:{user_id}:{conv_id}")
+        await cache_invalidate_pattern(f"assistant:convs:{user_id}:*")
         return AssistantChatResponse(
             message=result["response"],
             conversation_id=result["conversation_id"],
@@ -76,7 +78,7 @@ async def chat(
     except (ServiceUnavailableError, HTTPException):
         raise
     except Exception as e:
-        log.exception("Chat failed for user %s", user.id)
+        log.exception("Chat failed for user %s", user_id)
         raise ServiceUnavailableError("Failed to process chat message")
 
 

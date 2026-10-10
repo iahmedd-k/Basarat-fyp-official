@@ -18,6 +18,20 @@ class StockSearchResponse(BaseModel):
     results: list[StockSearchResult] = Field(default_factory=list)
 
 
+class PriceOnDateResponse(BaseModel):
+    symbol: str
+    requested_date: str
+    price_date: str
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: float
+    volume: int = 0
+    is_fallback: bool = False
+    status: str = "EXACT_MATCH"
+    message: str = "Price fetched successfully"
+
+
 class DayRange(BaseModel):
     low: float = 0.0
     high: float = 0.0
@@ -947,12 +961,22 @@ class SectorPeerItem(BaseModel):
     @field_validator("current", "ldcp", "change_pct", mode="before")
     @classmethod
     def _clean_peer_float(cls, v):
-        return None if v is None else float(v)
+        if v is None or v == "":
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
 
     @field_validator("volume", mode="before")
     @classmethod
     def _clean_peer_int(cls, v):
-        return None if v is None else int(v)
+        if v is None or v == "":
+            return None
+        try:
+            return int(float(v))
+        except (ValueError, TypeError):
+            return None
 
 
 class SectorOverview(BaseModel):
@@ -970,17 +994,34 @@ class SectorOverview(BaseModel):
     @field_validator("sector", mode="before")
     @classmethod
     def _clean_sec_str(cls, v):
-        return None if v is None else str(v)
+        return None if v is None or v == "" else str(v)
+
+    @field_validator("stock", mode="before")
+    @classmethod
+    def _clean_sec_stock(cls, v):
+        if not isinstance(v, dict):
+            return None
+        return v
 
     @field_validator("companies_count", "advancing", "declining", "unchanged", "stock_rank", mode="before")
     @classmethod
     def _clean_sec_int(cls, v):
-        return None if v is None else int(v)
+        if v is None or v == "":
+            return None
+        try:
+            return int(float(v))
+        except (ValueError, TypeError):
+            return None
 
     @field_validator("avg_change_pct", mode="before")
     @classmethod
     def _clean_sec_float(cls, v):
-        return None if v is None else float(v)
+        if v is None or v == "":
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
 
 
 class DataQuality(BaseModel):

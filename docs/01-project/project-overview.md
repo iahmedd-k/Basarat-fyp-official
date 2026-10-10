@@ -111,7 +111,7 @@ The repository contains only the **backend** application. The Android mobile cli
 
 ## Current Implementation Status
 
-The system is **fully implemented** and deployed to production on **Oracle Cloud Infrastructure (OCI)** at `http://193.123.84.223:8000`. All major modules are operational with CI/CD automation, containerized fleet, and health monitoring.
+The system is **fully implemented** and deployed to production on **Oracle Cloud Infrastructure (OCI)** at `https://api.basarat.live` (Swagger Docs: `https://api.basarat.live/docs`). All major modules are operational with CI/CD automation, containerized fleet, and health monitoring.
 
 ## Major Limitations
 

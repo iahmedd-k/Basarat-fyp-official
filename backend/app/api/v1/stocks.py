@@ -16,6 +16,7 @@ from app.models.stock import Stock, StockPrice
 from app.schemas.stock import (
     FundamentalsResponse,
     PriceHistoryResponse,
+    PriceOnDateResponse,
     StockOverview,
     StockSearchResponse,
     TechnicalIndicatorsResponse,
@@ -265,15 +266,206 @@ async def get_stock_price_history(
 
 
 @router.get(
+    "/stocks/{symbol}/price-on-date",
+    response_model=PriceOnDateResponse,
+    summary="Get historical stock price on a specific date with holiday/weekend fallback",
+    description="""
+Fetch official PSX closing price and intraday range (Open, High, Low, Close) for a given stock on a specified calendar date.
+
+**Edge Cases Handled:**
+1. **Weekend / Public Holiday / Eid Market Closure**: Automatically falls back to the most recent preceding trading day with `is_fallback: true` and notes the difference in `message`.
+2. **Future Dates**: Rejects with `422 Unprocessable Entity` since future prices cannot exist.
+3. **Pre-Listing / Vintage Dates (> 20 years old or before IPO)**: If no trading history exists on or before the requested date, returns `404 Not Found` detailing the earliest available date for the ticker.
+4. **Current Day / Live Trading**: If date is today, uses the latest live/intraday quote from the market stream.
+5. **Portfolio Transaction Pre-Fill**: Enables frontend forms to auto-populate historical transaction prices and validate user inputs against official circuit ranges.
+""",
+)
+@limiter.limit("60/minute")
+async def get_stock_price_on_date(
+    request: Request,
+    symbol: str = Path(..., description="PSX ticker or exact company/quote name"),
+    target_date: date = Query(..., alias="date", description="Requested date in YYYY-MM-DD format"),
+    db: AsyncSession = Depends(get_db),
+    service: StockService = Depends(StockService),
+):
+    symbol = await _resolve_stock_symbol(symbol, db)
+    today = date.today()
+
+    if target_date > today:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot query historical price for a future date ({target_date}). Today is {today}.",
+        )
+
+    cache_key = f"stocks:price_on_date:{symbol}:{target_date}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    # 1. If requested date is today, attempt live quote first
+    if target_date == today:
+        try:
+            quote = await asyncio.to_thread(service.get_quote, symbol)
+            if quote and quote.get("current") not in (None, 0, 0.0):
+                curr = float(quote["current"])
+                res = PriceOnDateResponse(
+                    symbol=symbol,
+                    requested_date=target_date.isoformat(),
+                    price_date=target_date.isoformat(),
+                    open=float(quote["open"]) if quote.get("open") is not None else curr,
+                    high=float(quote["high"]) if quote.get("high") is not None else curr,
+                    low=float(quote["low"]) if quote.get("low") is not None else curr,
+                    close=curr,
+                    volume=int(quote.get("volume") or 0),
+                    is_fallback=False,
+                    status="LIVE_QUOTE",
+                    message="Fetched live market session price for today.",
+                )
+                await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=60)
+                return res
+        except Exception as exc:
+            log.debug("Live quote lookup failed for today: %s", exc)
+
+    # 2. Query DB for exact date or closest preceding date
+    try:
+        # Exact match
+        exact_stmt = (
+            select(StockPrice)
+            .join(Stock, StockPrice.stock_id == Stock.id)
+            .where(Stock.symbol == symbol, StockPrice.date == target_date)
+        )
+        exact_row = (await db.execute(exact_stmt)).scalars().first()
+        if exact_row and exact_row.close is not None:
+            res = PriceOnDateResponse(
+                symbol=symbol,
+                requested_date=target_date.isoformat(),
+                price_date=exact_row.date.isoformat(),
+                open=float(exact_row.open) if exact_row.open is not None else None,
+                high=float(exact_row.high) if exact_row.high is not None else None,
+                low=float(exact_row.low) if exact_row.low is not None else None,
+                close=float(exact_row.close),
+                volume=int(exact_row.volume or 0),
+                is_fallback=False,
+                status="EXACT_MATCH",
+                message=f"Official closing price for {target_date}.",
+            )
+            await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=86400)
+            return res
+
+        # Closest preceding date (for weekend/holiday fallback)
+        fallback_stmt = (
+            select(StockPrice)
+            .join(Stock, StockPrice.stock_id == Stock.id)
+            .where(Stock.symbol == symbol, StockPrice.date <= target_date)
+            .order_by(StockPrice.date.desc())
+            .limit(1)
+        )
+        fallback_row = (await db.execute(fallback_stmt)).scalars().first()
+        if fallback_row and fallback_row.close is not None:
+            diff_days = (target_date - fallback_row.date).days
+            if diff_days <= 14:  # Reasonable holiday/weekend gap
+                res = PriceOnDateResponse(
+                    symbol=symbol,
+                    requested_date=target_date.isoformat(),
+                    price_date=fallback_row.date.isoformat(),
+                    open=float(fallback_row.open) if fallback_row.open is not None else None,
+                    high=float(fallback_row.high) if fallback_row.high is not None else None,
+                    low=float(fallback_row.low) if fallback_row.low is not None else None,
+                    close=float(fallback_row.close),
+                    volume=int(fallback_row.volume or 0),
+                    is_fallback=True,
+                    status="PREVIOUS_TRADING_DAY",
+                    message=f"Market was closed on {target_date} (weekend/holiday). Returned closest trading session price from {fallback_row.date.isoformat()} ({diff_days} day(s) prior).",
+                )
+                await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=86400)
+                return res
+    except Exception as exc:
+        log.debug("DB price lookup error for %s on %s: %s", symbol, target_date, exc)
+
+    # 3. Fallback to local Parquet OHLCV storage if DB is empty / vintage data
+    try:
+        df = await asyncio.to_thread(service._get_ohlcv_from_file, symbol)
+        if df is not None and not df.empty:
+            # Check for exact date
+            match = df[df.index.date == target_date]
+            if not match.empty:
+                row = match.iloc[-1]
+                close_val = float(row.get("CLOSE") or row.get("ADJUSTED_CLOSE") or 0.0)
+                res = PriceOnDateResponse(
+                    symbol=symbol,
+                    requested_date=target_date.isoformat(),
+                    price_date=target_date.isoformat(),
+                    open=float(row.get("OPEN")) if row.get("OPEN") is not None else None,
+                    high=float(row.get("HIGH")) if row.get("HIGH") is not None else None,
+                    low=float(row.get("LOW")) if row.get("LOW") is not None else None,
+                    close=close_val,
+                    volume=int(row.get("VOLUME") or 0),
+                    is_fallback=False,
+                    status="EXACT_MATCH",
+                    message=f"Official closing price for {target_date}.",
+                )
+                await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=86400)
+                return res
+
+            # Check preceding date within 14 days
+            prev_df = df[df.index.date <= target_date]
+            if not prev_df.empty:
+                row = prev_df.iloc[-1]
+                actual_date = row.name.date()
+                diff_days = (target_date - actual_date).days
+                if diff_days <= 14:
+                    close_val = float(row.get("CLOSE") or row.get("ADJUSTED_CLOSE") or 0.0)
+                    res = PriceOnDateResponse(
+                        symbol=symbol,
+                        requested_date=target_date.isoformat(),
+                        price_date=actual_date.isoformat(),
+                        open=float(row.get("OPEN")) if row.get("OPEN") is not None else None,
+                        high=float(row.get("HIGH")) if row.get("HIGH") is not None else None,
+                        low=float(row.get("LOW")) if row.get("LOW") is not None else None,
+                        close=close_val,
+                        volume=int(row.get("VOLUME") or 0),
+                        is_fallback=True,
+                        status="PREVIOUS_TRADING_DAY",
+                        message=f"Market was closed on {target_date} (weekend/holiday). Returned closest trading session price from {actual_date.isoformat()} ({diff_days} day(s) prior).",
+                    )
+                    await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=86400)
+                    return res
+
+            earliest_date = df.index.min().date()
+            raise NotFoundError(
+                f"No trading data available for '{symbol}' on or prior to {target_date}. "
+                f"Earliest available recorded trading date is {earliest_date}."
+            )
+    except NotFoundError:
+        raise
+    except Exception as exc:
+        log.debug("Parquet lookup failed: %s", exc)
+
+    raise NotFoundError(f"No historical price records found for '{symbol}' on or before {target_date}.")
+
+
+@router.get(
     "/stocks/{symbol}/technical-indicators",
     response_model=TechnicalIndicatorsResponse,
-    summary="Technical indicator series with overall signal summary",
+    summary="Get calculated technical indicators and signal matrix",
+    description="""
+Fetch computed mathematical technical indicators and overall signal summary for a given PSX stock.
+
+**Supported Indicators:**
+- **RSI (Relative Strength Index)**: 14-period momentum oscillator identifying overbought (>70) and oversold (<30) conditions.
+- **MACD (Moving Average Convergence Divergence)**: 12/26/9 exponential moving average convergence/divergence with signal line crossovers.
+- **Bollinger Bands**: Upper band, Simple Moving Average (SMA), and Lower band based on standard deviation.
+- **SMA**: Simple Moving Average across customizable periods.
+- **ADX (Average Directional Index)**: Trend strength metric with Wilder warmup smoothing.
+
+*Note: Shorthand alias `/stocks/{symbol}/technicals` is also supported for mobile client convenience.*
+""",
 )
 @router.get(
     "/stocks/{symbol}/technicals",
     response_model=TechnicalIndicatorsResponse,
     summary="Technical indicator series with overall signal summary (alias)",
-    include_in_schema=True,
+    include_in_schema=False,
 )
 @limiter.limit("20/minute")
 async def get_stock_technical_indicators(

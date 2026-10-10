@@ -108,14 +108,15 @@ def cleanup_orphaned_reports(self) -> dict:
 def _run_async(coro):
     import asyncio
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import nest_asyncio
-            nest_asyncio.apply()
-            return loop.run_until_complete(coro)
-        return loop.run_until_complete(coro)
+        loop = asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(coro)
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    return asyncio.run(coro)
 
 
 async def _process_report_threshold(post_id: str) -> dict:

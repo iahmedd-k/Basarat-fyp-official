@@ -35,6 +35,22 @@ def get_user_id_or_ip(request: Request) -> str:
 limiter = Limiter(key_func=get_user_id_or_ip)
 
 
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    response = JSONResponse(
+        status_code=429,
+        content={
+            "success": False,
+            "error": {
+                "code": "RATE_LIMIT_EXCEEDED",
+                "message": f"Rate limit exceeded: {exc.detail}",
+            },
+        },
+    )
+    if request_id := getattr(request.state, "request_id", None):
+        response.headers["X-Request-ID"] = request_id
+    return response
+
+
 def add_rate_limiting(app: FastAPI) -> None:
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)

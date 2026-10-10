@@ -102,7 +102,10 @@ async def lifespan(app: FastAPI):
 
     # Ask the shared Celery worker to warm market snapshots. Never scrape
     # from every API container's startup hook.
-    if settings.USE_CELERY and settings.RUN_STARTUP_MARKET_WARMUP:
+    if settings.USE_CELERY and (
+        settings.RUN_STARTUP_MARKET_WARMUP
+        or settings.RUN_STARTUP_PORTFOLIO_WARMUP
+    ):
         try:
             from app.core.redis import get_sync_redis_client
 
@@ -114,39 +117,27 @@ async def lifespan(app: FastAPI):
             if should_enqueue:
                 from app.tasks.refresh_market_cache import refresh_market_cache
 
-                refresh_market_cache.delay(
-                    refresh_reference=True,
-                    refresh_constituents=True,
-                    refresh_screener=True,
-                )
+                from celery import chain
+                startup_tasks = [
+                    refresh_market_cache.si(
+                        refresh_reference=True,
+                        refresh_constituents=True,
+                        require_complete=True,
+                    )
+                ]
+                if settings.RUN_STARTUP_MARKET_WARMUP:
+                    from app.tasks.refresh_shariah_cache import refresh_shariah_cache
+
+                    startup_tasks.append(refresh_shariah_cache.si())
+                if settings.RUN_STARTUP_PORTFOLIO_WARMUP:
+                    from app.tasks.portfolio_tasks import precompute_all_portfolio_performance
+
+                    startup_tasks.append(precompute_all_portfolio_performance.si())
+                chain(*startup_tasks).apply_async()
             else:
                 log.info("Startup market warmup already queued by another API replica")
         except Exception as exc:
             log.warning("Could not enqueue initial market cache refresh: %s", exc)
-
-        try:
-            from app.core.redis import get_sync_redis_client
-
-            client = get_sync_redis_client()
-            warmup_key = "jobs:shariah-cache:startup-warmup"
-            should_enqueue = client is None or bool(
-                client.set(warmup_key, "1", nx=True, ex=900)
-            )
-            if should_enqueue:
-                from app.tasks.refresh_shariah_cache import refresh_shariah_cache
-
-                refresh_shariah_cache.delay()
-            else:
-                log.info("Startup Shariah cache warmup already queued by another API replica")
-        except Exception as exc:
-            log.warning("Could not enqueue initial Shariah cache refresh: %s", exc)
-
-    # Background warmup of assistant universe profile cache
-    try:
-        from app.services.assistant_context_cache import AssistantContextCache
-        asyncio.create_task(AssistantContextCache().warm_universe())
-    except Exception as exc:
-        log.warning("Could not pre-warm assistant universe cache: %s", exc)
 
     # ── Pre-warm DB connection pool ──────────────────────────────────────
     try:
@@ -155,6 +146,13 @@ async def lifespan(app: FastAPI):
         log.info("DB connection pool pre-warmed successfully")
     except Exception as exc:
         log.warning("Could not pre-warm DB pool: %s", exc)
+
+    # ── Full-Spectrum Background Cache Warmup (All Domains) ─────────────
+    try:
+        from app.services.cache_warmup_service import schedule_startup_cache_warmup
+        schedule_startup_cache_warmup()
+    except Exception as exc:
+        log.warning("Could not schedule comprehensive cache warmup: %s", exc)
 
     yield
 
@@ -236,8 +234,9 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS i
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS if settings.CORS_ORIGINS else ["*"],
-    allow_credentials=bool(settings.CORS_ORIGINS and "*" not in settings.CORS_ORIGINS),
+    allow_origins=["*"] if ("*" in settings.CORS_ORIGINS or not settings.CORS_ORIGINS) else settings.CORS_ORIGINS,
+    allow_origin_regex=".*",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

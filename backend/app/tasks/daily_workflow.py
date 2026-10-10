@@ -30,12 +30,8 @@ class SourceRateLimited(RuntimeError):
 
 
 def _get_sync_session():
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from app.core.config import get_settings
-    settings = get_settings()
-    engine = create_engine(settings.DATABASE_URL_SYNC, pool_pre_ping=True)
-    return sessionmaker(bind=engine)()
+    from app.db.base import get_sync_session_factory
+    return get_sync_session_factory()()
 
 
 # ---------------------------------------------------------------------------
@@ -155,93 +151,144 @@ def generate_predictions_task(self):
     log.info("[PREDICTION] Starting daily prediction generation")
 
     try:
+        from app.core.redis import set_dataset_status_sync
+
+        set_dataset_status_sync("forecasts", "pending")
         import pandas as pd
 
         from app.data.scraper.symbol_universe import get_active_symbols
         from app.ml.serving.inference import (
-            _run_gru,
-            _run_xgb,
-            _ensemble_decide,
             FEATURES_PATH,
+            forecast_cache_key,
+            get_forecast,
         )
         from app.ml.serving.model_loader import artifacts, load_artifacts
         from app.ml.serving.prediction_store import (
             build_prediction_payload,
-            next_trading_day,
             upsert_prediction_sync,
         )
 
-        if not artifacts.model_ready:
+        if not artifacts.model_ready and not artifacts.xgb_ready:
             load_artifacts()
 
-        if not artifacts.model_ready:
+        if not artifacts.model_ready and not artifacts.xgb_ready:
             raise RuntimeError("Prediction model is not ready; refusing to publish downstream recommendations")
 
         df = pd.read_parquet(FEATURES_PATH)
         df["date"] = pd.to_datetime(df["date"])
 
         active = get_active_symbols()
-        symbols = [e["symbol"] for e in active]
+        symbols = [
+            str(entry["symbol"]).strip().upper()
+            for entry in active
+            if entry.get("symbol")
+        ]
+        if len(symbols) != len(set(symbols)):
+            raise RuntimeError("KSE-100 symbol universe contains duplicate symbols")
+        symbols.sort()
+        if not symbols:
+            raise RuntimeError("KSE-100 symbol universe is empty; refusing to publish forecasts")
         log.info("[PREDICTION] Running predictions for %d symbols", len(symbols))
 
         session = _get_sync_session()
         success = 0
         failed = 0
         as_of_dates: set[str] = set()
+        forecast_keys: set[str] = set()
+        failures: list[str] = []
 
-        for sym in symbols:
-            try:
-                sym_df = df[df["symbol"] == sym].copy()
-                sym_df = sym_df.sort_values("date").reset_index(drop=True)
-
-                if len(sym_df) < artifacts.window_size:
-                    log.warning(
-                        "[PREDICTION] %s: insufficient data (%d < %d), skipping",
-                        sym,
-                        len(sym_df),
-                        artifacts.window_size,
+        try:
+            for sym in symbols:
+                try:
+                    sym_df = (
+                        df[df["symbol"].astype(str).str.upper() == sym]
+                        .copy()
+                        .sort_values("date")
+                        .reset_index(drop=True)
                     )
+                    if len(sym_df) < artifacts.window_size:
+                        raise RuntimeError(
+                            f"insufficient feature history ({len(sym_df)} < {artifacts.window_size})"
+                        )
+
+                    as_of_date = sym_df["date"].iloc[-1].date()
+                    as_of_dates.add(as_of_date.isoformat())
+                    for horizon in ("1D", "1W", "2W", "1M"):
+                        forecast = get_forecast(sym, horizon=horizon, sym_df=sym_df)
+                        model_details = forecast.get("model_details") or {}
+                        gru_result = model_details.get("gru_v2")
+                        xgb_result = model_details.get("xgb_v4")
+                        ensemble = {
+                            "direction": forecast["direction"],
+                            "bullish_pct": forecast["bullish_pct"],
+                            "bearish_pct": forecast["bearish_pct"],
+                            "sideways_pct": forecast["sideways_pct"],
+                            "top_class_probability": forecast["top_class_probability"],
+                            "model_version": forecast["model_version"],
+                            "gate_reason": forecast.get("gate_reason", ""),
+                        }
+                        payload = build_prediction_payload(
+                            symbol=sym,
+                            horizon=horizon,
+                            ensemble=ensemble,
+                            as_of_date=forecast["as_of_date"],
+                            target_date=forecast["predicted_for_date"],
+                            gru_result=gru_result,
+                            xgb_result=xgb_result,
+                        )
+                        upsert_prediction_sync(session, payload)
+                        forecast_keys.add(
+                            forecast_cache_key(sym, horizon, forecast["as_of_date"])
+                        )
+
+                    session.commit()
+                    success += 1
+
+                except Exception as exc:
+                    log.warning("[PREDICTION] Failed for %s: %s", sym, exc, exc_info=True)
+                    session.rollback()
                     failed += 1
-                    continue
+                    failures.append(f"{sym}: {exc}")
+        finally:
+            session.close()
 
-                as_of_date = sym_df["date"].iloc[-1].date()
-                as_of_dates.add(as_of_date.isoformat())
+        if failed:
+            raise RuntimeError(
+                f"Forecast refresh incomplete: {success}/{len(symbols)} symbols succeeded; "
+                f"first failures: {'; '.join(failures[:10])}"
+            )
 
-                gru_result = _run_gru(sym, sym_df)
-                horizon_trading_days = [("1D", 1), ("1W", 5), ("2W", 10), ("1M", 22)]
-                
-                for h_code, t_days in horizon_trading_days:
-                    xgb_result = _run_xgb(sym, as_of_date, horizon=h_code)
-                    ensemble = _ensemble_decide(gru_result, xgb_result, horizon=h_code)
-                    target_date = next_trading_day(as_of_date, trading_days=t_days)
+        from app.core.redis import get_sync_redis_client
 
-                    payload = build_prediction_payload(
-                        symbol=sym,
-                        horizon=h_code,
-                        ensemble=ensemble,
-                        as_of_date=as_of_date,
-                        target_date=target_date,
-                        gru_result=gru_result,
-                        xgb_result=xgb_result,
-                    )
-                    upsert_prediction_sync(session, payload)
+        redis = get_sync_redis_client()
+        if redis is None:
+            raise RuntimeError("Redis is unavailable; forecast cache refresh was not completed")
+        redis.ping()
+        pipeline = redis.pipeline()
+        for key in forecast_keys:
+            pipeline.exists(key)
+        cache_results = pipeline.execute()
+        if len(cache_results) != len(forecast_keys):
+            raise RuntimeError(
+                f"Forecast Redis verification returned {len(cache_results)} results "
+                f"for {len(forecast_keys)} keys"
+            )
+        if len(forecast_keys) != len(symbols) * 4:
+            raise RuntimeError(
+                f"Forecast cache coverage mismatch: expected {len(symbols) * 4}, "
+                f"prepared {len(forecast_keys)}"
+            )
+        missing_cache_count = sum(1 for present in cache_results if not present)
+        if missing_cache_count:
+            raise RuntimeError(f"{missing_cache_count} forecast Redis cache keys are missing")
+        set_dataset_status_sync("forecasts", "success")
 
-                session.commit()
-                success += 1
-
-            except Exception:
-                log.warning("[PREDICTION] Failed for %s", sym, exc_info=True)
-                session.rollback()
-                failed += 1
-
-        session.close()
-        if symbols and success == 0:
-            raise RuntimeError("Prediction generation produced no usable symbol results")
         log.info(
-            "[PREDICTION] Complete: %d succeeded, %d failed out of %d (as_of=%s)",
+            "[PREDICTION] Complete: %d succeeded, %d failed out of %d; cached=%d (as_of=%s)",
             success,
             failed,
             len(symbols),
+            len(forecast_keys),
             sorted(as_of_dates),
         )
         return {
@@ -249,6 +296,7 @@ def generate_predictions_task(self):
             "success": success,
             "failed": failed,
             "total": len(symbols),
+            "cached": len(forecast_keys),
             "as_of_dates": sorted(as_of_dates),
             "timestamp": datetime.utcnow().isoformat(),
         }
@@ -410,3 +458,94 @@ def run_daily_pipeline():
 
     log.info("[DAILY] Pipeline dispatched — group_id=%s", result.id)
     return {"status": "dispatched", "group_id": result.id}
+
+
+@celery.task(
+    name="app.tasks.daily_workflow.run_morning_market_intelligence",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,
+)
+def run_morning_market_intelligence(self):
+    """Refresh all KSE-100 forecasts and recommendations before market open."""
+    import asyncio
+    from zoneinfo import ZoneInfo
+
+    from app.core.redis import get_sync_redis_client
+
+    now_pkt = datetime.now(ZoneInfo("Asia/Karachi"))
+    if now_pkt.weekday() >= 5:
+        return {"status": "skipped", "reason": "weekend"}
+
+    try:
+        from app.services.news_pipeline.market_schedule import is_holiday
+
+        if asyncio.run(is_holiday()):
+            return {"status": "skipped", "reason": "exchange_holiday"}
+    except Exception as exc:
+        log.exception("[MORNING] Could not check holiday calendar; refusing to dispatch")
+        raise self.retry(exc=exc)
+
+    dispatch_key = f"jobs:morning-market-intelligence:{now_pkt.date().isoformat()}"
+    status_key = f"jobs:morning-market-intelligence:status:{now_pkt.date().isoformat()}"
+    redis = None
+    try:
+        redis = get_sync_redis_client()
+        if redis is None:
+            raise RuntimeError("Redis is unavailable; refusing duplicate-unsafe dispatch")
+        if not redis.set(dispatch_key, "1", nx=True, ex=12 * 60 * 60):
+            return {"status": "skipped", "reason": "already_dispatched"}
+        redis.set(status_key, "pending", ex=36 * 60 * 60)
+        from app.core.redis import set_dataset_status_sync
+
+        set_dataset_status_sync("forecasts", "pending")
+        set_dataset_status_sync("recommendations", "pending")
+
+        from app.tasks.recommendation_cache import refresh_recommendations_task
+        from app.tasks.refresh_market_cache import refresh_market_cache
+
+        workflow = chain(
+            refresh_market_cache.si(
+                refresh_reference=True,
+                refresh_constituents=True,
+                require_complete=True,
+            ),
+            generate_predictions_task.si(),
+            refresh_recommendations_task.si(),
+            mark_morning_market_intelligence_success.si(now_pkt.date().isoformat()),
+        )
+        result = workflow.apply_async()
+    except Exception as exc:
+        try:
+            if redis is not None:
+                redis.set(status_key, "failed", ex=36 * 60 * 60)
+                redis.delete(dispatch_key)
+        except Exception:
+            log.exception("[MORNING] Could not clear dispatch lock after enqueue failure")
+        log.exception("[MORNING] Could not dispatch forecast/recommendation refresh")
+        raise self.retry(exc=exc)
+
+    log.info("[MORNING] Forecast/recommendation refresh dispatched — group_id=%s", result.id)
+    return {"status": "dispatched", "group_id": result.id}
+
+
+@celery.task(
+    name="app.tasks.daily_workflow.mark_morning_market_intelligence_success",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+)
+def mark_morning_market_intelligence_success(self, refresh_date: str):
+    """Mark the pre-market chain ready only after forecasts and recommendations succeed."""
+    from app.core.redis import get_sync_redis_client
+
+    redis = get_sync_redis_client()
+    if redis is None:
+        raise self.retry(exc=RuntimeError("Redis is unavailable while marking refresh complete"))
+    status_key = f"jobs:morning-market-intelligence:status:{refresh_date}"
+    try:
+        redis.set(status_key, "success", ex=36 * 60 * 60)
+    except Exception as exc:
+        log.exception("[MORNING] Could not mark refresh complete")
+        raise self.retry(exc=exc)
+    return {"status": "success", "refresh_date": refresh_date}

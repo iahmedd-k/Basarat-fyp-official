@@ -151,10 +151,29 @@ async def test_stale_shared_constituents_are_not_used_for_current_membership(mon
 
 @pytest.mark.asyncio
 async def test_background_refresh_warms_kmi_response_and_fresh_membership(monkeypatch):
+    import json
+
     from app.services.market_service import MarketService
 
-    cache_set = AsyncMock()
-    monkeypatch.setattr(refresh_shariah_cache, "cache_set", cache_set)
+    published = {}
+
+    async def persist_cache(key, value, ttl_seconds):
+        published[key] = json.dumps(value)
+
+    monkeypatch.setattr(
+        refresh_shariah_cache,
+        "get_sync_redis_client",
+        lambda: SimpleNamespace(get=published.get),
+    )
+    monkeypatch.setattr(
+        refresh_shariah_cache, "set_dataset_status_sync", lambda *_args, **_kwargs: None
+    )
+    cache_set = AsyncMock(side_effect=persist_cache)
+    monkeypatch.setattr(
+        refresh_shariah_cache,
+        "cache_set",
+        cache_set,
+    )
 
     async def refreshed_constituents(self, index_code, force_refresh, read_only):
         assert index_code == "KMI30"

@@ -29,8 +29,26 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+from app.core.redis import cache_get, cache_set
+import time
+
+_PRICE_HISTORY_SYMBOLS_CACHE: set[str] | None = None
+_PRICE_HISTORY_SYMBOLS_TS: float = 0.0
+
+
 async def _symbols_with_price_history(db: AsyncSession) -> set[str]:
     """Return active stock tickers with persisted OHLCV usable by price-history."""
+    global _PRICE_HISTORY_SYMBOLS_CACHE, _PRICE_HISTORY_SYMBOLS_TS
+    now = time.monotonic()
+    if _PRICE_HISTORY_SYMBOLS_CACHE is not None and (now - _PRICE_HISTORY_SYMBOLS_TS < 300.0):
+        return _PRICE_HISTORY_SYMBOLS_CACHE
+
+    cached = await cache_get("market:symbols_with_history")
+    if isinstance(cached, list) and cached:
+        _PRICE_HISTORY_SYMBOLS_CACHE = set(cached)
+        _PRICE_HISTORY_SYMBOLS_TS = now
+        return _PRICE_HISTORY_SYMBOLS_CACHE
+
     result = await db.scalars(
         select(Stock.symbol).where(
             Stock.is_active.is_(True),
@@ -39,7 +57,12 @@ async def _symbols_with_price_history(db: AsyncSession) -> set[str]:
             .exists(),
         )
     )
-    return {str(symbol).strip().upper() for symbol in result.all() if symbol}
+    syms = {str(symbol).strip().upper() for symbol in result.all() if symbol}
+    if syms:
+        _PRICE_HISTORY_SYMBOLS_CACHE = syms
+        _PRICE_HISTORY_SYMBOLS_TS = now
+        await cache_set("market:symbols_with_history", list(syms), ttl_seconds=600)
+    return syms
 
 
 @router.get(
@@ -297,12 +320,25 @@ async def get_sentiment_overview(
 @router.get(
     "/market/quotes",
     response_model=MarketQuotesResponse,
-    summary="Get all PSX listed stocks (~500 stocks) with manual count limit, search, and sector filters (public)",
+    summary="Get all PSX listed stock quotes with search, sector, and sort filters",
+    description="""
+Retrieve real-time and cache-backed quotes across all ~500 PSX listed equities.
+
+**Supported Filters & Capabilities:**
+- **Search Query (`search`)**: Case-insensitive keyword matching across symbol, company name, and sector.
+- **Sector Filter (`sector`)**: Filter quotes by official PSX industry sector (e.g. Commercial Banks, Oil & Gas, Cement, Technology).
+- **Symbol Filter (`symbols`)**: Comma-separated list of target tickers (e.g. `OGDC,PPL,HBL,LUCK`).
+- **Sorting (`sort_by` & `order`)**: Order results by `volume`, `change_pct`, `current`, `ldcp`, or `symbol` in `asc` or `desc` sequence.
+- **Pagination (`limit` & `offset`)**: Configurable result limit (1 to 1000 items) with offset pagination.
+
+*Note: Shorthand alias `/market/all-stocks` is also supported for backwards compatibility.*
+""",
 )
 @router.get(
     "/market/all-stocks",
     response_model=MarketQuotesResponse,
     summary="Get all PSX listed stocks (~500 stocks) - alias (public)",
+    include_in_schema=False,
 )
 @limiter.limit("30/minute")
 async def get_market_quotes(

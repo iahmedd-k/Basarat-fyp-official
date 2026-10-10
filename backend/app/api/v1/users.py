@@ -96,8 +96,8 @@ async def update_profile(
     and/or investment profile (risk_tolerance, sector_preferences, investment_horizon).
     """
     try:
-        risk_tol = data.risk_tolerance.value if data.risk_tolerance else None
-        inv_horiz = data.investment_horizon.value if data.investment_horizon else None
+        risk_tol = data.risk_tolerance.value if hasattr(data.risk_tolerance, "value") else data.risk_tolerance
+        inv_horiz = data.investment_horizon.value if hasattr(data.investment_horizon, "value") else data.investment_horizon
 
         updated = await service.update_profile(
             user_id=user.id,
@@ -106,7 +106,7 @@ async def update_profile(
             avatar_url=data.avatar_url,
             risk_tolerance=risk_tol,
             sector_preferences=(
-                [sector.value for sector in data.sector_preferences]
+                [sector.value if hasattr(sector, "value") else str(sector) for sector in data.sector_preferences]
                 if data.sector_preferences is not None
                 else None
             ),

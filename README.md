@@ -17,10 +17,10 @@
 
 | Resource | URL Link | Description |
 |---|---|---|
-| **Live Production API Gateway** | [http://193.123.84.223:8000](http://193.123.84.223:8000) | Root service gateway with health and readiness status |
-| **Interactive Swagger API Docs** | [http://193.123.84.223:8000/docs](http://193.123.84.223:8000/docs) | Interactive OpenAPI 3.1 schema for testing all 22 domain routers |
-| **Interactive Architecture Diagram**| [http://193.123.84.223:8000/architecture](http://193.123.84.223:8000/architecture) | Live web-based dynamic architecture visualization |
-| **Alternative ReDoc Docs** | [http://193.123.84.223:8000/redoc](http://193.123.84.223:8000/redoc) | Clean formatted REST endpoint specifications |
+| **Live Production API Gateway** | [https://api.basarat.live](https://api.basarat.live) | Root service gateway with health and readiness status |
+| **Interactive Swagger API Docs** | [https://api.basarat.live/docs](https://api.basarat.live/docs) | Interactive OpenAPI 3.1 schema for testing all 25 domain routers |
+| **Interactive Architecture Diagram**| [https://api.basarat.live/architecture](https://api.basarat.live/architecture) | Live web-based dynamic architecture visualization |
+| **Alternative ReDoc Docs** | [https://api.basarat.live/redoc](https://api.basarat.live/redoc) | Clean formatted REST endpoint specifications |
 
 ---
 
@@ -33,7 +33,7 @@ flowchart TD
     end
 
     subgraph ServiceFleet ["Application Service Tier (Oracle Cloud Infrastructure)"]
-        FASTAPI["FastAPI Async API Gateway & Server (Port 8000)<br/>- 22 Domain Routers & Auth Middleware<br/>- SlowAPI IP/User Rate Limiting<br/>- Correlation ID (X-Request-ID) Tracing<br/>- RAG AI Copilot (Groq Llama 3.3 70B)"]
+        FASTAPI["FastAPI Async API Gateway & Server<br/>- 25 Domain Routers & Auth Middleware<br/>- SlowAPI IP/User Rate Limiting<br/>- Correlation ID (X-Request-ID) Tracing<br/>- RAG AI Copilot (Groq Llama 3.3 70B)"]
         CELERY_W["Celery Distributed Workers<br/>- Post-Market Data Ingestion Pipeline<br/>- Multi-Source News Scraper & FinBERT Sentiment<br/>- Dynamic Alert Trigger Engine"]
         CELERY_B["Celery Beat Scheduler<br/>(Mon-Fri Cron Schedules)"]
     end
@@ -49,7 +49,7 @@ flowchart TD
         REDIS[("Redis 7 In-Memory Store<br/>Pub/Sub Quotes, Rate Limits, Celery Broker")]
     end
 
-    ANDROID -->|HTTPS / WSS Port 8000| FASTAPI
+    ANDROID -->|HTTPS / WSS| FASTAPI
     FASTAPI --> GRU_XGB
     FASTAPI --> QUANT
     FASTAPI --> POSTGRES
@@ -63,7 +63,7 @@ flowchart TD
     REDIS -.->|Live Price Pub/Sub| FASTAPI
 ```
 
-> 🔍 **Interactive Architecture Visualizer**: Explore the dynamic, live-rendered architecture topology directly in your browser at **[http://193.123.84.223:8000/architecture](http://193.123.84.223:8000/architecture)**.
+> 🔍 **Interactive Architecture Visualizer**: Explore the dynamic, live-rendered architecture topology directly in your browser at **[https://api.basarat.live/architecture](https://api.basarat.live/architecture)**.
 
 ---
 

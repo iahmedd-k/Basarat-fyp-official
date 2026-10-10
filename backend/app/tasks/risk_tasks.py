@@ -15,13 +15,8 @@ log = logging.getLogger(__name__)
 
 def _get_sync_db():
     """Get a synchronous DB session for Celery tasks."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from app.core.config import get_settings
-
-    engine = create_engine(get_settings().DATABASE_URL_SYNC, pool_pre_ping=True)
-    Session = sessionmaker(bind=engine)
-    return Session()
+    from app.db.base import get_sync_session_factory
+    return get_sync_session_factory()()
 
 
 def _get_user_holdings_sync(user_id: str, symbols: list[str] | None = None):
@@ -115,7 +110,7 @@ def run_monte_carlo_task(
         save_monte_carlo_result,
     )
 
-    job_id = uuid.uuid4().hex
+    job_id = (self.request.id if getattr(self, "request", None) and self.request.id else None) or uuid.uuid4().hex
     log.info("Monte Carlo task started: job=%s user=%s sims=%d horizon=%d",
              job_id, user_id, num_simulations, horizon_days)
 
@@ -178,17 +173,24 @@ def run_monte_carlo_task(
     bind=True,
     max_retries=1,
 )
-def check_threshold_breaches_task(self, user_id: str):
-    """Check portfolio for risk threshold breaches → trigger Module 9 alerts.
+def check_threshold_breaches_task(self, user_id: str, risk_tolerance: str | None = None):
+    """Check portfolio for risk threshold breaches calibrated by user risk tolerance.
 
-    Thresholds:
-      - VaR(95%) > 3% of portfolio value
-      - CVaR(95%) > 5% of portfolio value
-      - Single-stock weight > 30%
+    Calibrated Thresholds:
+      - Conservative: VaR > 2.5%, CVaR > 4.0%, Concentration > 20%
+      - Moderate:     VaR > 3.5%, CVaR > 5.5%, Concentration > 30%
+      - Aggressive:   VaR > 5.0%, CVaR > 7.5%, Concentration > 45%
     """
     from app.services.risk_service import calculate_var
 
-    log.info("Threshold breach check: user=%s", user_id)
+    log.info("Threshold breach check: user=%s risk_tolerance=%s", user_id, risk_tolerance)
+
+    profile_limits = {
+        "conservative": {"var": 0.025, "cvar": 0.040, "conc": 0.20},
+        "moderate": {"var": 0.035, "cvar": 0.055, "conc": 0.30},
+        "aggressive": {"var": 0.050, "cvar": 0.075, "conc": 0.45},
+    }
+    limits = profile_limits.get(str(risk_tolerance).lower(), profile_limits["moderate"])
 
     try:
         holdings = _get_user_holdings_sync(user_id)
@@ -199,36 +201,36 @@ def check_threshold_breaches_task(self, user_id: str):
 
         # VaR check
         var_result = calculate_var(holdings, confidence=95, horizon="1D")
-        if var_result["var"] is not None and abs(var_result["var"]) > 0.03:
+        if var_result["var"] is not None and abs(var_result["var"]) > limits["var"]:
             breaches.append({
                 "type": "var_breach",
                 "severity": "high",
-                "message": f"VaR(95%) = {abs(var_result['var'])*100:.2f}% exceeds 3% threshold",
+                "message": f"VaR(95%) = {abs(var_result['var'])*100:.2f}% exceeds {limits['var']*100:.1f}% threshold",
                 "value": var_result["var"],
-                "threshold": -0.03,
+                "threshold": -limits["var"],
             })
 
         # CVaR check
-        if var_result["cvar"] is not None and abs(var_result["cvar"]) > 0.05:
+        if var_result["cvar"] is not None and abs(var_result["cvar"]) > limits["cvar"]:
             breaches.append({
                 "type": "cvar_breach",
                 "severity": "critical",
-                "message": f"CVaR(95%) = {abs(var_result['cvar'])*100:.2f}% exceeds 5% threshold",
+                "message": f"CVaR(95%) = {abs(var_result['cvar'])*100:.2f}% exceeds {limits['cvar']*100:.1f}% threshold",
                 "value": var_result["cvar"],
-                "threshold": -0.05,
+                "threshold": -limits["cvar"],
             })
 
         # Concentration check
         for h in holdings:
             weight = float(h.allocation_pct or 0) / 100.0
-            if weight > 0.30:
+            if weight > limits["conc"]:
                 breaches.append({
                     "type": "concentration_breach",
                     "severity": "medium",
-                    "message": f"{h.symbol} weight = {weight*100:.1f}% exceeds 30% limit",
+                    "message": f"{h.symbol} weight = {weight*100:.1f}% exceeds {limits['conc']*100:.0f}% limit",
                     "symbol": h.symbol,
                     "value": weight,
-                    "threshold": 0.30,
+                    "threshold": limits["conc"],
                 })
 
         # Create alerts via Module 9 (sync DB)

@@ -691,31 +691,77 @@ class CommunityService:
 
         await CounterService.increment_post_comment(post_id, 1)
 
-        # Notify parent or post author
+        # Notify parent or post author asynchronously in background (Social Media pattern)
         if parent and parent.author_id != author_id:
-            await self._create_notification(
-                recipient_id=parent.author_id,
-                type=NotificationType.COMMENT_REPLIED,
-                title="New Reply",
-                message="Someone replied to your comment",
-                post_id=post_id,
-                comment_id=comment.id,
-                actor_id=author_id,
-                check_existing=False,
+            asyncio.create_task(
+                self._safe_async_notify(
+                    recipient_id=parent.author_id,
+                    type=NotificationType.COMMENT_REPLIED,
+                    title="New Reply",
+                    message="Someone replied to your comment",
+                    post_id=post_id,
+                    comment_id=comment.id,
+                    actor_id=author_id,
+                )
             )
         elif post.author_id != author_id and not parent:
-            await self._create_notification(
-                recipient_id=post.author_id,
-                type=NotificationType.POST_COMMENTED,
-                title="New Comment",
-                message="Someone commented on your post",
-                post_id=post_id,
-                comment_id=comment.id,
-                actor_id=author_id,
-                check_existing=False,
+            asyncio.create_task(
+                self._safe_async_notify(
+                    recipient_id=post.author_id,
+                    type=NotificationType.POST_COMMENTED,
+                    title="New Comment",
+                    message="Someone commented on your post",
+                    post_id=post_id,
+                    comment_id=comment.id,
+                    actor_id=author_id,
+                )
             )
 
         return comment
+
+    async def _safe_async_notify(
+        self,
+        recipient_id: str,
+        type: NotificationType,
+        title: str,
+        message: str,
+        post_id: Optional[str] = None,
+        comment_id: Optional[str] = None,
+        actor_id: Optional[str] = None,
+    ) -> None:
+        try:
+            from app.db.session import async_session_factory
+            async with async_session_factory() as bg_db:
+                notification = CommunityNotification(
+                    recipient_id=recipient_id,
+                    actor_id=actor_id,
+                    post_id=post_id,
+                    comment_id=comment_id,
+                    type=type.value,
+                    title=title,
+                    message=message,
+                    is_read=False,
+                )
+                bg_db.add(notification)
+                await bg_db.commit()
+
+            from app.core.task_runner import dispatch_task
+            from app.tasks.push_notifications import send_to_user
+
+            dispatch_task(
+                send_to_user,
+                recipient_id,
+                title,
+                message,
+                {
+                    "type": "community_notification",
+                    "notification_type": type.value,
+                    "post_id": str(post_id or ""),
+                    "comment_id": str(comment_id or ""),
+                },
+            )
+        except Exception as exc:
+            log.warning("Async comment notification failed: %s", exc)
 
     async def get_comments(
         self,
@@ -727,8 +773,17 @@ class CommunityService:
     ) -> Tuple[List[CommunityComment], Optional[str], bool, Dict[str, int]]:
         limit = max(1, min(50, limit))
 
+        post_query = select(CommunityPost.id).where(CommunityPost.id == post_id)
+        if not include_hidden:
+            post_query = post_query.where(
+                CommunityPost.status == PostStatus.PUBLISHED.value
+            )
+        post_result = await self.db.execute(post_query)
+        if post_result.scalar_one_or_none() is None:
+            raise NotFoundError("Post not found")
+
         comment_filters = [
-            CommunityComment.post_id == CommunityPost.id,
+            CommunityComment.post_id == post_id,
             CommunityComment.parent_comment_id.is_(None),
             CommunityComment.status == CommentStatus.PUBLISHED.value,
         ]
@@ -736,7 +791,8 @@ class CommunityService:
             c_str = cursor.strip()
             if "|" in c_str:
                 try:
-                    c_created_at, c_id = c_str.split("|", 1)
+                    c_created_at_str, c_id = c_str.split("|", 1)
+                    c_created_at = datetime.fromisoformat(c_created_at_str)
                     comment_filters.append(
                         or_(
                             CommunityComment.created_at > c_created_at,
@@ -751,54 +807,44 @@ class CommunityService:
             else:
                 comment_filters.append(CommunityComment.id > c_str)
 
-        reply = aliased(CommunityComment)
-        reply_count = (
-            select(func.count(reply.id))
-            .where(
-                reply.parent_comment_id == CommunityComment.id,
-                reply.status == CommentStatus.PUBLISHED.value,
-            )
-            .correlate(CommunityComment)
-            .scalar_subquery()
-        )
         query = (
-            select(
-                CommunityPost,
-                CommunityComment,
-                func.coalesce(reply_count, 0).label("reply_count"),
-            )
-            .outerjoin(CommunityComment, and_(*comment_filters))
+            select(CommunityComment)
             .options(joinedload(CommunityComment.author))
-            .where(CommunityPost.id == post_id)
+            .where(and_(*comment_filters))
+            .order_by(CommunityComment.created_at.asc(), CommunityComment.id.asc())
+            .limit(limit + 1)
         )
-        if not include_hidden:
-            query = query.where(
-                or_(
-                    CommunityPost.status == PostStatus.PUBLISHED.value,
-                    CommunityPost.author_id == current_user_id,
-                )
-            )
-
-        query = query.order_by(CommunityComment.created_at.asc(), CommunityComment.id.asc()).limit(limit + 1)
         result = await self.db.execute(query)
-        rows = result.all()
-        if not rows:
-            raise NotFoundError("Post not found")
-
-        comments: List[CommunityComment] = []
-        reply_counts_by_comment: Dict[str, int] = {}
-        for _, comment, reply_count in rows:
-            if comment is not None:
-                comments.append(comment)
-                reply_counts_by_comment[comment.id] = reply_count
+        comments = list(result.scalars().unique().all())
 
         has_more = len(comments) > limit
         if has_more:
             comments = comments[:limit]
+
+        reply_counts_by_comment: Dict[str, int] = {}
+        if comments:
+            reply_result = await self.db.execute(
+                select(
+                    CommunityComment.parent_comment_id,
+                    func.count(CommunityComment.id),
+                )
+                .where(
+                    CommunityComment.parent_comment_id.in_(
+                        [comment.id for comment in comments]
+                    ),
+                    CommunityComment.status == CommentStatus.PUBLISHED.value,
+                )
+                .group_by(CommunityComment.parent_comment_id)
+            )
             reply_counts_by_comment = {
-                comment.id: reply_counts_by_comment[comment.id]
-                for comment in comments
+                comment_id: count for comment_id, count in reply_result.all()
             }
+        reply_counts_by_comment = {
+            comment.id: reply_counts_by_comment.get(
+                comment.id, getattr(comment, "reply_count", 0) or 0
+            )
+            for comment in comments
+        }
 
         next_cursor = None
         if comments:

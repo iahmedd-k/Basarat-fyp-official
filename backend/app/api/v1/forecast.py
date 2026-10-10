@@ -19,11 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
-from app.core.redis import cache_get, cache_set
+from app.core.redis import cache_get, cache_set, dataset_refresh_ready
 from app.db.session import get_db
 from app.ml.serving.inference import (
     InsufficientHistoryError,
     SymbolNotFoundError,
+    forecast_cache_key,
     get_forecast,
 )
 from app.ml.serving.model_loader import artifacts
@@ -43,11 +44,54 @@ from app.ml.serving.schemas import (
 )
 
 import pandas as pd
+from pydantic import ValidationError
 from app.services.recommendation_service import RecommendationEngine
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _prediction_result(row: Prediction) -> dict:
+    model_details = {}
+    for prefix, model_name in (("gru", "gru_v2"), ("xgb", "xgb_v4")):
+        direction = getattr(row, f"{prefix}_direction")
+        if direction is None:
+            continue
+        model_details[model_name] = {
+            "direction": direction,
+            "bullish_pct": getattr(row, f"{prefix}_bullish_pct"),
+            "bearish_pct": getattr(row, f"{prefix}_bearish_pct"),
+            "sideways_pct": getattr(row, f"{prefix}_sideways_pct"),
+            "gap_pp": getattr(row, f"{prefix}_gap_pp"),
+        }
+    return {
+        "symbol": row.symbol,
+        "horizon": row.horizon,
+        "direction": row.predicted_direction,
+        "bullish_pct": row.bullish_pct,
+        "bearish_pct": row.bearish_pct,
+        "sideways_pct": row.sideways_pct,
+        "top_class_probability": row.top_class_probability,
+        "as_of_date": row.as_of_date,
+        "predicted_for_date": row.target_date,
+        "model_version": row.model_version,
+        "model_details": model_details,
+        "gate_reason": row.gate_reason or "",
+        "market_context": None,
+    }
+
+
+def _latest_feature_date(symbol: str) -> date | None:
+    from app.ml.serving.inference import get_features_dataframe
+
+    features = get_features_dataframe()
+    if features.empty or not {"symbol", "date"}.issubset(features.columns):
+        return None
+    symbol_rows = features[features["symbol"].astype(str).str.upper() == symbol]
+    if symbol_rows.empty:
+        return None
+    return pd.to_datetime(symbol_rows["date"]).max().date()
 
 
 @router.get(
@@ -70,11 +114,10 @@ async def get_stock_forecast(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Run ensemble inference for a PSX symbol, **upsert** the prediction into
-    `predictions`, and return the live forecast payload.
+    Prefer the latest daily prediction row, falling back to inference only
+    when no batch prediction exists for the requested symbol and horizon.
 
-    Daily batch also upserts all active symbols at 18:00 PKT. Calling this
-    endpoint mid-day refreshes the same unique (symbol, horizon, as_of_date) row.
+    The daily batch refreshes all active KSE-100 symbols before market open.
     """
     try:
         symbol_upper = symbol.strip().upper()
@@ -92,70 +135,95 @@ async def get_stock_forecast(
                 "AI Forecasts and Ensemble ML models are trained and calibrated exclusively for KSE-100 constituent stocks."
             )
 
-        cache_key = f"forecast:stock:v3:{symbol_upper}:{horizon}"
+        cache_key = f"forecast:response:v5:{symbol_upper}:{horizon}"
         cached = await cache_get(cache_key)
         if cached and isinstance(cached, dict):
-            # Overlay live intraday price if available
             try:
-                from app.services.stock_service import StockService
-                stock_svc = StockService()
-                quote = stock_svc.get_quote(symbol_upper)
-                if quote and (quote.get("current") or quote.get("ldcp")):
-                    curr_p = float(quote.get("current") or quote.get("ldcp"))
-                    if curr_p > 0:
-                        cached["current_price"] = round(curr_p, 2)
-                        tp = cached.get("target_price")
-                        sl = cached.get("stop_loss")
-                        if tp:
-                            cached["upside_pct"] = round((tp - curr_p) / curr_p * 100, 2)
-                        if sl:
-                            cached["downside_pct"] = round((sl - curr_p) / curr_p * 100, 2)
-            except Exception:
-                pass
-            return ForecastResponse(**cached)
+                return ForecastResponse(**cached)
+            except ValidationError as exc:
+                log.warning(
+                    "Ignoring invalid cached forecast for %s/%s: %s",
+                    symbol_upper,
+                    horizon,
+                    exc,
+                )
 
-        if not artifacts.model_ready:
-            raise ServiceUnavailableError("ML model is not loaded yet")
-
-        result = await run_in_threadpool(get_forecast, symbol_upper, horizon=horizon)
-
-        await log_prediction(
-            db,
-            symbol=result["symbol"],
-            horizon=result["horizon"],
-            predicted_direction=result["direction"],
-            bullish_pct=result["bullish_pct"],
-            bearish_pct=result["bearish_pct"],
-            sideways_pct=result["sideways_pct"],
-            top_class_probability=result["top_class_probability"],
-            as_of_date=result["as_of_date"],
-            target_date=result["predicted_for_date"],
-            model_version=result["model_version"],
-            gate_reason=result.get("gate_reason", ""),
-            model_details=result.get("model_details"),
+        saved_result = await db.execute(
+            select(Prediction)
+            .where(
+                Prediction.symbol == symbol_upper,
+                Prediction.horizon == horizon,
+            )
+            .order_by(Prediction.as_of_date.desc(), Prediction.predicted_at.desc())
+            .limit(1)
         )
+        saved_prediction = saved_result.scalar_one_or_none()
+        shared_cache_ready = await dataset_refresh_ready("forecasts")
+        saved_prediction_is_fresh = False
+        if saved_prediction is not None and shared_cache_ready:
+            try:
+                latest_data_date = await run_in_threadpool(_latest_feature_date, symbol_upper)
+                saved_prediction_is_fresh = (
+                    latest_data_date is not None
+                    and saved_prediction.as_of_date == latest_data_date
+                )
+            except Exception:
+                log.warning(
+                    "Could not verify saved forecast freshness for %s; using live inference",
+                    symbol_upper,
+                    exc_info=True,
+                )
+
+        if saved_prediction is not None and saved_prediction_is_fresh:
+            result = _prediction_result(saved_prediction)
+        elif not artifacts.model_ready:
+            raise ServiceUnavailableError(
+                "A fresh forecast is unavailable: Redis is down, the daily refresh has not "
+                "completed, or the saved prediction is stale; ML inference is not ready."
+            )
+        else:
+            result = await run_in_threadpool(get_forecast, symbol_upper, horizon=horizon)
+            await log_prediction(
+                db,
+                symbol=result["symbol"],
+                horizon=result["horizon"],
+                predicted_direction=result["direction"],
+                bullish_pct=result["bullish_pct"],
+                bearish_pct=result["bearish_pct"],
+                sideways_pct=result["sideways_pct"],
+                top_class_probability=result["top_class_probability"],
+                as_of_date=result["as_of_date"],
+                target_date=result["predicted_for_date"],
+                model_version=result["model_version"],
+                gate_reason=result.get("gate_reason", ""),
+                model_details=result.get("model_details"),
+            )
 
         target_stop = {"current_price": None, "target_price": None, "stop_loss": None}
         try:
-            from app.ml.serving.inference import FEATURES_PATH
+            from app.ml.serving.inference import get_features_dataframe
 
-            if FEATURES_PATH.exists():
-                df = pd.read_parquet(FEATURES_PATH)
+            df = get_features_dataframe()
+            if not pd.api.types.is_datetime64_any_dtype(df["date"]):
                 df["date"] = pd.to_datetime(df["date"])
-                sym_df = (
-                    df[df["symbol"] == result["symbol"]]
-                    .copy()
-                    .sort_values("date")
-                    .reset_index(drop=True)
+            as_of_date = pd.Timestamp(result["as_of_date"])
+            sym_df = (
+                df[
+                    (df["symbol"] == result["symbol"])
+                    & (df["date"] <= as_of_date)
+                ]
+                .copy()
+                .sort_values("date")
+                .reset_index(drop=True)
+            )
+            if not sym_df.empty:
+                engine = RecommendationEngine()
+                target_stop = engine.compute_target_stop(
+                    result["symbol"],
+                    sym_df,
+                    ml_direction=result.get("direction"),
+                    horizon=horizon,
                 )
-                if not sym_df.empty:
-                    engine = RecommendationEngine()
-                    target_stop = engine.compute_target_stop(
-                        result["symbol"],
-                        sym_df,
-                        ml_direction=result.get("direction"),
-                        horizon=horizon,
-                    )
         except Exception:
             log.warning("Target/stop computation failed for %s", result["symbol"], exc_info=True)
 
@@ -208,7 +276,8 @@ async def get_stock_forecast(
                 )
 
         response = _build_forecast_response(result, horizon, target_stop)
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
+        if shared_cache_ready:
+            await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
         return response
 
     except SymbolNotFoundError as exc:
@@ -397,7 +466,8 @@ async def get_forecast_history(
         if not rows:
             raise NotFoundError(
                 f"No forecast history found for symbol '{symbol_upper}' horizon '{horizon}'. "
-                "Predictions appear after GET /forecast/{symbol} or the 18:00 PKT daily job."
+                "Predictions appear after GET /forecast/{symbol}, the 18:00 PKT workflow, "
+                "or the 05:30 PKT pre-market refresh."
             )
 
         items = []

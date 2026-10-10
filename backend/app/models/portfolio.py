@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum as PyEnum
 from uuid import uuid4
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, Numeric, String, func
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, JSON, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -36,4 +36,23 @@ class PortfolioTransaction(Base):
         Index("ix_portfolio_transactions_user_date", "user_id", "transaction_date"),
         Index("ix_portfolio_txns_user_date_created", "user_id", "transaction_date", "created_at"),
         Index("ix_portfolio_txns_user_symbol_date", "user_id", "symbol", "transaction_date", "created_at"),
+    )
+
+
+class PortfolioSnapshot(Base):
+    __tablename__ = "portfolio_snapshots"
+
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )

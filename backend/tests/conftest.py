@@ -420,10 +420,19 @@ def mock_market_service():
         return [{"symbol": "HBL", "name": "HBL", "sector": "Banking", "ldcp": 150.0, "open": 152.0,
                  "high": 155.0, "low": 149.0, "current": 154.0, "change": 4.0, "change_pct": 2.67, "volume": 5000000}]
 
+    async def mock_get_indices():
+        return [
+            {"index": "KSE-100", "code": "KSE100", "current": 42000.0, "change": 200.0, "change_pct": 0.48, "high": 42200.0, "low": 41800.0},
+            {"index": "KSE-30", "code": "KSE30", "current": 15000.0, "change": 50.0, "change_pct": 0.33, "high": 15100.0, "low": 14900.0},
+            {"index": "KMI-30", "code": "KMI30", "current": 8000.0, "change": -10.0, "change_pct": -0.12, "high": 8050.0, "low": 7950.0},
+        ]
+
     service.get_market_data.side_effect = mock_get_market_data
     service.get_gainers.side_effect = mock_get_gainers
     service.get_losers.side_effect = mock_get_losers
     service.get_volume_spikes.side_effect = mock_get_volume_spikes
+    service.get_indices.side_effect = mock_get_indices
+    service.indices_freshness.return_value = {"as_of": "2026-10-10T12:00:00Z", "is_stale": False}
 
     return service
 

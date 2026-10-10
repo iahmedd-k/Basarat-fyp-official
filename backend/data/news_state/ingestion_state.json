@@ -1,7 +1,7 @@
 {
   "last_successful_ingestion": "2026-09-16T10:30:00+00:00",
-  "updated_at": "2026-10-08T08:44:43.001772+00:00",
-  "total_runs": 14,
+  "updated_at": "2026-10-10T16:55:52.312172+00:00",
+  "total_runs": 28,
   "status": "failed",
   "last_run_started_at": "2026-10-01T11:30:05.258491+00:00",
   "new_articles": 7,

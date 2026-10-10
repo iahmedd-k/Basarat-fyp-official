@@ -10,13 +10,8 @@ log = logging.getLogger(__name__)
 
 def _get_sync_db():
     """Get a synchronous DB session for Celery tasks."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from app.core.config import get_settings
-
-    engine = create_engine(get_settings().DATABASE_URL_SYNC, pool_pre_ping=True)
-    Session = sessionmaker(bind=engine)
-    return Session()
+    from app.db.base import get_sync_session_factory
+    return get_sync_session_factory()()
 
 
 @shared_task(
@@ -28,9 +23,9 @@ def _get_sync_db():
     time_limit=4200,
 )
 def precompute_all_portfolio_performance(self):
-    """Precompute portfolio performance for all users with active holdings.
+    """Prewarm portfolio snapshots, common GET caches, and performance series.
     
-    Runs daily after market close to populate Redis cache with performance data.
+    Runs after market close and once after deployment.
     """
     from app.models.portfolio import PortfolioTransaction
     from sqlalchemy import select
@@ -57,12 +52,14 @@ def precompute_all_portfolio_performance(self):
                 async def run_precompute():
                     async with async_session_factory() as session:
                         service = PortfolioService(session)
-                        return await service.precompute_all_performance(user_id)
+                        result = await service.prewarm_portfolio_get_caches(user_id)
+                        await session.commit()
+                        return result
                 
                 loop = asyncio.new_event_loop()
                 try:
                     result = loop.run_until_complete(run_precompute())
-                    log.debug("Precomputed performance for user %s: %s", user_id, list(result.keys()))
+                    log.debug("Warmed portfolio GET caches for user %s: %s", user_id, result)
                 finally:
                     loop.close()
                 
@@ -99,7 +96,9 @@ def precompute_user_portfolio_performance(self, user_id: str):
         async def run_precompute():
             async with async_session_factory() as session:
                 service = PortfolioService(session)
-                return await service.precompute_all_performance(user_id)
+                result = await service.prewarm_portfolio_get_caches(user_id)
+                await session.commit()
+                return result
         
         loop = asyncio.new_event_loop()
         try:
@@ -110,7 +109,7 @@ def precompute_user_portfolio_performance(self, user_id: str):
         return {
             "status": "completed",
             "user_id": user_id,
-            "periods": list(result.keys()),
+            **result,
             "completed_at": datetime.utcnow().isoformat(),
         }
     except Exception as exc:

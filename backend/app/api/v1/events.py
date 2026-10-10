@@ -55,6 +55,9 @@ async def get_events_calendar(
             except ValueError:
                 raise BadRequestError(f"Invalid 'to' date format '{to_date}'. Expected YYYY-MM-DD.")
 
+        if fd and td and fd > td:
+            raise BadRequestError("Start date ('from') cannot be after end date ('to').")
+
         sym = symbol.strip().upper() if symbol else None
         etype = event_type.strip().lower() if event_type else None
 

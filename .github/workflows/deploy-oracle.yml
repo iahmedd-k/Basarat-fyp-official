@@ -218,3 +218,12 @@ jobs:
                 "docker login ghcr.io --username iahmedd-k --password-stdin"
           ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$ORACLE_USER@$ORACLE_HOST" \
             "cd \"\$HOME/basarat\" && COMPOSE='docker compose --env-file .env --env-file .env.monitoring -f docker-compose.yml -f docker-compose.monitoring.yml' && BACKEND_IMAGE='$IMAGE' \$COMPOSE pull && BACKEND_IMAGE='$IMAGE' \$COMPOSE stop app celery-worker celery-beat migrate || true && BACKEND_IMAGE='$IMAGE' \$COMPOSE rm -f -s app celery-worker celery-beat migrate || true && docker container prune -f || true && BACKEND_IMAGE='$IMAGE' \$COMPOSE up -d --remove-orphans --wait --wait-timeout 300 && \$COMPOSE ps"
+
+      - name: Prune unused Docker images
+        if: always()
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          ssh -i "$HOME/.ssh/oracle_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$ORACLE_USER@$ORACLE_HOST" \
+            "docker image prune -a -f && echo 'Unused images pruned successfully'"

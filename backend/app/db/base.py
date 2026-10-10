@@ -36,14 +36,18 @@ def get_sync_engine():
     """Lazy-init sync engine for Celery tasks."""
     global _sync_engine
     if _sync_engine is None:
-        _sync_engine = create_engine(
-            sync_database_url(settings.DATABASE_URL, settings.DATABASE_URL_SYNC),
-            pool_pre_ping=True,
-            pool_size=2,
-            max_overflow=0,
-            pool_recycle=1200,
-            future=True,
+        sync_url = sync_database_url(
+            settings.DATABASE_URL, settings.DATABASE_URL_SYNC
         )
+        engine_kwargs = {"future": True}
+        if not sync_url.drivername.startswith("sqlite"):
+            engine_kwargs.update({
+                "pool_pre_ping": True,
+                "pool_size": 2,
+                "max_overflow": 0,
+                "pool_recycle": 1200,
+            })
+        _sync_engine = create_engine(sync_url, **engine_kwargs)
     return _sync_engine
 
 

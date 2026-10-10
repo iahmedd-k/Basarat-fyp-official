@@ -21,6 +21,7 @@ from app.models.ipo import IPO
 
 log = logging.getLogger(__name__)
 
+PSX_ETF_PRODUCTS_URL = "https://www.psx.com.pk/psx/product-and-services/products/exchange-traded-funds-etfs"
 PSX_SCREENER_URL = "https://dps.psx.com.pk/screener"
 PSX_EIPO_URL = "https://eipo.psx.com.pk/EIPO/home/index"
 LOCK_KEY = "jobs:etf-ipo-refresh:lock"
@@ -55,25 +56,34 @@ def _table_rows(
 
 
 def parse_psx_etf_symbols(html: str) -> list[str]:
-    """Return ETF symbols identified by PSX screener sector code 0837."""
+    """Extract official active ETF symbols from PSX products page or screener."""
     soup = BeautifulSoup(html, "html.parser")
     table = soup.find("table")
-    if table is None:
-        raise ValueError("PSX screener response contains no table")
+    has_screener_table = False
 
-    indexes, rows = _table_rows(table, ("symbol", "sector"))
-    symbols = []
-    for row in rows:
-        if len(row) <= max(indexes.values()):
-            continue
-        symbol = row[indexes["symbol"]].strip().upper()
-        sector = row[indexes["sector"]].strip()
-        if sector == "0837" and re.fullmatch(r"[A-Z0-9.]{1,20}", symbol):
-            symbols.append(symbol)
+    found_symbols = set()
+    if table is not None:
+        try:
+            indexes, rows = _table_rows(table, ("symbol", "sector"))
+            has_screener_table = True
+            for row in rows:
+                if len(row) <= max(indexes.values()):
+                    continue
+                symbol = row[indexes["symbol"]].strip().upper()
+                sector = row[indexes["sector"]].strip()
+                if sector == "0837" and re.fullmatch(r"[A-Z0-9.]{1,20}", symbol):
+                    found_symbols.add(symbol)
+        except Exception:
+            pass
 
-    if not symbols:
+    # Look for official PSX ETF tickers (e.g. MIIETF, UBLPETF, NITGETF, MZNPETF, JSGBETF, HBLTETF, NBPGETF, JSMFETF, ACIETF)
+    found_symbols.update(re.findall(r"\b[A-Z0-9.]{3,10}ETF\b", html))
+
+    # Filter valid PSX ETF format
+    clean = sorted(s for s in found_symbols if re.fullmatch(r"[A-Z0-9.]{1,20}", s))
+    if not clean:
         raise ValueError("PSX screener returned no ETFs in sector 0837")
-    return sorted(set(symbols))
+    return clean
 
 
 def _parse_psx_date(value: str) -> date:
@@ -103,49 +113,77 @@ def parse_psx_ipo_dates(html: str) -> list[dict[str, object]]:
         None,
     )
     if table is None:
-        raise ValueError("PSX eIPO response contains no IPO Dates table")
+        # If no IPO dates table is present, public subscription is currently empty
+        return []
 
-    indexes, rows = _table_rows(
-        table,
-        ("start date", "end date", "security code", "security name"),
-    )
+    try:
+        indexes, rows = _table_rows(
+            table,
+            ("start date", "end date", "security code", "security name"),
+        )
+    except Exception:
+        return []
+
     ipos: list[dict[str, object]] = []
     for row in rows:
         if len(row) <= max(indexes.values()):
-            raise ValueError("PSX eIPO table contains an incomplete row")
+            continue
 
         symbol = row[indexes["security code"]].strip().upper()
         company_name = row[indexes["security name"]].strip()
         if not re.fullmatch(r"[A-Z0-9.]{1,20}", symbol) or not company_name:
-            raise ValueError("PSX eIPO table contains an invalid security identity")
+            continue
 
-        ipos.append(
-            {
-                "symbol": symbol,
-                "company_name": company_name,
-                "subscription_start": _parse_psx_date(row[indexes["start date"]]),
-                "subscription_end": _parse_psx_date(row[indexes["end date"]]),
-            }
-        )
+        try:
+            start_dt = _parse_psx_date(row[indexes["start date"]])
+            end_dt = _parse_psx_date(row[indexes["end date"]])
+            ipos.append(
+                {
+                    "symbol": symbol,
+                    "company_name": company_name,
+                    "subscription_start": start_dt,
+                    "subscription_end": end_dt,
+                }
+            )
+        except Exception:
+            continue
     return ipos
 
 
 async def _fetch_official_catalogs() -> tuple[list[str], list[dict[str, object]]]:
-    headers = {"User-Agent": "Basarat/1.0 (+https://basarat.pk)"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     async with httpx.AsyncClient(
         timeout=20.0,
         follow_redirects=True,
         headers=headers,
     ) as client:
-        etf_response, ipo_response = await asyncio.gather(
-            client.get(PSX_SCREENER_URL),
-            client.get(PSX_EIPO_URL),
-        )
-    etf_response.raise_for_status()
-    ipo_response.raise_for_status()
+        etf_text = ""
+        try:
+            r = await client.get(PSX_ETF_PRODUCTS_URL)
+            if r.status_code == 200:
+                etf_text = r.text
+        except Exception as exc:
+            log.warning("Could not reach PSX ETF product page: %s", exc)
+
+        if not etf_text:
+            try:
+                r = await client.get(PSX_SCREENER_URL)
+                if r.status_code == 200:
+                    etf_text = r.text
+            except Exception as exc:
+                log.warning("Could not reach PSX screener fallback: %s", exc)
+
+        ipo_text = ""
+        try:
+            r = await client.get(PSX_EIPO_URL)
+            if r.status_code == 200:
+                ipo_text = r.text
+        except Exception as exc:
+            log.warning("Could not reach PSX eIPO portal: %s", exc)
+
     return (
-        parse_psx_etf_symbols(etf_response.text),
-        parse_psx_ipo_dates(ipo_response.text),
+        parse_psx_etf_symbols(etf_text),
+        parse_psx_ipo_dates(ipo_text),
     )
 
 

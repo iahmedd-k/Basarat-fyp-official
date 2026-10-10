@@ -1,5 +1,6 @@
 """Dedicated Redis cache layer and invalidation manager for high-throughput Community APIs."""
 
+import asyncio
 import logging
 from typing import Any, Optional
 from app.core.redis import (
@@ -72,11 +73,13 @@ class CommunityCacheService:
     @staticmethod
     def post_comments_key(
         post_id: str,
-        cursor: Optional[str],
-        limit: int,
+        cursor: Optional[str] = None,
+        limit: int = 20,
         viewer_id: Optional[str] = None,
     ) -> str:
-        return f"community:comments:{post_id}:{cursor or 'first'}:{limit}:{viewer_id or 'public'}"
+        if viewer_id:
+            return f"community:comments:{post_id}:{cursor or 'first'}:{limit}:{viewer_id}"
+        return f"community:comments:{post_id}:{cursor or 'first'}:{limit}"
 
     @staticmethod
     def comment_replies_key(comment_id: str, limit: int) -> str:
@@ -105,19 +108,24 @@ class CommunityCacheService:
         author_id: Optional[str] = None,
         stock_symbol: Optional[str] = None,
     ) -> None:
-        """Invalidate all caches related to a post update, deletion, creation, like, or bookmark."""
+        """Invalidate all caches related to a post update, deletion, creation, like, or bookmark in parallel."""
         try:
-            await cache_invalidate_pattern(f"community:post_detail:{post_id}:*")
-            await cache_invalidate_pattern(f"community:comments:{post_id}:*")
-            await cache_invalidate_pattern("community:feed:*")
-            await cache_invalidate_pattern("community:trending*")
-            await cache_invalidate_pattern("community:search:*")
+            tasks = [
+                cache_invalidate_pattern(f"community:post_detail:{post_id}:*"),
+                cache_invalidate_pattern(f"community:comments:{post_id}:*"),
+                cache_invalidate_pattern("community:feed:*"),
+                cache_invalidate_pattern("community:trending*"),
+                cache_invalidate_pattern("community:search:*"),
+            ]
             if author_id:
-                await cache_invalidate_pattern(f"community:user_posts:{author_id}:*")
-                await cache_invalidate_pattern(f"community:unified_profile:{author_id}:*")
-                await cache_invalidate_pattern(f"community:profile:{author_id}:*")
+                tasks.extend([
+                    cache_invalidate_pattern(f"community:user_posts:{author_id}:*"),
+                    cache_invalidate_pattern(f"community:unified_profile:{author_id}:*"),
+                    cache_invalidate_pattern(f"community:profile:{author_id}:*"),
+                ])
             if stock_symbol:
-                await cache_invalidate_pattern(f"community:feed:stock:{stock_symbol.upper()}:*")
+                tasks.append(cache_invalidate_pattern(f"community:feed:stock:{stock_symbol.upper()}:*"))
+            await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
             log.warning("Failed invalidating post cache for %s: %s", post_id, e)
 
@@ -127,12 +135,15 @@ class CommunityCacheService:
         post_id: str,
         comment_id: Optional[str] = None,
     ) -> None:
-        """Invalidate caches related to new or deleted comments."""
+        """Invalidate caches related to new or deleted comments in parallel."""
         try:
-            await cache_invalidate_pattern(f"community:comments:{post_id}:*")
-            await cache_invalidate_pattern(f"community:post_detail:{post_id}:*")
+            tasks = [
+                cache_invalidate_pattern(f"community:comments:{post_id}:*"),
+                cache_invalidate_pattern(f"community:post_detail:{post_id}:*"),
+            ]
             if comment_id:
-                await cache_invalidate_pattern(f"community:replies:{comment_id}:*")
+                tasks.append(cache_invalidate_pattern(f"community:replies:{comment_id}:*"))
+            await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
             log.warning("Failed invalidating comment cache for post %s: %s", post_id, e)
 
@@ -142,24 +153,30 @@ class CommunityCacheService:
         follower_id: str,
         following_id: str,
     ) -> None:
-        """Invalidate follow status, followers/following lists, and affected user profiles."""
+        """Invalidate follow status, followers/following lists, and affected user profiles in parallel."""
         try:
-            await cache_invalidate(cls.follow_status_key(follower_id, following_id))
-            await cache_invalidate_pattern(f"community:followers:{following_id}:*")
-            await cache_invalidate_pattern(f"community:following:{follower_id}:*")
-            await cache_invalidate_pattern(f"community:profile:{following_id}:*")
-            await cache_invalidate_pattern(f"community:profile:{follower_id}:*")
-            await cache_invalidate_pattern(f"community:unified_profile:{following_id}:*")
-            await cache_invalidate_pattern(f"community:unified_profile:{follower_id}:*")
-            await cache_invalidate_pattern(f"community:feed:{follower_id}:*")
+            tasks = [
+                cache_invalidate(cls.follow_status_key(follower_id, following_id)),
+                cache_invalidate_pattern(f"community:followers:{following_id}:*"),
+                cache_invalidate_pattern(f"community:following:{follower_id}:*"),
+                cache_invalidate_pattern(f"community:profile:{following_id}:*"),
+                cache_invalidate_pattern(f"community:profile:{follower_id}:*"),
+                cache_invalidate_pattern(f"community:unified_profile:{following_id}:*"),
+                cache_invalidate_pattern(f"community:unified_profile:{follower_id}:*"),
+                cache_invalidate_pattern(f"community:feed:{follower_id}:*"),
+            ]
+            await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
             log.warning("Failed invalidating follow cache: %s", e)
 
     @classmethod
     async def invalidate_notification_mutations(cls, user_id: str) -> None:
-        """Invalidate notifications and unread counts for a user."""
+        """Invalidate notifications and unread counts for a user in parallel."""
         try:
-            await cache_invalidate(cls.unread_count_key(user_id))
-            await cache_invalidate_pattern(f"community:notifications:{user_id}:*")
+            tasks = [
+                cache_invalidate(cls.unread_count_key(user_id)),
+                cache_invalidate_pattern(f"community:notifications:{user_id}:*"),
+            ]
+            await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
             log.warning("Failed invalidating notification cache for %s: %s", user_id, e)

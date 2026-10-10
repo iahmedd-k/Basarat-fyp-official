@@ -26,13 +26,9 @@ class Settings(BaseSettings):
     BCRYPT_ROUNDS: int = 10
 
     # CORS
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-    ]
+    CORS_ORIGINS: list[str] = ["*"]
     TRUSTED_PROXY_IPS: list[str] = []
-    ALLOWED_HOSTS: list[str] = ["localhost", "127.0.0.1", "testserver"]
+    ALLOWED_HOSTS: list[str] = ["*"]
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/basarat"
@@ -51,6 +47,7 @@ class Settings(BaseSettings):
     # Celery & Task Runner
     USE_CELERY: bool = True
     RUN_STARTUP_MARKET_WARMUP: bool = True
+    RUN_STARTUP_PORTFOLIO_WARMUP: bool = True
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 

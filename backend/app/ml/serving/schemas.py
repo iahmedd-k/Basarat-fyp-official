@@ -648,17 +648,17 @@ class MonteCarloResultResponse(BaseModel):
     percentiles: dict[str, float] = Field(default_factory=dict)
     stats: dict = Field(default_factory=dict)
     paths_sample: list[list[float]] = Field(default_factory=list)
-    error: str = ""
-    completed_at: str = ""
-    message: str = ""
+    error: str | None = None
+    completed_at: str | None = None
+    message: str | None = None
     portfolio_value: float = 0.0
     currency: str = "PKR"
     method: str = "gbm"
-    assumptions: str = ""
-    data_as_of: str = ""
+    assumptions: str | None = None
+    data_as_of: str | None = None
     symbols_used: list[str] = Field(default_factory=list)
     symbols_excluded: list[str] = Field(default_factory=list)
-    tail_estimate_reliable: bool = True
+    tail_estimate_reliable: bool | None = True
 
 
 class StressTestResponse(BaseModel):

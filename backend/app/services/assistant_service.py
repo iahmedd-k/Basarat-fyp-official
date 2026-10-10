@@ -331,14 +331,21 @@ class AssistantService:
         if output_filtered:
             log.warning("Output safety adjusted response for user %s: %s", user_id, violation_type)
 
-        if not skip_save_user:
-            await self._save_message(conversation.id, "user", message)
-        await self._save_message(conversation.id, "assistant", response)
+        try:
+            if not skip_save_user:
+                await self._save_message(conversation.id, "user", message)
+            await self._save_message(conversation.id, "assistant", response)
 
-        if conversation.title == "New Conversation":
-            conversation.title = message[:50] + ("..." if len(message) > 50 else "")
+            if conversation.title == "New Conversation":
+                conversation.title = message[:50] + ("..." if len(message) > 50 else "")
 
-        await self.db.commit()
+            await self.db.commit()
+        except Exception as persist_err:
+            log.warning("Could not persist conversation messages: %s", persist_err)
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
         finished = time.perf_counter()
         log.info(
             "Assistant chat timing: resolve_ms=%.0f history_ms=%.0f context_ms=%.0f "

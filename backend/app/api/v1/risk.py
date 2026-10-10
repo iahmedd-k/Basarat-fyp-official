@@ -58,16 +58,65 @@ async def _get_holdings(db: AsyncSession, user_id: str) -> list[HoldingInfo]:
     if not holdings:
         return []
 
+    quote_map = {}
+    unpriced_symbols = [
+        str(
+            holding.get("symbol", "")
+            if isinstance(holding, dict)
+            else getattr(holding, "symbol", "")
+        ).strip()
+        for holding in holdings
+        if float(
+            (holding.get("market_value") or holding.get("current_value") or 0)
+            if isinstance(holding, dict)
+            else (
+                getattr(holding, "market_value", None)
+                or getattr(holding, "current_value", 0)
+                or 0
+            )
+        ) <= 0
+    ]
+    if unpriced_symbols:
+        try:
+            quotes = await asyncio.to_thread(
+                portfolio_service.stock_service.get_quote_batch,
+                list(dict.fromkeys(unpriced_symbols)),
+            )
+            quote_rows = (
+                list(quotes.values())
+                if isinstance(quotes, dict)
+                else (quotes or [])
+            )
+            quote_map = {
+                str(quote["symbol"]).strip().upper(): quote
+                for quote in quote_rows
+                if isinstance(quote, dict) and quote.get("symbol")
+            }
+        except Exception:
+            log.warning(
+                "Could not fetch current quotes to value risk holdings",
+                exc_info=True,
+            )
+
     holdings_info: list[HoldingInfo] = []
     for h in holdings:
         if isinstance(h, dict):
             symbol = h.get("symbol", "")
             sector = h.get("sector") or "default"
             current_value = float(h.get("market_value") or h.get("current_value") or 0)
+            quantity = float(h.get("quantity") or 0)
         else:
             symbol = getattr(h, "symbol", "")
             sector = getattr(h, "sector", None) or "default"
             current_value = float(getattr(h, "market_value", None) or getattr(h, "current_value", 0) or 0)
+            quantity = float(getattr(h, "quantity", 0) or 0)
+        quote = quote_map.get(str(symbol).strip().upper(), {})
+        if current_value <= 0 and quantity > 0:
+            quote_price = quote.get("current") or quote.get("ldcp")
+            if quote_price is not None and float(quote_price) > 0:
+                current_value = quantity * float(quote_price)
+        if sector == "default" and quote.get("sector"):
+            sector = str(quote["sector"])
         holdings_info.append(
             HoldingInfo(
                 symbol=symbol,

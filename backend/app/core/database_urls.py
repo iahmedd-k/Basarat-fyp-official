@@ -18,11 +18,13 @@ def async_database_url(value: str) -> tuple[URL, dict]:
 
     query = dict(url.query)
     connect_args: dict = {}
-    sslmode = query.pop("sslmode", None)
-    if not sslmode and (url.host or "").endswith((".supabase.co", ".pooler.supabase.com")):
-        sslmode = "require"
-    if sslmode:
-        connect_args["ssl"] = sslmode
+    ssl_param = query.pop("sslmode", None) or query.pop("ssl", None)
+    if not ssl_param and (url.host or "").endswith(
+        (".supabase.co", ".pooler.supabase.com", ".neon.tech", ".aivencloud.com")
+    ):
+        ssl_param = "require"
+    if ssl_param:
+        connect_args["ssl"] = ssl_param
     if url.port == 6543 or "-pooler" in (url.host or "") or "pooler" in (url.host or ""):
         # Supabase/Neon transaction poolers do not support prepared statements.
         connect_args["statement_cache_size"] = 0

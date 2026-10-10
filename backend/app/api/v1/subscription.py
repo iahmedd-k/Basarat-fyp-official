@@ -39,6 +39,8 @@ async def get_plans():
     return SubscriptionService.get_plans()
 
 
+from app.core.redis import cache_get, cache_set
+
 @router.get(
     "/subscriptions/usage",
     response_model=UsageSummaryResponse,
@@ -55,7 +57,14 @@ async def get_usage(
     service: SubscriptionService = Depends(_get_service),
 ):
     try:
-        return await service.get_usage_summary(user)
+        cache_key = f"subscriptions:usage:{user.id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return UsageSummaryResponse(**cached)
+
+        usage = await service.get_usage_summary(user)
+        await cache_set(cache_key, usage.model_dump(mode="json"), ttl_seconds=30)
+        return usage
     except Exception as exc:
         log.exception("Failed to fetch usage summary for %s", user.id)
         raise ServiceUnavailableError("Failed to fetch subscription usage")

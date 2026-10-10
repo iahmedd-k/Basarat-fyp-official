@@ -1,7 +1,12 @@
 # Deployment
 
 ## Target Environment
-Oracle Cloud Infrastructure (OCI) Ubuntu Virtual Machine (`193.123.84.223`) running Docker Compose containers.
+Oracle Cloud Infrastructure (OCI) Ubuntu Virtual Machine (`193.123.84.223`) serving production traffic via `https://api.basarat.live` with automated SSL and reverse proxying to Docker Compose containers.
+
+- **Production API Gateway**: `https://api.basarat.live`
+- **Interactive Swagger Documentation**: `https://api.basarat.live/docs`
+- **Interactive Architecture Topology**: `https://api.basarat.live/architecture`
+- **ReDoc Specification**: `https://api.basarat.live/redoc`
 
 ---
 
@@ -10,8 +15,8 @@ Oracle Cloud Infrastructure (OCI) Ubuntu Virtual Machine (`193.123.84.223`) runn
 ```
 GitHub Push (main) ──► GitHub Actions CI/CD Pipeline
   │
-  ├── 1. Automated Test Execution (pytest unit test suite)
-  ├── 2. Build Multi-Platform Docker Image
+  ├── 1. Automated Test Execution (pytest 627-test suite)
+  ├── 2. Build Multi-Platform ARM64 Docker Image
   ├── 3. Publish to GitHub Container Registry (ghcr.io/iahmedd-k/basarat-backend:<sha>)
   └── 4. SSH Remote Trigger to Oracle VM
         ├── Pull Latest Docker Image
@@ -56,5 +61,5 @@ docker logs -f basarat-celery-beat-1
 
 ## Health & Readiness Endpoints
 
-- **Liveness Probe**: `GET http://193.123.84.223:8000/health` $\to$ `{"status": "ok"}`
-- **Readiness Probe**: `GET http://193.123.84.223:8000/api/v1/health/ready` $\to$ Checks DB connection, Redis ping, Celery worker heartbeat, Celery beat scheduler, and ML model loaded states.
+- **Liveness Probe**: `GET https://api.basarat.live/health` $\to$ `{"status": "ok"}`
+- **Readiness Probe**: `GET https://api.basarat.live/api/v1/health/ready` $\to$ Checks DB connection, Redis ping, Celery worker heartbeat, Celery beat scheduler, and ML model loaded states.

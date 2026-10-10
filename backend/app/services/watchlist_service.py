@@ -49,9 +49,31 @@ class WatchlistService:
                 await cache_invalidate(f"watchlist:detail:{watchlist_id}")
             if symbol:
                 await cache_invalidate(f"watchlist:check:{user_id}:{symbol.upper()}")
-            await cache_invalidate_pattern(f"watchlist:check:{user_id}:*")
         except Exception as exc:
             log.warning("Error invalidating watchlist cache for user %s: %s", user_id, exc)
+
+    @staticmethod
+    async def _resolve_stock_references_batch(db: AsyncSession, values: Sequence[str]) -> list[Stock]:
+        """Batch-resolve multiple stock references in a single SQL round-trip."""
+        refs = [v.strip().upper() for v in values if v and v.strip()]
+        if not refs:
+            return []
+        result = await db.execute(
+            select(Stock).where(func.upper(Stock.symbol).in_(refs))
+        )
+        found = list(result.scalars().all())
+        found_syms = {s.symbol.upper() for s in found}
+        missing = [r for r in refs if r not in found_syms]
+        if missing:
+            missing_lower = [m.casefold() for m in missing]
+            res_names = await db.execute(
+                select(Stock).where(
+                    Stock.is_active == True,
+                    func.lower(func.trim(Stock.name)).in_(missing_lower),
+                )
+            )
+            found.extend(res_names.scalars().all())
+        return found
 
     @staticmethod
     async def _resolve_stock_reference(db: AsyncSession, value: str) -> Stock:
@@ -217,8 +239,23 @@ class WatchlistService:
         if data.symbols:
             seen_symbols = set()
             try:
-                for reference in data.symbols:
-                    stock = await self._resolve_stock_reference(db, reference)
+                stocks = await self._resolve_stock_references_batch(db, data.symbols)
+                unresolved = [
+                    reference
+                    for reference in data.symbols
+                    if not any(
+                        reference.strip().casefold() == stock.symbol.casefold()
+                        or reference.strip().casefold()
+                        == (stock.name or "").strip().casefold()
+                        for stock in stocks
+                    )
+                ]
+                if unresolved:
+                    raise NotFoundError(
+                        f"No active stock matches symbol or company name "
+                        f"'{unresolved[0]}'."
+                    )
+                for stock in stocks:
                     if stock.symbol not in seen_symbols:
                         seen_symbols.add(stock.symbol)
                         db.add(

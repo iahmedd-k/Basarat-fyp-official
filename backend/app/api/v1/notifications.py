@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
-from app.core.redis import cache_get, cache_set, cache_invalidate
+from app.core.redis import cache_get, cache_set, cache_invalidate, cache_invalidate_pattern
 from app.db.session import get_db
 from app.models.alert import Alert
 from app.models.user import User
@@ -95,8 +95,8 @@ async def mark_all_notifications_read(
             .values(is_read=True)
         )
         await db.flush()
-        await cache_invalidate(f"notifications:list:{user.id}:*")
-        await cache_invalidate(f"alerts:list:{user.id}:*")
+        await cache_invalidate_pattern(f"notifications:list:{user.id}:*")
+        await cache_invalidate_pattern(f"alerts:list:{user.id}:*")
     except Exception as exc:
         raise ServiceUnavailableError("Failed to mark all notifications as read")
 
@@ -125,8 +125,8 @@ async def mark_notification_read(
 
         alert.is_read = True
         await db.flush()
-        await cache_invalidate(f"notifications:list:{user.id}:*")
-        await cache_invalidate(f"alerts:list:{user.id}:*")
+        await cache_invalidate_pattern(f"notifications:list:{user.id}:*")
+        await cache_invalidate_pattern(f"alerts:list:{user.id}:*")
     except NotFoundError:
         raise
     except Exception as exc:

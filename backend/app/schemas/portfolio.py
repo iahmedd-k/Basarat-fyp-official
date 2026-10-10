@@ -19,6 +19,7 @@ class TransactionCreate(BaseModel):
     price: Decimal = Field(..., ge=0, description="Price per share", max_digits=18, decimal_places=4)
     fee: Decimal = Field(default=Decimal("0"), ge=0, description="Transaction fee", max_digits=18, decimal_places=4)
     transaction_date: date = Field(..., description="Transaction date (YYYY-MM-DD)")
+    confirm_outlier: bool = Field(default=False, description="Set to true to confirm an intentional price outlier (e.g., rights issue, bonus share, off-market transfer)")
 
     @field_validator("symbol")
     @classmethod
@@ -34,6 +35,13 @@ class TransactionCreate(BaseModel):
     @classmethod
     def _normalize_type(cls, v: str) -> str:
         return v.strip().upper()
+
+    @field_validator("transaction_date")
+    @classmethod
+    def _validate_date(cls, v: date) -> date:
+        if v > date.today():
+            raise ValueError("transaction_date cannot be in the future")
+        return v
 
 
 class CompletedTradeCreate(BaseModel):

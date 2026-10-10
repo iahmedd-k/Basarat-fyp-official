@@ -336,6 +336,49 @@ def _single_model_result(
     }
 
 
+_FEATURES_DATAFRAME_CACHE: pd.DataFrame | None = None
+_FEATURES_DATAFRAME_MTIME: float = 0.0
+
+
+def get_features_dataframe() -> pd.DataFrame:
+    """Load and cache features dataframe in memory across inference invocations."""
+    global _FEATURES_DATAFRAME_CACHE, _FEATURES_DATAFRAME_MTIME
+    if not FEATURES_PATH.is_file():
+        try:
+            from scripts.prepare_feature_assets import prepare_features
+            prepare_features()
+        except (FileNotFoundError, RuntimeError) as exc:
+            raise FileNotFoundError(
+                f"Forecast feature data is unavailable at {FEATURES_PATH}; "
+                "deploy backend/deploy_assets/ or provide the parquet snapshot."
+            ) from exc
+
+    mtime = FEATURES_PATH.stat().st_mtime
+    if _FEATURES_DATAFRAME_CACHE is not None and _FEATURES_DATAFRAME_MTIME == mtime:
+        return _FEATURES_DATAFRAME_CACHE
+
+    df = pd.read_parquet(FEATURES_PATH)
+    if not pd.api.types.is_datetime64_any_dtype(df["date"]):
+        df["date"] = pd.to_datetime(df["date"])
+    _FEATURES_DATAFRAME_CACHE = df
+    _FEATURES_DATAFRAME_MTIME = mtime
+    return _FEATURES_DATAFRAME_CACHE
+
+
+def forecast_cache_key(symbol: str, horizon: str, as_of_date: date) -> str:
+    """Build a forecast cache key tied to model versions and feature asset revision."""
+    try:
+        feature_revision = str(FEATURES_PATH.stat().st_mtime_ns)
+    except OSError:
+        feature_revision = "missing"
+    gru_version = str(getattr(artifacts, "model_version", None) or "unavailable")
+    xgb_version = str(getattr(artifacts, "xgb_model_version", None) or "unavailable")
+    return (
+        f"forecast:v4:{symbol.upper()}:{horizon}:{as_of_date.isoformat()}:"
+        f"{gru_version}:{xgb_version}:{feature_revision}"
+    )
+
+
 def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None = None) -> dict:
     """Run dual-model ensemble inference for a single symbol.
 
@@ -366,24 +409,14 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
     # keeps the API and recommendation paths on identical model inference while
     # avoiding a full parquet reload for every symbol in a recommendation list.
     if sym_df is None:
-        # ── Load feature data ──────────────────────────────────────────
-        if not FEATURES_PATH.is_file():
-            try:
-                from scripts.prepare_feature_assets import prepare_features
-                prepare_features()
-            except (FileNotFoundError, RuntimeError) as exc:
-                raise FileNotFoundError(
-                    f"Forecast feature data is unavailable at {FEATURES_PATH}; "
-                    "deploy backend/deploy_assets/ or provide the parquet snapshot."
-                ) from exc
-
-        df = pd.read_parquet(FEATURES_PATH)
+        df = get_features_dataframe()
         sym_df = df[df["symbol"] == symbol].copy()
     else:
         sym_df = sym_df.copy()
     if sym_df.empty:
         raise InsufficientHistoryError(f"No forecast feature rows are available for {symbol}")
-    sym_df["date"] = pd.to_datetime(sym_df["date"])
+    if not pd.api.types.is_datetime64_any_dtype(sym_df["date"]):
+        sym_df["date"] = pd.to_datetime(sym_df["date"])
     sym_df = sym_df.sort_values("date").reset_index(drop=True)
 
     as_of_date = sym_df["date"].iloc[-1].date()
@@ -391,8 +424,7 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
     # Inference is deterministic for a (symbol, session, horizon, model)
     # tuple. Share the result in Redis so forecast API calls and recommendation
     # generation do not run the same model repeatedly across workers.
-    model_cache_version = str(getattr(artifacts, "model_version", None) or "current")
-    cache_key = f"forecast:v3:{symbol}:{horizon}:{as_of_date.isoformat()}:{model_cache_version}"
+    cache_key = forecast_cache_key(symbol, horizon, as_of_date)
     try:
         from app.core.redis import cache_get_sync
         cached_forecast = cache_get_sync(cache_key)
@@ -400,6 +432,9 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
             for field in ("as_of_date", "predicted_for_date"):
                 if isinstance(cached_forecast.get(field), str):
                     cached_forecast[field] = date.fromisoformat(cached_forecast[field][:10])
+            from app.core.redis import cache_set_sync
+
+            cache_set_sync(cache_key, cached_forecast, 36 * 3600)
             return cached_forecast
     except Exception:
         pass
@@ -407,6 +442,8 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
     # ── Run both models ────────────────────────────────────────────────
     gru_result = _run_gru(symbol, sym_df)
     xgb_result = _run_xgb(symbol, as_of_date, sym_df, horizon=horizon)
+    if gru_result is None and xgb_result is None:
+        raise RuntimeError(f"No forecast model produced a result for {symbol} ({horizon})")
 
     # ── Ensemble decision ──────────────────────────────────────────────
     ensemble = _ensemble_decide(gru_result, xgb_result, horizon=horizon)
