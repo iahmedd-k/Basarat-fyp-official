@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-basarat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-basarat_local_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-basarat}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-basarat} -d ${POSTGRES_DB:-basarat}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    mem_limit: 1g
+    restart: unless-stopped
+
   migrate:
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to the published ARM64 image}
     command: alembic upgrade head
@@ -20,6 +36,8 @@ services:
       REDIS_ENABLED: "true"
       USE_CELERY: "true"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     restart: "no"
@@ -59,6 +77,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -101,6 +121,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -134,6 +156,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -164,3 +188,4 @@ volumes:
   training-reports:
   beat-state:
   redis-data:
+  postgres-data:

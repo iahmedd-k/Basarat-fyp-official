@@ -5,7 +5,7 @@ import json
 import logging
 import time
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -26,8 +26,8 @@ _mem_cache: dict[str, tuple[Any, float]] = {}
 _redis_retry_after = 0.0
 _REDIS_FAILURE_BACKOFF_SECONDS = 30.0
 _REDIS_PRIMARY_RETRY_SECONDS = 30.0
-REDIS_CONNECT_TIMEOUT_SECONDS = 1.5
-REDIS_SOCKET_TIMEOUT_SECONDS = 2.0
+REDIS_CONNECT_TIMEOUT_SECONDS = 0.15
+REDIS_SOCKET_TIMEOUT_SECONDS = 0.15
 _L1_TTL_SECONDS = 5.0
 _MISSING = object()
 
@@ -346,7 +346,10 @@ async def cache_get(key: str) -> Any | None:
         if not client or not _redis_available_for_attempt():
             return None
         try:
-            val = await client.get(key)
+            val = await asyncio.wait_for(
+                client.get(key),
+                timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+            )
             _mark_redis_success()
             if val is not None:
                 parsed = json.loads(val)
@@ -380,7 +383,10 @@ async def cache_get_many(keys: list[str]) -> dict[str, Any]:
     client = get_redis_client()
     if missing and client and _redis_available_for_attempt():
         try:
-            cached_values = await client.mget(missing)
+            cached_values = await asyncio.wait_for(
+                client.mget(missing),
+                timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+            )
             _mark_redis_success()
             for key, value in zip(missing, cached_values):
                 if value is None:
@@ -406,7 +412,10 @@ async def cache_set(key: str, value: Any, ttl_seconds: int = 60) -> None:
         if not client or not _redis_available_for_attempt():
             break
         try:
-            await client.setex(key, ttl_seconds, raw)
+            await asyncio.wait_for(
+                client.setex(key, ttl_seconds, raw),
+                timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+            )
             _mark_redis_success()
             redis_ok = True
             break
@@ -428,7 +437,10 @@ async def cache_invalidate(key: str) -> None:
     client = get_redis_client()
     if client and _redis_available_for_attempt():
         try:
-            await client.delete(key)
+            await asyncio.wait_for(
+                client.delete(key),
+                timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+            )
             _mark_redis_success()
         except Exception as exc:
             switched = _switch_async_redis_url()
@@ -441,17 +453,29 @@ async def cache_invalidate_pattern(pattern: str) -> None:
     """Invalidate keys matching pattern."""
     _restore_async_primary_if_due()
     client = get_redis_client()
-    if client:
+    if client and _redis_available_for_attempt():
         try:
-            cursor = 0
-            while True:
-                cursor, keys = await client.scan(cursor, match=pattern, count=500)
-                if keys:
-                    await client.delete(*keys)
-                if cursor == 0:
-                    break
+            async def _scan_and_delete() -> None:
+                cursor = 0
+                while True:
+                    cursor, keys = await client.scan(cursor, match=pattern, count=500)
+                    if keys:
+                        await client.delete(*keys)
+                    if cursor == 0:
+                        break
+
+            await asyncio.wait_for(
+                _scan_and_delete(),
+                timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+            )
+            _mark_redis_success()
+        except asyncio.TimeoutError:
+            _mark_redis_failure()
+            log.warning("Redis pattern invalidation timed out for key pattern %s", pattern)
         except Exception as exc:
-            log.debug("Redis scan/delete error: %s", exc)
+            switched = _switch_async_redis_url()
+            _mark_redis_failure(retry_primary=not switched)
+            log.warning("Redis pattern invalidation failed for %s: %s", pattern, exc)
 
     # Also clean matching keys in memory cache
     import fnmatch

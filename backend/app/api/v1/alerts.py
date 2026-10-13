@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import get_current_user
 from app.core.exceptions import NotFoundError, ServiceUnavailableError
+from app.core.redis import cache_invalidate_pattern
 from app.db.session import get_db
 from app.models.alert import Alert, AlertRule
 from app.models.stock import Stock, StockPrice
@@ -20,6 +21,7 @@ from app.schemas.auth import (
     QuickAlertRuleResponse,
 )
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 router = APIRouter()
@@ -170,8 +172,6 @@ async def create_quick_alert_rule(
         await db.flush()
         for r in created_rules:
             await db.refresh(r)
-        await cache_invalidate(f"alerts:rules:{user.id}")
-        await cache_invalidate_pattern(f"alerts:check:{user.id}:*")
 
         rule_responses = [
             AlertRuleResponse(
@@ -219,11 +219,6 @@ async def check_stock_alerts(
     """Returns active alert rules configured for a stock symbol."""
     try:
         clean_sym = symbol.strip().upper()
-        cache_key = f"alerts:check:{user.id}:{clean_sym}"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return AlertStockCheckResponse(**cached)
-
         stmt = (
             select(AlertRule, Stock)
             .join(Stock, AlertRule.stock_id == Stock.id)
@@ -256,7 +251,6 @@ async def check_stock_alerts(
             has_active_alert=len(rules) > 0,
             rules=rules,
         )
-        await cache_set(cache_key, resp.model_dump(mode="json"), ttl_seconds=60)
         return resp
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to check stock alerts: {exc}")
@@ -275,25 +269,18 @@ async def delete_stock_alerts(
     """Deletes all alert rules for a given stock symbol owned by the authenticated user."""
     try:
         clean_sym = symbol.strip().upper()
-        stock_res = await db.execute(select(Stock.id).where(func.upper(Stock.symbol) == clean_sym))
-        stock_id = stock_res.scalar()
-        if stock_id:
-            from sqlalchemy import delete
-            await db.execute(
-                delete(AlertRule).where(
-                    AlertRule.user_id == user.id,
-                    AlertRule.stock_id == stock_id,
-                )
+        from sqlalchemy import delete
+        await db.execute(
+            delete(AlertRule).where(
+                AlertRule.user_id == user.id,
+                AlertRule.stock_id == select(Stock.id).where(func.upper(Stock.symbol) == clean_sym).scalar_subquery(),
             )
-            await db.flush()
-            await cache_invalidate(f"alerts:rules:{user.id}")
-            await cache_invalidate_pattern(f"alerts:check:{user.id}:*")
+        )
+        await db.commit()
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to delete stock alerts: {exc}")
 
 
-
-from app.core.redis import cache_get, cache_set, cache_invalidate, cache_invalidate_pattern
 
 @router.get(
     "/alerts/rules",
@@ -310,11 +297,6 @@ async def get_alert_rules(
     threshold value, and active toggle state.
     """
     try:
-        cache_key = f"alerts:rules:{user.id}"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return [AlertRuleResponse(**item) for item in cached]
-
         stmt = (
             select(AlertRule, Stock)
             .outerjoin(Stock, AlertRule.stock_id == Stock.id)
@@ -337,7 +319,6 @@ async def get_alert_rules(
             )
             for r, s in rows
         ]
-        await cache_set(cache_key, [r.model_dump(mode="json") for r in rule_responses], ttl_seconds=60)
         return rule_responses
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to fetch alert rules: {exc}")
@@ -381,18 +362,19 @@ async def create_alert_rule(
                 created_at=existing.created_at.isoformat() if existing.created_at else "",
             )
 
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        rule_id = uuid4().hex
         rule = AlertRule(
+            id=rule_id,
             user_id=user.id,
             stock_id=stock_id,
             condition=data.condition,
             threshold=data.threshold,
+            is_active=True,
+            created_at=now,
         )
         db.add(rule)
-        await db.flush()
-        await db.refresh(rule)
-        await cache_invalidate(f"alerts:rules:{user.id}")
-        await cache_invalidate_pattern(f"alerts:check:{user.id}:*")
-
+        await db.commit()
         return AlertRuleResponse(
             id=rule.id,
             user_id=rule.user_id,
@@ -427,14 +409,17 @@ async def update_alert_rule(
     """
     try:
         result = await db.execute(
-            select(AlertRule).where(
+            select(AlertRule, Stock)
+            .outerjoin(Stock, AlertRule.stock_id == Stock.id)
+            .where(
                 AlertRule.id == rule_id,
                 AlertRule.user_id == user.id,
             )
         )
-        rule = result.scalars().first()
-        if rule is None:
+        row = result.first()
+        if row is None:
             raise NotFoundError(f"Alert rule '{rule_id}' not found.")
+        rule, stock = row
 
         if data.stock_id is not None or data.symbol is not None or data.stock_name is not None:
             stock = await _resolve_stock(db, data.stock_id, data.symbol, data.stock_name)
@@ -447,15 +432,7 @@ async def update_alert_rule(
         if data.is_active is not None:
             rule.is_active = data.is_active
 
-        await db.flush()
-        await db.refresh(rule)
-        await cache_invalidate(f"alerts:rules:{user.id}")
-        await cache_invalidate_pattern(f"alerts:check:{user.id}:*")
-
-        stock = None
-        if rule.stock_id:
-            stock = await db.get(Stock, rule.stock_id)
-
+        await db.commit()
         return AlertRuleResponse(
             id=rule.id,
             user_id=rule.user_id,
@@ -496,9 +473,7 @@ async def delete_alert_rule(
             raise NotFoundError(f"Alert rule '{rule_id}' not found.")
 
         await db.delete(rule)
-        await db.flush()
-        await cache_invalidate(f"alerts:rules:{user.id}")
-        await cache_invalidate_pattern(f"alerts:check:{user.id}:*")
+        await db.commit()
     except NotFoundError:
         raise
     except Exception as exc:
@@ -519,11 +494,6 @@ async def get_alerts(
 ):
     """Retrieve financial, portfolio, and risk alerts generated for the user."""
     try:
-        cache_key = f"alerts:list:{user.id}:{page}:{limit}:{unread_only}"
-        cached = await cache_get(cache_key)
-        if cached is not None:
-            return [AlertResponse(**item) for item in cached]
-
         query = select(Alert).where(Alert.user_id == user.id)
         if unread_only:
             query = query.where(Alert.is_read == False)
@@ -538,15 +508,14 @@ async def get_alerts(
             AlertResponse(
                 id=a.id,
                 user_id=a.user_id,
-                rule_id=a.rule_id,
+                rule_id=a.rule_id or "",
                 title=a.title,
-                message=a.message,
+                message=a.message or "",
                 is_read=a.is_read,
                 created_at=a.created_at.isoformat() if a.created_at else "",
             )
             for a in alerts
         ]
-        await cache_set(cache_key, [r.model_dump(mode="json") for r in alert_responses], ttl_seconds=30)
         return alert_responses
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to fetch alerts: {exc}")
@@ -569,7 +538,6 @@ async def mark_all_alerts_read(
             .values(is_read=True)
         )
         await db.flush()
-        await cache_invalidate_pattern(f"alerts:list:{user.id}:*")
         await cache_invalidate_pattern(f"notifications:list:{user.id}:*")
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to mark all alerts as read: {exc}")
@@ -599,10 +567,8 @@ async def mark_alert_read(
 
         alert.is_read = True
         await db.flush()
-        await cache_invalidate_pattern(f"alerts:list:{user.id}:*")
         await cache_invalidate_pattern(f"notifications:list:{user.id}:*")
     except NotFoundError:
         raise
     except Exception as exc:
         raise ServiceUnavailableError(f"Failed to mark alert as read: {exc}")
-

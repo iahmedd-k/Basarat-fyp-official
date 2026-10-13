@@ -10,7 +10,8 @@ async def db_session() -> AsyncGenerator:
     async with async_session_factory() as session:
         try:
             yield session
-            await session.commit()
+            if session.is_active:
+                await session.commit()
         except Exception:
             if session.is_active:
                 await session.rollback()

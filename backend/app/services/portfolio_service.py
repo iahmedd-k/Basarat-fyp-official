@@ -48,8 +48,8 @@ logger = logging.getLogger(__name__)
 MARKET_QUOTES_KEY = "market:quotes"
 MARKET_QUOTES_FALLBACK_KEY = "market:quotes:last_known"
 
-# Portfolio cache TTL (5 minutes)
-PORTFOLIO_CACHE_TTL = 300
+# Portfolio cache TTL (24 hours, invalidated on transaction)
+PORTFOLIO_CACHE_TTL = 86400
 PORTFOLIO_SNAPSHOT_CACHE_TTL = 26 * 60 * 60
 PORTFOLIO_PERFORMANCE_PERIODS = ("1D", "1W", "1M", "3M", "6M", "1Y", "ALL")
 

@@ -430,7 +430,7 @@ async def get_recommendations(
             recommendations=items,
         )
         if shared_cache_ready:
-            await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+            await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=3600)
         return response
 
     except ServiceUnavailableError:

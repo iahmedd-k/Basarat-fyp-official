@@ -335,8 +335,8 @@ class ETFService:
             conventional_count=conventional_count,
             etfs=list(formatted),
         )
-        # Cache list response for 120 seconds
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+        # Cache list response for 24 hours (catalog updates invalidate this key automatically)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
         return response
 
     async def get_etf_by_symbol(self, symbol: str) -> ETFResponse:
@@ -352,7 +352,8 @@ class ETFService:
         if not etf:
             raise NotFoundError(f"ETF '{sym}' not found.")
         response = await self._format_etf_response(etf)
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+        # Cache detail response for 24 hours (catalog updates invalidate this key automatically)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
         return response
 
 

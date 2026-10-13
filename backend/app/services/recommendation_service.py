@@ -1045,10 +1045,13 @@ def get_cached_recommendations() -> list[dict] | None:
             )
             feature_dates["date"] = pd.to_datetime(feature_dates["date"])
             latest_by_symbol = feature_dates.groupby("symbol")["date"].max()
+            stale_count = 0
             for item in recommendations:
                 latest = latest_by_symbol.get(item.get("symbol"))
                 if latest is not None and str(latest.date()) > str(item["data_as_of"])[:10]:
-                    return None
+                    stale_count += 1
+            if stale_count > len(recommendations) * 0.25:
+                return None
         except (OSError, ValueError, KeyError):
             log.debug(
                 "Could not validate recommendation snapshot against feature dates",

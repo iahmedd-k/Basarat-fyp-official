@@ -226,7 +226,7 @@ async def get_transactions(
             page=page,
             limit=limit,
         )
-        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=60)
+        await cache_set(cache_key, res.model_dump(mode="json"), ttl_seconds=86400)
         return res
     except Exception as exc:
         logger.exception("Get transactions failed")

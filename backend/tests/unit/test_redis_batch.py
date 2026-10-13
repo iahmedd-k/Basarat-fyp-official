@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from datetime import datetime
@@ -34,6 +35,63 @@ async def test_cache_get_many_returns_empty_without_contacting_redis(monkeypatch
     assert await redis_cache.cache_get_many([]) == {}
 
     get_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pattern_invalidation_has_a_total_deadline(monkeypatch):
+    async def slow_scan(*_args, **_kwargs):
+        await asyncio.sleep(0.05)
+
+    client = AsyncMock()
+    client.scan.side_effect = slow_scan
+    failures = []
+    monkeypatch.setattr(redis_cache, "_restore_async_primary_if_due", lambda: None)
+    monkeypatch.setattr(redis_cache, "get_redis_client", lambda: client)
+    monkeypatch.setattr(redis_cache, "_redis_available_for_attempt", lambda: True)
+    monkeypatch.setattr(redis_cache, "REDIS_SOCKET_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(
+        redis_cache,
+        "_mark_redis_failure",
+        lambda **kwargs: failures.append(kwargs),
+    )
+
+    started = time.perf_counter()
+    await redis_cache.cache_invalidate_pattern("alerts:list:user:*")
+
+    assert time.perf_counter() - started < 0.1
+    assert failures == [{}]
+
+
+@pytest.mark.asyncio
+async def test_cache_get_fails_fast_and_opens_the_redis_backoff(monkeypatch):
+    async def slow_get(_key):
+        await asyncio.sleep(0.05)
+
+    client = AsyncMock()
+    client.get.side_effect = slow_get
+    availability = iter((True, False))
+    failures = []
+    monkeypatch.setattr(redis_cache, "_restore_async_primary_if_due", lambda: None)
+    monkeypatch.setattr(redis_cache, "get_redis_client", lambda: client)
+    monkeypatch.setattr(
+        redis_cache,
+        "_redis_available_for_attempt",
+        lambda: next(availability),
+    )
+    monkeypatch.setattr(redis_cache, "_switch_async_redis_url", lambda: False)
+    monkeypatch.setattr(
+        redis_cache,
+        "_mark_redis_failure",
+        lambda **kwargs: failures.append(kwargs),
+    )
+    monkeypatch.setattr(redis_cache, "REDIS_SOCKET_TIMEOUT_SECONDS", 0.01)
+
+    started = time.perf_counter()
+    assert await redis_cache.cache_get("slow-key") is None
+
+    assert time.perf_counter() - started < 0.1
+    assert client.get.await_count == 1
+    assert failures == [{"retry_primary": True}]
 
 
 @pytest.mark.asyncio

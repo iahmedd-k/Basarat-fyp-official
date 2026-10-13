@@ -119,7 +119,7 @@ async def get_news(
             empty_reason=empty_reason or "",
             total=total,
         )
-        await cache_set(cache_key, res.model_dump(), ttl_seconds=120)
+        await cache_set(cache_key, res.model_dump(), ttl_seconds=1800)
         return res
     except AppError:
         raise

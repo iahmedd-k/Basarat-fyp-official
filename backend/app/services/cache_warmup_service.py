@@ -144,10 +144,36 @@ class CacheWarmupService:
                 log.warning("Stock profiles warmup exception: %s", e)
                 return {"status": "error", "error": str(e)}
 
+        # 7. News Top Feed
+        async def _warm_news():
+            try:
+                async with db_session() as db:
+                    from app.services.news_service import NewsService
+                    from app.schemas.news import NewsListResponse, NewsArticleResponse
+                    from app.core.redis import cache_set
+                    svc = NewsService(db)
+                    articles, total, next_cursor = await svc.get_articles(limit=20, row="news")
+                    items = [svc.to_response(a) for a in articles]
+                    res = NewsListResponse(
+                        items=[NewsArticleResponse(**item) for item in items],
+                        next_cursor=next_cursor,
+                        has_more=next_cursor is not None,
+                        row="news",
+                        last_updated_at=items[0].get("created_at") or items[0].get("published_at") or "" if items else "",
+                        empty_reason="",
+                        total=total,
+                    )
+                    cache_key = "news:feed:news:_:_:_:_:_:_:20:_:_"
+                    await cache_set(cache_key, res.model_dump(), ttl_seconds=1800)
+                    return {"status": "ok", "news_count": len(items)}
+            except Exception as e:
+                log.warning("News warmup exception: %s", e)
+                return {"status": "error", "error": str(e)}
+
         # Execute domain warmers concurrently
         task_names = [
             "market", "shariah", "ipos", "etfs", 
-            "assistant_universe", "stock_profiles"
+            "assistant_universe", "stock_profiles", "news"
         ]
         res_list = await asyncio.gather(
             _warm_market(),
@@ -156,6 +182,7 @@ class CacheWarmupService:
             _warm_etfs(),
             _warm_assistant(),
             _warm_stock_profiles(),
+            _warm_news(),
             return_exceptions=True
         )
 

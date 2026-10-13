@@ -259,9 +259,21 @@ async def _persist_catalogs(
 
         await db.commit()
 
-    # Commit first so a cache miss can only repopulate from persisted data.
     for pattern in (*ETF_CACHE_PATTERNS, *IPO_CACHE_PATTERNS):
         await cache_invalidate_pattern(pattern)
+
+    # Immediately warm primary catalogs so first-time callers get instant Redis responses
+    try:
+        from app.services.etf_service import ETFService
+        from app.services.ipo_service import IPOService
+        async with async_session_factory() as db:
+            await ETFService(db).get_etfs()
+            ipo_svc = IPOService(db)
+            await ipo_svc.get_ipos()
+            await ipo_svc.get_calendar()
+            await ipo_svc.get_performance()
+    except Exception as exc:
+        log.warning("Could not pre-warm ETF/IPO caches: %s", exc)
 
     return {"etfs_updated": etf_updated, "ipos_updated": ipo_updated}
 

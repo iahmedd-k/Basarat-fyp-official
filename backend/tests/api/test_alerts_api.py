@@ -83,7 +83,7 @@ class TestAlertRules:
             f"/api/v1/alerts/rules/{rule.id}",
             headers=auth_headers,
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 204, resp.text
 
     async def test_rules_requires_auth(self, client: AsyncClient):
         resp = await client.get("/api/v1/alerts/rules")
@@ -95,6 +95,18 @@ class TestAlerts:
     async def test_get_alerts(self, client: AsyncClient, auth_headers):
         resp = await client.get("/api/v1/alerts", headers=auth_headers)
         assert resp.status_code == 200
+
+    async def test_get_alerts_with_nullable_fields(self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user: User):
+        from app.models.alert import Alert
+
+        db_session.add(Alert(user_id=test_user.id, title="Price alert"))
+        await db_session.flush()
+
+        resp = await client.get("/api/v1/alerts", headers=auth_headers)
+
+        assert resp.status_code == 200
+        assert resp.json()[0]["rule_id"] == ""
+        assert resp.json()[0]["message"] == ""
 
     async def test_mark_alert_read(self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user: User):
         from app.models.alert import Alert
@@ -109,7 +121,7 @@ class TestAlerts:
             f"/api/v1/alerts/{alert.id}/read",
             headers=auth_headers,
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 204, resp.text
 
     async def test_mark_all_alerts_read(self, client: AsyncClient, auth_headers, db_session: AsyncSession, test_user: User):
         from app.models.alert import Alert
@@ -119,7 +131,7 @@ class TestAlerts:
         await db_session.flush()
 
         resp = await client.patch("/api/v1/alerts/read-all", headers=auth_headers)
-        assert resp.status_code == 204
+        assert resp.status_code == 204, resp.text
 
 
 @pytest.mark.api

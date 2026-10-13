@@ -1,7 +1,9 @@
 import asyncio
+from datetime import datetime, timezone
 import logging
 from decimal import Decimal
 from typing import Sequence
+from uuid import uuid4
 
 from fastapi import Depends
 from sqlalchemy import func, select, update
@@ -37,20 +39,26 @@ class WatchlistService:
 
     async def _invalidate_watchlist_cache(
         self,
-        user_id: str,
+        user_id: str | None,
         watchlist_id: str | None = None,
         symbol: str | None = None,
+        is_default_changed: bool = False,
     ) -> None:
-        """Invalidate user watchlist summaries, details, and symbol checks."""
-        try:
-            await cache_invalidate(f"watchlist:user:{user_id}")
-            await cache_invalidate(f"watchlist:default_id:{user_id}")
-            if watchlist_id:
-                await cache_invalidate(f"watchlist:detail:{watchlist_id}")
-            if symbol:
-                await cache_invalidate(f"watchlist:check:{user_id}:{symbol.upper()}")
-        except Exception as exc:
-            log.warning("Error invalidating watchlist cache for user %s: %s", user_id, exc)
+        """Invalidate user watchlist summaries, details, and symbol checks in parallel."""
+        tasks = []
+        if user_id:
+            tasks.append(cache_invalidate(f"watchlist:user:{user_id}"))
+            if is_default_changed:
+                tasks.append(cache_invalidate(f"watchlist:default_id:{user_id}"))
+        if watchlist_id:
+            tasks.append(cache_invalidate(f"watchlist:detail:{watchlist_id}"))
+        if symbol and user_id:
+            tasks.append(cache_invalidate(f"watchlist:check:{user_id}:{symbol.upper()}"))
+        if tasks:
+            try:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            except Exception as exc:
+                log.warning("Error invalidating watchlist cache for user %s: %s", user_id, exc)
 
     @staticmethod
     async def _resolve_stock_references_batch(db: AsyncSession, values: Sequence[str]) -> list[Stock]:
@@ -137,7 +145,7 @@ class WatchlistService:
             )
             for wl, count in rows
         ]
-        await cache_set(cache_key, [item.model_dump() for item in response], ttl_seconds=120)
+        await cache_set(cache_key, [item.model_dump() for item in response], ttl_seconds=3600)
         return response
 
     async def get_watchlist(
@@ -176,16 +184,20 @@ class WatchlistService:
         if existing:
             existing.is_default = True
             await db.commit()
-            await db.refresh(existing)
             await self._invalidate_watchlist_cache(user_id, existing.id)
             return existing
 
         # Create a new default watchlist
+        now = datetime.now(timezone.utc)
+        new_wl_id = uuid4().hex
         new_wl = Watchlist(
+            id=new_wl_id,
             user_id=user_id,
             name="My Watchlist",
             description="Default stock watchlist",
             is_default=True,
+            created_at=now,
+            updated_at=now,
         )
         db.add(new_wl)
         try:
@@ -202,22 +214,38 @@ class WatchlistService:
             if winner is None:
                 raise
             return winner
-        await db.refresh(new_wl)
-        await self._invalidate_watchlist_cache(user_id, new_wl.id)
+        await self._invalidate_watchlist_cache(user_id, new_wl_id)
         return new_wl
 
     async def create_watchlist(
         self, db: AsyncSession, user_id: str, data: WatchlistCreate
     ) -> Watchlist:
         """Create a new watchlist, managing default flag and initial symbols."""
-        # Check if user already has watchlists
-        count_stmt = select(func.count(Watchlist.id)).where(Watchlist.user_id == user_id)
-        count_res = await db.execute(count_stmt)
-        existing_count = count_res.scalar_one() or 0
-
-        # If it's the user's first watchlist, make it default automatically
-        should_be_default = data.is_default or (existing_count == 0)
-
+        if data.is_default:
+            should_be_default = True
+        else:
+            # Fast check: does user already have any watchlist cached in Redis?
+            has_any = await cache_get(f"watchlist:has_any:{user_id}")
+            if has_any is True:
+                should_be_default = False
+            else:
+                cached_default = await cache_get(f"watchlist:default_id:{user_id}")
+                if cached_default is not None:
+                    should_be_default = False
+                    await cache_set(f"watchlist:has_any:{user_id}", True, ttl_seconds=86400)
+                else:
+                    cached_list = await cache_get(f"watchlist:user:{user_id}")
+                    if cached_list is not None and len(cached_list) > 0:
+                        should_be_default = False
+                        await cache_set(f"watchlist:has_any:{user_id}", True, ttl_seconds=86400)
+                    else:
+                        # Only query DB across transatlantic WAN if all Redis caches miss
+                        first_stmt = select(Watchlist.id).where(Watchlist.user_id == user_id).limit(1)
+                        first_res = await db.execute(first_stmt)
+                        db_has_any = first_res.scalar_one_or_none() is not None
+                        should_be_default = not db_has_any
+                        if db_has_any:
+                            await cache_set(f"watchlist:has_any:{user_id}", True, ttl_seconds=86400)
         if should_be_default:
             # Unset default from any previous watchlists
             await db.execute(
@@ -226,14 +254,18 @@ class WatchlistService:
                 .values(is_default=False)
             )
 
+        now = datetime.now(timezone.utc)
+        wl_id = uuid4().hex
         watchlist = Watchlist(
+            id=wl_id,
             user_id=user_id,
             name=data.name.strip(),
             description=data.description.strip() if data.description else None,
             is_default=should_be_default,
+            created_at=now,
+            updated_at=now,
         )
         db.add(watchlist)
-        await db.flush()
 
         item_count = 0
         if data.symbols:
@@ -260,9 +292,12 @@ class WatchlistService:
                         seen_symbols.add(stock.symbol)
                         db.add(
                             WatchlistItem(
-                                watchlist_id=watchlist.id,
+                                id=uuid4().hex,
+                                watchlist_id=wl_id,
                                 stock_id=stock.id,
                                 symbol=stock.symbol,
+                                created_at=now,
+                                updated_at=now,
                             )
                         )
                 item_count = len(seen_symbols)
@@ -271,9 +306,14 @@ class WatchlistService:
                 raise
 
         await db.commit()
-        await db.refresh(watchlist)
         setattr(watchlist, "item_count", item_count)
-        await self._invalidate_watchlist_cache(user_id, watchlist.id)
+        await self._invalidate_watchlist_cache(user_id, wl_id, is_default_changed=should_be_default)
+        await cache_set(f"watchlist:has_any:{user_id}", True, ttl_seconds=86400)
+        if should_be_default:
+            try:
+                await cache_set(f"watchlist:default_id:{user_id}", wl_id, ttl_seconds=86400)
+            except Exception:
+                pass
         return watchlist
 
     async def update_watchlist(
@@ -295,9 +335,9 @@ class WatchlistService:
                 watchlist.is_default = True
             else:
                 watchlist.is_default = False
+        watchlist.updated_at = datetime.now(timezone.utc)
 
         await db.commit()
-        await db.refresh(watchlist)
         await self._invalidate_watchlist_cache(watchlist.user_id, watchlist.id)
         return watchlist
 
@@ -307,22 +347,24 @@ class WatchlistService:
         user_id = watchlist.user_id
         wl_id = watchlist.id
         await db.delete(watchlist)
-        await db.commit()
 
         # If we deleted the default watchlist, promote another one to default if exists
         if was_default:
             remaining_stmt = (
                 select(Watchlist)
-                .where(Watchlist.user_id == user_id)
+                .where(Watchlist.user_id == user_id, Watchlist.id != wl_id)
                 .order_by(Watchlist.created_at.asc())
+                .limit(1)
             )
             res = await db.execute(remaining_stmt)
             next_default = res.scalar_one_or_none()
             if next_default:
                 next_default.is_default = True
-                await db.commit()
+            else:
+                await cache_invalidate(f"watchlist:has_any:{user_id}")
 
-        await self._invalidate_watchlist_cache(user_id, wl_id)
+        await db.commit()
+        await self._invalidate_watchlist_cache(user_id, wl_id, is_default_changed=was_default)
 
     async def add_item(
         self,
@@ -335,24 +377,27 @@ class WatchlistService:
         symbol = stock.symbol
 
         # Check for existing symbol in this watchlist
-        existing_stmt = select(WatchlistItem).where(
+        existing_stmt = select(WatchlistItem.id).where(
             WatchlistItem.watchlist_id == watchlist.id,
             WatchlistItem.symbol == symbol,
-        )
+        ).limit(1)
         res = await db.execute(existing_stmt)
         if res.scalar_one_or_none():
             raise ConflictError(f"Symbol '{symbol}' is already in this watchlist")
 
+        now = datetime.now(timezone.utc)
         item = WatchlistItem(
+            id=uuid4().hex,
             watchlist_id=watchlist.id,
             stock_id=stock.id,
             symbol=symbol,
             target_price=Decimal(str(data.target_price)) if data.target_price is not None else None,
             notes=data.notes.strip() if data.notes else None,
+            created_at=now,
+            updated_at=now,
         )
         db.add(item)
         await db.commit()
-        await db.refresh(item)
         await self._invalidate_watchlist_cache(watchlist.user_id, watchlist.id, symbol)
         return item
 
@@ -372,31 +417,38 @@ class WatchlistService:
         db: AsyncSession,
         item: WatchlistItem,
         data: WatchlistItemUpdate,
+        user_id: str | None = None,
     ) -> WatchlistItem:
         """Update an item's target price or notes."""
         if data.target_price is not None:
             item.target_price = Decimal(str(data.target_price))
         if data.notes is not None:
             item.notes = data.notes.strip() if data.notes else None
+        item.updated_at = datetime.now(timezone.utc)
 
         await db.commit()
-        await db.refresh(item)
         
-        # Invalidate cache for this watchlist
-        wl = await db.get(Watchlist, item.watchlist_id)
-        if wl:
-            await self._invalidate_watchlist_cache(wl.user_id, wl.id, item.symbol)
+        # Invalidate cache for this watchlist without redundant DB roundtrip
+        if user_id:
+            await self._invalidate_watchlist_cache(user_id, item.watchlist_id, item.symbol)
+        else:
+            wl = await db.get(Watchlist, item.watchlist_id)
+            if wl:
+                await self._invalidate_watchlist_cache(wl.user_id, wl.id, item.symbol)
         return item
 
-    async def delete_item(self, db: AsyncSession, item: WatchlistItem) -> None:
+    async def delete_item(self, db: AsyncSession, item: WatchlistItem, user_id: str | None = None) -> None:
         """Remove an item from a watchlist."""
         wl_id = item.watchlist_id
         symbol = item.symbol
-        wl = await db.get(Watchlist, wl_id)
         await db.delete(item)
         await db.commit()
-        if wl:
-            await self._invalidate_watchlist_cache(wl.user_id, wl_id, symbol)
+        if user_id:
+            await self._invalidate_watchlist_cache(user_id, wl_id, symbol)
+        else:
+            wl = await db.get(Watchlist, wl_id)
+            if wl:
+                await self._invalidate_watchlist_cache(wl.user_id, wl_id, symbol)
 
     async def check_symbol(
         self, db: AsyncSession, user_id: str, symbol: str

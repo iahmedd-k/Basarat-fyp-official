@@ -92,6 +92,14 @@ async def lifespan(app: FastAPI):
     from app.ml.serving.model_loader import load_artifacts
     load_artifacts()
 
+    # Pre-warm DB connection pool so first incoming request gets an established connection
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        log.info("Database connection pool pre-warmed successfully")
+    except Exception as exc:
+        log.warning("Database pre-warming warning: %s", exc)
+
     # Redis → WebSocket fan-out so Celery session refreshes reach connected clients
     try:
         from app.services.market_live_bus import start_live_bus_listener

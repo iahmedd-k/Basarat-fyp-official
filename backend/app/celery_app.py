@@ -31,6 +31,7 @@ include=[
         "app.tasks.refresh_shariah_cache",
         "app.tasks.refresh_etf_ipo",
         "app.tasks.portfolio_tasks",
+        "app.tasks.sentiment_tasks",
     ],
 )
 
@@ -81,15 +82,12 @@ celery.conf.update(
             "task": "app.tasks.daily_workflow.run_morning_market_intelligence",
             "schedule": crontab(hour=5, minute=30, day_of_week="1-5"),
         },
-        # Fundamentals are refreshed separately before daily-workflow so a slow/rate-limited
-        # source cannot block the OHLCV/features/predictions chain.
+        # Fundamentals are refreshed at 21:00 PKT as the final job of the day,
+        # guaranteeing that daily-workflow (18:00), portfolio precomputation (18:45),
+        # and risk breach monitoring (19:00) are all completely finished.
         "daily-fundamentals": {
             "task": "app.tasks.refresh_fundamentals.refresh_fundamentals",
-            "schedule": crontab(hour=17, minute=30, day_of_week="1-4"),
-        },
-        "daily-fundamentals-friday": {
-            "task": "app.tasks.refresh_fundamentals.refresh_fundamentals",
-            "schedule": crontab(hour=17, minute=15, day_of_week="5"),  # 17:15 PKT on Friday (45m after 16:30 close, finishes before 18:00 daily workflow)
+            "schedule": crontab(hour=21, minute=0, day_of_week="1-5"),
         },
         # ── Weekly: retraining pipeline ──
         "weekly-retraining": {

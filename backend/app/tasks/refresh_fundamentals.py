@@ -47,6 +47,20 @@ def _release_lock(client, token):
         log.warning("Could not release fundamentals refresh lock", exc_info=True)
 
 
+def _sanitize_floats(obj):
+    import math
+
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {k: _sanitize_floats(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize_floats(v) for v in obj]
+    return obj
+
+
 def _persist_snapshot(session, symbol: str, payload: dict, run_id: str, now: datetime) -> None:
     from sqlalchemy import select
     from sqlalchemy.orm.attributes import flag_modified
@@ -55,7 +69,7 @@ def _persist_snapshot(session, symbol: str, payload: dict, run_id: str, now: dat
     from app.models.stock import Stock
     from app.services.stock_service import StockService
 
-    enriched = StockService()._enrich_fundamentals(symbol, payload)
+    enriched = _sanitize_floats(StockService()._enrich_fundamentals(symbol, payload))
     row = session.execute(
         select(StockFundamentals).where(StockFundamentals.symbol == symbol)
     ).scalar_one_or_none()
@@ -140,11 +154,7 @@ def refresh_fundamentals(self, symbols: list[str] | None = None):
     from app.models.fundamentals import FundamentalsRefreshRun
 
     if not symbols:
-        try:
-            from app.data.scraper.run_after_close import get_refresh_symbols
-            configured = get_refresh_symbols()
-        except Exception:
-            configured = [item["symbol"] for item in get_active_symbols()]
+        configured = [item["symbol"] for item in get_active_symbols()]
     else:
         configured = symbols
     configured = sorted({str(symbol).strip().upper() for symbol in configured if symbol})

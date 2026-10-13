@@ -160,7 +160,7 @@ async def get_default_watchlist(
 
     try:
         wl = await service.get_or_create_default_watchlist(db, user.id)
-        await cache_set(f"watchlist:default_id:{user.id}", wl.id, ttl_seconds=120)
+        await cache_set(f"watchlist:default_id:{user.id}", wl.id, ttl_seconds=3600)
         return await service.build_detail_response(db, wl)
     except Exception as exc:
         log.exception("Error getting default watchlist: %s", exc)
@@ -247,9 +247,13 @@ async def update_watchlist(
 
     try:
         updated = await service.update_watchlist(db, wl, data)
-        count_stmt = select(func.count(WatchlistItem.id)).where(WatchlistItem.watchlist_id == updated.id)
-        count_res = await db.execute(count_stmt)
-        item_count = count_res.scalar_one() or 0
+        cached_detail = await cache_get(f"watchlist:detail:{updated.id}")
+        if cached_detail and "items" in cached_detail:
+            item_count = len(cached_detail["items"])
+        else:
+            count_stmt = select(func.count(WatchlistItem.id)).where(WatchlistItem.watchlist_id == updated.id)
+            count_res = await db.execute(count_stmt)
+            item_count = count_res.scalar_one() or 0
 
         return WatchlistSummaryResponse(
             id=updated.id,
@@ -354,7 +358,7 @@ async def update_watchlist_item(
         raise NotFoundError(f"Stock '{symbol_or_item_id}' not found in watchlist")
 
     try:
-        updated_item = await service.update_item(db, item, data)
+        updated_item = await service.update_item(db, item, data, user_id=user.id)
         enriched_list = await service.enrich_items(db, [updated_item])
         return enriched_list[0]
     except Exception as exc:
@@ -386,7 +390,7 @@ async def delete_watchlist_item(
         raise NotFoundError(f"Stock '{symbol_or_item_id}' not found in watchlist")
 
     try:
-        await service.delete_item(db, item)
+        await service.delete_item(db, item, user_id=user.id)
     except Exception as exc:
         log.exception("Error removing item from watchlist: %s", exc)
         raise ServiceUnavailableError(f"Failed to remove item from watchlist: {exc}")

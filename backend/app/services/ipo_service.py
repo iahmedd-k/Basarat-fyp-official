@@ -259,7 +259,7 @@ class IPOService:
             ipos=[self._format_ipo_response(item) for item in ipos],
         )
 
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
         return response
 
 
@@ -279,7 +279,7 @@ class IPOService:
             raise NotFoundError(f"IPO for '{identifier}' not found.")
 
         response = self._format_ipo_response(ipo)
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
         return response
 
     async def get_calendar(self) -> IPOCalendarResponse:
@@ -364,7 +364,7 @@ class IPOService:
             total_events=len(milestones),
             upcoming_milestones=milestones,
         )
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
         return response
 
     async def get_performance(self) -> IPOPerformanceResponse:
@@ -412,7 +412,7 @@ class IPOService:
             top_performers=top[:5],
             recent_listings=items[:10],
         )
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=300)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
         return response
 
     # ───────────────────────────────────────────────────────────────────
@@ -498,7 +498,7 @@ class IPOService:
             total_events=len(milestones),
             upcoming_milestones=milestones,
         )
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=3600)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
         return response
 
     async def precompute_performance(self) -> IPOPerformanceResponse:
@@ -543,5 +543,5 @@ class IPOService:
             top_performers=top[:5],
             recent_listings=items[:10],
         )
-        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=3600)
+        await cache_set(cache_key, response.model_dump(mode="json"), ttl_seconds=86400)
         return response
