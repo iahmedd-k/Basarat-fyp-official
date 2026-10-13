@@ -745,21 +745,35 @@ class CommunityService:
                 bg_db.add(notification)
                 await bg_db.commit()
 
-            from app.core.task_runner import dispatch_task
-            from app.tasks.push_notifications import send_to_user
+            # Debounce rapid replies
+            should_send_push = True
+            try:
+                from app.core.redis import get_redis_client
+                redis = get_redis_client()
+                if redis and actor_id:
+                    debounce_key = f"comm:push:debounce:{actor_id}:{recipient_id}:{type.value}:{post_id or ''}"
+                    is_first = await redis.set(debounce_key, "1", nx=True, ex=60)
+                    if not is_first:
+                        should_send_push = False
+            except Exception as redis_err:
+                log.debug("Redis debounce check failed: %s", redis_err)
 
-            dispatch_task(
-                send_to_user,
-                recipient_id,
-                title,
-                message,
-                {
-                    "type": "community_notification",
-                    "notification_type": type.value,
-                    "post_id": str(post_id or ""),
-                    "comment_id": str(comment_id or ""),
-                },
-            )
+            if should_send_push:
+                from app.core.task_runner import dispatch_task
+                from app.tasks.push_notifications import send_to_user
+
+                dispatch_task(
+                    send_to_user,
+                    recipient_id,
+                    title,
+                    message,
+                    {
+                        "type": "community_notification",
+                        "notification_type": type.value,
+                        "post_id": str(post_id or ""),
+                        "comment_id": str(comment_id or ""),
+                    },
+                )
         except Exception as exc:
             log.warning("Async comment notification failed: %s", exc)
 
@@ -1400,24 +1414,38 @@ class CommunityService:
         self.db.add(notification)
         await self.db.flush()
 
+        # Debounce push dispatching for rapid social actions (60s window per actor->recipient->type->post)
+        should_send_push = True
         try:
-            from app.core.task_runner import dispatch_task
-            from app.tasks.push_notifications import send_to_user
+            from app.core.redis import get_redis_client
+            redis = get_redis_client()
+            if redis and actor_id:
+                debounce_key = f"comm:push:debounce:{actor_id}:{recipient_id}:{type.value}:{post_id or ''}"
+                is_first = await redis.set(debounce_key, "1", nx=True, ex=60)
+                if not is_first:
+                    should_send_push = False
+        except Exception as redis_err:
+            log.debug("Redis debounce check failed: %s", redis_err)
 
-            dispatch_task(
-                send_to_user,
-                recipient_id,
-                title,
-                message,
-                {
-                    "type": "community_notification",
-                    "notification_type": type.value,
-                    "post_id": str(post_id or ""),
-                    "comment_id": str(comment_id or ""),
-                },
-            )
-        except Exception as push_err:
-            log.warning("Could not dispatch community push notification: %s", push_err)
+        if should_send_push:
+            try:
+                from app.core.task_runner import dispatch_task
+                from app.tasks.push_notifications import send_to_user
+
+                dispatch_task(
+                    send_to_user,
+                    recipient_id,
+                    title,
+                    message,
+                    {
+                        "type": "community_notification",
+                        "notification_type": type.value,
+                        "post_id": str(post_id or ""),
+                        "comment_id": str(comment_id or ""),
+                    },
+                )
+            except Exception as push_err:
+                log.warning("Could not dispatch community push notification: %s", push_err)
 
         return notification
 

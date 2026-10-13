@@ -253,31 +253,88 @@ def check_threshold_breaches_task(self, user_id: str, risk_tolerance: str | None
 
 
 def _send_alerts_sync(user_id: str, breaches: list[dict]):
-    """Send threshold breach alerts via sync DB session (Module 9)."""
+    """Send threshold breach alerts via sync DB session with 24h deduplication (Industry Standard)."""
+    from datetime import datetime, timedelta
     from uuid import uuid4
+    from sqlalchemy import select
     from app.models.alert import Alert
+    from app.core.redis import get_sync_redis_client
+    from app.tasks.push_notifications import send_to_user
+    from app.core.task_runner import dispatch_task
+
+    redis_client = None
+    try:
+        redis_client = get_sync_redis_client()
+    except Exception as exc:
+        log.warning("Sync Redis client unavailable for risk breach alert deduplication: %s", exc)
 
     db = _get_sync_db()
+    alerts_to_send = []
     try:
+        cutoff_24h = datetime.utcnow() - timedelta(hours=24)
         for b in breaches:
+            breach_type = str(b.get("type", "unknown"))
+            sym = str(b.get("symbol", "")).upper()
+            title = f"[{b['severity'].upper()}] {breach_type.replace('_', ' ').title()}"
+
+            # 1. Redis Cooldown (24 hours / 86400s)
+            cooldown_key = f"alert:cooldown:risk:{user_id}:{breach_type}"
+            if sym:
+                cooldown_key += f":{sym}"
+
+            in_cooldown = False
+            if redis_client:
+                try:
+                    is_new = redis_client.set(cooldown_key, "1", nx=True, ex=86400)
+                    if not is_new:
+                        in_cooldown = True
+                except Exception as exc:
+                    log.warning("Redis risk cooldown check failed for %s: %s", cooldown_key, exc)
+
+            # 2. DB fallback deduplication: check if identical breach alert was created in last 24h
+            if not in_cooldown:
+                existing = db.execute(
+                    select(Alert.id).where(
+                        Alert.user_id == user_id,
+                        Alert.title == title,
+                        Alert.created_at >= cutoff_24h,
+                    ).limit(1)
+                ).scalar()
+                if existing:
+                    in_cooldown = True
+
+            if in_cooldown:
+                log.info("Risk alert suppressed by 24h cooldown: user=%s type=%s sym=%s", user_id, breach_type, sym)
+                continue
+
             alert = Alert(
                 id=uuid4().hex,
                 user_id=user_id,
-                title=f"[{b['severity'].upper()}] {b['type'].replace('_', ' ').title()}",
+                title=title,
                 message=b["message"],
             )
             db.add(alert)
-        db.commit()
-        from app.tasks.push_notifications import send_to_user
-        from app.core.task_runner import dispatch_task
-        for breach in breaches:
-            dispatch_task(
-                send_to_user,
-                user_id,
-                f"Basarat risk alert: {breach['severity'].upper()}",
-                breach["message"],
-                {"type": breach["type"], "severity": breach["severity"]},
-            )
+            alerts_to_send.append((b, title))
+
+        if alerts_to_send:
+            db.commit()
+            for breach, title in alerts_to_send:
+                dispatch_task(
+                    send_to_user,
+                    user_id,
+                    f"Basarat risk alert: {breach['severity'].upper()}",
+                    breach["message"],
+                    {
+                        "type": "risk_alert",
+                        "risk_type": breach["type"],
+                        "severity": breach["severity"],
+                        "symbol": breach.get("symbol", ""),
+                    },
+                )
+    except Exception as exc:
+        db.rollback()
+        log.exception("Error in _send_alerts_sync: %s", exc)
+        raise
     finally:
         db.close()
 

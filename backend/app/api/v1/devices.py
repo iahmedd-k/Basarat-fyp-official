@@ -31,18 +31,34 @@ async def register_device(
     If the token already exists for the user, it reactivates the device (`is_active = true`).
     """
     try:
+        from sqlalchemy import update
+
+        # 1. Prevent cross-user token leak: If this physical device was previously used by another user,
+        # deactivate the old user's device record so they do not receive private notifications.
+        await db.execute(
+            update(Device)
+            .where(Device.fcm_token == data.fcm_token, Device.user_id != user.id)
+            .values(is_active=False)
+        )
+
+        # 2. Check existing device registration for the current user
         result = await db.execute(
             select(Device).where(
                 Device.user_id == user.id,
                 Device.fcm_token == data.fcm_token,
             )
         )
-        existing = result.scalars().first()
+        existing_rows = result.scalars().all()
 
-        if existing:
+        if existing_rows:
+            existing = existing_rows[0]
             existing.platform = data.platform
             existing.device_name = data.device_name
             existing.is_active = True
+            # Clean up any duplicate rows
+            for dup in existing_rows[1:]:
+                dup.is_active = False
+
             await db.flush()
             await db.refresh(existing)
             return DeviceResponse(

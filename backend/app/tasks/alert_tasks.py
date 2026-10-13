@@ -22,7 +22,7 @@ def _is_in_cooldown(
     rule_id: str | None = None,
     user_id: str | None = None,
     title_pattern: str | None = None,
-    ttl_seconds: int = 1800,
+    ttl_seconds: int = 28800,
 ) -> bool:
     """Check if an alert is on cooldown via Redis with DB fallback to prevent duplicate spam."""
     if redis_client:
@@ -183,7 +183,7 @@ def evaluate_alert_rules_task(self):
 
             if matched:
                 cooldown_key = f"alert:cooldown:rule:{rule.id}"
-                if not _is_in_cooldown(session, redis_client, cooldown_key, rule_id=rule.id, ttl_seconds=1800):
+                if not _is_in_cooldown(session, redis_client, cooldown_key, rule_id=rule.id, ttl_seconds=28800):
                     alert = Alert(
                         id=uuid4().hex,
                         user_id=rule.user_id,
@@ -227,7 +227,7 @@ def evaluate_alert_rules_task(self):
                     cooldown_key,
                     user_id=watchlist.user_id,
                     title_pattern=f"Watchlist Target: {sym}",
-                    ttl_seconds=3600,
+                    ttl_seconds=28800,
                 ):
                     message = f"{sym} reached your target price of PKR {target_price:.2f} (Current: PKR {current_price:.2f})"
                     alert = Alert(
