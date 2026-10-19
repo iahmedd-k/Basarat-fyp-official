@@ -160,8 +160,8 @@ def generate_predictions_task(self):
 
         from app.data.scraper.symbol_universe import get_active_symbols
         from app.ml.serving.inference import (
-            FEATURES_PATH,
             forecast_cache_key,
+            get_features_path,
             get_forecast,
         )
         from app.ml.serving.model_loader import artifacts, load_artifacts
@@ -176,7 +176,8 @@ def generate_predictions_task(self):
         if not artifacts.model_ready and not artifacts.xgb_ready:
             raise RuntimeError("Prediction model is not ready; refusing to publish downstream recommendations")
 
-        df = pd.read_parquet(FEATURES_PATH)
+        features_path = get_features_path()
+        df = pd.read_parquet(features_path)
         df["date"] = pd.to_datetime(df["date"])
 
         active = get_active_symbols()
