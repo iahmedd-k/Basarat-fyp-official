@@ -87,8 +87,15 @@ def evaluate_alert_rules_task(self):
         if not open_now:
             log.info("Skipping alert evaluation; market is closed")
             return {"status": "skipped", "reason": "market_closed", "triggered": 0}
-    except Exception as exc:
-        log.warning("Market-hours gate failed for alerts; continuing: %s", exc)
+    except Exception:
+        log.exception(
+            "Market-hours gate failed for alerts; refusing to evaluate against potentially stale quotes"
+        )
+        return {
+            "status": "blocked",
+            "reason": "market_hours_unavailable",
+            "triggered": 0,
+        }
 
     from sqlalchemy import select
     from app.core.redis import get_sync_redis_client

@@ -267,3 +267,45 @@ def test_inference_zero_fills_missing_feature(monkeypatch):
     assert result is not None
     assert result["direction"] == "bullish"
 
+
+def test_ensemble_near_tie_sideways_regime():
+    gru = {
+        "direction": "bullish",
+        "bullish_pct": 60.8,
+        "bearish_pct": 39.2,
+        "sideways_pct": 0.0,
+        "top_class_probability": 60.8,
+        "gap_pp": 21.6,
+    }
+    xgb = {
+        "direction": "bearish",
+        "bullish_pct": 47.7,
+        "bearish_pct": 52.3,
+        "sideways_pct": 0.0,
+        "top_class_probability": 52.3,
+        "gap_pp": 4.6,
+    }
+    res = _ensemble_decide(gru, xgb)
+    # 0.5 * 60.8 + 0.5 * 47.7 = 54.25% vs 45.75% -> gap = 8.5% <= 10.0% near_tie_threshold_pp
+    assert res["direction"] == "sideways"
+    assert "neutral_regime" in res["gate_reason"]
+
+
+def test_score_was_correct_with_directional_return():
+    from app.ml.serving.prediction_store import score_was_correct
+
+    # Bullish with positive gain within flat deadband (+0.5%)
+    assert score_was_correct("bullish", "sideways", fwd_return=0.005) is True
+    # Bullish with actual decline
+    assert score_was_correct("bullish", "bearish", fwd_return=-0.015) is False
+    # Bearish with negative drop within deadband (-0.5%)
+    assert score_was_correct("bearish", "sideways", fwd_return=-0.005) is True
+    # Bearish with actual price increase
+    assert score_was_correct("bearish", "bullish", fwd_return=0.015) is False
+    # Sideways in flat market
+    assert score_was_correct("sideways", "sideways", fwd_return=0.002) is True
+    # Sideways in strong breakout
+    assert score_was_correct("sideways", "bullish", fwd_return=0.035) is False
+    # Uncertain abstention
+    assert score_was_correct("uncertain", "bullish", fwd_return=0.02) is None
+

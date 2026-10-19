@@ -119,9 +119,11 @@ def generate_features_task(self):
 
     try:
         from app.data.features.run_features import run_features
+        from app.ml.v3.feature_engineer_v3 import build_v3_features
 
         run_features()
-        log.info("[FEATURES] Feature generation complete")
+        build_v3_features()
+        log.info("[FEATURES] Feature generation complete (v3 parquets updated)")
         return {"status": "success", "timestamp": datetime.utcnow().isoformat()}
 
     except SoftTimeLimitExceeded:
@@ -401,7 +403,9 @@ def warm_technical_indicators_task(self):
 def run_daily_pipeline():
     """Orchestrate the full daily workflow as a chain.
 
-    Chain: update_data → warm_technical_indicators → generate_features → generate_predictions → evaluate_pending → sentiment → recs
+    Chain: update_data → warm_technical_indicators → generate_features
+    → generate_predictions → evaluate_pending → sentiment → recs
+    → portfolio precomputation → portfolio risk checks
     """
     from app.core.redis import get_sync_redis_client
 
@@ -435,19 +439,23 @@ def run_daily_pipeline():
     # These stages are independent tasks in a serial pipeline. Immutable
     # signatures prevent Celery from injecting each prior task's result as a
     # positional argument into the next bound task (which accepts no such arg).
-    from app.tasks.sentiment_tasks import aggregate_sentiment_task
-    from app.tasks.recommendation_cache import refresh_recommendations_task
-
-    workflow = chain(
-        update_market_data_task.si(),
-        warm_technical_indicators_task.si(),
-        generate_features_task.si(),
-        generate_predictions_task.si(),
-        evaluate_pending_predictions_task.si(),
-        aggregate_sentiment_task.si(),
-        refresh_recommendations_task.si(),
-    )
     try:
+        from app.tasks.sentiment_tasks import aggregate_sentiment_task
+        from app.tasks.recommendation_cache import refresh_recommendations_task
+        from app.tasks.portfolio_tasks import precompute_all_portfolio_performance
+        from app.tasks.risk_tasks import check_all_portfolios_risk_breaches
+
+        workflow = chain(
+            update_market_data_task.si(),
+            warm_technical_indicators_task.si(),
+            generate_features_task.si(),
+            generate_predictions_task.si(),
+            evaluate_pending_predictions_task.si(),
+            aggregate_sentiment_task.si(),
+            refresh_recommendations_task.si(),
+            precompute_all_portfolio_performance.si(),
+            check_all_portfolios_risk_breaches.si(),
+        )
         result = workflow.apply_async()
     except Exception:
         try:

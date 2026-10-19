@@ -30,11 +30,13 @@ ACCESS_DENIED_MARKERS = (
 
 
 def _run_async(coro):
-    loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+        return asyncio.run(coro)
+    except RuntimeError as exc:
+        if "asyncio.run() cannot be called" in str(exc):
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(coro)
+        raise
 
 
 def _acquire_lock(ttl_seconds: int) -> tuple[str, object | None, str | None]:
@@ -297,19 +299,6 @@ def refresh_market_session(self):
 
         _time.sleep(jitter)
 
-    from app.services.news_pipeline.market_schedule import is_market_hours, market_status
-
-    status_info = _run_async(market_status())
-    if not _run_async(is_market_hours()):
-        return {
-            "status": "skipped",
-            "reason": "market_closed",
-            "market_status": status_info.get("status"),
-        }
-
-    if _circuit_is_open(None):
-        return {"status": "skipped", "reason": "circuit_open"}
-
     # Keep the lock beyond the hard task timeout so a slow upstream response
     # cannot overlap the next beat tick and create a scraper stampede.
     lock_ttl = max(180, int(settings.MARKET_SESSION_REFRESH_SECONDS) + 150)
@@ -319,22 +308,36 @@ def refresh_market_session(self):
     if lock_status == "held":
         return {"status": "skipped", "reason": "already_running"}
 
-    try:
-        result = _run_async(
-            _refresh_quotes_and_optional_reference(
-                refresh_quotes=True,
-                refresh_screener=False,
-                refresh_reference=False,
-                refresh_constituents=False,
-                publish_live=True,
-                source="session_refresh",
-            )
+    async def _execute_session_refresh():
+        from app.services.news_pipeline.market_schedule import is_market_hours, market_status
+
+        status_info = await market_status()
+        if not await is_market_hours():
+            return {
+                "status": "skipped",
+                "reason": "market_closed",
+                "market_status": status_info.get("status"),
+            }
+
+        if _circuit_is_open(None):
+            return {"status": "skipped", "reason": "circuit_open"}
+
+        res = await _refresh_quotes_and_optional_reference(
+            refresh_quotes=True,
+            refresh_screener=False,
+            refresh_reference=False,
+            refresh_constituents=False,
+            publish_live=True,
+            source="session_refresh",
         )
-        if result.get("quotes", 0) == 0:
+        if res.get("quotes", 0) == 0:
             log.warning("Session refresh returned 0 quotes; keeping last_known cache")
-            return {"status": "empty", **result, "market_status": status_info.get("status")}
-        log.info("PSX session market refresh completed: %s", result)
-        return {"status": "completed", **result, "market_status": status_info.get("status")}
+            return {"status": "empty", **res, "market_status": status_info.get("status")}
+        log.info("PSX session market refresh completed: %s", res)
+        return {"status": "completed", **res, "market_status": status_info.get("status")}
+
+    try:
+        return _run_async(_execute_session_refresh())
     except Exception as exc:
         if _looks_like_access_denied(exc):
             _open_circuit(lock_client, str(exc))

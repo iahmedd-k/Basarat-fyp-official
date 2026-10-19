@@ -299,8 +299,8 @@ class AuthService:
             )
             self.db.add(user)
 
-        token_res = await self._create_token_pair(user)
         await self.db.flush()
+        token_res = await self._create_token_pair(user)
         return token_res
 
     async def authenticate_apple(self, id_token: str, full_name: str | None = None) -> dict:
@@ -359,8 +359,8 @@ class AuthService:
             )
             self.db.add(user)
 
-        token_res = await self._create_token_pair(user)
         await self.db.flush()
+        token_res = await self._create_token_pair(user)
         return token_res
 
     async def refresh_token(self, refresh_token_str: str) -> dict:

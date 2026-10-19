@@ -129,7 +129,7 @@ def _fetch_symbol_with_timeout(symbol: str, timeout_seconds: float) -> dict:
     name="app.tasks.refresh_fundamentals.refresh_fundamentals",
     bind=True,
     max_retries=0,
-    acks_late=True,
+    acks_late=False,
     soft_time_limit=21600,
     time_limit=22200,
 )
@@ -262,5 +262,8 @@ def refresh_fundamentals(self, symbols: list[str] | None = None):
         session.commit()
         raise
     finally:
-        session.close()
+        try:
+            session.close()
+        except Exception:
+            pass
         _release_lock(lock_client, lock_token)

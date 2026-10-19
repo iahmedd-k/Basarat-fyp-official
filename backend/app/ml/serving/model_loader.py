@@ -57,6 +57,7 @@ class ModelArtifacts:
     model: object | None = None
     scaler: object | None = None
     feature_columns: list[str] = field(default_factory=list)
+    train_medians: dict[str, float] = field(default_factory=dict)
     label_mapping: dict[str, int] = field(default_factory=lambda: {"bearish": 0, "bullish": 1})
     label_names: dict[int, str] = field(default_factory=lambda: {0: "bearish", 1: "bullish"})
     window_size: int = 45
@@ -68,7 +69,11 @@ class ModelArtifacts:
     xgb_model: object | None = None
     xgb_models: dict[str, object] = field(default_factory=dict)
     xgb_feature_names: list[str] = field(default_factory=list)
-    xgb_data_path: Path = Path("data/features/features_daily.parquet")
+    xgb_data_path: Path = (
+        Path("data/processed_v3/features_v3.parquet")
+        if Path("data/processed_v3/features_v3.parquet").exists()
+        else Path("data/features/features_daily.parquet")
+    )
     xgb_ready: bool = False
     xgb_model_version: str = "xgb_v4_institutional_multi_horizon"
 
@@ -144,6 +149,12 @@ def load_artifacts() -> None:
             artifacts.model = model
             artifacts.scaler = joblib.load(gru_scaler_path)
             artifacts.feature_columns = features
+            gru_medians_path = PROD_V3_DIR / "gru_train_medians.json"
+            if gru_medians_path.exists():
+                try:
+                    artifacts.train_medians = json.loads(gru_medians_path.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
             artifacts.window_size = window
             artifacts.n_features = n_feat
             artifacts.model_version = "attention_bigru_v2_production"

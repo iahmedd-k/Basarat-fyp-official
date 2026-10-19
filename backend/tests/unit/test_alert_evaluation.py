@@ -102,6 +102,25 @@ def test_cooldown_helper_db_fallback(sync_db):
     assert _is_in_cooldown(session, None, "key", rule_id=rule_id, ttl_seconds=1800) is True
 
 
+def test_evaluate_alert_rules_fails_closed_when_market_hours_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.news_pipeline.market_schedule.is_market_hours",
+        AsyncMock(side_effect=RuntimeError("calendar unavailable")),
+    )
+    monkeypatch.setattr(
+        "app.tasks.alert_tasks._get_sync_session",
+        lambda: pytest.fail("Alert evaluation must not query data when market status is unknown"),
+    )
+
+    result = evaluate_alert_rules_task.run()
+
+    assert result == {
+        "status": "blocked",
+        "reason": "market_hours_unavailable",
+        "triggered": 0,
+    }
+
+
 def test_evaluate_alert_rules_price_above_and_watchlist(sync_db, monkeypatch):
     session, engine = sync_db
     monkeypatch.setattr(
@@ -445,4 +464,3 @@ def test_community_push_dispatch(sync_db, monkeypatch):
     assert args[1] == "New Comment"
     assert args[3]["type"] == "community_notification"
     assert args[3]["post_id"] == "post_123"
-

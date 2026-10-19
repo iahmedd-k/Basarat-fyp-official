@@ -73,7 +73,7 @@
 
 6. **Start Celery worker (separate terminal):**
    ```bash
-   celery -A app.celery_app worker --loglevel=info
+   celery -A app.celery_app worker --loglevel=info --queues=health,default,market-live,news,fundamentals,ml-training,data-pipeline
    ```
 
 7. **Start Celery Beat (separate terminal):**
@@ -120,4 +120,3 @@ python scripts/seed_admin.py
 # Initialize database tables and relations
 python scripts/init_db_tables.py
 ```
-

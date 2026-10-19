@@ -224,10 +224,10 @@ python -m scripts.seed_demo_users
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Start Celery worker in a separate terminal
-celery -A app.tasks.celery_app worker --loglevel=info -Q default,data_ingestion,ml_inference,news_processing,alert_notifications
+celery -A app.celery_app worker --loglevel=info -Q health,default,market-live,news,fundamentals,ml-training,data-pipeline
 
 # Start Celery beat scheduler in a separate terminal
-celery -A app.tasks.celery_app beat --loglevel=info
+celery -A app.celery_app beat --loglevel=info
 ```
 
 ### 4. Seeded Demo & Evaluator Accounts

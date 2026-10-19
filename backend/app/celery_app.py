@@ -56,6 +56,12 @@ celery.conf.update(
         "app.tasks.refresh_fundamentals.*": {"queue": "fundamentals"},
         "app.tasks.weekly_retraining.*": {"queue": "ml-training"},
         "app.tasks.daily_workflow.*": {"queue": "data-pipeline"},
+        "app.tasks.portfolio_tasks.precompute_all_portfolio_performance": {
+            "queue": "data-pipeline"
+        },
+        "app.tasks.risk_tasks.check_all_portfolios_risk_breaches": {
+            "queue": "data-pipeline"
+        },
     },
     result_expires=86400,
     broker_connection_retry_on_startup=True,
@@ -67,6 +73,7 @@ celery.conf.update(
         "celery-beat-heartbeat": {
             "task": "app.tasks.health.beat_heartbeat",
             "schedule": 30.0,
+            "options": {"expires": 25},
         },
         # ── Daily: data update + features + predictions + evaluation ──
         # Mon–Fri 18:00 Asia/Karachi (after PSX close and settlement):
@@ -128,30 +135,21 @@ celery.conf.update(
         "refresh-market-session": {
             "task": "app.tasks.refresh_market_cache.refresh_market_session",
             "schedule": crontab(minute="*", day_of_week="1-5"),
+            "options": {"expires": 50},
         },
         # ── Evaluate Alert Rules & Watchlist Targets every 5 minutes (task gates hours) ──
         "evaluate-alert-rules": {
             "task": "app.tasks.alert_tasks.evaluate_alert_rules",
             "schedule": crontab(minute="*/5", day_of_week="1-5"),
+            "options": {"expires": 240},
         },
-        # ── Portfolio performance precomputation: daily after daily-workflow completes ──
-        # Scheduled at 18:45 PKT to guarantee daily-workflow (started at 18:00) is fully completed
-        "precompute-portfolio-performance": {
-            "task": "app.tasks.portfolio_tasks.precompute_all_portfolio_performance",
-            "schedule": crontab(hour=18, minute=45, day_of_week="1-5"),
-        },
-        # ── Daily Portfolio Risk Breach Monitoring: daily after performance precomputation ──
-        # Scheduled at 19:00 PKT so all daily predictions, prices, and portfolio metrics are settled
-        "daily-risk-threshold-monitoring": {
-            "task": "app.tasks.risk_tasks.check_all_portfolios_risk_breaches",
-            "schedule": crontab(hour=19, minute=0, day_of_week="1-5"),
-        },
-        # Sentiment and recommendation publication run as dependent final
-        # stages of daily-workflow, after OHLCV/features/forecast finish.
+        # Sentiment, recommendations, portfolio precomputation, and risk checks
+        # run as dependent daily-workflow stages after market data and forecasts.
         # ── News ingestion: every 30 min on the clock, task gates on market hours ──
         "news-ingestion-market-aware": {
             "task": "app.tasks.scrape_news.run",
             "schedule": crontab(minute="*/30", day_of_week="1-5"),
+            "options": {"expires": 1700},
         },
         # Index membership changes rarely; refresh it weekly, not on every API day.
         "refresh-market-constituents": {

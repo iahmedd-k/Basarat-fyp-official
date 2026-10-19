@@ -192,10 +192,23 @@ async def upsert_prediction_async(db: AsyncSession, payload: dict[str, Any]) -> 
     return row
 
 
-def score_was_correct(predicted_direction: str, actual_direction: str) -> Optional[bool]:
+def score_was_correct(
+    predicted_direction: str,
+    actual_direction: str,
+    fwd_return: float | None = None,
+) -> Optional[bool]:
     """Uncertain/abstention predictions are recorded but not scored."""
     if predicted_direction in ("uncertain", None):
         return None
+    if predicted_direction == "sideways":
+        return actual_direction == "sideways"
+    if fwd_return is not None:
+        if predicted_direction == "bullish":
+            # True if price appreciated (> 0%) or reached the strong bullish threshold
+            return actual_direction == "bullish" or fwd_return > 0.0
+        if predicted_direction == "bearish":
+            # True if price depreciated (< 0%) or reached the strong bearish threshold
+            return actual_direction == "bearish" or fwd_return < 0.0
     return predicted_direction == actual_direction
 
 
@@ -260,7 +273,7 @@ def evaluate_pending_predictions_sync(
 
         fwd_return = (c_target - c_as_of) / c_as_of
         actual_direction = label_from_return(fwd_return, DEFAULT_THRESHOLD)
-        was_correct = score_was_correct(predicted_direction, actual_direction)
+        was_correct = score_was_correct(predicted_direction, actual_direction, fwd_return=fwd_return)
         if predicted_direction == "uncertain":
             uncertain_excluded += 1
 

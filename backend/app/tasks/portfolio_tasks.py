@@ -39,35 +39,32 @@ def precompute_all_portfolio_performance(self):
         
         log.info("Precomputing portfolio performance for %d users", len(user_ids))
         
-        completed = 0
-        errors = 0
-        
-        for user_id in user_ids:
-            try:
-                # Run the async precomputation in a new event loop
-                import asyncio
-                from app.db.session import async_session_factory
-                from app.services.portfolio_service import PortfolioService
-                
-                async def run_precompute():
+        import asyncio
+        from app.db.base import engine
+        from app.db.session import async_session_factory
+        from app.services.portfolio_service import PortfolioService
+
+        async def _precompute_batch(uids: list[str]) -> tuple[int, int]:
+            comp = 0
+            errs = 0
+            for uid in uids:
+                try:
                     async with async_session_factory() as session:
                         service = PortfolioService(session)
-                        result = await service.prewarm_portfolio_get_caches(user_id)
+                        res = await service.prewarm_portfolio_get_caches(uid)
                         await session.commit()
-                        return result
-                
-                loop = asyncio.new_event_loop()
-                try:
-                    result = loop.run_until_complete(run_precompute())
-                    log.debug("Warmed portfolio GET caches for user %s: %s", user_id, result)
-                finally:
-                    loop.close()
-                
-                completed += 1
-                
-            except Exception as e:
-                log.warning("Portfolio performance precompute failed for user %s: %s", user_id, e)
-                errors += 1
+                        log.debug("Warmed portfolio GET caches for user %s: %s", uid, res)
+                        comp += 1
+                except Exception as e:
+                    log.warning("Portfolio performance precompute failed for user %s: %s", uid, e)
+                    errs += 1
+            try:
+                await engine.dispose()
+            except Exception:
+                pass
+            return comp, errs
+
+        completed, errors = asyncio.run(_precompute_batch(user_ids))
         
         return {
             "status": "completed",
@@ -90,21 +87,24 @@ def precompute_user_portfolio_performance(self, user_id: str):
     """Precompute portfolio performance for a single user (on-demand)."""
     try:
         import asyncio
+        from app.db.base import engine
         from app.db.session import async_session_factory
         from app.services.portfolio_service import PortfolioService
         
         async def run_precompute():
-            async with async_session_factory() as session:
-                service = PortfolioService(session)
-                result = await service.prewarm_portfolio_get_caches(user_id)
-                await session.commit()
-                return result
+            try:
+                async with async_session_factory() as session:
+                    service = PortfolioService(session)
+                    result = await service.prewarm_portfolio_get_caches(user_id)
+                    await session.commit()
+                    return result
+            finally:
+                try:
+                    await engine.dispose()
+                except Exception:
+                    pass
         
-        loop = asyncio.new_event_loop()
-        try:
-            result = loop.run_until_complete(run_precompute())
-        finally:
-            loop.close()
+        result = asyncio.run(run_precompute())
         
         return {
             "status": "completed",

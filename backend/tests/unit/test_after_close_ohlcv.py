@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pandas as pd
@@ -22,6 +23,115 @@ def test_daily_pipeline_is_scheduled_at_six_pm():
         {0},
         {1, 2, 3, 4, 5},
     )
+
+
+def test_development_worker_consumes_all_routed_queues():
+    compose_file = Path(__file__).resolve().parents[2] / "docker-compose.yml"
+    compose_text = compose_file.read_text(encoding="utf-8")
+    required_queues = (
+        "health",
+        "default",
+        "market-live",
+        "news",
+        "fundamentals",
+        "ml-training",
+        "data-pipeline",
+    )
+
+    assert "--queues=" + ",".join(required_queues) in compose_text
+    assert celery.conf.task_routes[
+        "app.tasks.portfolio_tasks.precompute_all_portfolio_performance"
+    ] == {"queue": "data-pipeline"}
+    assert celery.conf.task_routes[
+        "app.tasks.risk_tasks.check_all_portfolios_risk_breaches"
+    ] == {"queue": "data-pipeline"}
+
+
+def test_post_market_jobs_are_chained_after_daily_pipeline(monkeypatch):
+    class FridayDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 2, 18, 0, tzinfo=tz)
+
+    class Redis:
+        def set(self, key, value, *, nx=False, ex=None):
+            assert key == "jobs:daily-workflow:dispatch-lock"
+            assert (value, nx, ex) == ("1", True, 21600)
+            return True
+
+        def delete(self, key):
+            assert key == "jobs:daily-workflow:dispatch-lock"
+
+    class FakeTask:
+        def __init__(self, name):
+            self.name = name
+
+        def si(self):
+            return self.name
+
+    class Workflow:
+        def __init__(self, tasks):
+            self.tasks = tasks
+
+        def apply_async(self):
+            return SimpleNamespace(id="daily-pipeline-id")
+
+    from app.tasks import portfolio_tasks, recommendation_cache, risk_tasks, sentiment_tasks
+
+    core_task_names = (
+        "update-market-data",
+        "warm-technical-indicators",
+        "generate-features",
+        "generate-predictions",
+        "evaluate-pending",
+    )
+    core_task_attrs = (
+        "update_market_data_task",
+        "warm_technical_indicators_task",
+        "generate_features_task",
+        "generate_predictions_task",
+        "evaluate_pending_predictions_task",
+    )
+    for attr, task_name in zip(core_task_attrs, core_task_names):
+        monkeypatch.setattr(daily_workflow, attr, FakeTask(task_name))
+    monkeypatch.setattr(sentiment_tasks, "aggregate_sentiment_task", FakeTask("sentiment"))
+    monkeypatch.setattr(
+        recommendation_cache, "refresh_recommendations_task", FakeTask("recommendations")
+    )
+    monkeypatch.setattr(
+        portfolio_tasks,
+        "precompute_all_portfolio_performance",
+        FakeTask("portfolio-precomputation"),
+    )
+    monkeypatch.setattr(
+        risk_tasks,
+        "check_all_portfolios_risk_breaches",
+        FakeTask("portfolio-risk-checks"),
+    )
+    monkeypatch.setattr(daily_workflow, "datetime", FridayDateTime)
+    monkeypatch.setattr(asyncio, "run", lambda coroutine: (coroutine.close(), False)[1])
+    monkeypatch.setattr("app.core.redis.get_sync_redis_client", lambda: Redis())
+
+    dispatched = {}
+
+    def make_chain(*tasks):
+        dispatched["tasks"] = tasks
+        return Workflow(tasks)
+
+    monkeypatch.setattr(daily_workflow, "chain", make_chain)
+
+    result = daily_workflow.run_daily_pipeline.run()
+
+    assert result == {"status": "dispatched", "group_id": "daily-pipeline-id"}
+    assert dispatched["tasks"] == (
+        *core_task_names,
+        "sentiment",
+        "recommendations",
+        "portfolio-precomputation",
+        "portfolio-risk-checks",
+    )
+    assert "precompute-portfolio-performance" not in celery.conf.beat_schedule
+    assert "daily-risk-threshold-monitoring" not in celery.conf.beat_schedule
 
 
 def test_morning_market_intelligence_is_scheduled_before_market_open():

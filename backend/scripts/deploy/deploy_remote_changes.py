@@ -6,7 +6,7 @@ SSH_KEY = r"d:\FYP\OrcaleSecrets\ssh-key-2026-10-03.key"
 REMOTE_USER = "ubuntu"
 REMOTE_HOST = "193.123.84.223"
 
-LOCAL_BACKEND = Path(__file__).resolve().parent.parent
+LOCAL_BACKEND = Path(__file__).resolve().parents[2]
 
 FILES_TO_SYNC = [
     ("app/core/id_generator.py", "/app/app/core/id_generator.py"),
@@ -19,9 +19,20 @@ FILES_TO_SYNC = [
     ("app/api/v1/community/profile.py", "/app/app/api/v1/community/profile.py"),
     ("app/api/v1/community/notifications.py", "/app/app/api/v1/community/notifications.py"),
     ("app/services/stock_service.py", "/app/app/services/stock_service.py"),
+    ("app/services/auth_service.py", "/app/app/services/auth_service.py"),
     ("app/tasks/refresh_fundamentals.py", "/app/app/tasks/refresh_fundamentals.py"),
+    ("app/tasks/portfolio_tasks.py", "/app/app/tasks/portfolio_tasks.py"),
+    ("app/tasks/refresh_market_cache.py", "/app/app/tasks/refresh_market_cache.py"),
+    ("app/tasks/daily_workflow.py", "/app/app/tasks/daily_workflow.py"),
+    ("app/tasks/alert_tasks.py", "/app/app/tasks/alert_tasks.py"),
+    ("app/ml/serving/inference.py", "/app/app/ml/serving/inference.py"),
+    ("app/ml/serving/model_loader.py", "/app/app/ml/serving/model_loader.py"),
+    ("app/ml/serving/prediction_store.py", "/app/app/ml/serving/prediction_store.py"),
+    ("app/celery_app.py", "/app/app/celery_app.py"),
     ("app/schemas/stock.py", "/app/app/schemas/stock.py"),
     ("data/config/symbol_universe.json", "/app/data/config/symbol_universe.json"),
+    ("app/ml/v3/feature_engineer_v3.py", "/app/app/ml/v3/feature_engineer_v3.py"),
+    ("models/production/v3/gru_train_medians.json", "/app/models/production/v3/gru_train_medians.json"),
 ]
 
 CONTAINERS = [

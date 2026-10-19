@@ -52,7 +52,7 @@
 | `api` | built from local `Dockerfile` (Python 3.11-slim + FastAPI + Uvicorn) | the FastAPI app |
 | `db` | `postgres:16` | PostgreSQL, with a named volume so data persists across restarts |
 | `redis` | `redis:7-alpine` | cache + Celery broker |
-| `celery_worker` | same build as `api`, different entrypoint (`celery -A app.celery_app worker`) | runs scraping/ML/sentiment/alert jobs |
+| `celery_worker` | same build as `api`, different entrypoint (`celery -A app.celery_app worker --queues=health,default,market-live,news,fundamentals,ml-training,data-pipeline`) | consumes every queue used by scheduled scraping/ML/sentiment/alert jobs |
 | `celery_beat` | same build as `api`, entrypoint `celery -A app.celery_app beat` | schedules the periodic jobs (market refresh, forecast retrain, news scrape) |
 
 **Local dev workflow:**

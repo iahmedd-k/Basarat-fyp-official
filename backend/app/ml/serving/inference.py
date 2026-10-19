@@ -24,9 +24,11 @@ from app.ml.serving.model_loader import artifacts
 log = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
-FEATURES_PATH = ROOT_DIR / "data" / "features" / "features_daily.parquet"
+FEATURES_V3_PATH = ROOT_DIR / "data" / "processed_v3" / "features_v3.parquet"
+FEATURES_DAILY_PATH = ROOT_DIR / "data" / "features" / "features_daily.parquet"
+FEATURES_PATH = FEATURES_V3_PATH if FEATURES_V3_PATH.exists() else FEATURES_DAILY_PATH
 
-NEAR_TIE_THRESHOLD_PP = 5.0
+NEAR_TIE_THRESHOLD_PP = 10.0
 
 
 def _finite_float(value) -> float | None:
@@ -74,10 +76,10 @@ def _run_gru(symbol: str, sym_df: pd.DataFrame) -> dict | None:
     try:
         window_df = sym_df.tail(artifacts.window_size).copy()
 
-        # Fill any missing feature columns with 0.0 default if needed
+        # Fill any missing feature columns with training median default (fallback to 0.0)
         for col in artifacts.feature_columns:
             if col not in window_df.columns:
-                window_df[col] = 0.0
+                window_df[col] = artifacts.train_medians.get(col, 0.0)
 
         # Strictly select features in the exact metadata order
         X = window_df[artifacts.feature_columns].values.astype(np.float32)
