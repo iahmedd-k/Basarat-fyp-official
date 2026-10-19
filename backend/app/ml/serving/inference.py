@@ -26,7 +26,15 @@ log = logging.getLogger(__name__)
 ROOT_DIR = Path(__file__).resolve().parents[3]
 FEATURES_V3_PATH = ROOT_DIR / "data" / "processed_v3" / "features_v3.parquet"
 FEATURES_DAILY_PATH = ROOT_DIR / "data" / "features" / "features_daily.parquet"
-FEATURES_PATH = FEATURES_V3_PATH if FEATURES_V3_PATH.exists() else FEATURES_DAILY_PATH
+
+
+def get_features_path() -> Path:
+    if FEATURES_V3_PATH.exists():
+        return FEATURES_V3_PATH
+    return FEATURES_DAILY_PATH
+
+
+FEATURES_PATH = get_features_path()
 
 NEAR_TIE_THRESHOLD_PP = 10.0
 
@@ -345,21 +353,22 @@ _FEATURES_DATAFRAME_MTIME: float = 0.0
 def get_features_dataframe() -> pd.DataFrame:
     """Load and cache features dataframe in memory across inference invocations."""
     global _FEATURES_DATAFRAME_CACHE, _FEATURES_DATAFRAME_MTIME
-    if not FEATURES_PATH.is_file():
+    features_path = get_features_path()
+    if not features_path.is_file():
         try:
             from scripts.prepare_feature_assets import prepare_features
             prepare_features()
         except (FileNotFoundError, RuntimeError) as exc:
             raise FileNotFoundError(
-                f"Forecast feature data is unavailable at {FEATURES_PATH}; "
+                f"Forecast feature data is unavailable at {features_path}; "
                 "deploy backend/deploy_assets/ or provide the parquet snapshot."
             ) from exc
 
-    mtime = FEATURES_PATH.stat().st_mtime
+    mtime = features_path.stat().st_mtime
     if _FEATURES_DATAFRAME_CACHE is not None and _FEATURES_DATAFRAME_MTIME == mtime:
         return _FEATURES_DATAFRAME_CACHE
 
-    df = pd.read_parquet(FEATURES_PATH)
+    df = pd.read_parquet(features_path)
     if not pd.api.types.is_datetime64_any_dtype(df["date"]):
         df["date"] = pd.to_datetime(df["date"])
     _FEATURES_DATAFRAME_CACHE = df
@@ -369,8 +378,9 @@ def get_features_dataframe() -> pd.DataFrame:
 
 def forecast_cache_key(symbol: str, horizon: str, as_of_date: date) -> str:
     """Build a forecast cache key tied to model versions and feature asset revision."""
+    features_path = get_features_path()
     try:
-        feature_revision = str(FEATURES_PATH.stat().st_mtime_ns)
+        feature_revision = str(features_path.stat().st_mtime_ns)
     except OSError:
         feature_revision = "missing"
     gru_version = str(getattr(artifacts, "model_version", None) or "unavailable")
@@ -398,6 +408,10 @@ def get_forecast(symbol: str, horizon: str = "1W", sym_df: pd.DataFrame | None =
     model_version, model_details.
     """
     symbol = symbol.upper()
+
+    if not artifacts.model_ready and not artifacts.xgb_ready:
+        from app.ml.serving.model_loader import load_artifacts
+        load_artifacts()
 
     # ── Validate symbol ────────────────────────────────────────────────
     active = get_active_symbols()
