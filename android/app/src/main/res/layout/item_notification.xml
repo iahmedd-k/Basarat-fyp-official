@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/card_notification"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginVertical="5dp"
+    android:foreground="?attr/selectableItemBackground"
+    app:cardBackgroundColor="@color/color_surface"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp">
+
+        <!-- Unread Indicator Dot -->
+        <View
+            android:id="@+id/view_unread_dot"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:layout_marginTop="5dp"
+            android:background="@drawable/ic_live_dot"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Notification Icon -->
+        <ImageView
+            android:id="@+id/iv_notif_icon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginStart="8dp"
+            android:contentDescription="Notification Icon"
+            android:src="@drawable/ic_alert_bell"
+            app:tint="@color/color_brand_primary"
+            app:layout_constraintStart_toEndOf="@id/view_unread_dot"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Notification Title -->
+        <TextView
+            android:id="@+id/tv_notification_title"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Strong"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="8dp"
+            android:text="Market Update"
+            android:textColor="@color/color_text_primary"
+            app:layout_constraintEnd_toStartOf="@id/tv_notification_time"
+            app:layout_constraintStart_toEndOf="@id/iv_notif_icon"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Timestamp -->
+        <TextView
+            android:id="@+id/tv_notification_time"
+            android:textAppearance="@style/TextAppearance.Basarat.Caption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="10m ago"
+            android:textColor="@color/color_text_tertiary"
+            app:layout_constraintBaseline_toBaselineOf="@id/tv_notification_title"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- Message Body -->
+        <TextView
+            android:id="@+id/tv_notification_message"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="KSE-100 gained +450 points during early morning trading."
+            android:textColor="@color/color_text_secondary"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="@id/tv_notification_title"
+            app:layout_constraintTop_toBottomOf="@id/tv_notification_title" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.google.android.material.card.MaterialCardView>

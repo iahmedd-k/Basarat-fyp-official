@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    app:cardBackgroundColor="@color/color_surface"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="14dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_criterion_name"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Strong"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/color_text_primary"
+                tools:text="Debt to Total Assets" />
+
+            <TextView
+                android:id="@+id/tv_criterion_status_badge"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_badge_shariah_compliant"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
+                android:textColor="@color/color_shariah_teal"
+                tools:text="PASSED ✓" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_criterion_measured_label"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Measured: "
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/tv_criterion_measured_value"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_primary"
+                tools:text="18.4%" />
+
+            <TextView
+                android:id="@+id/tv_criterion_divider"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="6dp"
+                android:text="•"
+                android:textColor="@color/color_text_tertiary" />
+
+            <TextView
+                android:id="@+id/tv_criterion_threshold_label"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Threshold: "
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/tv_criterion_threshold_value"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_secondary"
+                tools:text="≤ 37.0%" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_criterion_description"
+            android:textAppearance="@style/TextAppearance.Basarat.Meta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/color_text_secondary"
+            tools:text="Interest-bearing debt must not exceed 37% of total assets as per PSX KMI methodology." />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

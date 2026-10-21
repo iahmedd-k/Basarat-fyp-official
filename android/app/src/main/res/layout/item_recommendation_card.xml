@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginVertical="6dp"
+    android:clickable="true"
+    android:focusable="true"
+    app:cardBackgroundColor="@color/color_surface"
+    app:cardCornerRadius="14dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Top Row: Symbol, Signal Badge, Confidence -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_symbol"
+                android:textAppearance="@style/TextAppearance.Basarat.Subheading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_primary"
+                tools:text="OGDC" />
+
+            <TextView
+                android:id="@+id/tv_signal_badge"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/bg_badge_positive"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="3dp"
+                android:text="BUY"
+                android:textColor="@color/color_positive" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <!-- Confidence / Score -->
+            <TextView
+                android:id="@+id/tv_confidence"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_badge_neutral"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
+                android:textColor="@color/color_text_secondary"
+                tools:text="Score: +0.45 (82%)" />
+        </LinearLayout>
+
+        <!-- Summary text -->
+        <TextView
+            android:id="@+id/tv_summary"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/color_text_secondary"
+            tools:text="Strong buy: ML+Technical agree bullish, RSI=38 oversold" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0.5dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/color_divider" />
+
+        <!-- Bottom Row: Target Price & Stop Loss (if present) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Target Price"
+                    android:textColor="@color/color_text_tertiary" />
+
+                <TextView
+                    android:id="@+id/tv_target_price"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/color_positive"
+                    tools:text="PKR 168.00" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Stop Loss"
+                    android:textColor="@color/color_text_tertiary" />
+
+                <TextView
+                    android:id="@+id/tv_stop_loss"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/color_negative"
+                    tools:text="PKR 148.50" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="View Details"
+                android:src="@drawable/ic_chevron_right"
+                app:tint="@color/color_text_tertiary" />
+        </LinearLayout>
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

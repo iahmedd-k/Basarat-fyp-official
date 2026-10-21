@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/drawer_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    tools:context=".MainActivity">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/main"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/color_background"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <androidx.fragment.app.FragmentContainerView
+            android:id="@+id/nav_host_fragment"
+            android:name="androidx.navigation.fragment.NavHostFragment"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:defaultNavHost="true"
+            app:navGraph="@navigation/nav_graph"
+            app:layout_constraintBottom_toTopOf="@id/bottom_navigation"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <com.google.android.material.bottomnavigation.BottomNavigationView
+            android:id="@+id/bottom_navigation"
+            android:layout_width="0dp"
+            android:layout_height="68dp"
+            android:layout_marginStart="18dp"
+            android:layout_marginEnd="18dp"
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/bg_bottom_nav_capsule"
+            android:elevation="14dp"
+            android:visibility="gone"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:clipToPadding="false"
+            app:labelVisibilityMode="labeled"
+            app:itemIconSize="24dp"
+            app:itemPaddingTop="7dp"
+            app:itemPaddingBottom="7dp"
+            app:itemTextAppearanceActive="@style/BasaratBottomNavLabel"
+            app:itemTextAppearanceInactive="@style/BasaratBottomNavLabel"
+            app:itemBackground="@android:color/transparent"
+            app:itemActiveIndicatorStyle="@style/BasaratBottomNavActiveIndicator"
+            app:itemRippleColor="@android:color/transparent"
+            app:itemIconTint="@color/nav_item_color"
+            app:itemTextColor="@color/nav_item_color"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:menu="@menu/bottom_nav_menu" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/nav_view"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@color/color_surface_elevated"
+        android:fitsSystemWindows="true"
+        android:theme="@style/ThemeOverlay.Basarat.Drawer"
+        app:headerLayout="@layout/nav_header_drawer"
+        app:itemBackground="@drawable/bg_drawer_item"
+        app:itemHorizontalPadding="16dp"
+        app:itemIconPadding="16dp"
+        app:itemIconSize="22dp"
+        app:itemIconTint="@color/drawer_item_tint"
+        app:itemTextColor="@color/drawer_item_text"
+        app:menu="@menu/drawer_menu" />
+
+</androidx.drawerlayout.widget.DrawerLayout>

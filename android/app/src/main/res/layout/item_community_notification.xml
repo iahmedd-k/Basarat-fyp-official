@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/card_notification"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    android:clickable="true"
+    android:focusable="true"
+    app:cardBackgroundColor="@color/color_surface"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="14dp">
+
+        <!-- Type Icon -->
+        <ImageView
+            android:id="@+id/iv_notif_type_icon"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/bg_circle_avatar"
+            android:padding="8dp"
+            android:src="@drawable/ic_alert_bell"
+            app:tint="@color/color_brand_primary" />
+
+        <!-- Notification Message Details -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_notif_title"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_primary"
+                tools:text="Post Liked" />
+
+            <TextView
+                android:id="@+id/tv_notif_message"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/color_text_secondary"
+                tools:text="tariq_equity liked your post on LUCK" />
+
+            <TextView
+                android:id="@+id/tv_notif_time"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:textColor="@color/color_text_secondary"
+                tools:text="10:15 AM" />
+        </LinearLayout>
+
+        <!-- Unread Indicator Dot -->
+        <View
+            android:id="@+id/view_unread_dot"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_badge_circle"
+            android:backgroundTint="@color/color_brand_primary" />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

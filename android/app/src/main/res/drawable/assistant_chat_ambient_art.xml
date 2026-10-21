@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="360dp"
+    android:height="800dp"
+    android:viewportWidth="360"
+    android:viewportHeight="800">
+
+    <path
+        android:fillColor="@color/assistant_chat_wash"
+        android:pathData="M360,0 L360,182 C328,167 306,143 289,111 C272,77 248,39 209,0 Z" />
+    <path
+        android:fillColor="@color/assistant_chat_chart"
+        android:pathData="M267,211 L275,211 L275,250 L267,250 Z M277,194 L285,194 L285,232 L277,232 Z M296,175 L304,175 L304,218 L296,218 Z M311,153 L319,153 L319,199 L311,199 Z M328,134 L336,134 L336,177 L328,177 Z M344,113 L352,113 L352,157 L344,157 Z" />
+    <path
+        android:fillColor="@color/assistant_chat_chart"
+        android:pathData="M270,199 L272,199 L272,261 L270,261 Z M280,183 L282,183 L282,243 L280,243 Z M299,161 L301,161 L301,228 L299,228 Z M314,139 L316,139 L316,209 L314,209 Z M331,120 L333,120 L333,186 L331,186 Z M347,101 L349,101 L349,166 L347,166 Z" />
+</vector>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- The selected tab is carried by the icon/label tint alone, so the Material pill is
+         deliberately invisible here. -->
+    <style name="BasaratBottomNavActiveIndicator">
+        <item name="android:width">52dp</item>
+        <item name="android:height">52dp</item>
+        <item name="android:color">@android:color/transparent</item>
+    </style>
+
+    <style name="BasaratBottomNavLabel" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:textSize">9sp</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
+
+    <!-- Material draws a 1dp rule between menu groups in a NavigationView using
+         ?android:attr/listDivider. The drawer keeps its groups but not the lines. -->
+    <style name="ThemeOverlay.Basarat.Drawer" parent="">
+        <item name="android:listDivider">@android:color/transparent</item>
+    </style>
+
+    <!-- Base Application Theme (DayNight) -->
+    <style name="Theme.BasaratTradeInvest" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Brand Colors -->
+        <item name="colorPrimary">@color/color_basarat_navy</item>
+        <item name="colorPrimaryVariant">@color/color_basarat_green_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+        
+        <!-- Secondary / Accent -->
+        <item name="colorSecondary">@color/color_basarat_green</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <!-- Background & Surface -->
+        <item name="android:windowBackground">@color/color_background</item>
+        <item name="colorSurface">@color/color_surface</item>
+        <item name="colorOnSurface">@color/color_text_primary</item>
+
+        <!-- Status Bar & Navigation Bar (Adapts Light / Dark) -->
+        <item name="android:statusBarColor">@color/color_background</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <item name="android:navigationBarColor">@color/color_background</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+    </style>
+</resources>

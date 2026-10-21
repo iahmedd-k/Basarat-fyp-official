@@ -1,0 +1,95 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="280dp"
+    android:height="260dp"
+    android:viewportWidth="280"
+    android:viewportHeight="260">
+
+    <!-- Tablet / Screen Board -->
+    <path
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@color/color_illustration_board_bg"
+        android:pathData="M30,30 h220 a12,12 0 0 1 12,12 v150 a12,12 0 0 1 -12,12 h-220 a12,12 0 0 1 -12,-12 v-150 a12,12 0 0 1 12,-12 z" />
+
+    <!-- Top Screen Header Bar -->
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M38,48 h40" />
+
+    <path
+        android:strokeColor="@color/color_text_tertiary"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M210,48 h30" />
+
+    <!-- Chart Grid Lines -->
+    <path
+        android:strokeColor="@color/color_divider"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M30,90 h232 M30,130 h232 M30,170 h232" />
+
+    <!-- Candlestick 1 (Green) -->
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="2"
+        android:pathData="M60,80 v60" />
+    <path
+        android:fillColor="#00C48C"
+        android:strokeColor="#00C48C"
+        android:strokeWidth="1.5"
+        android:pathData="M54,95 h12 v30 h-12 z" />
+
+    <!-- Candlestick 2 (Red) -->
+    <path
+        android:strokeColor="#EF4444"
+        android:strokeWidth="2"
+        android:pathData="M90,95 v55" />
+    <path
+        android:fillColor="#EF4444"
+        android:strokeColor="#EF4444"
+        android:strokeWidth="1.5"
+        android:pathData="M84,105 h12 v25 h-12 z" />
+
+    <!-- Candlestick 3 (Green) -->
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="2"
+        android:pathData="M120,70 v70" />
+    <path
+        android:fillColor="#00C48C"
+        android:strokeColor="#00C48C"
+        android:strokeWidth="1.5"
+        android:pathData="M114,80 h12 v45 h-12 z" />
+
+    <!-- Upward Trend Line -->
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M50,150 Q100,120 140,80 T230,65" />
+
+    <!-- Mini Trend Card on Screen -->
+    <path
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2"
+        android:fillColor="@color/color_illustration_card_bg"
+        android:pathData="M190,85 h45 a6,6 0 0 1 6,6 v35 a6,6 0 0 1 -6,6 h-45 a6,6 0 0 1 -6,-6 v-35 a6,6 0 0 1 6,-6 z" />
+
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M198,115 L210,105 L220,110 L232,97" />
+
+    <!-- Stand / Shadow -->
+    <path
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M115,204 v25 M165,204 v25 M95,229 h90" />
+</vector>

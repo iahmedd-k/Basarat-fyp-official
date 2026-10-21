@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="12dp">
+
+    <View
+        android:id="@+id/view_timeline_dot"
+        android:layout_width="10dp"
+        android:layout_height="10dp"
+        android:layout_marginTop="5dp"
+        android:background="@drawable/ic_status_dot"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/tv_event_date"
+        android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:textColor="@color/color_text_primary"
+        app:layout_constraintStart_toEndOf="@id/view_timeline_dot"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="05 Oct 2026" />
+
+    <TextView
+        android:id="@+id/tv_event_type"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:textColor="@color/color_basarat_green"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/tv_event_date"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="Book Building Start" />
+
+    <TextView
+        android:id="@+id/tv_event_company"
+        android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="3dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/color_text_secondary"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/view_timeline_dot"
+        app:layout_constraintTop_toBottomOf="@id/tv_event_date"
+        tools:text="Green Technology Solutions Ltd" />
+
+    <TextView
+        android:id="@+id/tv_event_symbol"
+        android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="3dp"
+        android:textColor="@color/color_text_tertiary"
+        app:layout_constraintStart_toEndOf="@id/view_timeline_dot"
+        app:layout_constraintTop_toBottomOf="@id/tv_event_company"
+        tools:text="GTECH" />
+
+    <TextView
+        android:id="@+id/tv_event_price_info"
+        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="3dp"
+        android:gravity="end"
+        android:textColor="@color/color_text_tertiary"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/tv_event_symbol"
+        app:layout_constraintTop_toBottomOf="@id/tv_event_company"
+        tools:text="Floor: PKR 25.0" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

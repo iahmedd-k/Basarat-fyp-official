@@ -1,0 +1,751 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nestedScrollView"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/color_background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingBottom="32dp">
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!--  TOP BAR                                                 -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="@color/color_surface">
+
+            <ImageView
+                android:id="@+id/iv_back"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_arrow_back"
+                android:padding="8dp"
+                android:contentDescription="Back" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="8dp">
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Sentiment Analysis"
+                    android:textColor="@color/color_text_primary" />
+
+                <TextView
+                    android:id="@+id/tv_symbol_subtitle"
+                    android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/color_text_secondary"
+                    tools:text="OGDC" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!--  MARKET SENTIMENT SECTION                               -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <TextView
+            android:textAppearance="@style/TextAppearance.Basarat.Title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:text="Market Sentiment"
+            android:textColor="@color/color_text_primary" />
+
+        <!-- Market Loading -->
+        <ProgressBar
+            android:id="@+id/progress_market"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginVertical="16dp"
+            android:visibility="visible" />
+
+        <!-- Market Error -->
+        <LinearLayout
+            android:id="@+id/layout_market_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_market_error_msg"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_secondary"
+                android:gravity="center"
+                tools:text="Unable to load market sentiment." />
+
+            <Button
+                android:id="@+id/btn_market_retry"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Retry" />
+        </LinearLayout>
+
+        <!-- Market Success Card -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_market_sentiment"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:visibility="gone"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp"
+            app:cardBackgroundColor="@color/color_surface">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Mood + Score -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/tv_market_mood"
+                        android:textAppearance="@style/TextAppearance.Basarat.Heading"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/color_text_primary"
+                        tools:text="BULLISH" />
+
+                    <TextView
+                        android:id="@+id/tv_market_mood_badge"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="12dp"
+                        android:paddingVertical="4dp"
+                        tools:text="BULLISH"
+                        tools:background="@drawable/bg_badge_positive" />
+                </LinearLayout>
+
+                <!-- Overall Score -->
+                <TextView
+                    android:id="@+id/tv_market_overall_score"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/color_text_secondary"
+                    tools:text="Overall Score: +0.35 (scale: −1 to +1)" />
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginVertical="12dp"
+                    android:background="@color/color_divider" />
+
+                <!-- Advance / Decline / Unchanged -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <!-- Advancing -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+                        <TextView
+                            android:id="@+id/tv_market_advancing"
+                            android:textAppearance="@style/TextAppearance.Basarat.Subheading"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/color_positive"
+                            tools:text="42" />
+                        <TextView
+                            android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Advancing"
+                            android:textColor="@color/color_text_secondary" />
+                    </LinearLayout>
+
+                    <!-- Declining -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+                        <TextView
+                            android:id="@+id/tv_market_declining"
+                            android:textAppearance="@style/TextAppearance.Basarat.Subheading"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/color_negative"
+                            tools:text="28" />
+                        <TextView
+                            android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Declining"
+                            android:textColor="@color/color_text_secondary" />
+                    </LinearLayout>
+
+                    <!-- Unchanged -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+                        <TextView
+                            android:id="@+id/tv_market_unchanged"
+                            android:textAppearance="@style/TextAppearance.Basarat.Number.Subheading"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/color_text_secondary"
+                            tools:text="10" />
+                        <TextView
+                            android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Unchanged"
+                            android:textColor="@color/color_text_secondary" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- A/D Ratio + Article count -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tv_market_ad_ratio"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/color_text_secondary"
+                        tools:text="A/D Ratio: 1.50" />
+
+                    <TextView
+                        android:id="@+id/tv_market_article_count"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/color_text_secondary"
+                        android:gravity="end"
+                        tools:text="Articles: 248" />
+                </LinearLayout>
+
+                <!-- News vs Community avg scores -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tv_market_news_avg"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/color_text_secondary"
+                        tools:text="News Avg: +0.28" />
+
+                    <TextView
+                        android:id="@+id/tv_market_community_avg"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/color_text_secondary"
+                        android:gravity="end"
+                        tools:text="Community Avg: +0.12" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!--  STOCK SENTIMENT SECTION                                -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <TextView
+            android:textAppearance="@style/TextAppearance.Basarat.Title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="8dp"
+            android:text="Stock Sentiment"
+            android:textColor="@color/color_text_primary" />
+
+        <!-- Stock Sentiment Loading -->
+        <ProgressBar
+            android:id="@+id/progress_stock_sentiment"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginVertical="16dp"
+            android:visibility="gone" />
+
+        <!-- Stock Sentiment Error -->
+        <LinearLayout
+            android:id="@+id/layout_stock_sentiment_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_stock_sentiment_error_msg"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_secondary"
+                android:gravity="center"
+                tools:text="Unable to load sentiment data." />
+
+            <Button
+                android:id="@+id/btn_stock_sentiment_retry"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Retry" />
+        </LinearLayout>
+
+        <!-- Stock Sentiment Success Card -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_stock_sentiment"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:visibility="gone"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp"
+            app:cardBackgroundColor="@color/color_surface">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Label + Score row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/tv_stock_label"
+                        android:textAppearance="@style/TextAppearance.Basarat.Number.Subheading"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/color_text_primary"
+                        tools:text="POSITIVE" />
+
+                    <TextView
+                        android:id="@+id/tv_stock_score_value"
+                        android:textAppearance="@style/TextAppearance.Basarat.Number.Heading"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="+0.35"
+                        tools:textColor="@color/color_positive" />
+                </LinearLayout>
+
+                <!-- Score scale label -->
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Score scale: −1.0 (Bearish) → +1.0 (Bullish)"
+                    android:textColor="@color/color_text_secondary" />
+
+                <!-- Score bar -->
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="8dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="4dp">
+
+                    <!-- Background track -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="8dp"
+                        android:background="@color/color_divider"
+                        android:layout_gravity="center_vertical" />
+
+                    <!-- Score fill (set width programmatically) -->
+                    <View
+                        android:id="@+id/view_score_fill"
+                        android:layout_width="50dp"
+                        android:layout_height="8dp"
+                        android:layout_gravity="start|center_vertical"
+                        android:background="@color/color_basarat_green" />
+
+                    <!-- Center marker (neutral point) -->
+                    <View
+                        android:layout_width="2dp"
+                        android:layout_height="12dp"
+                        android:layout_gravity="center"
+                        android:background="@color/color_text_secondary" />
+
+                </FrameLayout>
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginVertical="12dp"
+                    android:background="@color/color_divider" />
+
+                <!-- Article count + Trend -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tv_stock_article_count"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/color_text_secondary"
+                        tools:text="Articles Analyzed: 24" />
+
+                    <TextView
+                        android:id="@+id/tv_stock_trend"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/color_text_secondary"
+                        tools:text="Trend: Improving ↑" />
+                </LinearLayout>
+
+                <!-- Source breakdown (visible only if source_breakdown not null) -->
+                <LinearLayout
+                    android:id="@+id/layout_source_breakdown"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tv_news_source_count"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/color_text_secondary"
+                        tools:text="News: 18 articles" />
+
+                    <TextView
+                        android:id="@+id/tv_community_source_count"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/color_text_secondary"
+                        tools:text="Community: 6 posts" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!--  SENTIMENT HISTORY SECTION                              -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <TextView
+            android:textAppearance="@style/TextAppearance.Basarat.Title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="8dp"
+            android:text="Sentiment History"
+            android:textColor="@color/color_text_primary" />
+
+        <!-- Period Pills -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/pill_period_1d"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="6dp"
+                    android:gravity="center"
+                    android:paddingHorizontal="14dp"
+                    android:text="1D"
+                    android:textColor="@color/color_text_secondary"
+                    android:background="@drawable/bg_chip_filter_unselected" />
+
+                <TextView
+                    android:id="@+id/pill_period_1w"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="6dp"
+                    android:gravity="center"
+                    android:paddingHorizontal="14dp"
+                    android:text="1W"
+                    android:textColor="@color/color_text_secondary"
+                    android:background="@drawable/bg_chip_filter_unselected" />
+
+                <TextView
+                    android:id="@+id/pill_period_1m"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="6dp"
+                    android:gravity="center"
+                    android:paddingHorizontal="14dp"
+                    android:text="1M"
+                    android:textColor="@color/color_text_primary"
+                    android:background="@drawable/bg_chip_filter_selected" />
+
+                <TextView
+                    android:id="@+id/pill_period_3m"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="6dp"
+                    android:gravity="center"
+                    android:paddingHorizontal="14dp"
+                    android:text="3M"
+                    android:textColor="@color/color_text_secondary"
+                    android:background="@drawable/bg_chip_filter_unselected" />
+
+                <TextView
+                    android:id="@+id/pill_period_6m"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="6dp"
+                    android:gravity="center"
+                    android:paddingHorizontal="14dp"
+                    android:text="6M"
+                    android:textColor="@color/color_text_secondary"
+                    android:background="@drawable/bg_chip_filter_unselected" />
+
+                <TextView
+                    android:id="@+id/pill_period_1y"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:gravity="center"
+                    android:paddingHorizontal="14dp"
+                    android:text="1Y"
+                    android:textColor="@color/color_text_secondary"
+                    android:background="@drawable/bg_chip_filter_unselected" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- History Loading -->
+        <ProgressBar
+            android:id="@+id/progress_history"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginVertical="24dp"
+            android:visibility="gone" />
+
+        <!-- History Error -->
+        <LinearLayout
+            android:id="@+id/layout_history_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_history_error_msg"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_secondary"
+                android:gravity="center"
+                tools:text="Unable to load sentiment history." />
+
+            <Button
+                android:id="@+id/btn_history_retry"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Retry" />
+        </LinearLayout>
+
+        <!-- History Empty -->
+        <TextView
+            android:id="@+id/tv_history_empty"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginVertical="16dp"
+            android:gravity="center"
+            android:text="No historical data available for this period."
+            android:textColor="@color/color_text_secondary"
+            android:visibility="gone" />
+
+        <!-- History Chart (MPAndroidChart LineChart) -->
+        <com.github.mikephil.charting.charts.LineChart
+            android:id="@+id/chart_sentiment_history"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:visibility="gone" />
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!--  SENTIMENT NEWS SECTION                                 -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:textAppearance="@style/TextAppearance.Basarat.Title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Latest News"
+                android:textColor="@color/color_text_primary" />
+
+        </LinearLayout>
+
+        <!-- News Loading (initial) -->
+        <ProgressBar
+            android:id="@+id/progress_news"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginVertical="24dp"
+            android:visibility="gone" />
+
+        <!-- News Error -->
+        <LinearLayout
+            android:id="@+id/layout_news_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_news_error_msg"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_secondary"
+                android:gravity="center"
+                tools:text="Unable to load news." />
+
+            <Button
+                android:id="@+id/btn_news_retry"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Retry" />
+        </LinearLayout>
+
+        <!-- News Empty -->
+        <TextView
+            android:id="@+id/tv_news_empty"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginVertical="16dp"
+            android:gravity="center"
+            android:text="No news articles found for this stock."
+            android:textColor="@color/color_text_secondary"
+            android:visibility="gone" />
+
+        <!-- News RecyclerView (non-scrollable — inside NestedScrollView) -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_sentiment_news"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:nestedScrollingEnabled="false"
+            android:visibility="gone" />
+
+        <!-- Load More button (shown when hasMore=true) -->
+        <Button
+            android:id="@+id/btn_load_more_news"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:text="Load More"
+            android:visibility="gone" />
+
+        <!-- Load More progress (shown while loading next page) -->
+        <ProgressBar
+            android:id="@+id/progress_news_more"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginVertical="8dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

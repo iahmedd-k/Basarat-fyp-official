@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Core Surface & Background (Light Mode) -->
+    <color name="color_background">#F5F7FA</color>
+    <color name="color_surface">#FFFFFF</color>
+    <color name="color_surface_elevated">#FFFFFF</color>
+    <color name="color_text_primary">#182230</color>
+    <color name="color_text_secondary">#667085</color>
+    <color name="color_text_tertiary">#98A2B3</color>
+    <color name="color_divider">#E4E7EC</color>
+
+    <!-- Splash Screen Color (Pure White for Light Mode) -->
+    <color name="color_splash_bg">#FFFFFF</color>
+
+    <!-- Semantic UI Component Colors -->
+    <color name="color_input_background">#F1F3F5</color>
+    <color name="color_input_hint">#9CA3AF</color>
+    <color name="color_button_primary_bg">#142B4A</color>
+    <color name="color_button_primary_text">#FFFFFF</color>
+    <color name="color_button_social_bg">#F1F3F5</color>
+    <color name="color_button_social_text">#111827</color>
+    <color name="color_button_primary_ripple">#33FFFFFF</color>
+    <color name="color_button_danger_ripple">#1AEF4444</color>
+    <color name="color_checkbox_border">#D1D5DB</color>
+    <color name="color_or_divider">#E5E7EB</color>
+
+    <!-- Illustration Colors (Light Mode) -->
+    <color name="color_illustration_board_bg">#FFFFFF</color>
+    <color name="color_illustration_board_stroke">#1E293B</color>
+    <color name="color_illustration_card_bg">#FFFFFF</color>
+    <color name="color_illustration_character_skin">#FFFFFF</color>
+    <color name="color_illustration_character_pants">#1E293B</color>
+
+    <!-- Brand & Semantic Palette (Section 11) -->
+    <color name="color_basarat_navy">#142B4A</color>
+    <color name="color_basarat_green">#087F5B</color>
+    <color name="color_drawer_active_bg">#1A087F5B</color>
+    <color name="color_brand_green">#087F5B</color>
+    <color name="color_basarat_green_dark">#087F5B</color>
+    <color name="color_positive">#087F5B</color>
+    <color name="color_negative">#B42318</color>
+    <color name="color_neutral">#98A2B3</color>
+
+    <!-- Intelligence & Accents -->
+    <color name="color_ai_blue">#4F7CFF</color>
+    <color name="color_ai_purple">#7C6FE8</color>
+    <color name="color_shariah_teal">#14A89B</color>
+    <color name="color_gold_accent">#D4A84F</color>
+
+    <!-- Common UI Helpers -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+
+    <!-- Semantic Tints / Card Backgrounds -->
+    <color name="color_positive_bg">#E8F5EF</color>
+    <color name="color_negative_bg">#FEF3F2</color>
+    <color name="color_ai_bg">#EEF2FF</color>
+    <color name="color_shariah_bg">#E8F7F5</color>
+    <color name="color_segment_bg">#E9ECEF</color>
+    <color name="color_segment_active">#FFFFFF</color>
+    <color name="color_chip_selected_bg">#E8F5EF</color>
+    <color name="color_chip_selected_stroke">#087F5B</color>
+    <color name="color_dividend_orange">#FF9800</color>
+    <color name="color_skeleton">#E4E7EC</color>
+
+    <!-- Semantic Aliases for Components -->
+    <color name="color_brand_primary">@color/color_basarat_green</color>
+    <color name="color_border">@color/color_divider</color>
+    <color name="color_down">@color/color_negative</color>
+    <color name="color_loading_overlay">#99FFFFFF</color>
+
+    <!-- Chart Mode Pills & Timeframes (Light Mode) -->
+    <color name="color_pill_selected_bg">#E9ECEF</color>
+    <color name="color_pill_unselected_bg">#F7F9F8</color>
+    <color name="color_timeframe_selected_bg">#E9ECEF</color>
+
+    <!-- Authentication presentation -->
+    <color name="auth_background_start">#F7FBF9</color>
+    <color name="auth_background_end">#EEF7F3</color>
+    <color name="auth_surface">#FFFFFF</color>
+    <color name="auth_surface_stroke">#DCEBE4</color>
+    <color name="auth_curve">#1200B894</color>
+    <color name="auth_curve_secondary">#0D087F5B</color>
+    <color name="auth_primary_start">#079B78</color>
+    <color name="auth_primary_end">#087F5B</color>
+    <color name="auth_primary_ripple">#33FFFFFF</color>
+    <color name="auth_logo_tile_start">#E2F7EF</color>
+    <color name="auth_logo_tile_end">#F5FCF8</color>
+
+    <!-- Floating bottom navigation -->
+    <color name="nav_bar_background">#FFFFFF</color>
+    <color name="nav_bar_border">#E8EDF0</color>
+    <color name="nav_item_selected_background">#DFF4E9</color>
+    <color name="nav_item_selected_tint">#078F66</color>
+    <color name="nav_item_unselected_tint">#87939C</color>
+
+    <!-- Assistant chat presentation -->
+    <color name="assistant_chat_background">#FBFDFC</color>
+    <color name="assistant_chat_wash">#DDF8EF</color>
+    <color name="assistant_chat_chart">#5500B894</color>
+    <color name="assistant_avatar_fill">#DFF7EE</color>
+    <color name="assistant_avatar_stroke">#BCEBDD</color>
+    <color name="assistant_composer_fill">#FAFCFB</color>
+    <color name="assistant_composer_border">#D8E9E2</color>
+    <color name="assistant_composer_sparkle_fill">#EAF8F2</color>
+    <color name="assistant_header_chip_fill">#F0FAF6</color>
+    <color name="assistant_header_chip_border">#DDF1E9</color>
+</resources>

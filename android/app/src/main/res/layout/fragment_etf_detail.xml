@@ -1,0 +1,560 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/color_background">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layout_top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:paddingHorizontal="16dp"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/iv_back"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Back"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_arrow_back"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/color_text_primary" />
+
+        <TextView
+            android:id="@+id/tv_top_title"
+            android:textAppearance="@style/TextAppearance.Basarat.Subheading"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="ETF Detail"
+            android:textColor="@color/color_text_primary"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/iv_back"
+            app:layout_constraintTop_toTopOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Identity + quote header (visible on Success) -->
+    <LinearLayout
+        android:id="@+id/layout_header_block"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/layout_top_bar"
+        tools:visibility="visible">
+
+        <TextView
+            android:id="@+id/tv_etf_name"
+            android:textAppearance="@style/TextAppearance.Basarat.Number.Subheading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/color_text_primary"
+            tools:text="HBL Total Treasury ETF" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_etf_symbol"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_badge_stock_symbol"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
+                android:textColor="@color/color_text_primary"
+                tools:text="HBLTETF" />
+
+            <TextView
+                android:id="@+id/tv_etf_shariah"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_badge_shariah_compliant"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
+                android:text="Shariah"
+                android:textColor="@color/color_shariah_teal"
+                android:visibility="gone"
+                tools:visibility="visible" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="bottom"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_etf_price"
+                android:textAppearance="@style/TextAppearance.Basarat.Display"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_primary"
+                tools:text="106.51" />
+
+            <TextView
+                android:id="@+id/tv_etf_change"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginBottom="4dp"
+                android:textColor="@color/color_positive"
+                tools:text="-0.39 (-0.36%)" />
+        </LinearLayout>
+
+        <!-- Tabs -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_segmented_container"
+            android:orientation="horizontal"
+            android:padding="4dp">
+
+            <TextView
+                android:id="@+id/tab_overview"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_pill_chart_toggle_selected"
+                android:gravity="center"
+                android:text="Overview"
+                android:textColor="@color/color_text_primary" />
+
+            <TextView
+                android:id="@+id/tab_history"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="History"
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/tab_performance"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="Performance"
+                android:textColor="@color/color_text_secondary" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scroll_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:paddingBottom="24dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_header_block"
+        tools:visibility="visible">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <!-- ===== Overview ===== -->
+            <LinearLayout
+                android:id="@+id/section_overview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp">
+
+                <TextView
+                    android:id="@+id/tv_etf_description"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:lineSpacingExtra="3dp"
+                    android:textColor="@color/color_text_secondary"
+                    tools:text="First sovereign debt ETF tracking high-yield Pakistan Treasury Bills and PIBs." />
+
+                <TextView
+                    style="@style/IpoEtfSectionTitle"
+                    android:text="Fund Details" />
+
+                <LinearLayout
+                    android:id="@+id/layout_fund_metrics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_card_clean"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="7dp" />
+
+                <TextView
+                    android:id="@+id/title_quote"
+                    style="@style/IpoEtfSectionTitle"
+                    android:text="Quote" />
+
+                <LinearLayout
+                    android:id="@+id/layout_quote_metrics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_card_clean"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="7dp" />
+
+                <TextView
+                    android:id="@+id/tv_quote_as_of"
+                    android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="@color/color_text_tertiary"
+                    tools:text="As of 01 Oct 2026, 21:21 · psx_live" />
+            </LinearLayout>
+
+            <!-- ===== History ===== -->
+            <LinearLayout
+                android:id="@+id/section_history"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/btn_tf_1m"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:background="@drawable/bg_pill_chart_toggle_selected"
+                        android:gravity="center"
+                        android:paddingHorizontal="16dp"
+                        android:text="1M"
+                        android:textColor="@color/color_text_primary" />
+
+                    <TextView
+                        android:id="@+id/btn_tf_3m"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:layout_marginStart="8dp"
+                        android:gravity="center"
+                        android:paddingHorizontal="16dp"
+                        android:text="3M"
+                        android:textColor="@color/color_text_secondary" />
+
+                    <TextView
+                        android:id="@+id/btn_tf_1y"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:layout_marginStart="8dp"
+                        android:gravity="center"
+                        android:paddingHorizontal="16dp"
+                        android:text="1Y"
+                        android:textColor="@color/color_text_secondary" />
+                </LinearLayout>
+
+                <!-- OHLCV table header -->
+                <LinearLayout
+                    android:id="@+id/layout_ohlcv_header"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="6dp"
+                    android:visibility="gone"
+                    android:weightSum="100"
+                    tools:visibility="visible">
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="28"
+                        android:text="Date"
+                        android:textColor="@color/color_text_tertiary" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="18"
+                        android:gravity="end"
+                        android:text="Open"
+                        android:textColor="@color/color_text_tertiary" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="18"
+                        android:gravity="end"
+                        android:text="High"
+                        android:textColor="@color/color_text_tertiary" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="18"
+                        android:gravity="end"
+                        android:text="Low"
+                        android:textColor="@color/color_text_tertiary" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="18"
+                        android:gravity="end"
+                        android:text="Close"
+                        android:textColor="@color/color_text_tertiary" />
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rv_history"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:visibility="gone"
+                    tools:listitem="@layout/item_etf_history_row"
+                    tools:visibility="visible" />
+
+                <ProgressBar
+                    android:id="@+id/progress_history"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="24dp"
+                    android:indeterminateTint="@color/color_basarat_green"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/layout_history_message"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingVertical="32dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tv_history_message"
+                        android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:textColor="@color/color_text_secondary"
+                        tools:text="No history available" />
+
+                    <Button
+                        android:id="@+id/btn_history_retry"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:backgroundTint="@color/color_basarat_green"
+                        android:text="Retry"
+                        android:textColor="@color/white"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ===== Performance ===== -->
+            <LinearLayout
+                android:id="@+id/section_performance"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tv_perf_benchmark"
+                    android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:textColor="@color/color_text_secondary"
+                    tools:text="Benchmark: PSX Government Debt Index" />
+
+                <!-- Comparison table header -->
+                <LinearLayout
+                    android:id="@+id/layout_perf_header"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="4dp"
+                    android:paddingVertical="6dp"
+                    android:weightSum="100">
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="34"
+                        android:text="Period"
+                        android:textColor="@color/color_text_tertiary" />
+
+                    <TextView
+                        android:id="@+id/tv_perf_col_etf"
+                        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="33"
+                        android:gravity="end"
+                        android:text="ETF"
+                        android:textColor="@color/color_text_tertiary" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="33"
+                        android:gravity="end"
+                        android:text="Benchmark"
+                        android:textColor="@color/color_text_tertiary" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/layout_performance_rows"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_card_clean"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="7dp" />
+
+                <LinearLayout
+                    android:id="@+id/layout_perf_metrics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_card_clean"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="7dp" />
+
+                <ProgressBar
+                    android:id="@+id/progress_performance"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="24dp"
+                    android:indeterminateTint="@color/color_basarat_green"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/layout_performance_message"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingVertical="32dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tv_performance_message"
+                        android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:textColor="@color/color_text_secondary"
+                        tools:text="No performance data" />
+
+                    <Button
+                        android:id="@+id/btn_performance_retry"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:backgroundTint="@color/color_basarat_green"
+                        android:text="Retry"
+                        android:textColor="@color/white" />
+                </LinearLayout>
+            </LinearLayout>
+
+        </FrameLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- Top-level skeleton -->
+    <LinearLayout
+        android:id="@+id/layout_skeleton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="10dp"
+        app:layout_constraintTop_toBottomOf="@id/layout_top_bar">
+
+        <include layout="@layout/item_skeleton_card" />
+
+        <include layout="@layout/item_skeleton_card" />
+
+        <include layout="@layout/item_skeleton_card" />
+    </LinearLayout>
+
+    <!-- Top-level error -->
+    <LinearLayout
+        android:id="@+id/layout_error"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingHorizontal="32dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_top_bar">
+
+        <TextView
+            android:id="@+id/tv_error_message"
+            android:textAppearance="@style/TextAppearance.Basarat.Body"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="@color/color_text_secondary"
+            tools:text="Unable to load ETF" />
+
+        <Button
+            android:id="@+id/btn_retry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:backgroundTint="@color/color_basarat_green"
+            android:text="Retry"
+            android:textColor="@color/white" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="14dp"
+        android:weightSum="100">
+
+        <!-- Column 1: Symbol & Company Name (Weight 38) -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="38"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_stock_symbol"
+                android:textAppearance="@style/TextAppearance.Basarat.Title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/color_text_primary"
+                tools:text="SARCO" />
+
+            <TextView
+                android:id="@+id/tv_stock_code"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/color_text_secondary"
+                tools:text="Sui Northern Gas Pipelines Limited" />
+        </LinearLayout>
+
+        <!-- Column 2: Price (Weight 20) -->
+        <TextView
+            android:id="@+id/tv_stock_price"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Strong"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="20"
+            android:gravity="end"
+            android:textColor="@color/color_text_primary"
+            tools:text="58.95" />
+
+        <!-- Column 3: %Chg (Weight 20) -->
+        <TextView
+            android:id="@+id/tv_stock_change"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="20"
+            android:gravity="end"
+            android:textColor="@color/color_positive"
+            tools:text="+9.98%" />
+
+        <!-- Column 4: Purification (Weight 22) -->
+        <TextView
+            android:id="@+id/tv_stock_purification"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="22"
+            android:gravity="end"
+            android:textColor="@color/color_text_primary"
+            tools:text="0.38%" />
+    </LinearLayout>
+
+    <!-- Hairline Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/color_divider" />
+
+</LinearLayout>

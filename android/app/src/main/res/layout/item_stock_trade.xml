@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp"
+        android:weightSum="100">
+
+        <!-- Time -->
+        <TextView
+            android:id="@+id/tv_trade_time"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="30"
+            android:textColor="@color/color_text_secondary"
+            tools:text="15:28:42" />
+
+        <!-- Price -->
+        <TextView
+            android:id="@+id/tv_trade_price"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="25"
+            android:gravity="end"
+            android:textColor="@color/color_text_primary"
+            tools:text="58.95" />
+
+        <!-- Volume -->
+        <TextView
+            android:id="@+id/tv_trade_volume"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="25"
+            android:gravity="end"
+            android:textColor="@color/color_text_secondary"
+            tools:text="12,500" />
+
+        <!-- Type (BUY/SELL) -->
+        <TextView
+            android:id="@+id/tv_trade_type"
+            android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="20"
+            android:gravity="end"
+            tools:text="BUY"
+            tools:textColor="@color/color_positive" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/color_divider" />
+
+</LinearLayout>

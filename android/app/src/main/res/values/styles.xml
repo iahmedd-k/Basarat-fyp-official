@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Type scale. Apply with android:textAppearance="..." instead of per-view
+        textSize/textStyle so weight and size stay coupled: a heading is always
+        medium, body copy is always regular.
+        Sizes are deliberately dense; this is a data-heavy trading UI.
+    -->
+    <style name="TextAppearance.Basarat" parent="android:TextAppearance.Material">
+        <item name="android:textColor">@color/color_text_primary</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Display" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_financial_hero</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Heading" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_screen_title</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Subheading" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_section_title</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Title" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_card_title</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Body" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_body</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Body.Strong" parent="TextAppearance.Basarat.Body">
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Body.Small" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_body_small</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Body.Small.Strong" parent="TextAppearance.Basarat.Body.Small">
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Meta" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_caption</item>
+        <item name="android:textColor">@color/color_text_secondary</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Meta.Strong" parent="TextAppearance.Basarat.Meta">
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Caption" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_caption_small</item>
+        <item name="android:textColor">@color/color_text_secondary</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Caption.Strong" parent="TextAppearance.Basarat.Caption">
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Micro" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_micro</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/color_text_secondary</item>
+    </style>
+
+    <!-- Uppercase eyebrow label above a section, e.g. "TOP GAINERS" -->
+    <style name="TextAppearance.Basarat.SectionLabel" parent="TextAppearance.Basarat">
+        <item name="android:textSize">@dimen/text_caption_small</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/color_text_tertiary</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <!-- Column headings and figures that must line up vertically. -->
+    <style name="TextAppearance.Basarat.Number" parent="TextAppearance.Basarat">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Number.Title" parent="TextAppearance.Basarat.Title">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Number.Subheading" parent="TextAppearance.Basarat.Subheading">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Number.Heading" parent="TextAppearance.Basarat.Heading">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Number.Body" parent="TextAppearance.Basarat.Body">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Number.Body.Strong" parent="TextAppearance.Basarat.Body.Strong">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Number.Body.Small" parent="TextAppearance.Basarat.Body.Small">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Number.Body.Small.Strong" parent="TextAppearance.Basarat.Body.Small.Strong">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Number.Meta" parent="TextAppearance.Basarat.Meta">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Basarat.Number.Caption" parent="TextAppearance.Basarat.Caption">
+        <item name="android:fontFeatureSettings">"tnum"</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <!-- Section heading used across IPO / ETF detail screens -->
+    <style name="IpoEtfSectionTitle" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">18dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+        <item name="android:textAppearance">@style/TextAppearance.Basarat.Title</item>
+        <item name="android:textColor">@color/color_text_primary</item>
+    </style>
+</resources>

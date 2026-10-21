@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginTop="10dp"
+    android:background="@drawable/bg_card_clean"
+    android:foreground="?attr/selectableItemBackground"
+    android:padding="14dp">
+
+    <TextView
+        android:id="@+id/tv_etf_symbol"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_badge_stock_symbol"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="3dp"
+        android:textColor="@color/color_text_primary"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="HBLTETF" />
+
+    <ImageView
+        android:id="@+id/iv_etf_shariah"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginStart="8dp"
+        android:contentDescription="Shariah compliant"
+        android:src="@drawable/ic_shariah_crescent"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/tv_etf_symbol"
+        app:layout_constraintStart_toEndOf="@id/tv_etf_symbol"
+        app:layout_constraintTop_toTopOf="@id/tv_etf_symbol"
+        app:tint="@color/color_shariah_teal"
+        tools:visibility="visible" />
+
+    <TextView
+        android:id="@+id/tv_etf_price"
+        android:textAppearance="@style/TextAppearance.Basarat.Number.Title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/color_text_primary"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="106.51" />
+
+    <TextView
+        android:id="@+id/tv_etf_change"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/color_positive"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_etf_price"
+        tools:text="-0.36%" />
+
+    <TextView
+        android:id="@+id/tv_etf_name"
+        android:textAppearance="@style/TextAppearance.Basarat.Body.Strong"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="10dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="@color/color_text_primary"
+        app:layout_constraintEnd_toStartOf="@id/tv_etf_price"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_etf_symbol"
+        tools:text="HBL Total Treasury ETF" />
+
+    <TextView
+        android:id="@+id/tv_etf_manager"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:layout_marginEnd="10dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/color_text_secondary"
+        app:layout_constraintEnd_toStartOf="@id/tv_etf_price"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_etf_name"
+        tools:text="HBL Asset Management Limited" />
+
+    <TextView
+        android:id="@+id/tv_etf_category"
+        android:textAppearance="@style/TextAppearance.Basarat.Caption"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_badge_neutral"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="3dp"
+        android:textColor="@color/color_text_secondary"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_etf_manager"
+        tools:text="Treasury / Debt ETF" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

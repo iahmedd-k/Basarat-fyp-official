@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_home"
+        android:icon="@drawable/ic_nav_home"
+        android:title="@string/nav_home" />
+    <item
+        android:id="@+id/nav_markets"
+        android:icon="@drawable/chart_2_svgrepo_com"
+        android:title="@string/nav_markets" />
+    <item
+        android:id="@+id/nav_portfolio"
+        android:icon="@drawable/ic_nav_portfolio"
+        android:title="@string/nav_portfolio" />
+    <item
+        android:id="@+id/communityProfileFragment"
+        android:icon="@drawable/ic_nav_community"
+        android:title="@string/nav_community" />
+    <item
+        android:id="@+id/nav_you"
+        android:icon="@drawable/ic_nav_you"
+        android:title="@string/nav_you" />
+</menu>
