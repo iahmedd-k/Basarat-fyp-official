@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/color_background">
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="48dp">
+
+            <!-- Top Header Bar -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:paddingHorizontal="12dp">
+
+                <ImageView
+                    android:id="@+id/iv_back"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Back"
+                    android:padding="6dp"
+                    android:src="@drawable/ic_arrow_back"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:tint="@color/color_text_primary" />
+
+                <TextView
+                    android:id="@+id/tv_header_title"
+                    android:textAppearance="@style/TextAppearance.Basarat.Subheading"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="Report Review"
+                    android:textColor="@color/color_text_primary"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toStartOf="@id/tv_header_status"
+                    app:layout_constraintStart_toEndOf="@id/iv_back"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/tv_header_status"
+                    android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_badge_positive"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="4dp"
+                    android:textColor="@color/color_positive"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    tools:text="PENDING" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/color_border" />
+
+            <!-- Report Details Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="@color/color_surface"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Report Information"
+                        android:textColor="@color/color_text_primary" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                            android:layout_width="120dp"
+                            android:layout_height="wrap_content"
+                            android:text="Report ID:"
+                            android:textColor="@color/color_text_secondary" />
+
+                        <TextView
+                            android:id="@+id/tv_report_id"
+                            android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/color_text_primary"
+                            tools:text="rep_9f8e7d6c" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                            android:layout_width="120dp"
+                            android:layout_height="wrap_content"
+                            android:text="Reported Object:"
+                            android:textColor="@color/color_text_secondary" />
+
+                        <TextView
+                            android:id="@+id/tv_target_type_desc"
+                            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/color_text_primary"
+                            tools:text="Post (#post_104)" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                            android:layout_width="120dp"
+                            android:layout_height="wrap_content"
+                            android:text="Reporter:"
+                            android:textColor="@color/color_text_secondary" />
+
+                        <TextView
+                            android:id="@+id/tv_reporter_desc"
+                            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/color_text_primary"
+                            tools:text="@investor_ali" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                            android:layout_width="120dp"
+                            android:layout_height="wrap_content"
+                            android:text="Report Reason:"
+                            android:textColor="@color/color_text_secondary" />
+
+                        <TextView
+                            android:id="@+id/tv_reason_desc"
+                            android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/color_negative"
+                            tools:text="Misleading market manipulation advice" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Target Content Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="@color/color_surface"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:textAppearance="@style/TextAppearance.Basarat.Title"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Reported Content"
+                            android:textColor="@color/color_text_primary" />
+
+                        <TextView
+                            android:id="@+id/tv_post_moderation_status"
+                            android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_badge_neutral"
+                            android:paddingHorizontal="8dp"
+                            android:paddingVertical="3dp"
+                            android:textColor="@color/color_text_primary"
+                            tools:text="PUBLISHED" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tv_content_body"
+                        android:textAppearance="@style/TextAppearance.Basarat.Body"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:lineSpacingExtra="3dp"
+                        android:textColor="@color/color_text_primary"
+                        tools:text="This is the full text of the reported post or comment for administrator review." />
+
+                    <TextView
+                        android:id="@+id/tv_content_stats"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textColor="@color/color_text_tertiary"
+                        tools:text="Author: @trader99 • Reports: 3 • Likes: 12 • Comments: 4" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Moderation Actions -->
+            <TextView
+                android:textAppearance="@style/TextAppearance.Basarat.Title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:layout_marginTop="20dp"
+                android:text="Moderation Actions"
+                android:textColor="@color/color_text_primary" />
+
+            <!-- Report Status Update Buttons -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_mark_reviewed"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="Mark Reviewed"
+                    android:textSize="13sp"
+                    app:backgroundTint="@color/color_positive"
+                    app:cornerRadius="10dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_dismiss_report"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:text="Dismiss Report"
+                    android:textColor="@color/color_text_primary"
+                    android:textSize="13sp"
+                    app:backgroundTint="@color/color_surface"
+                    app:cornerRadius="10dp"
+                    app:strokeColor="@color/color_border"
+                    app:strokeWidth="1dp" />
+            </LinearLayout>
+
+            <!-- Destructive / Removal Actions -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_restore_post"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="12dp"
+                android:text="Restore Temporarily Hidden Post"
+                android:textColor="@color/color_brand_primary"
+                android:textSize="13sp"
+                app:backgroundTint="@color/color_surface"
+                app:cornerRadius="10dp"
+                app:strokeColor="@color/color_brand_primary"
+                app:strokeWidth="1dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_remove_post"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="10dp"
+                android:text="Direct Remove Post (Moderation)"
+                android:textColor="@color/color_negative"
+                android:textSize="13sp"
+                app:backgroundTint="@color/color_surface"
+                app:cornerRadius="10dp"
+                app:strokeColor="@color/color_negative"
+                app:strokeWidth="1dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_delete_post"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="10dp"
+                android:text="Permanently Delete Post"
+                android:textSize="13sp"
+                app:backgroundTint="@color/color_negative"
+                app:cornerRadius="10dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_delete_comment"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="10dp"
+                android:text="Delete Reported Comment"
+                android:textSize="13sp"
+                android:visibility="gone"
+                app:backgroundTint="@color/color_negative"
+                app:cornerRadius="10dp" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

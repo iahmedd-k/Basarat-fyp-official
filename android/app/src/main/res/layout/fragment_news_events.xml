@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/color_background">
+
+    <!-- Top App Bar (Matches Screenshot & Shariah Header) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layout_top_bar"
+        android:layout_width="0dp"
+        android:layout_height="56dp"
+        android:paddingHorizontal="16dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/iv_back"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Back"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_arrow_back"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/color_text_primary" />
+
+        <LinearLayout
+            android:id="@+id/layout_titles"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/layout_actions"
+            app:layout_constraintStart_toEndOf="@id/iv_back"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/tv_top_title"
+                android:textAppearance="@style/TextAppearance.Basarat.Subheading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="News &amp; Events"
+                android:textColor="@color/color_text_primary" />
+
+            <TextView
+                android:id="@+id/tv_top_subtitle"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:text="PSX Market Intelligence &amp; Notices"
+                android:textColor="@color/color_text_secondary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layout_actions"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/iv_refresh"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Refresh"
+                android:padding="5dp"
+                android:src="@drawable/ic_refresh"
+                app:tint="@color/color_text_primary" />
+
+            <ImageView
+                android:id="@+id/iv_search"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Search"
+                android:padding="5dp"
+                android:src="@drawable/ic_search"
+                app:tint="@color/color_text_primary" />
+
+            <ImageView
+                android:id="@+id/iv_help"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Help"
+                android:padding="5dp"
+                android:src="@drawable/ic_help_outline"
+                app:tint="@color/color_text_primary" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Market Status Banner -->
+    <LinearLayout
+        android:id="@+id/layout_market_status"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="2dp"
+        android:background="@drawable/bg_segmented_container"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="4dp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_top_bar"
+        tools:visibility="visible">
+
+        <View
+            android:id="@+id/view_market_status_dot"
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:background="@drawable/bg_badge_positive" />
+
+        <TextView
+            android:id="@+id/tv_market_status"
+            android:textAppearance="@style/TextAppearance.Basarat.Caption"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:textColor="@color/color_text_secondary"
+            tools:text="Market: Regular Session • 09:30 - 15:30 PKT" />
+    </LinearLayout>
+
+    <!-- Expandable Search Input Bar (Identical to Shariah Screening) -->
+    <LinearLayout
+        android:id="@+id/layout_search_bar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/bg_segmented_container"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="4dp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_market_status"
+        tools:visibility="visible">
+
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:src="@drawable/ic_search"
+            app:tint="@color/color_text_secondary" />
+
+        <EditText
+            android:id="@+id/et_search"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:background="@null"
+            android:hint="Search PSX symbol, company, or news..."
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:maxLines="1"
+            android:textColor="@color/color_text_primary"
+            android:textColorHint="@color/color_text_secondary"
+            android:textSize="13sp" />
+
+        <ImageView
+            android:id="@+id/iv_search_clear"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Clear"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="@color/color_text_secondary" />
+    </LinearLayout>
+
+    <!-- PSX Filter Pills (Matching Shariah & Markets Screens) -->
+    <HorizontalScrollView
+        android:id="@+id/scroll_filter_pills"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:clipToPadding="false"
+        android:paddingHorizontal="16dp"
+        android:scrollbars="none"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_search_bar">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <!-- All -->
+            <TextView
+                android:id="@+id/chip_all"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_chip_filter_selected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="All"
+                android:textColor="@color/color_positive" />
+
+            <!-- General -->
+            <TextView
+                android:id="@+id/chip_general"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="General"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- KSE-100 -->
+            <TextView
+                android:id="@+id/chip_kse_100"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="KSE-100"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- Banks -->
+            <TextView
+                android:id="@+id/chip_banks"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Banks"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- Cement -->
+            <TextView
+                android:id="@+id/chip_cement"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Cement"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- Technology -->
+            <TextView
+                android:id="@+id/chip_tech"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Technology"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- Oil & Gas -->
+            <TextView
+                android:id="@+id/chip_oil_gas"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Oil &amp; Gas"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- Fertilizer -->
+            <TextView
+                android:id="@+id/chip_fertilizer"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Fertilizer"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- Corporate -->
+            <TextView
+                android:id="@+id/chip_corporate"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Corporate"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- Earnings -->
+            <TextView
+                android:id="@+id/chip_earnings"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Earnings"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- Dividends -->
+            <TextView
+                android:id="@+id/chip_dividends"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Dividends"
+                android:textColor="@color/color_text_secondary" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Top Hairline Divider -->
+    <View
+        android:id="@+id/divider_header"
+        android:layout_width="0dp"
+        android:layout_height="0.5dp"
+        android:layout_marginTop="10dp"
+        android:background="@color/color_divider"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/scroll_filter_pills" />
+
+    <!-- News & Events RecyclerView -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_news_events"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:paddingBottom="24dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider_header"
+        tools:listitem="@layout/item_news_article" />
+
+    <!-- Loading State -->
+    <ProgressBar
+        android:id="@+id/progress_loading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:indeterminateTint="@color/color_basarat_green"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider_header" />
+
+    <!-- Empty State -->
+    <LinearLayout
+        android:id="@+id/layout_empty_state"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider_header">
+
+        <TextView
+            android:textAppearance="@style/TextAppearance.Basarat.Body"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="No PSX News or Events Found"
+            android:textColor="@color/color_text_secondary" />
+    </LinearLayout>
+
+    <!-- Error State -->
+    <LinearLayout
+        android:id="@+id/layout_error_state"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider_header">
+
+        <TextView
+            android:id="@+id/tv_error_message"
+            android:textAppearance="@style/TextAppearance.Basarat.Body"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Unable to load news updates"
+            android:textColor="@color/color_text_secondary" />
+
+        <Button
+            android:id="@+id/btn_retry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="@color/color_basarat_green"
+            android:text="Retry"
+            android:textColor="@color/white" />
+    </LinearLayout>
+
+    <!-- Load More Pagination Indicator -->
+    <ProgressBar
+        android:id="@+id/progress_load_more"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginBottom="8dp"
+        android:indeterminateTint="@color/color_basarat_green"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

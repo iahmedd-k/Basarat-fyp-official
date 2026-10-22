@@ -1,0 +1,655 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/splashFragment">
+
+    <fragment
+        android:id="@+id/splashFragment"
+        android:name="com.fyp.basarattradeinvest.feature.splash.SplashFragment"
+        android:label="Splash"
+        tools:layout="@layout/fragment_splash">
+        <action
+            android:id="@+id/action_splashFragment_to_onboardingFragment"
+            app:destination="@id/onboardingFragment"
+            app:popUpTo="@id/splashFragment"
+            app:popUpToInclusive="true" />
+        <action
+            android:id="@+id/action_splashFragment_to_homeFragment"
+            app:destination="@id/nav_home"
+            app:popUpTo="@id/splashFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/onboardingFragment"
+        android:name="com.fyp.basarattradeinvest.feature.onboarding.OnboardingFragment"
+        android:label="Onboarding"
+        tools:layout="@layout/fragment_onboarding">
+        <action
+            android:id="@+id/action_onboardingFragment_to_loginFragment"
+            app:destination="@id/loginFragment"
+            app:popUpTo="@id/onboardingFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/loginFragment"
+        android:name="com.fyp.basarattradeinvest.feature.auth.LoginFragment"
+        android:label="Login"
+        tools:layout="@layout/fragment_login">
+        <action
+            android:id="@+id/action_loginFragment_to_signUpFragment"
+            app:destination="@id/signUpFragment" />
+        <action
+            android:id="@+id/action_loginFragment_to_homeFragment"
+            app:destination="@id/nav_home"
+            app:popUpTo="@id/loginFragment"
+            app:popUpToInclusive="true" />
+        <action
+            android:id="@+id/action_loginFragment_to_forgotPasswordFragment"
+            app:destination="@id/forgotPasswordFragment" />
+        <action
+            android:id="@+id/action_loginFragment_to_emailVerificationFragment"
+            app:destination="@id/emailVerificationFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/signUpFragment"
+        android:name="com.fyp.basarattradeinvest.feature.auth.SignUpFragment"
+        android:label="Sign Up"
+        tools:layout="@layout/fragment_sign_up">
+        <action
+            android:id="@+id/action_signUpFragment_to_loginFragment"
+            app:destination="@id/loginFragment"
+            app:popUpTo="@id/loginFragment"
+            app:popUpToInclusive="true" />
+        <action
+            android:id="@+id/action_signUpFragment_to_homeFragment"
+            app:destination="@id/nav_home"
+            app:popUpTo="@id/signUpFragment"
+            app:popUpToInclusive="true" />
+        <action
+            android:id="@+id/action_signUpFragment_to_emailVerificationFragment"
+            app:destination="@id/emailVerificationFragment" />
+    </fragment>
+
+    <!-- Main Navigation Destinations -->
+    <fragment
+        android:id="@+id/nav_home"
+        android:name="com.fyp.basarattradeinvest.feature.dashboard.HomeFragment"
+        android:label="Home"
+        tools:layout="@layout/fragment_home">
+        <action
+            android:id="@+id/action_home_to_portfolio"
+            app:destination="@id/nav_portfolio" />
+        <action
+            android:id="@+id/action_home_to_riskAnalytics"
+            app:destination="@id/riskAnalyticsFragment" />
+        <action
+            android:id="@+id/action_home_to_stockDetail"
+            app:destination="@id/stockDetailFragment" />
+        <action
+            android:id="@+id/action_home_to_newsEvents"
+            app:destination="@id/newsEventsFragment" />
+        <action
+            android:id="@+id/action_home_to_stockSearch"
+            app:destination="@id/stockSearchFragment" />
+        <action
+            android:id="@+id/action_home_to_recommendations"
+            app:destination="@id/recommendationsFragment" />
+        <action
+            android:id="@+id/action_home_to_alerts"
+            app:destination="@id/alertsFragment" />
+        <action
+            android:id="@+id/action_home_to_notifications"
+            app:destination="@id/notificationsFragment" />
+        <action
+            android:id="@+id/action_home_to_watchlist"
+            app:destination="@id/watchlistFragment" />
+        <action
+            android:id="@+id/action_home_to_assistantChat"
+            app:destination="@id/assistantChatFragment" />
+        <action
+            android:id="@+id/action_home_to_profile"
+            app:destination="@id/editProfileFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/nav_markets"
+        android:name="com.fyp.basarattradeinvest.feature.markets.MarketDashboardFragment"
+        android:label="Markets"
+        tools:layout="@layout/fragment_market_dashboard">
+        <action
+            android:id="@+id/action_markets_to_shariahScreening"
+            app:destination="@id/shariahScreeningFragment" />
+        <action
+            android:id="@+id/action_markets_to_stockDetail"
+            app:destination="@id/stockDetailFragment" />
+        <action
+            android:id="@+id/action_markets_to_newsEvents"
+            app:destination="@id/newsEventsFragment" />
+        <action
+            android:id="@+id/action_markets_to_stockSearch"
+            app:destination="@id/stockSearchFragment" />
+        <action
+            android:id="@+id/action_markets_to_recommendations"
+            app:destination="@id/recommendationsFragment" />
+        <action
+            android:id="@+id/action_markets_to_smart_selection"
+            app:destination="@id/smart_selection_fragment" />
+        <action
+            android:id="@+id/action_markets_to_alerts"
+            app:destination="@id/alertsFragment" />
+        <action
+            android:id="@+id/action_markets_to_notifications"
+            app:destination="@id/notificationsFragment" />
+        <action
+            android:id="@+id/action_markets_to_assistant"
+            app:destination="@id/assistantConversationsFragment" />
+        <action
+            android:id="@+id/action_markets_to_assistantChat"
+            app:destination="@id/assistantChatFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/stockSearchFragment"
+        android:name="com.fyp.basarattradeinvest.feature.stock.search.StockSearchFragment"
+        android:label="Search Stocks"
+        tools:layout="@layout/fragment_stock_search">
+        <action
+            android:id="@+id/action_stockSearch_to_stockDetail"
+            app:destination="@id/stockDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/shariahScreeningFragment"
+        android:name="com.fyp.basarattradeinvest.feature.shariah.ShariahScreeningFragment"
+        android:label="Shariah Screening"
+        tools:layout="@layout/fragment_shariah_screening">
+        <action
+            android:id="@+id/action_shariah_to_stockDetail"
+            app:destination="@id/stockDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/newsEventsFragment"
+        android:name="com.fyp.basarattradeinvest.feature.news.NewsEventsFragment"
+        android:label="News &amp; Events"
+        tools:layout="@layout/fragment_news_events">
+        <action
+            android:id="@+id/action_newsEvents_to_stockDetail"
+            app:destination="@id/stockDetailFragment" />
+        <action
+            android:id="@+id/action_newsEvents_to_articleDetail"
+            app:destination="@id/newsArticleDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/newsArticleDetailFragment"
+        android:name="com.fyp.basarattradeinvest.feature.news.detail.NewsArticleDetailFragment"
+        android:label="Article Detail"
+        tools:layout="@layout/fragment_news_article_detail">
+        <argument
+            android:name="articleId"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/newsWebViewFragment"
+        android:name="com.fyp.basarattradeinvest.feature.news.webview.NewsWebViewFragment"
+        android:label="Source Article"
+        tools:layout="@layout/fragment_news_web_view">
+        <argument
+            android:name="url"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/stockDetailFragment"
+        android:name="com.fyp.basarattradeinvest.feature.stock.detail.StockDetailFragment"
+        android:label="Stock Detail"
+        tools:layout="@layout/fragment_stock_detail">
+        <argument
+            android:name="symbol"
+            app:argType="string"
+            android:defaultValue="SARCO" />
+        <action
+            android:id="@+id/action_stockDetail_to_stockAnalysis"
+            app:destination="@id/stockAnalysisFragment" />
+        <action
+            android:id="@+id/action_stockDetail_to_chartFullscreen"
+            app:destination="@id/chartFullscreenFragment" />
+        <action
+            android:id="@+id/action_stockDetail_to_recommendationDetail"
+            app:destination="@id/stockRecommendationDetailFragment" />
+        <action
+            android:id="@+id/action_stockDetail_to_articleDetail"
+            app:destination="@id/newsArticleDetailFragment" />
+        <action
+            android:id="@+id/action_stockDetail_to_assistantChat"
+            app:destination="@id/assistantChatFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/stockAnalysisFragment"
+        android:name="com.fyp.basarattradeinvest.feature.stock.analysis.StockAnalysisFragment"
+        android:label="Stock Analysis"
+        tools:layout="@layout/fragment_stock_analysis">
+        <argument
+            android:name="symbol"
+            app:argType="string"
+            android:defaultValue="LUCK" />
+        <action
+            android:id="@+id/action_stockAnalysis_to_sentiment"
+            app:destination="@id/sentimentFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/sentimentFragment"
+        android:name="com.fyp.basarattradeinvest.feature.sentiment.SentimentFragment"
+        android:label="Sentiment Analysis"
+        tools:layout="@layout/fragment_sentiment">
+        <argument
+            android:name="symbol"
+            app:argType="string"
+            android:defaultValue="OGDC" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/chartFullscreenFragment"
+        android:name="com.fyp.basarattradeinvest.feature.stock.chart.ChartFullscreenFragment"
+        android:label="Historical Chart"
+        tools:layout="@layout/fragment_chart_fullscreen">
+        <argument
+            android:name="symbol"
+            app:argType="string"
+            android:defaultValue="LUCK" />
+    </fragment>
+
+    <!-- Auth Flow Destinations -->
+    <fragment
+        android:id="@+id/forgotPasswordFragment"
+        android:name="com.fyp.basarattradeinvest.feature.auth.ForgotPasswordFragment"
+        android:label="Forgot Password"
+        tools:layout="@layout/fragment_forgot_password">
+        <action
+            android:id="@+id/action_forgotPasswordFragment_to_verifyResetCodeFragment"
+            app:destination="@id/verifyResetCodeFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/verifyResetCodeFragment"
+        android:name="com.fyp.basarattradeinvest.feature.auth.VerifyResetCodeFragment"
+        android:label="Verify Reset Code"
+        tools:layout="@layout/fragment_verify_reset_code">
+        <argument
+            android:name="arg_email"
+            app:argType="string"
+            android:defaultValue="" />
+        <action
+            android:id="@+id/action_verifyResetCodeFragment_to_resetPasswordFragment"
+            app:destination="@id/resetPasswordFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/resetPasswordFragment"
+        android:name="com.fyp.basarattradeinvest.feature.auth.ResetPasswordFragment"
+        android:label="Reset Password"
+        tools:layout="@layout/fragment_reset_password">
+        <argument
+            android:name="arg_reset_token"
+            app:argType="string"
+            android:defaultValue="" />
+        <argument
+            android:name="arg_email"
+            app:argType="string"
+            android:defaultValue="" />
+        <action
+            android:id="@+id/action_resetPasswordFragment_to_loginFragment"
+            app:destination="@id/loginFragment"
+            app:popUpTo="@id/loginFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/emailVerificationFragment"
+        android:name="com.fyp.basarattradeinvest.feature.auth.EmailVerificationFragment"
+        android:label="Verify Email"
+        tools:layout="@layout/fragment_email_verification">
+        <argument
+            android:name="arg_email"
+            app:argType="string"
+            android:defaultValue="" />
+        <action
+            android:id="@+id/action_emailVerification_to_home"
+            app:destination="@id/nav_home"
+            app:popUpTo="@id/nav_graph"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <!-- Profile & Settings Destination (tied to nav_you bottom navigation item) -->
+    <fragment
+        android:id="@+id/nav_you"
+        android:name="com.fyp.basarattradeinvest.feature.profile.ProfileFragment"
+        android:label="You"
+        tools:layout="@layout/fragment_profile">
+        <action
+            android:id="@+id/action_profileFragment_to_changePasswordFragment"
+            app:destination="@id/changePasswordFragment" />
+        <action
+            android:id="@+id/action_profileFragment_to_editProfileFragment"
+            app:destination="@id/editProfileFragment" />
+        <action
+            android:id="@+id/action_profileFragment_to_riskProfileFragment"
+            app:destination="@id/riskProfileFragment" />
+        <action
+            android:id="@+id/action_profileFragment_to_notificationPreferencesFragment"
+            app:destination="@id/notificationPreferencesFragment" />
+        <action
+            android:id="@+id/action_profileFragment_to_alertsFragment"
+            app:destination="@id/alertsFragment" />
+        <action
+            android:id="@+id/action_profileFragment_to_notificationsFragment"
+            app:destination="@id/notificationsFragment" />
+        <action
+            android:id="@+id/action_profileFragment_to_communityProfileFragment"
+            app:destination="@id/communityProfileFragment" />
+        <action
+            android:id="@+id/action_profileFragment_to_communityNotificationsFragment"
+            app:destination="@id/communityNotificationsFragment" />
+        <action
+            android:id="@+id/action_profileFragment_to_adminCommunityHub"
+            app:destination="@id/adminCommunityHubFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/changePasswordFragment"
+        android:name="com.fyp.basarattradeinvest.feature.profile.ChangePasswordFragment"
+        android:label="Change Password"
+        tools:layout="@layout/fragment_change_password" />
+
+    <fragment
+        android:id="@+id/editProfileFragment"
+        android:name="com.fyp.basarattradeinvest.feature.profile.EditProfileFragment"
+        android:label="Edit Profile"
+        tools:layout="@layout/fragment_edit_profile" />
+
+    <fragment
+        android:id="@+id/riskProfileFragment"
+        android:name="com.fyp.basarattradeinvest.feature.profile.RiskProfileFragment"
+        android:label="Risk &amp; Investment Profile"
+        tools:layout="@layout/fragment_risk_profile" />
+
+    <fragment
+        android:id="@+id/notificationPreferencesFragment"
+        android:name="com.fyp.basarattradeinvest.feature.profile.NotificationPreferencesFragment"
+        android:label="Notification Preferences"
+        tools:layout="@layout/fragment_notification_preferences" />
+
+    <!-- Recommendations Destinations -->
+    <fragment
+        android:id="@+id/smart_selection_fragment"
+        android:name="com.fyp.basarattradeinvest.feature.recommendation.smartselection.SmartSelectionFragment"
+        android:label="Smart Selection"
+        tools:layout="@layout/fragment_smart_selection" />
+
+    <fragment
+        android:id="@+id/recommendationsFragment"
+        android:name="com.fyp.basarattradeinvest.feature.recommendation.list.RecommendationsFragment"
+        android:label="Recommendations"
+        tools:layout="@layout/fragment_recommendations">
+        <action
+            android:id="@+id/action_recommendations_to_detail"
+            app:destination="@id/stockRecommendationDetailFragment" />
+        <action
+            android:id="@+id/action_recommendations_to_settings"
+            app:destination="@id/recommendationSettingsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/stockRecommendationDetailFragment"
+        android:name="com.fyp.basarattradeinvest.feature.recommendation.detail.StockRecommendationDetailFragment"
+        android:label="Stock Recommendation Detail"
+        tools:layout="@layout/fragment_stock_recommendation_detail">
+        <argument
+            android:name="symbol"
+            app:argType="string"
+            android:defaultValue="OGDC" />
+        <action
+            android:id="@+id/action_recDetail_to_stockDetail"
+            app:destination="@id/stockDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/recommendationSettingsFragment"
+        android:name="com.fyp.basarattradeinvest.feature.recommendation.settings.RecommendationSettingsFragment"
+        android:label="Recommendation Settings"
+        tools:layout="@layout/fragment_recommendation_settings" />
+
+    <!-- Portfolio Destinations -->
+    <fragment
+        android:id="@+id/nav_portfolio"
+        android:name="com.fyp.basarattradeinvest.feature.portfolio.main.PortfolioMainFragment"
+        android:label="Portfolio"
+        tools:layout="@layout/fragment_portfolio_main">
+        <action
+            android:id="@+id/action_portfolio_to_holdingDetail"
+            app:destination="@id/holdingDetailFragment" />
+        <action
+            android:id="@+id/action_portfolio_to_transactionHistory"
+            app:destination="@id/transactionHistoryFragment" />
+        <action
+            android:id="@+id/action_portfolio_to_transactionDetail"
+            app:destination="@id/transactionDetailFragment" />
+        <action
+            android:id="@+id/action_portfolio_to_riskAnalytics"
+            app:destination="@id/riskAnalyticsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/holdingDetailFragment"
+        android:name="com.fyp.basarattradeinvest.feature.portfolio.holding.HoldingDetailFragment"
+        android:label="Holding Detail"
+        tools:layout="@layout/fragment_holding_detail">
+        <argument
+            android:name="symbol"
+            app:argType="string"
+            android:defaultValue="LUCK" />
+        <action
+            android:id="@+id/action_holdingDetail_to_stockDetail"
+            app:destination="@id/stockDetailFragment" />
+        <action
+            android:id="@+id/action_holdingDetail_to_stockAnalysis"
+            app:destination="@id/stockAnalysisFragment" />
+        <action
+            android:id="@+id/action_holdingDetail_to_stockRecommendationDetail"
+            app:destination="@id/stockRecommendationDetailFragment" />
+        <action
+            android:id="@+id/action_holdingDetail_to_transactionDetail"
+            app:destination="@id/transactionDetailFragment" />
+        <action
+            android:id="@+id/action_holdingDetail_to_riskAnalytics"
+            app:destination="@id/riskAnalyticsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/transactionHistoryFragment"
+        android:name="com.fyp.basarattradeinvest.feature.portfolio.transactions.TransactionHistoryFragment"
+        android:label="Transaction History"
+        tools:layout="@layout/fragment_transaction_history">
+        <action
+            android:id="@+id/action_transactionHistory_to_transactionDetail"
+            app:destination="@id/transactionDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/transactionDetailFragment"
+        android:name="com.fyp.basarattradeinvest.feature.portfolio.transactions.TransactionDetailFragment"
+        android:label="Transaction Detail"
+        tools:layout="@layout/fragment_transaction_detail">
+        <argument
+            android:name="transaction_id"
+            app:argType="string"
+            android:defaultValue="" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/riskAnalyticsFragment"
+        android:name="com.fyp.basarattradeinvest.feature.risk.RiskAnalyticsFragment"
+        android:label="Risk Analytics"
+        tools:layout="@layout/fragment_risk_analytics" />
+
+    <fragment
+        android:id="@+id/alertsFragment"
+        android:name="com.fyp.basarattradeinvest.feature.alerts.AlertsFragment"
+        android:label="Alert History"
+        tools:layout="@layout/fragment_alerts" />
+
+    <fragment
+        android:id="@+id/notificationsFragment"
+        android:name="com.fyp.basarattradeinvest.feature.notifications.NotificationsFragment"
+        android:label="Notifications"
+        tools:layout="@layout/fragment_notifications" />
+
+    <fragment
+        android:id="@+id/watchlistFragment"
+        android:name="com.fyp.basarattradeinvest.feature.watchlist.WatchlistFragment"
+        android:label="Watchlist"
+        tools:layout="@layout/fragment_watchlist" />
+
+    <!-- Community Destinations -->
+    <fragment
+        android:id="@+id/communityProfileFragment"
+        android:name="com.fyp.basarattradeinvest.feature.community.profile.CommunityProfileFragment"
+        android:label="Community Profile"
+        tools:layout="@layout/fragment_community_profile">
+        <argument
+            android:name="user_id"
+            app:argType="string"
+            app:nullable="true"
+            android:defaultValue="@null" />
+        <action
+            android:id="@+id/action_communityProfile_to_followers"
+            app:destination="@id/communityFollowersFragment" />
+        <action
+            android:id="@+id/action_communityProfile_to_notifications"
+            app:destination="@id/communityNotificationsFragment" />
+        <action
+            android:id="@+id/action_communityProfile_to_stockDetail"
+            app:destination="@id/stockDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/communityFollowersFragment"
+        android:name="com.fyp.basarattradeinvest.feature.community.follow.CommunityFollowersFragment"
+        android:label="Followers &amp; Following"
+        tools:layout="@layout/fragment_community_follow_list">
+        <argument
+            android:name="user_id"
+            app:argType="string"
+            android:defaultValue="me" />
+        <argument
+            android:name="is_following"
+            app:argType="boolean"
+            android:defaultValue="false" />
+        <action
+            android:id="@+id/action_communityFollowers_to_profile"
+            app:destination="@id/communityProfileFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/communityNotificationsFragment"
+        android:name="com.fyp.basarattradeinvest.feature.community.notifications.CommunityNotificationsFragment"
+        android:label="Community Notifications"
+        tools:layout="@layout/fragment_community_notifications" />
+
+    <!-- AI Assistant Destinations -->
+    <fragment
+        android:id="@+id/assistantConversationsFragment"
+        android:name="com.fyp.basarattradeinvest.feature.assistant.AssistantConversationsFragment"
+        android:label="AI Assistant"
+        tools:layout="@layout/fragment_assistant_conversations">
+        <action
+            android:id="@+id/action_assistantConversations_to_chat"
+            app:destination="@id/assistantChatFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/assistantChatFragment"
+        android:name="com.fyp.basarattradeinvest.feature.assistant.AssistantChatFragment"
+        android:label="AI Assistant"
+        tools:layout="@layout/fragment_assistant_chat">
+        <argument
+            android:name="conversation_id"
+            app:argType="string"
+            app:nullable="true"
+            android:defaultValue="@null" />
+    </fragment>
+
+    <!-- Admin Community Moderation Destinations -->
+    <fragment
+        android:id="@+id/adminCommunityHubFragment"
+        android:name="com.fyp.basarattradeinvest.feature.community.admin.AdminCommunityHubFragment"
+        android:label="Community Moderation"
+        tools:layout="@layout/fragment_admin_community_hub">
+        <action
+            android:id="@+id/action_adminCommunityHub_to_reportDetail"
+            app:destination="@id/adminReportDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/adminReportDetailFragment"
+        android:name="com.fyp.basarattradeinvest.feature.community.admin.AdminReportDetailFragment"
+        android:label="Report Review"
+        tools:layout="@layout/fragment_admin_report_detail">
+        <argument
+            android:name="report_id"
+            app:argType="string"
+            android:defaultValue="" />
+        <argument
+            android:name="post_id"
+            app:argType="string"
+            app:nullable="true"
+            android:defaultValue="@null" />
+        <argument
+            android:name="comment_id"
+            app:argType="string"
+            app:nullable="true"
+            android:defaultValue="@null" />
+    </fragment>
+    <!-- IPO & ETF Destinations -->
+    <fragment
+        android:id="@+id/ipoFragment"
+        android:name="com.fyp.basarattradeinvest.feature.ipo.IpoFragment"
+        android:label="IPOs"
+        tools:layout="@layout/fragment_ipo_host" />
+
+    <fragment
+        android:id="@+id/ipoDetailFragment"
+        android:name="com.fyp.basarattradeinvest.feature.ipo.IpoDetailFragment"
+        android:label="IPO Detail"
+        tools:layout="@layout/fragment_ipo_detail">
+        <argument
+            android:name="symbol"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/etfDirectoryFragment"
+        android:name="com.fyp.basarattradeinvest.feature.etf.EtfDirectoryFragment"
+        android:label="ETFs"
+        tools:layout="@layout/fragment_etf_directory" />
+
+    <fragment
+        android:id="@+id/etfDetailFragment"
+        android:name="com.fyp.basarattradeinvest.feature.etf.EtfDetailFragment"
+        android:label="ETF Detail"
+        tools:layout="@layout/fragment_etf_detail">
+        <argument
+            android:name="symbol"
+            app:argType="string" />
+    </fragment>
+
+</navigation>

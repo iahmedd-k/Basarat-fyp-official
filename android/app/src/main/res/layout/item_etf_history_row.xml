@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="9dp"
+    android:weightSum="100">
+
+    <TextView
+        android:id="@+id/tv_hist_date"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="28"
+        android:gravity="start"
+        android:textColor="@color/color_text_secondary"
+        tools:text="01 Sep" />
+
+    <TextView
+        android:id="@+id/tv_hist_open"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="18"
+        android:gravity="end"
+        android:textColor="@color/color_text_primary"
+        tools:text="103.70" />
+
+    <TextView
+        android:id="@+id/tv_hist_high"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="18"
+        android:gravity="end"
+        android:textColor="@color/color_text_primary"
+        tools:text="105.26" />
+
+    <TextView
+        android:id="@+id/tv_hist_low"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="18"
+        android:gravity="end"
+        android:textColor="@color/color_text_primary"
+        tools:text="103.18" />
+
+    <TextView
+        android:id="@+id/tv_hist_close"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="18"
+        android:gravity="end"
+        android:textColor="@color/color_text_primary"
+        tools:text="104.22" />
+
+</LinearLayout>

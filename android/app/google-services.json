@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "331046829607",
+    "project_id": "basarat-4c25b",
+    "storage_bucket": "basarat-4c25b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:331046829607:android:b2c2d7d67983eff845d802",
+        "android_client_info": {
+          "package_name": "com.basarat.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAA7dg3jX4vkMojpe4QLAxotOPDqtA6IGE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

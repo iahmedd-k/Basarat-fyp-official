@@ -1,0 +1,485 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/color_background">
+
+    <!-- Top Workstation Bar -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layout_top_bar"
+        android:layout_width="0dp"
+        android:layout_height="52dp"
+        android:background="@color/color_surface"
+        android:paddingHorizontal="12dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/iv_back"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Back"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_arrow_back"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/color_text_primary" />
+
+        <!-- Stock Symbol & Company -->
+        <LinearLayout
+            android:id="@+id/layout_stock_identity"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toEndOf="@id/iv_back"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/tv_chart_symbol"
+                android:textAppearance="@style/TextAppearance.Basarat.Title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_primary"
+                tools:text="LUCK" />
+
+            <TextView
+                android:id="@+id/tv_chart_company"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:maxWidth="140dp"
+                android:textColor="@color/color_text_secondary"
+                tools:text="Lucky Cement Limited" />
+        </LinearLayout>
+
+        <!-- Live Price & Change -->
+        <LinearLayout
+            android:id="@+id/layout_price_strip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="end|center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/tv_chart_price"
+                android:textAppearance="@style/TextAppearance.Basarat.Number.Title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_positive"
+                tools:text="912.00" />
+
+            <TextView
+                android:id="@+id/tv_chart_change"
+                android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_badge_positive"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:textColor="@color/color_positive"
+                tools:text="+5.56%" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Interactive OHLC Scrub Inspection Banner -->
+    <LinearLayout
+        android:id="@+id/layout_ohlc_strip"
+        android:layout_width="0dp"
+        android:layout_height="26dp"
+        android:background="@color/color_surface"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="14dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_top_bar">
+
+        <TextView
+            android:id="@+id/tv_ohlc_date"
+            android:textAppearance="@style/TextAppearance.Basarat.Micro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/color_text_tertiary"
+            tools:text="2026-09-18" />
+
+        <TextView
+            android:id="@+id/tv_ohlc_open"
+            android:textAppearance="@style/TextAppearance.Basarat.Micro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/color_text_secondary"
+            tools:text="O: 868.00" />
+
+        <TextView
+            android:id="@+id/tv_ohlc_high"
+            android:textAppearance="@style/TextAppearance.Basarat.Micro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/color_positive"
+            tools:text="H: 918.50" />
+
+        <TextView
+            android:id="@+id/tv_ohlc_low"
+            android:textAppearance="@style/TextAppearance.Basarat.Micro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/color_negative"
+            tools:text="L: 860.00" />
+
+        <TextView
+            android:id="@+id/tv_ohlc_close"
+            android:textAppearance="@style/TextAppearance.Basarat.Micro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/color_text_primary"
+            tools:text="C: 912.00" />
+
+        <TextView
+            android:id="@+id/tv_ohlc_volume"
+            android:textAppearance="@style/TextAppearance.Basarat.Micro"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:gravity="end"
+            android:textColor="@color/color_text_tertiary"
+            tools:text="Vol: 980,000" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/divider_top"
+        android:layout_width="0dp"
+        android:layout_height="0.5dp"
+        android:background="@color/color_divider"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_ohlc_strip" />
+
+    <!-- Timeframes Bar -->
+    <HorizontalScrollView
+        android:id="@+id/scroll_timeframes"
+        android:layout_width="0dp"
+        android:layout_height="34dp"
+        android:background="@color/color_background"
+        android:clipToPadding="false"
+        android:paddingHorizontal="12dp"
+        android:scrollbars="none"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider_top">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tf_1d"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="1D"
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/tf_1w"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_selected"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="1W"
+                android:textColor="@color/color_positive" />
+
+            <TextView
+                android:id="@+id/tf_1m"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="1M"
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/tf_3m"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="3M"
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/tf_1y"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="1Y"
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/tf_all"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="ALL"
+                android:textColor="@color/color_text_secondary" />
+
+            <!-- Separator -->
+            <View
+                android:layout_width="1dp"
+                android:layout_height="16dp"
+                android:layout_marginHorizontal="8dp"
+                android:background="@color/color_divider" />
+
+            <!-- Indicators: MA, BOLL, VOL, RSI, MACD -->
+            <TextView
+                android:id="@+id/ind_ma"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:background="@drawable/bg_chip_filter_selected"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
+                android:text="MA"
+                android:textColor="@color/color_positive" />
+
+            <TextView
+                android:id="@+id/ind_ema"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
+                android:text="EMA"
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/ind_boll"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
+                android:text="BOLL"
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/ind_vol"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_selected"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
+                android:text="VOL"
+                android:textColor="@color/color_positive" />
+
+            <TextView
+                android:id="@+id/ind_rsi"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
+                android:text="RSI"
+                android:textColor="@color/color_text_secondary" />
+
+            <TextView
+                android:id="@+id/ind_macd"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_chip_filter_unselected"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
+                android:text="MACD"
+                android:textColor="@color/color_text_secondary" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <View
+        android:id="@+id/divider_mid"
+        android:layout_width="0dp"
+        android:layout_height="0.5dp"
+        android:background="@color/color_divider"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/scroll_timeframes" />
+
+    <!-- Left Floating Toolbar (Drawing Tools) -->
+    <LinearLayout
+        android:id="@+id/layout_drawing_tools"
+        android:layout_width="36dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_card_clean"
+        android:elevation="4dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingVertical="6dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider_mid">
+
+        <!-- Crosshair Toggle -->
+        <ImageView
+            android:id="@+id/tool_crosshair"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Crosshair Tool"
+            android:padding="4dp"
+            android:src="@drawable/ic_tool_crosshair"
+            app:tint="@color/color_positive" />
+
+        <!-- Trendline Tool -->
+        <ImageView
+            android:id="@+id/tool_trendline"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginTop="6dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Trendline Tool"
+            android:padding="4dp"
+            android:src="@drawable/ic_tool_trendline"
+            app:tint="@color/color_text_secondary" />
+
+        <!-- Horizontal Ray Tool -->
+        <ImageView
+            android:id="@+id/tool_horizontal"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginTop="6dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Horizontal Line Tool"
+            android:padding="4dp"
+            android:src="@drawable/ic_tool_horizontal"
+            app:tint="@color/color_text_secondary" />
+
+        <!-- Clear Drawings -->
+        <ImageView
+            android:id="@+id/tool_clear"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginTop="6dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Clear Drawings"
+            android:padding="4dp"
+            android:src="@drawable/ic_tool_clear"
+            app:tint="@color/color_text_tertiary" />
+    </LinearLayout>
+
+    <!-- Main Candlestick Chart Container (65% Height) -->
+    <FrameLayout
+        android:id="@+id/chart_container"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@id/volume_container"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider_mid"
+        app:layout_constraintVertical_weight="68" />
+
+    <!-- Sub Chart / Volume / Indicator Container (32% Height) -->
+    <FrameLayout
+        android:id="@+id/volume_container"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/chart_container"
+        app:layout_constraintVertical_weight="32" />
+
+    <!-- Loading State -->
+    <ProgressBar
+        android:id="@+id/progress_loading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:indeterminateTint="@color/color_basarat_green"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider_mid" />
+
+    <!-- Error State -->
+    <LinearLayout
+        android:id="@+id/layout_error_state"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider_mid">
+
+        <TextView
+            android:id="@+id/tv_error_message"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Unable to load historical chart data"
+            android:textColor="@color/color_text_secondary" />
+
+        <Button
+            android:id="@+id/btn_retry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="@color/color_basarat_green"
+            android:text="Retry"
+            android:textColor="@color/white" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

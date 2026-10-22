@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="14dp">
+
+        <!-- Top Row: Event Type Badge + Ticker + Date Badge -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Event Type Badge (e.g. CASH DIVIDEND, BOARD MEETING) -->
+            <TextView
+                android:id="@+id/tv_event_type"
+                android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_badge_event"
+                android:paddingHorizontal="7dp"
+                android:paddingVertical="2dp"
+                android:textColor="@color/color_ai_blue"
+                tools:text="CASH DIVIDEND" />
+
+            <!-- Symbol -->
+            <TextView
+                android:id="@+id/tv_event_symbol"
+                android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textColor="@color/color_text_primary"
+                tools:text="MEBL" />
+
+            <!-- Company Name -->
+            <TextView
+                android:id="@+id/tv_event_company"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/color_text_secondary"
+                tools:text="Meezan Bank" />
+
+            <!-- Date Badge -->
+            <TextView
+                android:id="@+id/tv_event_date"
+                android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_badge_neutral"
+                android:paddingHorizontal="7dp"
+                android:paddingVertical="2dp"
+                android:textColor="@color/color_text_secondary"
+                tools:text="Oct 04, 2026" />
+        </LinearLayout>
+
+        <!-- Description -->
+        <TextView
+            android:id="@+id/tv_event_description"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="1.5dp"
+            android:textColor="@color/color_text_primary"
+            tools:text="Board of Directors announces interim cash dividend of PKR 7.00 per share (70%) for the 3rd quarter." />
+
+        <!-- Sub-details: Book closure & source notice -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_event_closure_label"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/color_text_tertiary"
+                tools:text="Book Closure: Sep 28 - Oct 04, 2026" />
+
+            <TextView
+                android:id="@+id/tv_event_source"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_text_secondary"
+                tools:text="PSX Official Notice" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Hairline Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/color_divider" />
+
+</LinearLayout>

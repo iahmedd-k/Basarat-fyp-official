@@ -1,0 +1,161 @@
+<resources>
+    <string name="app_name">BASARAT</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_markets">Markets</string>
+    <string name="nav_portfolio">Portfolio</string>
+    <string name="nav_ai">AI</string>
+    <string name="nav_community">Community</string>
+    <string name="nav_you">You</string>
+
+    <!-- Navigation Drawer -->
+    <string name="drawer_open">Open navigation drawer</string>
+    <string name="drawer_close">Close navigation drawer</string>
+    <string name="drawer_stocks">Stocks</string>
+    <string name="drawer_etf">ETFs</string>
+    <string name="drawer_ipo">IPOs</string>
+    <string name="drawer_recommendations">Recommendations</string>
+    <string name="drawer_smart_selection">Smart Selection</string>
+    <string name="drawer_news">News &amp; Events</string>
+    <string name="drawer_risk">Risk &amp; Analysis</string>
+    <string name="drawer_notifications">Notifications</string>
+    <string name="drawer_settings">Settings</string>
+    <string name="drawer_logout">Log Out</string>
+
+    <!-- Onboarding Step 1 -->
+    <string name="onboarding_title_1">Intelligent tools for\nsmart stock decisions</string>
+    <string name="onboarding_subtitle_1">Track PSX indices, evaluate trends, and access\nreal-time market intelligence</string>
+
+    <!-- Onboarding Step 2 (From Screenshot) -->
+    <string name="onboarding_title_2">Customized instant\nanalysis for you</string>
+    <string name="onboarding_subtitle_2">Real-time market analytics and automated daily\nmarket intelligence reports</string>
+
+    <!-- Onboarding Step 3 (From Screenshot) -->
+    <string name="onboarding_title_3">Trusted security of\nstock market app</string>
+    <string name="onboarding_subtitle_3">Regulated and compliant framework ensuring\nend-to-end security for your assets</string>
+
+    <!-- Onboarding Actions -->
+    <string name="onboarding_skip">SKIP</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_get_started">Get Started</string>
+
+    <!-- Auth Titles & Subtitles -->
+    <string name="welcome_back_title">Welcome Back</string>
+    <string name="welcome_back_subtitle">Access your orders, wishlist, and\nexclusive offers by logging in.</string>
+    <string name="auth_login_subtitle">Track. Analyze. Invest.</string>
+    <string name="signup_title">Create Your Account</string>
+    <string name="auth_signup_subtitle">Join BASARAT and start your investment journey today.</string>
+    <string name="auth_security_note">Your account and personal data stay protected.</string>
+    <string name="signup_subtitle">Join now for a faster, smarter\nshopping experience.</string>
+
+    <!-- Auth Fields & Labels -->
+    <string name="label_name">Name</string>
+    <string name="hint_name">Enter you name</string>
+    <string name="label_email">Email</string>
+    <string name="hint_email">Enter your email</string>
+    <string name="label_password">Password</string>
+    <string name="label_confirm_password">Confirm Password</string>
+    <string name="hint_confirm_password">Re-enter your password</string>
+    <string name="hint_password">Enter you password</string>
+    <string name="remember_me">Remember me</string>
+    <string name="forgot_password">Forgot password?</string>
+
+    <!-- Actions & Social -->
+    <string name="sign_in">Sign in</string>
+    <string name="sign_up">Sign up</string>
+    <string name="create_account">Create Account</string>
+    <string name="sign_in_arrow">Sign in</string>
+    <string name="password_visibility">Toggle password visibility</string>
+    <string name="navigate_back">Navigate back</string>
+    <string name="agree_terms">I agree to the Terms &amp; Conditions and Privacy Policy</string>
+    <string name="or_divider">OR</string>
+    <string name="continue_with_google">Continue with Google</string>
+    <string name="continue_with_apple">Continue with Apple</string>
+    <!-- Google OAuth "Web application" client ID. Its audience must match the backend's
+         GOOGLE_CLIENT_ID, which verifies the ID token sent to POST /api/v1/auth/google.
+         A public client ID (not a secret) — it is embedded in the APK by design. -->
+    <string name="google_web_client_id" translatable="false">586469027718-milfd2ank76en660pdgce1esrver6q37.apps.googleusercontent.com</string>
+    <string name="dont_have_account">Don\'t have an account?</string>
+    <string name="already_have_account">Already have an account?</string>
+
+    <!-- Alerts Module -->
+    <string name="title_alert_history">Alert History</string>
+
+    <!-- Notifications Module -->
+    <string name="title_notifications">Notifications</string>
+    <string name="notifications_inbox">In-App Notifications</string>
+
+    <!-- Watchlist Module -->
+    <plurals name="watchlist_stock_count">
+        <item quantity="one">%d stock tracked</item>
+        <item quantity="other">%d stocks tracked</item>
+    </plurals>
+
+    <!-- Shariah Module -->
+    <string name="title_shariah">Shariah Screening</string>
+    <string name="subtitle_shariah">PSX KMI-30 &amp; AAOIFI Compliance</string>
+    <string name="tab_kmi30">KMI-30 Constituents</string>
+    <string name="tab_shariah_criteria">Screening Criteria</string>
+    <string name="tab_dividend_purification">Dividend Purification</string>
+    <string name="shariah_disclaimer">Automated quantitative check adhering to PSX KMI methodology. Does not constitute a certified fatwa.</string>
+
+    <!-- Community Module -->
+    <string name="title_community">Community</string>
+    <string name="title_community_profile">Community Profile</string>
+    <string name="title_followers">Followers</string>
+    <string name="title_following">Following</string>
+    <string name="title_community_notifications">Community Notifications</string>
+    <string name="empty_posts">No published posts yet</string>
+    <string name="empty_followers">No followers yet</string>
+    <string name="empty_following">Not following anyone yet</string>
+    <string name="empty_community_notifications">You\'re all caught up!\nNo community notifications</string>
+
+    <!-- AI Assistant Module -->
+    <string name="title_assistant">AI Assistant</string>
+    <string name="assistant_greeting">Hi, %1$s</string>
+    <string name="assistant_default_user">Investor</string>
+    <string name="assistant_welcome_subtitle">Your AI investment assistant</string>
+    <string name="assistant_welcome_description">Ask me anything about PSX, stocks, market trends, or your portfolio. I\'m here to help you make better investment decisions.</string>
+    <string name="assistant_bot_description">BASARAT AI assistant</string>
+    <string name="assistant_open_history">Open conversation history</string>
+    <string name="assistant_composer_hint">Ask about stocks, market, portfolio...</string>
+    <string name="assistant_send_message">Send message</string>
+    <string name="assistant_stop_generating">Stop Generating</string>
+    <string name="assistant_regenerate">Regenerate</string>
+    <string name="common_retry">Retry</string>
+    <string name="smart_selection_title">Smart Selection</string>
+    <string name="smart_selection_subtitle">Explore model signals and price levels</string>
+    <string name="smart_selection_candidates">SELECT A STOCK</string>
+    <string name="smart_selection_price_history">Price history · 1 month</string>
+    <string name="smart_selection_current_price">Current price</string>
+    <string name="smart_selection_target">Target price</string>
+    <string name="smart_selection_stop">Stop loss</string>
+    <string name="smart_selection_confidence">Confidence %1$d%%</string>
+    <string name="smart_selection_no_candidates">No live smart selections are available right now.</string>
+    <string name="smart_selection_disclaimer">Model-based levels are estimates for decision support and are not guaranteed outcomes.</string>
+    <string name="smart_selection_chart_unavailable">Price history is temporarily unavailable.</string>
+    <string name="smart_selection_no_levels">Live target and stop levels are not available for this stock.</string>
+    <string name="smart_selection_chart_description">Candlestick chart with current price, target and stop loss levels</string>
+    <string name="smart_selection_live_target">Target · PKR %1$.2f</string>
+    <string name="smart_selection_live_stop">Stop · PKR %1$.2f</string>
+    <string name="smart_selection_breakout_line">Breakout · PKR %1$.2f</string>
+    <string name="smart_selection_breakdown_line">Breakdown · PKR %1$.2f</string>
+    <string name="smart_selection_breakout_levels">Breakout PKR %1$.2f · Breakdown PKR %2$.2f · from the 1-month candles</string>
+    <string name="smart_selection_breakout_confirmed">Breakout confirmed — latest close cleared the prior high on %1$.1fx average volume</string>
+    <string name="smart_selection_breakout_below">Trading %1$.2f%% below the breakout level</string>
+    <string name="smart_selection_breakout_above">Trading %1$.2f%% above the breakout level, volume still unconfirmed</string>
+    <string name="stock_detail_open_ai_recommendation">Open AI recommendation and risk details</string>
+    <string name="delete_conversation_title">Delete Conversation</string>
+    <string name="delete_conversation_message">Are you sure you want to delete this conversation? This action cannot be undone.</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="assistant_disclaimer">BASARAT AI provides decision support and informational analysis. It does not constitute financial advisory services.</string>
+
+    <!-- Home — Benchmark trend -->
+    <string name="benchmark_subtitle">PSX Benchmark Index</string>
+    <string name="benchmark_trend_caption">Equal-weight proxy · %1$d constituents · %2$s – %3$s</string>
+
+    <!-- News — source article reader -->
+    <string name="news_webview_opened_externally">This source can\'t be verified by this device\'s browser engine, so the article opened in your browser instead.</string>
+</resources>

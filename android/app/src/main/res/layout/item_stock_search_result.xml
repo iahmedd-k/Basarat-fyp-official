@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="14dp">
+
+    <!-- Symbol Icon / Badge Container -->
+    <LinearLayout
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:background="@drawable/bg_circle_icon_container"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/tv_symbol_letter"
+            android:textAppearance="@style/TextAppearance.Basarat.Title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="O"
+            android:textColor="@color/color_basarat_green" />
+    </LinearLayout>
+
+    <!-- Symbol & Name -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_symbol"
+            android:textAppearance="@style/TextAppearance.Basarat.Title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="OGDC"
+            android:textColor="@color/color_text_primary" />
+
+        <TextView
+            android:id="@+id/tv_name"
+            android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Oil &amp; Gas Development Co."
+            android:textColor="@color/color_text_secondary" />
+    </LinearLayout>
+
+    <!-- Sector Badge -->
+    <TextView
+        android:id="@+id/tv_sector"
+        android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_badge_neutral"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="3dp"
+        android:text="Oil &amp; Gas"
+        android:textColor="@color/color_text_secondary" />
+
+</LinearLayout>

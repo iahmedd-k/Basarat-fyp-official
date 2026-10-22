@@ -1,0 +1,158 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="280dp"
+    android:height="260dp"
+    android:viewportWidth="280"
+    android:viewportHeight="260">
+
+    <!-- Chart Board (Adapts: White in light mode, Dark Slate in night mode) -->
+    <path
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@color/color_illustration_board_bg"
+        android:pathData="M25,25 h160 a10,10 0 0 1 10,10 v95 a10,10 0 0 1 -10,10 h-160 a10,10 0 0 1 -10,-10 v-95 a10,10 0 0 1 10,-10 z" />
+
+    <!-- Top Accent Bar on Chart -->
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M35,35 h35" />
+
+    <path
+        android:strokeColor="@color/color_text_tertiary"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M160,35 h20 M160,42 h14" />
+
+    <!-- Candlestick 1 (Green) -->
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="2"
+        android:pathData="M42,60 v40" />
+    <path
+        android:fillColor="#00C48C"
+        android:strokeColor="#00C48C"
+        android:strokeWidth="1.5"
+        android:pathData="M38,68 h8 v24 h-8 z" />
+
+    <!-- Candlestick 2 (Red) -->
+    <path
+        android:strokeColor="#EF4444"
+        android:strokeWidth="2"
+        android:pathData="M60,68 v38" />
+    <path
+        android:fillColor="#EF4444"
+        android:strokeColor="#EF4444"
+        android:strokeWidth="1.5"
+        android:pathData="M56,76 h8 v20 h-8 z" />
+
+    <!-- Candlestick 3 (Red Outline) -->
+    <path
+        android:strokeColor="#EF4444"
+        android:strokeWidth="2"
+        android:pathData="M78,72 v35" />
+    <path
+        android:fillColor="@color/color_illustration_board_bg"
+        android:strokeColor="#EF4444"
+        android:strokeWidth="1.5"
+        android:pathData="M74,80 h8 v18 h-8 z" />
+
+    <!-- Candlestick 4 (Green) -->
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="2.5"
+        android:pathData="M98,48 v55" />
+    <path
+        android:fillColor="#00C48C"
+        android:strokeColor="#00C48C"
+        android:strokeWidth="1.5"
+        android:pathData="M93,56 h10 v38 h-10 z" />
+
+    <!-- Candlestick 5 (Green) -->
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="2"
+        android:pathData="M116,52 v50" />
+    <path
+        android:fillColor="#00C48C"
+        android:strokeColor="#00C48C"
+        android:strokeWidth="1.5"
+        android:pathData="M112,60 h8 v32 h-8 z" />
+
+    <!-- Upward Trend Line Curve -->
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M45,85 Q80,60 120,50 T165,60" />
+
+    <!-- Mini Metric Pill / Card on Right -->
+    <path
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2"
+        android:fillColor="@color/color_illustration_card_bg"
+        android:pathData="M152,70 h30 a5,5 0 0 1 5,5 v24 a5,5 0 0 1 -5,5 h-30 a5,5 0 0 1 -5,-5 v-24 a5,5 0 0 1 5,-5 z" />
+    <path
+        android:strokeColor="#00C48C"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M158,90 Q168,82 178,80" />
+
+    <!-- Stylized Character (Right) -->
+    <!-- Head -->
+    <path
+        android:fillColor="@color/color_illustration_character_skin"
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2.5"
+        android:pathData="M178,85 a12,12 0 1 1 -0.1,0 z" />
+    <!-- Hair / Eyes -->
+    <path
+        android:fillColor="@color/color_illustration_character_pants"
+        android:pathData="M170,80 Q176,73 186,76 Q184,83 176,85 z" />
+    <path
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="1.5"
+        android:pathData="M178,83 h3" />
+
+    <!-- Left Arm Pointing to Chart -->
+    <path
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00C48C"
+        android:pathData="M172,100 L120,90 L115,88 L122,96 L168,107 z" />
+
+    <!-- Torso (Green Tunic) -->
+    <path
+        android:fillColor="#00C48C"
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2.5"
+        android:strokeLineJoin="round"
+        android:pathData="M166,97 h22 l-3,52 h-20 z" />
+
+    <!-- Right Arm -->
+    <path
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M188,103 l7,18" />
+
+    <!-- Legs (Pants) -->
+    <path
+        android:fillColor="@color/color_illustration_character_pants"
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2.5"
+        android:strokeLineJoin="round"
+        android:pathData="M167,149 l-5,48 h7 l6,-48 z M176,149 l14,42 l-6,5 l-13,-47 z" />
+
+    <!-- Shoes -->
+    <path
+        android:fillColor="@color/color_illustration_character_skin"
+        android:strokeColor="@color/color_illustration_board_stroke"
+        android:strokeWidth="2"
+        android:pathData="M157,197 h13 v5 h-13 z M187,192 l10,8 l-3,3 l-10,-8 z" />
+
+</vector>

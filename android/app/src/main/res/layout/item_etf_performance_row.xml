@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingVertical="9dp"
+    android:weightSum="100">
+
+    <TextView
+        android:id="@+id/tv_row_period"
+        android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="28"
+        android:gravity="start"
+        android:textColor="@color/color_text_secondary"
+        tools:text="1M" />
+
+    <TextView
+        android:id="@+id/tv_row_etf"
+        android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="36"
+        android:gravity="end"
+        android:textColor="@color/color_text_primary"
+        tools:text="+2.14%" />
+
+    <TextView
+        android:id="@+id/tv_row_benchmark"
+        android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="36"
+        android:gravity="end"
+        android:textColor="@color/color_text_secondary"
+        tools:text="+1.98%" />
+
+</LinearLayout>

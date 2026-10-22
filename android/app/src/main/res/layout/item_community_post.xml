@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    app:cardBackgroundColor="@color/color_surface"
+    app:cardCornerRadius="14dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Top Header: Author + Timestamp + Post Type Badge -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Author Avatar -->
+            <ImageView
+                android:id="@+id/iv_author_avatar"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="@drawable/bg_circle_avatar"
+                android:padding="8dp"
+                android:src="@drawable/ic_person"
+                app:tint="@color/color_brand_primary" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tv_post_author"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Strong"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/color_text_primary"
+                    tools:text="Tariq Mahmood" />
+
+                <TextView
+                    android:id="@+id/tv_post_time"
+                    android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:textColor="@color/color_text_secondary"
+                    tools:text="2 hours ago" />
+            </LinearLayout>
+
+            <!-- Stock Ticker Badge if stock post -->
+            <TextView
+                android:id="@+id/tv_stock_badge"
+                android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_badge_kmi30"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:textColor="@color/color_brand_primary"
+                android:visibility="gone"
+                tools:text="LUCK"
+                tools:visibility="visible" />
+        </LinearLayout>
+
+        <!-- Post Content Body -->
+        <TextView
+            android:id="@+id/tv_post_content"
+            android:textAppearance="@style/TextAppearance.Basarat.Body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/color_text_primary"
+            tools:text="Lucky Cement (LUCK) showing strong support above 880 PKR. Solid cement sector dispatches reported for the month." />
+
+        <!-- Post Image Attachment (if present) -->
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/iv_post_image"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_marginTop="12dp"
+            android:scaleType="centerCrop"
+            android:visibility="gone"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.MaterialComponents.MediumComponent"
+            tools:src="@drawable/logo_basarat"
+            tools:visibility="visible" />
+
+        <!-- Engagement Bar: Likes & Comments -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Like indicator & button -->
+            <LinearLayout
+                android:id="@+id/layout_likes"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="6dp">
+
+                <ImageView
+                    android:id="@+id/iv_like_icon"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_thumb_up"
+                    app:tint="@color/color_text_secondary" />
+
+                <TextView
+                    android:id="@+id/tv_like_count"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:textColor="@color/color_text_secondary"
+                    tools:text="24" />
+            </LinearLayout>
+
+            <!-- Comment indicator & button -->
+            <LinearLayout
+                android:id="@+id/layout_comments"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="6dp">
+
+                <ImageView
+                    android:id="@+id/iv_comment_icon"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_comment"
+                    app:tint="@color/color_text_secondary" />
+
+                <TextView
+                    android:id="@+id/tv_comment_count"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:textColor="@color/color_text_secondary"
+                    tools:text="5" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

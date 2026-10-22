@@ -1,0 +1,1043 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipe_refresh_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scroll_market_dashboard"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/color_background"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="48dp">
+
+            <!-- 1. Top Header App Bar -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:paddingHorizontal="16dp">
+
+                <ImageView
+                    android:id="@+id/iv_top_menu"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Menu"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_market_menu"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <LinearLayout
+                    android:id="@+id/layout_market_selector"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
+
+                    <TextView
+                        android:id="@+id/tv_market_title"
+                        android:textAppearance="@style/TextAppearance.Basarat.Subheading"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="PSX \u25BE"
+                        android:textColor="@color/color_text_primary" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:id="@+id/dot_market_live"
+                            android:layout_width="6dp"
+                            android:layout_height="6dp"
+                            android:layout_marginEnd="5dp"
+                            android:background="@drawable/ic_live_dot"
+                            android:visibility="gone"
+                            tools:visibility="visible" />
+
+                        <TextView
+                            android:id="@+id/tv_market_status"
+                            android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/color_positive"
+                            android:visibility="gone"
+                            tools:text="Market Open"
+                            tools:visibility="visible" />
+
+                        <TextView
+                            android:id="@+id/tv_last_updated"
+                            android:textAppearance="@style/TextAppearance.Basarat.Caption"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:textColor="@color/color_text_tertiary"
+                            tools:text="• Updated 12:00" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <ImageView
+                android:id="@+id/iv_top_notifications"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginEnd="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Notifications"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_alert_bell"
+                app:tint="@color/color_text_primary"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@id/iv_top_search"
+                app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/tv_notifications_badge"
+                    android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                    android:layout_width="wrap_content"
+                    android:layout_height="16dp"
+                    android:gravity="center"
+                    android:minWidth="16dp"
+                    android:paddingHorizontal="3dp"
+                    android:textColor="@android:color/white"
+                    android:background="@drawable/bg_notification_badge"
+                    android:visibility="gone"
+                    app:layout_constraintEnd_toEndOf="@id/iv_top_notifications"
+                    app:layout_constraintTop_toTopOf="@id/iv_top_notifications"
+                    tools:text="3"
+                    tools:visibility="visible" />
+
+            <ImageView
+                android:id="@+id/iv_top_search"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Search"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_search"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- 2. Real-time Quotes Alert Banner -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/banner_realtime_quotes"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_market_alert_banner"
+            android:paddingHorizontal="14dp">
+
+            <TextView
+                android:id="@+id/tv_quote_banner_text"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:text="Live PSX Trading Feeds Active"
+                android:textColor="#2DD4BF"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@id/iv_quote_banner_close"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/iv_quote_banner_close"
+                android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:gravity="center"
+                android:text="\u2715"
+                android:textColor="#5EEAD4"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- 3. Dual Live Indices Header & Intraday Sparkline Card -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/card_indices_intraday"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_card_clean"
+            android:padding="16dp">
+
+            <!-- 3 Column Indices Header: KSE-100, KSE-30, KMI-30 -->
+            <LinearLayout
+                android:id="@+id/layout_indices_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:orientation="horizontal"
+                android:weightSum="3"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <!-- 1. KSE-100 -->
+                <LinearLayout
+                    android:id="@+id/layout_index_1"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:layout_width="3dp"
+                            android:layout_height="12dp"
+                            android:layout_marginEnd="5dp"
+                            android:background="#00E5FF" />
+
+                        <TextView
+                            android:id="@+id/tv_index_1_name"
+                            android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="KSE-100"
+                            android:textColor="@color/color_text_primary" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tv_index_1_points"
+                        android:textAppearance="@style/TextAppearance.Basarat.Number.Title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="85,421.32"
+                        android:textColor="@color/color_text_primary" />
+
+                    <TextView
+                        android:id="@+id/tv_index_1_change"
+                        android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="-142.70 -0.17%"
+                        android:textColor="@color/color_negative" />
+                </LinearLayout>
+
+                <!-- 2. KSE-30 -->
+                <LinearLayout
+                    android:id="@+id/layout_index_3"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="4dp">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:layout_width="3dp"
+                            android:layout_height="12dp"
+                            android:layout_marginEnd="5dp"
+                            android:background="#00B894" />
+
+                        <TextView
+                            android:id="@+id/tv_index_3_name"
+                            android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="KSE-30"
+                            android:textColor="@color/color_text_primary" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tv_index_3_points"
+                        android:textAppearance="@style/TextAppearance.Basarat.Number.Title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="26,840.15"
+                        android:textColor="@color/color_text_primary" />
+
+                    <TextView
+                        android:id="@+id/tv_index_3_change"
+                        android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="+78.40 +0.29%"
+                        android:textColor="@color/color_positive" />
+                </LinearLayout>
+
+                <!-- 3. KMI-30 -->
+                <LinearLayout
+                    android:id="@+id/layout_index_2"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="end"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:layout_width="3dp"
+                            android:layout_height="12dp"
+                            android:layout_marginEnd="5dp"
+                            android:background="#9D4EDD" />
+
+                        <TextView
+                            android:id="@+id/tv_index_2_name"
+                            android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="KMI-30"
+                            android:textColor="@color/color_text_primary" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tv_index_2_points"
+                        android:textAppearance="@style/TextAppearance.Basarat.Number.Title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="143,579.19"
+                        android:textColor="@color/color_text_primary" />
+
+                    <TextView
+                        android:id="@+id/tv_index_2_change"
+                        android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="-53.44 -0.04%"
+                        android:textColor="@color/color_negative" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Dual-Line Intraday Canvas Chart -->
+            <com.fyp.basarattradeinvest.core.ui.components.IntradayChartView
+                android:id="@+id/chart_intraday"
+                android:layout_width="0dp"
+                android:layout_height="90dp"
+                android:layout_marginTop="16dp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/layout_indices_row" />
+
+            <!-- Chart Time Stamps (PSX Trading Session) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/chart_intraday">
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="09:30"
+                    android:textColor="@color/color_text_tertiary" />
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="11:30"
+                    android:textColor="@color/color_text_tertiary" />
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="13:30"
+                    android:textColor="@color/color_text_tertiary" />
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Micro"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="end"
+                    android:text="15:30"
+                    android:textColor="@color/color_text_tertiary" />
+            </LinearLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- 4. Quick Access Horizontal Categories -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:clipToPadding="false"
+            android:paddingHorizontal="16dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <!-- Recommendations -->
+                <LinearLayout
+                    android:id="@+id/chip_recommendations"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_smart" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Recommendations"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+
+                <!-- IPOs -->
+                <LinearLayout
+                    android:id="@+id/chip_ipo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_ipo" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="IPOs"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+
+                <!-- Shariah -->
+                <LinearLayout
+                    android:id="@+id/chip_shariah"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_shariah" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Shariah"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+
+                <!-- Community Hub -->
+                <LinearLayout
+                    android:id="@+id/chip_community"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_community" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Community"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+
+                <!-- News & Events -->
+                <LinearLayout
+                    android:id="@+id/chip_news"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_news" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="News"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+
+                <!-- Heatmap -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_heatmap" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Heatmap"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+
+                <!-- ETFs -->
+                <LinearLayout
+                    android:id="@+id/chip_etf"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_etf" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ETFs"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+
+                <!-- Smart Selection -->
+                <LinearLayout
+                    android:id="@+id/chip_smart_selection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_smart" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Smart Selection"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+
+                <!-- Margin -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_margin" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Margin"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+
+                <!-- More -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_feature_chip"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="6dp"
+                        android:src="@drawable/ic_chip_more" />
+
+                    <TextView
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="More"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- 5. Top Symbols Section (PSX Blueprint) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:orientation="vertical">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="16dp">
+
+                <TextView
+                    android:id="@+id/tv_top_symbols_header"
+                    android:textAppearance="@style/TextAppearance.Basarat.Title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Top Symbols \u203A"
+                    android:textColor="@color/color_text_primary"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/tv_top_symbols_count"
+                    android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    tools:text="10 symbols"
+                    android:textColor="@color/color_text_secondary"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <!-- Single selector row: index constituents and ranked filters share one table -->
+            <HorizontalScrollView
+                android:id="@+id/scroll_selector_tabs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:clipToPadding="false"
+                android:paddingHorizontal="16dp"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/layout_filter_tabs"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tab_kse100"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_market_tab_unselected"
+                        android:gravity="center"
+                        android:paddingHorizontal="14dp"
+                        android:text="KSE-100"
+                        android:textColor="@color/color_text_primary" />
+
+                    <TextView
+                        android:id="@+id/tab_kse30"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_market_tab_unselected"
+                        android:gravity="center"
+                        android:paddingHorizontal="14dp"
+                        android:text="KSE-30"
+                        android:textColor="@color/color_text_primary" />
+
+                    <TextView
+                        android:id="@+id/tab_kmi30"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_market_tab_unselected"
+                        android:gravity="center"
+                        android:paddingHorizontal="14dp"
+                        android:text="KMI-30"
+                        android:textColor="@color/color_text_primary" />
+
+                    <TextView
+                        android:id="@+id/tab_gainers"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_market_tab_selected"
+                        android:gravity="center"
+                        android:paddingHorizontal="14dp"
+                        android:text="Gainers"
+                        android:textColor="@color/white" />
+
+                    <TextView
+                        android:id="@+id/tab_losers"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_market_tab_unselected"
+                        android:gravity="center"
+                        android:paddingHorizontal="14dp"
+                        android:text="Losers"
+                        android:textColor="@color/color_text_primary" />
+
+                    <TextView
+                        android:id="@+id/tab_volume_spikes"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_market_tab_unselected"
+                        android:gravity="center"
+                        android:paddingHorizontal="14dp"
+                        android:text="Volume Spikes"
+                        android:textColor="@color/color_text_primary" />
+
+                    <TextView
+                        android:id="@+id/tab_most_active"
+                        android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_market_tab_unselected"
+                        android:gravity="center"
+                        android:paddingHorizontal="14dp"
+                        android:text="Most Active"
+                        android:textColor="@color/color_text_primary" />
+                </LinearLayout>
+            </HorizontalScrollView>
+
+            <!-- Skeleton rows hold the table's place while a cold selector fetches -->
+            <LinearLayout
+                android:id="@+id/layout_symbols_skeleton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="10dp">
+
+                    <View
+                        android:layout_width="62dp"
+                        android:layout_height="12dp"
+                        android:background="@drawable/bg_skeleton" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <View
+                        android:layout_width="54dp"
+                        android:layout_height="13dp"
+                        android:background="@drawable/bg_skeleton" />
+
+                    <View
+                        android:layout_width="44dp"
+                        android:layout_height="13dp"
+                        android:layout_marginStart="16dp"
+                        android:background="@drawable/bg_skeleton" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="10dp">
+
+                    <View
+                        android:layout_width="78dp"
+                        android:layout_height="12dp"
+                        android:background="@drawable/bg_skeleton" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <View
+                        android:layout_width="48dp"
+                        android:layout_height="13dp"
+                        android:background="@drawable/bg_skeleton" />
+
+                    <View
+                        android:layout_width="40dp"
+                        android:layout_height="13dp"
+                        android:layout_marginStart="16dp"
+                        android:background="@drawable/bg_skeleton" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="10dp">
+
+                    <View
+                        android:layout_width="56dp"
+                        android:layout_height="12dp"
+                        android:background="@drawable/bg_skeleton" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <View
+                        android:layout_width="58dp"
+                        android:layout_height="13dp"
+                        android:background="@drawable/bg_skeleton" />
+
+                    <View
+                        android:layout_width="46dp"
+                        android:layout_height="13dp"
+                        android:layout_marginStart="16dp"
+                        android:background="@drawable/bg_skeleton" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="10dp">
+
+                    <View
+                        android:layout_width="70dp"
+                        android:layout_height="12dp"
+                        android:background="@drawable/bg_skeleton" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <View
+                        android:layout_width="50dp"
+                        android:layout_height="13dp"
+                        android:background="@drawable/bg_skeleton" />
+
+                    <View
+                        android:layout_width="42dp"
+                        android:layout_height="13dp"
+                        android:layout_marginStart="16dp"
+                        android:background="@drawable/bg_skeleton" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Table Header: Symbol | Price | %Chg -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal"
+                android:paddingHorizontal="16dp">
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Symbol"
+                    android:textColor="@color/color_text_tertiary" />
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                    android:layout_width="90dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:text="Price"
+                    android:textColor="@color/color_text_tertiary" />
+
+                <TextView
+                    android:textAppearance="@style/TextAppearance.Basarat.Meta"
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:text="%Chg"
+                    android:textColor="@color/color_text_tertiary" />
+            </LinearLayout>
+
+            <!-- Ranked Stocks RecyclerView -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_top_symbols"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                tools:itemCount="7"
+                tools:listitem="@layout/item_market_stock" />
+        </LinearLayout>
+
+        <!-- 6. Sector Performance Section (Blueprint Section 16 - Horizontal Scroll) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="26dp"
+            android:orientation="vertical">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="16dp">
+
+                <TextView
+                    android:id="@+id/tv_sectors_header"
+                    android:textAppearance="@style/TextAppearance.Basarat.Title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Sector Performance \u203A"
+                    android:textColor="@color/color_text_primary"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/tv_sectors_see_all"
+                    android:textAppearance="@style/TextAppearance.Basarat.Body.Small.Strong"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Heatmap \u203A"
+                    android:textColor="@color/color_basarat_green"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_sectors"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:clipToPadding="false"
+                android:orientation="horizontal"
+                android:paddingHorizontal="16dp"
+                tools:listitem="@layout/item_sector_performance" />
+        </LinearLayout>
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
+</androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- Floating Chat Assistant Action Button -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_chat_assistant"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:contentDescription="AI Chat Assistant"
+        android:src="@drawable/ic_chat_assistant"
+        app:backgroundTint="@color/color_basarat_green"
+        app:tint="@color/white"
+        app:elevation="6dp" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

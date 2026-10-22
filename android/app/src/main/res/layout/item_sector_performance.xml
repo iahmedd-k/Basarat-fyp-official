@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="148dp"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="10dp"
+    android:background="@drawable/bg_card_clean"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/tv_sector_name"
+        android:textAppearance="@style/TextAppearance.Basarat.Meta.Strong"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/color_text_primary"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="Technology &amp; Comm." />
+
+    <TextView
+        android:id="@+id/tv_sector_change"
+        android:textAppearance="@style/TextAppearance.Basarat.Number.Title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_sector_name"
+        tools:text="+3.42%"
+        tools:textColor="@color/color_positive" />
+
+    <TextView
+        android:id="@+id/tv_sector_volume"
+        android:textAppearance="@style/TextAppearance.Basarat.Micro"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/color_text_tertiary"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_sector_change"
+        tools:text="Vol: 42.1M" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

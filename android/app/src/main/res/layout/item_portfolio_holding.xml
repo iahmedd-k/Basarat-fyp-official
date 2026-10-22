@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="10dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground"
+    app:cardBackgroundColor="@color/color_surface"
+    app:cardCornerRadius="14dp"
+    app:cardElevation="0dp"
+    app:strokeColor="@color/color_divider"
+    app:strokeWidth="1dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="14dp">
+
+        <TextView
+            android:id="@+id/tv_holding_symbol"
+            android:textAppearance="@style/TextAppearance.Basarat.Title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/color_text_primary"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="LUCK" />
+
+        <TextView
+            android:id="@+id/tv_holding_weight"
+            android:textAppearance="@style/TextAppearance.Basarat.Caption.Strong"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_tab_unselected"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:textColor="@color/color_text_secondary"
+            app:layout_constraintBottom_toBottomOf="@id/tv_holding_symbol"
+            app:layout_constraintStart_toEndOf="@id/tv_holding_symbol"
+            app:layout_constraintTop_toTopOf="@id/tv_holding_symbol"
+            tools:text="18.5%" />
+
+        <TextView
+            android:id="@+id/tv_holding_company"
+            android:textAppearance="@style/TextAppearance.Basarat.Meta"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:layout_marginEnd="12dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/color_text_secondary"
+            app:layout_constraintEnd_toStartOf="@id/tv_holding_market_value"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_holding_symbol"
+            tools:text="Lucky Cement Limited • Cement" />
+
+        <TextView
+            android:id="@+id/tv_holding_current_price"
+            android:textAppearance="@style/TextAppearance.Basarat.Number.Title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/color_text_primary"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="PKR 412.50" />
+
+        <TextView
+            android:id="@+id/tv_holding_market_value"
+            android:textAppearance="@style/TextAppearance.Basarat.Number.Meta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:autoSizeMaxTextSize="12sp"
+            android:autoSizeMinTextSize="10sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:maxLines="1"
+            android:textColor="@color/color_text_secondary"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_holding_current_price"
+            tools:text="Val: PKR 206,250" />
+
+        <View
+            android:id="@+id/divider_holding"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/color_divider"
+            app:layout_constraintTop_toBottomOf="@id/tv_holding_company" />
+
+        <TextView
+            android:id="@+id/tv_holding_shares_cost"
+            android:textAppearance="@style/TextAppearance.Basarat.Number.Meta"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/color_text_secondary"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/divider_holding"
+            tools:text="500 shares • Avg: PKR 380.00" />
+
+        <TextView
+            android:id="@+id/tv_holding_pnl"
+            android:textAppearance="@style/TextAppearance.Basarat.Number.Body.Small.Strong"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="end"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_holding_shares_cost"
+            tools:text="+PKR 16,250 (+8.55%)" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>

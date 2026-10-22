@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <group
+        android:id="@+id/group_main"
+        android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_home"
+            android:icon="@drawable/ic_nav_home"
+            android:title="@string/nav_home" />
+        <item
+            android:id="@+id/nav_markets"
+            android:icon="@drawable/ic_nav_markets"
+            android:title="@string/nav_markets" />
+        <item
+            android:id="@+id/stockSearchFragment"
+            android:icon="@drawable/ic_statistics"
+            android:title="@string/drawer_stocks" />
+        <item
+            android:id="@+id/etfDirectoryFragment"
+            android:icon="@drawable/ic_chip_etf"
+            android:title="@string/drawer_etf" />
+        <item
+            android:id="@+id/ipoFragment"
+            android:icon="@drawable/ic_chip_ipo"
+            android:title="@string/drawer_ipo" />
+        <item
+            android:id="@+id/nav_portfolio"
+            android:icon="@drawable/ic_nav_portfolio"
+            android:title="@string/nav_portfolio" />
+        <item
+            android:id="@+id/recommendationsFragment"
+            android:icon="@drawable/ic_drawer_bulb"
+            android:title="@string/drawer_recommendations" />
+        <item
+            android:id="@+id/smart_selection_fragment"
+            android:icon="@drawable/ic_chip_smart"
+            android:title="@string/drawer_smart_selection" />
+        <item
+            android:id="@+id/newsEventsFragment"
+            android:icon="@drawable/ic_chip_news"
+            android:title="@string/drawer_news" />
+        <item
+            android:id="@+id/communityProfileFragment"
+            android:icon="@drawable/ic_nav_community"
+            android:title="@string/nav_community" />
+        <item
+            android:id="@+id/riskAnalyticsFragment"
+            android:icon="@drawable/ic_drawer_shield"
+            android:title="@string/drawer_risk" />
+    </group>
+
+    <group
+        android:id="@+id/group_secondary"
+        android:checkableBehavior="single">
+        <item
+            android:id="@+id/notificationsFragment"
+            android:icon="@drawable/ic_alert_bell"
+            android:title="@string/drawer_notifications" />
+        <item
+            android:id="@+id/nav_you"
+            android:icon="@drawable/ic_chart_settings"
+            android:title="@string/drawer_settings" />
+        <item
+            android:id="@+id/assistantChatFragment"
+            android:icon="@drawable/ic_chat_assistant"
+            android:title="@string/title_assistant" />
+    </group>
+
+    <group android:id="@+id/group_session">
+        <item
+            android:id="@+id/drawer_logout"
+            android:icon="@drawable/ic_drawer_logout"
+            android:title="@string/drawer_logout" />
+    </group>
+
+</menu>

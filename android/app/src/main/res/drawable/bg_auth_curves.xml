@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="360dp"
+    android:height="800dp"
+    android:viewportWidth="360"
+    android:viewportHeight="800">
+
+    <path
+        android:fillColor="@color/auth_curve"
+        android:pathData="M360,0 L360,158 C320,143 296,120 278,86 C258,47 232,22 199,0 Z" />
+    <path
+        android:fillColor="@color/auth_curve_secondary"
+        android:pathData="M360,57 C325,86 299,120 280,162 C254,220 232,273 196,327 C242,296 278,249 306,197 C330,151 346,130 360,121 Z" />
+    <path
+        android:fillColor="@color/transparent"
+        android:strokeColor="@color/auth_curve"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.4"
+        android:pathData="M360,100 C316,86 293,53 274,18 M360,122 C307,108 277,70 255,31" />
+    <path
+        android:fillColor="@color/auth_curve"
+        android:pathData="M0,718 C54,701 88,670 112,626 C133,588 161,562 198,550 C169,611 158,665 164,723 C168,752 181,778 197,800 L0,800 Z" />
+    <path
+        android:fillColor="@color/auth_curve_secondary"
+        android:pathData="M0,758 C53,731 90,699 126,662 C159,628 190,608 228,609 C191,635 174,674 169,713 C166,749 181,780 208,800 L0,800 Z" />
+    <path
+        android:fillColor="@color/transparent"
+        android:strokeColor="@color/auth_curve"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.3"
+        android:pathData="M12,742 C72,724 106,687 135,638 M27,772 C91,750 128,713 156,670" />
+    <path
+        android:fillColor="@color/transparent"
+        android:strokeColor="@color/auth_curve"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.1"
+        android:pathData="M264,778 L282,765 L296,772 L314,742 L329,751 L345,724" />
+</vector>
